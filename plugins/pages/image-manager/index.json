@@ -1,0 +1,131 @@
+{
+  "title": "Gestion des Images",
+  "layout": "default",
+  "components": [
+    {
+      "type": "header",
+      "title": "Bibliothèque d'images",
+      "subtitle": "Gérez et organisez toutes vos images",
+      "actions": [
+        {
+          "label": "Importer des images",
+          "action": "upload",
+          "icon": "Upload",
+          "variant": "primary"
+        }
+      ]
+    },
+    {
+      "type": "stats",
+      "items": [
+        {
+          "label": "Total images",
+          "source": "total",
+          "icon": "Image",
+          "color": "bg-blue-100 text-blue-600"
+        },
+        {
+          "label": "Espace utilisé",
+          "source": "total_size",
+          "icon": "Folder",
+          "color": "bg-green-100 text-green-600",
+          "format": "filesize"
+        }
+      ]
+    },
+    {
+      "type": "filters",
+      "fields": [
+        {
+          "name": "search",
+          "label": "Rechercher",
+          "type": "text",
+          "placeholder": "Nom du fichier..."
+        },
+        {
+          "name": "category",
+          "label": "Catégorie",
+          "type": "select",
+          "source": "categories"
+        },
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "select",
+          "options": [
+            {
+              "value": "",
+              "label": "Tous"
+            },
+            {
+              "value": "image/jpeg",
+              "label": "JPEG"
+            },
+            {
+              "value": "image/png",
+              "label": "PNG"
+            },
+            {
+              "value": "image/webp",
+              "label": "WebP"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "dataGrid",
+      "source": "/list",
+      "emptyMessage": "Aucune image trouvée. Cliquez sur 'Importer' pour ajouter des images.",
+      "columns": [
+        {
+          "field": "preview",
+          "type": "image",
+          "width": 100
+        },
+        {
+          "field": "original_name",
+          "label": "Nom",
+          "sortable": true
+        },
+        {
+          "field": "size",
+          "label": "Taille",
+          "format": "filesize"
+        },
+        {
+          "field": "category_name",
+          "label": "Catégorie"
+        },
+        {
+          "field": "created_at",
+          "label": "Date",
+          "format": "date"
+        }
+      ],
+      "actions": [
+        {
+          "icon": "Eye",
+          "action": "preview",
+          "tooltip": "Aperçu"
+        },
+        {
+          "icon": "Download",
+          "action": "download",
+          "tooltip": "Télécharger"
+        },
+        {
+          "icon": "Edit",
+          "action": "edit",
+          "tooltip": "Modifier"
+        },
+        {
+          "icon": "Trash2",
+          "action": "delete",
+          "tooltip": "Supprimer",
+          "confirm": true
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,121 @@
+# Changelog
+
+Toutes les modifications notables de ce projet seront documentées dans ce fichier.
+
+Le format est basé sur [Keep a Changelog](https://keepachangelog.com/fr/1.0.0/),
+et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
+
+## [Non publié]
+
+## [1.0.0] - 2024-01-15
+
+### Ajouté
+
+#### Authentification & Utilisateurs
+- Système d'authentification JWT avec tokens de rafraîchissement
+- Trois rôles utilisateur : Administrateur, Superviseur, Utilisateur
+- Page de connexion avec validation
+- Fonctionnalité "Mot de passe oublié" avec envoi d'email
+- Réinitialisation de mot de passe sécurisée avec token
+- Page de profil utilisateur
+- Gestion des utilisateurs (CRUD) pour les administrateurs
+
+#### Gestion du matériel
+- Système de catégories avec images
+- Sous-catégories rattachées aux catégories
+- Objets (équipements) avec fiches détaillées
+- Navigation par cartes visuelles
+- Upload d'images pour les catégories, sous-catégories et objets
+- Champs personnalisables pour les objets
+
+#### Plugins
+- Architecture de plugins extensible
+- **Plugin Carburant** : 
+  - Enregistrement des pleins (date, quantité, prix, kilométrage)
+  - Calcul automatique de la consommation
+  - Statistiques et graphiques
+- **Plugin Maintenance** :
+  - Historique des interventions
+  - Types de maintenance (préventive, corrective, révision)
+  - Suivi des coûts
+- **Plugin Contrôle Technique** :
+  - Enregistrement des contrôles
+  - Suivi des dates d'expiration
+  - Alertes automatiques
+
+#### Calendrier & Alertes
+- Calendrier interactif avec FullCalendar
+- Vues jour, semaine, mois
+- Création d'événements par clic
+- Modification par drag & drop
+- Système d'alertes automatiques
+- Notifications par email pour les alertes
+- Alertes pour contrôles techniques expirés
+- Alertes pour maintenances à venir
+
+#### Administration
+- Paramètres généraux du site :
+  - Nom du site
+  - Logo personnalisable
+  - Favicon personnalisable
+  - URL du site
+  - Version
+- Configuration SMTP complète :
+  - Paramètres de connexion
+  - Test d'envoi d'email
+- Templates d'emails personnalisables :
+  - Template de bienvenue
+  - Template de réinitialisation de mot de passe
+  - Template d'alertes
+  - Variables dynamiques avec Handlebars
+- Sauvegarde et restauration :
+  - Création de sauvegardes automatiques et manuelles
+  - Téléchargement des sauvegardes
+  - Restauration depuis une sauvegarde
+  - Suppression des anciennes sauvegardes
+- Migration de base de données :
+  - Support SQLite (par défaut)
+  - Support MySQL/MariaDB
+  - Assistant de migration SQLite → MySQL
+
+#### Technique
+- Backend Node.js avec Express et TypeScript
+- Frontend React 18 avec TypeScript
+- Base de données SQLite avec support MySQL
+- Interface utilisateur avec Tailwind CSS
+- Gestion d'état avec Zustand
+- Requêtes API avec React Query
+- Tâches planifiées avec node-cron
+- Emails avec Nodemailer
+
+#### Déploiement
+- Dockerfile optimisé multi-stage
+- Docker Compose avec services :
+  - Application Node.js
+  - MySQL (optionnel)
+  - Nginx reverse proxy (optionnel)
+- Configuration Nginx avec :
+  - Rate limiting
+  - Compression gzip
+  - Support HTTPS/SSL
+- Documentation complète
+
+### Sécurité
+- Mots de passe hashés avec bcrypt (12 rounds)
+- Tokens JWT avec expiration
+- Refresh tokens pour renouvellement automatique
+- Validation des entrées utilisateur
+- Protection contre les injections SQL
+- Rate limiting sur les endpoints sensibles
+- Headers de sécurité HTTP
+
+---
+
+## Types de changements
+
+- `Ajouté` pour les nouvelles fonctionnalités
+- `Modifié` pour les changements dans les fonctionnalités existantes
+- `Déprécié` pour les fonctionnalités qui seront bientôt supprimées
+- `Supprimé` pour les fonctionnalités supprimées
+- `Corrigé` pour les corrections de bugs
+- `Sécurité` pour les vulnérabilités corrigées

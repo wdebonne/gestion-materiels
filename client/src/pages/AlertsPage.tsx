@@ -1,0 +1,359 @@
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
+import { 
+  Bell, Check, AlertTriangle, Fuel, Wrench, ClipboardCheck,
+  Filter, CheckCheck, Trash2
+} from 'lucide-react'
+import { 
+  Button, Card, CardBody, CardHeader, CardTitle, Badge, 
+  LoadingInline, Select, Modal, ModalBody, ModalFooter
+} from '@/components/ui'
+import api from '@/lib/api'
+import toast from 'react-hot-toast'
+import { formatDate } from '@/lib/utils'
+
+interface Alert {
+  id: number
+  title: string
+  message: string
+  type: 'technical_control' | 'maintenance' | 'fuel' | 'custom'
+  priority: 'low' | 'medium' | 'high'
+  status: 'active' | 'acknowledged' | 'resolved'
+  dueDate?: string
+  objectId?: number
+  objectName?: string
+  createdAt: string
+}
+
+export default function AlertsPage() {
+  const navigate = useNavigate()
+  const queryClient = useQueryClient()
+  const [statusFilter, setStatusFilter] = useState('all')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [deleteConfirm, setDeleteConfirm] = useState<Alert | null>(null)
+
+  // Récupérer les alertes
+  const { data, isLoading } = useQuery({
+    queryKey: ['alerts', statusFilter, typeFilter],
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (statusFilter !== 'all') params.append('status', statusFilter)
+      if (typeFilter !== 'all') params.append('type', typeFilter)
+      const response = await api.get(`/alerts?${params}`)
+      return response.data
+    }
+  })
+
+  // Mutation pour marquer comme lu
+  const acknowledgeMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return api.put(`/alerts/${id}`, { status: 'acknowledged' })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      toast.success('Alerte marquée comme lue')
+    }
+  })
+
+  // Mutation pour résoudre
+  const resolveMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return api.put(`/alerts/${id}`, { status: 'resolved' })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      toast.success('Alerte résolue')
+    }
+  })
+
+  // Mutation pour supprimer
+  const deleteMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return api.delete(`/alerts/${id}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      toast.success('Alerte supprimée')
+      setDeleteConfirm(null)
+    }
+  })
+
+  // Mutation pour tout marquer comme lu
+  const acknowledgeAllMutation = useMutation({
+    mutationFn: async () => {
+      return api.post('/alerts/acknowledge-all')
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      toast.success('Toutes les alertes ont été marquées comme lues')
+    }
+  })
+
+  const getTypeIcon = (type: string) => {
+    switch (type) {
+      case 'technical_control':
+        return <ClipboardCheck className="w-5 h-5" />
+      case 'maintenance':
+        return <Wrench className="w-5 h-5" />
+      case 'fuel':
+        return <Fuel className="w-5 h-5" />
+      default:
+        return <AlertTriangle className="w-5 h-5" />
+    }
+  }
+
+  const getTypeColor = (type: string) => {
+    switch (type) {
+      case 'technical_control':
+        return 'bg-blue-100 text-blue-600'
+      case 'maintenance':
+        return 'bg-orange-100 text-orange-600'
+      case 'fuel':
+        return 'bg-green-100 text-green-600'
+      default:
+        return 'bg-gray-100 text-gray-600'
+    }
+  }
+
+  const getTypeLabel = (type: string) => {
+    switch (type) {
+      case 'technical_control':
+        return 'Contrôle technique'
+      case 'maintenance':
+        return 'Entretien'
+      case 'fuel':
+        return 'Carburant'
+      default:
+        return 'Autre'
+    }
+  }
+
+  const getPriorityBadge = (priority: string) => {
+    switch (priority) {
+      case 'high':
+        return <Badge variant="danger">Urgente</Badge>
+      case 'medium':
+        return <Badge variant="warning">Moyenne</Badge>
+      default:
+        return <Badge variant="default">Basse</Badge>
+    }
+  }
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'active':
+        return <Badge variant="danger">Active</Badge>
+      case 'acknowledged':
+        return <Badge variant="warning">Lue</Badge>
+      case 'resolved':
+        return <Badge variant="success">Résolue</Badge>
+      default:
+        return <Badge>{status}</Badge>
+    }
+  }
+
+  const alerts = data?.alerts || []
+  const activeCount = alerts.filter((a: Alert) => a.status === 'active').length
+
+  return (
+    <div className="space-y-6">
+      {/* En-tête */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Alertes</h1>
+          <p className="text-gray-500 mt-1">
+            {activeCount > 0 
+              ? `${activeCount} alerte(s) active(s)`
+              : 'Aucune alerte active'
+            }
+          </p>
+        </div>
+        {activeCount > 0 && (
+          <Button 
+            variant="outline"
+            icon={<CheckCheck className="w-4 h-4" />}
+            onClick={() => acknowledgeAllMutation.mutate()}
+            loading={acknowledgeAllMutation.isPending}
+          >
+            Tout marquer comme lu
+          </Button>
+        )}
+      </div>
+
+      {/* Filtres */}
+      <Card>
+        <CardBody>
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex items-center gap-2">
+              <Filter className="w-5 h-5 text-gray-400" />
+              <span className="text-sm text-gray-500">Filtres :</span>
+            </div>
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              options={[
+                { value: 'all', label: 'Tous les statuts' },
+                { value: 'active', label: 'Actives' },
+                { value: 'acknowledged', label: 'Lues' },
+                { value: 'resolved', label: 'Résolues' }
+              ]}
+            />
+            <Select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value)}
+              options={[
+                { value: 'all', label: 'Tous les types' },
+                { value: 'technical_control', label: 'Contrôle technique' },
+                { value: 'maintenance', label: 'Entretien' },
+                { value: 'fuel', label: 'Carburant' },
+                { value: 'custom', label: 'Autre' }
+              ]}
+            />
+          </div>
+        </CardBody>
+      </Card>
+
+      {/* Liste des alertes */}
+      {isLoading ? (
+        <LoadingInline message="Chargement des alertes..." />
+      ) : alerts.length === 0 ? (
+        <Card>
+          <CardBody className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Bell className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-medium text-gray-900">Aucune alerte</h3>
+            <p className="text-gray-500 mt-1">
+              {statusFilter !== 'all' || typeFilter !== 'all' 
+                ? 'Aucune alerte ne correspond aux filtres sélectionnés'
+                : 'Vous n\'avez aucune alerte pour le moment'
+              }
+            </p>
+          </CardBody>
+        </Card>
+      ) : (
+        <div className="space-y-4">
+          {alerts.map((alert: Alert) => (
+            <Card 
+              key={alert.id}
+              className={alert.status === 'active' ? 'border-l-4 border-l-red-500' : ''}
+            >
+              <CardBody>
+                <div className="flex items-start gap-4">
+                  {/* Icône du type */}
+                  <div className={`p-3 rounded-xl ${getTypeColor(alert.type)}`}>
+                    {getTypeIcon(alert.type)}
+                  </div>
+
+                  {/* Contenu */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">{alert.title}</h3>
+                        <p className="text-sm text-gray-500 mt-1">{alert.message}</p>
+                        
+                        {/* Métadonnées */}
+                        <div className="flex flex-wrap items-center gap-3 mt-3">
+                          {getPriorityBadge(alert.priority)}
+                          {getStatusBadge(alert.status)}
+                          <span className="text-xs text-gray-400">
+                            {getTypeLabel(alert.type)}
+                          </span>
+                          {alert.dueDate && (
+                            <span className={`text-xs ${
+                              new Date(alert.dueDate) < new Date() 
+                                ? 'text-red-600' 
+                                : 'text-gray-500'
+                            }`}>
+                              Échéance : {formatDate(alert.dueDate)}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Lien vers l'objet */}
+                        {alert.objectId && (
+                          <button
+                            onClick={() => navigate(`/objects/${alert.objectId}`)}
+                            className="text-sm text-primary-600 hover:text-primary-700 mt-2"
+                          >
+                            Voir {alert.objectName || 'le matériel'} →
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-2">
+                        {alert.status === 'active' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => acknowledgeMutation.mutate(alert.id)}
+                            loading={acknowledgeMutation.isPending}
+                            title="Marquer comme lu"
+                          >
+                            <Check className="w-4 h-4" />
+                          </Button>
+                        )}
+                        {alert.status !== 'resolved' && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => resolveMutation.mutate(alert.id)}
+                            loading={resolveMutation.isPending}
+                            title="Résoudre"
+                          >
+                            <CheckCheck className="w-4 h-4" />
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setDeleteConfirm(alert)}
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Date de création */}
+                <p className="text-xs text-gray-400 mt-4 text-right">
+                  Créée le {formatDate(alert.createdAt)}
+                </p>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Modal confirmation suppression */}
+      <Modal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        title="Supprimer l'alerte"
+        size="sm"
+      >
+        <ModalBody>
+          <p className="text-gray-600">
+            Êtes-vous sûr de vouloir supprimer cette alerte ?
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>
+            Annuler
+          </Button>
+          <Button 
+            variant="danger" 
+            loading={deleteMutation.isPending}
+            onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm.id)}
+          >
+            Supprimer
+          </Button>
+        </ModalFooter>
+      </Modal>
+    </div>
+  )
+}

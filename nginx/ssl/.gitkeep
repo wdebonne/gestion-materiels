@@ -1,0 +1,4 @@
+# Ce dossier contient les certificats SSL pour la production
+# Placez vos fichiers ici :
+# - fullchain.pem
+# - privkey.pem

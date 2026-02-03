@@ -1,0 +1,126 @@
+{
+  "name": "Gestion des Images",
+  "slug": "image-manager",
+  "version": "1.0.0",
+  "description": "Gérez toutes les images de l'application : importez, organisez et attribuez des images aux catégories, sous-catégories ou objets.",
+  "author": "System",
+  "icon": "Image",
+  "type": "menu",
+  "route": "images",
+  "config": {
+    "maxFileSize": 10485760,
+    "allowedTypes": ["image/jpeg", "image/png", "image/webp", "image/gif"],
+    "thumbnailSize": 200
+  },
+  "database": {
+    "tables": [
+      {
+        "name": "plugin_images",
+        "columns": [
+          { "name": "id", "type": "INTEGER", "primaryKey": true, "autoIncrement": true },
+          { "name": "filename", "type": "VARCHAR(255)", "notNull": true },
+          { "name": "original_name", "type": "VARCHAR(255)", "notNull": true },
+          { "name": "mime_type", "type": "VARCHAR(100)" },
+          { "name": "size", "type": "INTEGER" },
+          { "name": "width", "type": "INTEGER" },
+          { "name": "height", "type": "INTEGER" },
+          { "name": "category_id", "type": "INTEGER", "foreignKey": { "table": "categories", "column": "id", "onDelete": "SET NULL" } },
+          { "name": "subcategory_id", "type": "INTEGER", "foreignKey": { "table": "subcategories", "column": "id", "onDelete": "SET NULL" } },
+          { "name": "object_id", "type": "INTEGER", "foreignKey": { "table": "objects", "column": "id", "onDelete": "SET NULL" } },
+          { "name": "tags", "type": "TEXT" },
+          { "name": "description", "type": "TEXT" },
+          { "name": "created_at", "type": "DATETIME", "default": "CURRENT_TIMESTAMP" },
+          { "name": "created_by", "type": "INTEGER" }
+        ]
+      }
+    ]
+  },
+  "api": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/list",
+        "query": "SELECT pi.*, c.name as category_name, s.name as subcategory_name, o.name as object_name FROM plugin_images pi LEFT JOIN categories c ON c.id = pi.category_id LEFT JOIN subcategories s ON s.id = pi.subcategory_id LEFT JOIN objects o ON o.id = pi.object_id ORDER BY pi.created_at DESC",
+        "description": "Liste toutes les images"
+      },
+      {
+        "method": "GET",
+        "path": "/by-category/:categoryId",
+        "query": "SELECT * FROM plugin_images WHERE category_id = :categoryId ORDER BY created_at DESC",
+        "description": "Images par catégorie"
+      },
+      {
+        "method": "GET",
+        "path": "/by-object/:objectId",
+        "query": "SELECT * FROM plugin_images WHERE object_id = :objectId ORDER BY created_at DESC",
+        "description": "Images par objet"
+      },
+      {
+        "method": "GET",
+        "path": "/stats",
+        "query": "SELECT COUNT(*) as total, SUM(size) as total_size FROM plugin_images",
+        "description": "Statistiques des images"
+      },
+      {
+        "method": "DELETE",
+        "path": "/:id",
+        "query": "DELETE FROM plugin_images WHERE id = :id",
+        "description": "Supprime une image"
+      }
+    ]
+  },
+  "pages": {
+    "index": {
+      "title": "Gestion des Images",
+      "layout": "default",
+      "components": [
+        {
+          "type": "header",
+          "title": "Bibliothèque d'images",
+          "subtitle": "Gérez et organisez toutes vos images",
+          "actions": [
+            { "label": "Importer des images", "action": "upload", "icon": "Upload", "variant": "primary" }
+          ]
+        },
+        {
+          "type": "stats",
+          "items": [
+            { "label": "Total images", "source": "total", "icon": "Image", "color": "bg-blue-100 text-blue-600" },
+            { "label": "Espace utilisé", "source": "total_size", "icon": "Folder", "color": "bg-green-100 text-green-600", "format": "filesize" }
+          ]
+        },
+        {
+          "type": "filters",
+          "fields": [
+            { "name": "search", "label": "Rechercher", "type": "text", "placeholder": "Nom du fichier..." },
+            { "name": "category", "label": "Catégorie", "type": "select", "source": "categories" },
+            { "name": "type", "label": "Type", "type": "select", "options": [
+              { "value": "", "label": "Tous" },
+              { "value": "image/jpeg", "label": "JPEG" },
+              { "value": "image/png", "label": "PNG" },
+              { "value": "image/webp", "label": "WebP" }
+            ]}
+          ]
+        },
+        {
+          "type": "dataGrid",
+          "source": "/list",
+          "emptyMessage": "Aucune image trouvée. Cliquez sur 'Importer' pour ajouter des images.",
+          "columns": [
+            { "field": "preview", "type": "image", "width": 100 },
+            { "field": "original_name", "label": "Nom", "sortable": true },
+            { "field": "size", "label": "Taille", "format": "filesize" },
+            { "field": "category_name", "label": "Catégorie" },
+            { "field": "created_at", "label": "Date", "format": "date" }
+          ],
+          "actions": [
+            { "icon": "Eye", "action": "preview", "tooltip": "Aperçu" },
+            { "icon": "Download", "action": "download", "tooltip": "Télécharger" },
+            { "icon": "Edit", "action": "edit", "tooltip": "Modifier" },
+            { "icon": "Trash2", "action": "delete", "tooltip": "Supprimer", "confirm": true }
+          ]
+        }
+      ]
+    }
+  }
+}

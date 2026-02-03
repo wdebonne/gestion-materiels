@@ -1,0 +1,163 @@
+{
+  "title": "Gestionnaire de fichiers",
+  "layout": "default",
+  "components": [
+    {
+      "type": "header",
+      "title": "Gestionnaire de fichiers",
+      "subtitle": "Parcourez, recherchez et gérez vos fichiers",
+      "actions": [
+        {
+          "label": "Ajouter un fichier",
+          "action": "upload",
+          "icon": "Upload",
+          "variant": "primary"
+        },
+        {
+          "label": "Nouveau dossier",
+          "action": "newFolder",
+          "icon": "FolderPlus",
+          "variant": "outline"
+        }
+      ]
+    },
+    {
+      "type": "stats",
+      "items": [
+        {
+          "label": "Fichiers",
+          "source": "total",
+          "icon": "File",
+          "color": "bg-blue-100 text-blue-600"
+        },
+        {
+          "label": "Espace utilisé",
+          "source": "total_size",
+          "icon": "HardDrive",
+          "color": "bg-purple-100 text-purple-600",
+          "format": "filesize"
+        },
+        {
+          "label": "Types",
+          "source": "extensions",
+          "icon": "FileType",
+          "color": "bg-green-100 text-green-600"
+        }
+      ]
+    },
+    {
+      "type": "filters",
+      "fields": [
+        {
+          "name": "search",
+          "label": "Rechercher",
+          "type": "text",
+          "placeholder": "Nom, tags..."
+        },
+        {
+          "name": "type",
+          "label": "Type",
+          "type": "select",
+          "options": [
+            {
+              "value": "",
+              "label": "Tous"
+            },
+            {
+              "value": "pdf",
+              "label": "PDF"
+            },
+            {
+              "value": "doc,docx",
+              "label": "Word"
+            },
+            {
+              "value": "xls,xlsx",
+              "label": "Excel"
+            },
+            {
+              "value": "jpg,jpeg,png,gif",
+              "label": "Images"
+            },
+            {
+              "value": "zip,rar,7z",
+              "label": "Archives"
+            }
+          ]
+        },
+        {
+          "name": "category",
+          "label": "Catégorie",
+          "type": "select",
+          "source": "categories"
+        }
+      ]
+    },
+    {
+      "type": "dataTable",
+      "source": "/list",
+      "emptyMessage": "Aucun fichier trouvé. Cliquez sur 'Ajouter un fichier' pour commencer.",
+      "columns": [
+        {
+          "field": "icon",
+          "type": "fileIcon",
+          "width": 40
+        },
+        {
+          "field": "original_name",
+          "label": "Nom",
+          "sortable": true
+        },
+        {
+          "field": "extension",
+          "label": "Type",
+          "width": 80
+        },
+        {
+          "field": "size",
+          "label": "Taille",
+          "format": "filesize",
+          "sortable": true
+        },
+        {
+          "field": "category_name",
+          "label": "Catégorie"
+        },
+        {
+          "field": "download_count",
+          "label": "Téléchargements",
+          "sortable": true
+        },
+        {
+          "field": "created_at",
+          "label": "Date",
+          "format": "date",
+          "sortable": true
+        }
+      ],
+      "actions": [
+        {
+          "icon": "Download",
+          "action": "download",
+          "tooltip": "Télécharger"
+        },
+        {
+          "icon": "Eye",
+          "action": "preview",
+          "tooltip": "Aperçu"
+        },
+        {
+          "icon": "Edit",
+          "action": "edit",
+          "tooltip": "Modifier"
+        },
+        {
+          "icon": "Trash2",
+          "action": "delete",
+          "tooltip": "Supprimer",
+          "confirm": true
+        }
+      ]
+    }
+  ]
+}
