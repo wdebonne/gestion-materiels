@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.3] - 2026-02-04
+
+### Corrigé
+- Correction de l'erreur 400 Bad Request sur `/api/custom-fields/config` lors de la sauvegarde de la configuration des champs
+- La validation express-validator n'acceptait pas les valeurs `null` pour `categoryId` et `subcategoryId`
+- Ajout de `{ nullable: true }` aux validateurs optionnels pour accepter les valeurs nulles
+
 ## [1.2.2] - 2026-02-04
 
 ### Ajouté

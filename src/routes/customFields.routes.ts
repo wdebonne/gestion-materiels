@@ -217,8 +217,8 @@ router.get('/for-object/:objectId', authenticateToken, async (req: AuthRequest, 
 
 // POST /api/custom-fields/config - Sauvegarder la configuration des champs
 router.post('/config', authenticateToken, requireAdmin, [
-  body('categoryId').optional().isInt(),
-  body('subcategoryId').optional().isInt(),
+  body('categoryId').optional({ nullable: true }).isInt(),
+  body('subcategoryId').optional({ nullable: true }).isInt(),
   body('fields').isArray()
 ], async (req: AuthRequest, res: Response) => {
   try {
