@@ -14,6 +14,8 @@ import {
   Menu,
   X,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Wrench,
   FileText,
   Package,
@@ -30,11 +32,19 @@ export default function Layout() {
   const { settings, fetchSettings } = useSettingsStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    const saved = localStorage.getItem('sidebarCollapsed')
+    return saved ? JSON.parse(saved) : false
+  })
   const [userMenuOpen, setUserMenuOpen] = useState(false)
 
   useEffect(() => {
     fetchSettings()
   }, [fetchSettings])
+
+  useEffect(() => {
+    localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed))
+  }, [sidebarCollapsed])
 
   // Récupérer le nombre d'alertes non lues
   const { data: alertsCount } = useQuery({
@@ -123,14 +133,26 @@ export default function Layout() {
       </div>
 
       {/* Sidebar Desktop */}
-      <div className="hidden lg:fixed lg:inset-y-0 lg:flex lg:w-64 lg:flex-col">
+      <div className={cn(
+        "hidden lg:fixed lg:inset-y-0 lg:flex lg:flex-col transition-all duration-300",
+        sidebarCollapsed ? "lg:w-20" : "lg:w-64"
+      )}>
         <div className="flex flex-col flex-grow bg-white border-r border-gray-100 shadow-[2px_0_20px_0_rgba(0,0,0,0.02)]">
-          <SidebarContent navigation={navigation} settings={settings} user={user} />
+          <SidebarContent 
+            navigation={navigation} 
+            settings={settings} 
+            user={user} 
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
         </div>
       </div>
 
       {/* Main content */}
-      <div className="lg:pl-64">
+      <div className={cn(
+        "transition-all duration-300",
+        sidebarCollapsed ? "lg:pl-20" : "lg:pl-64"
+      )}>
         {/* Top bar */}
         <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm">
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
@@ -213,20 +235,27 @@ interface SidebarContentProps {
   settings: any
   user: any
   onClose?: () => void
+  collapsed?: boolean
+  onToggleCollapse?: () => void
 }
 
-function SidebarContent({ navigation, settings, user, onClose }: SidebarContentProps) {
+function SidebarContent({ navigation, settings, user, onClose, collapsed = false, onToggleCollapse }: SidebarContentProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
       <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
-        <div className="flex items-center gap-3">
+        <div className={cn(
+          "flex items-center gap-3 overflow-hidden transition-all duration-300",
+          collapsed && !onClose ? "justify-center w-full" : ""
+        )}>
           {settings.site_logo && (
-            <img src={settings.site_logo} alt="" className="w-8 h-8 object-contain" />
+            <img src={settings.site_logo} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
           )}
-          <span className="font-semibold text-gray-900 truncate">
-            {settings.site_name}
-          </span>
+          {(!collapsed || onClose) && (
+            <span className="font-semibold text-gray-900 truncate">
+              {settings.site_name}
+            </span>
+          )}
         </div>
         {onClose && (
           <button onClick={onClose} className="lg:hidden p-2 text-gray-500 hover:text-gray-700">
@@ -242,23 +271,34 @@ function SidebarContent({ navigation, settings, user, onClose }: SidebarContentP
             key={item.name}
             to={item.href}
             onClick={onClose}
+            title={collapsed && !onClose ? item.name : undefined}
             className={({ isActive }) => cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
               isActive
                 ? "text-primary-900 bg-primary-50 shadow-soft"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+              collapsed && !onClose ? "justify-center px-2" : ""
             )}
           >
             {({ isActive }) => (
               <>
                 <item.icon className={cn(
-                  "w-5 h-5 transition-colors", 
+                  "w-5 h-5 transition-colors flex-shrink-0", 
                   isActive ? "text-primary-600" : "text-gray-400 group-hover:text-gray-600"
                 )} />
-                {item.name}
-                {item.badge !== undefined && item.badge > 0 && (
-                  <span className="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-sm">
-                    {item.badge > 99 ? '99+' : item.badge}
+                {(!collapsed || onClose) && (
+                  <>
+                    <span className="truncate">{item.name}</span>
+                    {item.badge !== undefined && item.badge > 0 && (
+                      <span className="ml-auto bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full shadow-sm">
+                        {item.badge > 99 ? '99+' : item.badge}
+                      </span>
+                    )}
+                  </>
+                )}
+                {collapsed && !onClose && item.badge !== undefined && item.badge > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-sm">
+                    {item.badge > 9 ? '9+' : item.badge}
                   </span>
                 )}
               </>
@@ -273,29 +313,57 @@ function SidebarContent({ navigation, settings, user, onClose }: SidebarContentP
           <NavLink
             to="/settings"
             onClick={onClose}
+            title={collapsed && !onClose ? "Paramètres" : undefined}
             className={({ isActive }) => cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
               isActive
                 ? "text-primary-900 bg-primary-50 shadow-soft"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+              collapsed && !onClose ? "justify-center px-2" : ""
             )}
           >
             {({ isActive }) => (
               <>
                 <Settings className={cn(
-                  "w-5 h-5 transition-colors", 
+                  "w-5 h-5 transition-colors flex-shrink-0", 
                   isActive ? "text-primary-600" : "text-gray-400 group-hover:text-gray-600"
                 )} />
-                Paramètres
+                {(!collapsed || onClose) && <span>Paramètres</span>}
               </>
             )}
           </NavLink>
         </div>
       )}
 
+      {/* Toggle collapse button (desktop only) */}
+      {onToggleCollapse && (
+        <div className="px-3 py-2 border-t border-gray-100">
+          <button
+            onClick={onToggleCollapse}
+            className={cn(
+              "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200",
+              collapsed ? "justify-center px-2" : ""
+            )}
+            title={collapsed ? "Agrandir le menu" : "Réduire le menu"}
+          >
+            {collapsed ? (
+              <ChevronRight className="w-5 h-5 text-gray-400" />
+            ) : (
+              <>
+                <ChevronLeft className="w-5 h-5 text-gray-400" />
+                <span>Réduire</span>
+              </>
+            )}
+          </button>
+        </div>
+      )}
+
       {/* Version */}
-      <div className="px-4 py-3 text-xs text-gray-400 border-t border-gray-200">
-        Version {settings.site_version}
+      <div className={cn(
+        "px-4 py-3 text-xs text-gray-400 border-t border-gray-200",
+        collapsed && !onClose ? "text-center px-2" : ""
+      )}>
+        {collapsed && !onClose ? `v${settings.site_version?.split(' ')[0] || ''}` : `Version ${settings.site_version}`}
       </div>
     </div>
   )
