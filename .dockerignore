@@ -46,4 +46,4 @@ coverage/
 # Misc
 .eslintrc*
 .prettierrc*
-tsconfig*.json
+
