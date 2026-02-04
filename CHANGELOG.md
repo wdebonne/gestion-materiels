@@ -7,6 +7,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.15] - 2026-02-04
+
+### Ajouté
+- **Édition des champs personnalisés** dans la page Configuration des champs
+- Bouton crayon (modifier) pour chaque champ personnalisé
+- Modal d'édition permettant de modifier : nom technique, libellé, type, options, champ obligatoire
+
+### Corrigé
+- Correction de la synchronisation du kilométrage vers les champs personnalisés
+- Le kilométrage saisi dans les plugins (Carburant, Entretien, Contrôle technique) met maintenant à jour correctement le champ "Kilométrage" dans les informations détaillées
+
 ## [1.2.14] - 2026-02-04
 
 ### Ajouté

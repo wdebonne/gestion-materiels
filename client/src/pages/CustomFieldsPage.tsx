@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ArrowLeft, Plus, Trash2, GripVertical, Eye, EyeOff, 
-  Save, RotateCcw, ChevronRight, Settings2
+  Save, RotateCcw, ChevronRight, Settings2, Edit2
 } from 'lucide-react'
 import { 
   Button, Card, CardBody, CardHeader, CardTitle, Input, Select,
@@ -59,6 +59,7 @@ export default function CustomFieldsPage() {
   })
   const [hasChanges, setHasChanges] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
+  const [editField, setEditField] = useState<{ index: number; field: CustomField } | null>(null)
 
   // Récupérer la catégorie
   const { data: category, isLoading: categoryLoading } = useQuery({
@@ -197,6 +198,22 @@ export default function CustomFieldsPage() {
     [newFields[index], newFields[targetIndex]] = [newFields[targetIndex], newFields[index]]
     setFields(newFields)
     setHasChanges(true)
+  }
+
+  const handleEditField = () => {
+    if (!editField) return
+    
+    const newFields = [...fields]
+    newFields[editField.index] = {
+      ...editField.field,
+      fieldOptions: editField.field.fieldType === 'select' && typeof editField.field.fieldOptions === 'string'
+        ? (editField.field.fieldOptions as string).split(',').map((s: string) => s.trim())
+        : editField.field.fieldOptions
+    }
+    setFields(newFields)
+    setEditField(null)
+    setHasChanges(true)
+    toast.success('Champ modifié')
   }
 
   const handleAddField = () => {
@@ -380,14 +397,34 @@ export default function CustomFieldsPage() {
                     )}
                   </Button>
                   {!field.isSystem && (
-                    <Button 
-                      variant="ghost" 
-                      size="sm"
-                      onClick={() => handleRemoveField(index)}
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                    <>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => setEditField({ 
+                          index, 
+                          field: { 
+                            ...field, 
+                            fieldOptions: Array.isArray(field.fieldOptions) 
+                              ? field.fieldOptions.join(', ') 
+                              : field.fieldOptions 
+                          } 
+                        })}
+                        title="Modifier"
+                        className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </Button>
+                      <Button 
+                        variant="ghost" 
+                        size="sm"
+                        onClick={() => handleRemoveField(index)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </>
                   )}
                 </div>
               </div>
@@ -497,6 +534,74 @@ export default function CustomFieldsPage() {
           </Button>
           <Button variant="danger" onClick={() => resetMutation.mutate()} loading={resetMutation.isPending}>
             Réinitialiser
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal d'édition de champ */}
+      <Modal isOpen={!!editField} onClose={() => setEditField(null)} title="Modifier le champ">
+        <ModalBody>
+          {editField && (
+            <div className="space-y-4">
+              <Input
+                label="Nom technique"
+                value={editField.field.fieldName}
+                onChange={(e) => setEditField({ 
+                  ...editField, 
+                  field: { ...editField.field, fieldName: e.target.value.toLowerCase().replace(/\s+/g, '_') }
+                })}
+                placeholder="ex: marque, numero_immatriculation"
+              />
+              <Input
+                label="Libellé affiché"
+                value={editField.field.fieldLabel}
+                onChange={(e) => setEditField({ 
+                  ...editField, 
+                  field: { ...editField.field, fieldLabel: e.target.value }
+                })}
+                placeholder="ex: Marque, Numéro d'immatriculation"
+              />
+              <Select
+                label="Type de champ"
+                value={editField.field.fieldType}
+                onChange={(e) => setEditField({ 
+                  ...editField, 
+                  field: { ...editField.field, fieldType: e.target.value }
+                })}
+                options={FIELD_TYPES}
+              />
+              {editField.field.fieldType === 'select' && (
+                <Input
+                  label="Options (séparées par des virgules)"
+                  value={typeof editField.field.fieldOptions === 'string' ? editField.field.fieldOptions : (editField.field.fieldOptions || []).join(', ')}
+                  onChange={(e) => setEditField({ 
+                    ...editField, 
+                    field: { ...editField.field, fieldOptions: e.target.value }
+                  })}
+                  placeholder="ex: Diesel, Essence, Électrique, Hybride"
+                />
+              )}
+              <label className="flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={editField.field.isRequired}
+                  onChange={(e) => setEditField({ 
+                    ...editField, 
+                    field: { ...editField.field, isRequired: e.target.checked }
+                  })}
+                  className="rounded border-gray-300"
+                />
+                <span className="text-sm text-gray-700">Champ obligatoire</span>
+              </label>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="outline" onClick={() => setEditField(null)}>
+            Annuler
+          </Button>
+          <Button onClick={handleEditField}>
+            Enregistrer
           </Button>
         </ModalFooter>
       </Modal>

@@ -143,18 +143,18 @@ export default function ObjectDetailPage() {
   }
 
   // Fonction pour mettre à jour le kilométrage dans les champs personnalisés
-  const updateMileageIfHigher = async (newMileage: number | string | null) => {
-    if (!newMileage) return
+  const updateMileageIfHigher = async (newMileage: number | string | null, currentObject: any) => {
+    if (!newMileage || !currentObject) return
     const mileageNum = typeof newMileage === 'string' ? parseInt(newMileage) : newMileage
     if (isNaN(mileageNum)) return
     
-    const currentMileage = object?.customFields?.kilometrage ? parseInt(object.customFields.kilometrage) : 0
+    const currentMileage = currentObject?.customFields?.kilometrage ? parseInt(currentObject.customFields.kilometrage) : 0
     
     if (mileageNum > currentMileage) {
       try {
         await api.put(`/objects/${id}`, {
           customFields: {
-            ...object?.customFields,
+            ...currentObject?.customFields,
             kilometrage: mileageNum
           }
         })
@@ -275,7 +275,7 @@ export default function ObjectDetailPage() {
       toast.success('Plein ajouté')
       setFuelModal(false)
       // Mettre à jour le kilométrage si supérieur
-      updateMileageIfHigher(variables.mileage)
+      updateMileageIfHigher(variables.mileage, object)
       setFuelData({ date: new Date().toISOString().split('T')[0], fuelType: '', quantity: '', cost: '', mileage: '', station: '', notes: '' })
     },
     onError: (err: any) => {
@@ -363,7 +363,7 @@ export default function ObjectDetailPage() {
       toast.success('Entretien ajouté')
       setMaintenanceModal(false)
       // Mettre à jour le kilométrage si supérieur
-      updateMileageIfHigher(variables.mileage)
+      updateMileageIfHigher(variables.mileage, object)
       setMaintenanceData({ date: new Date().toISOString().split('T')[0], type: '', description: '', cost: '', mileage: '', nextDate: '', provider: '', notes: '' })
     },
     onError: (err: any) => {
@@ -504,7 +504,7 @@ export default function ObjectDetailPage() {
       toast.success('Contrôle technique ajouté')
       setControlModal(false)
       // Mettre à jour le kilométrage si supérieur
-      updateMileageIfHigher(variables.mileage)
+      updateMileageIfHigher(variables.mileage, object)
       const today = new Date()
       const expDate = new Date(today)
       expDate.setFullYear(expDate.getFullYear() + 2)
