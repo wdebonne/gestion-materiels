@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.5] - 2026-02-04
+
+### Corrigé
+- Correction de l'affichage des champs personnalisés dans la fiche objet
+- La route `/custom-fields/for-object/:id` résout maintenant correctement la catégorie parente via la sous-catégorie
+- Les champs configurés (Marque, Numéro d'immatriculation, etc.) s'affichent maintenant correctement
+
 ## [1.2.4] - 2026-02-04
 
 ### Corrigé

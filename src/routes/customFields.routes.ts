@@ -148,8 +148,13 @@ router.get('/for-object/:objectId', authenticateToken, async (req: AuthRequest, 
     const { objectId } = req.params;
 
     // Récupérer l'objet pour connaître sa catégorie/sous-catégorie
+    // Aussi récupérer la catégorie parente via la sous-catégorie si category_id est NULL
     const object = await db.queryOne(
-      'SELECT category_id, subcategory_id FROM objects WHERE id = ?',
+      `SELECT o.category_id, o.subcategory_id, 
+              COALESCE(o.category_id, s.category_id) as resolved_category_id
+       FROM objects o
+       LEFT JOIN subcategories s ON s.id = o.subcategory_id
+       WHERE o.id = ?`,
       [objectId]
     );
 
@@ -158,6 +163,7 @@ router.get('/for-object/:objectId', authenticateToken, async (req: AuthRequest, 
     }
 
     let configs: any[] = [];
+    const categoryId = object.resolved_category_id;
 
     // Priorité: sous-catégorie > catégorie > défaut
     if (object.subcategory_id) {
@@ -169,12 +175,12 @@ router.get('/for-object/:objectId', authenticateToken, async (req: AuthRequest, 
       );
     }
 
-    if (configs.length === 0 && object.category_id) {
+    if (configs.length === 0 && categoryId) {
       configs = await db.query(
         `SELECT * FROM custom_fields_config 
          WHERE category_id = ? AND subcategory_id IS NULL
          ORDER BY sort_order, field_label`,
-        [object.category_id]
+        [categoryId]
       );
     }
 
