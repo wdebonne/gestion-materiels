@@ -61,12 +61,12 @@ services:
     networks:
       - gestion-network
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-root_password}"]
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 30s
-    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+      retries: 10
+      start_period: 60s
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
 
   # Reverse proxy Nginx (optionnel - pour production avec SSL)
   nginx:
