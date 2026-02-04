@@ -43,12 +43,16 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       params
     );
 
-    // Récupérer les objets
+    // Récupérer les objets (catégorie résolue via sous-catégorie si nécessaire)
     const objects = await db.query(
-      `SELECT o.*, c.name as category_name, s.name as subcategory_name 
+      `SELECT o.*, 
+              COALESCE(c.name, c2.name) as category_name, 
+              COALESCE(c.id, c2.id) as resolved_category_id,
+              s.name as subcategory_name 
        FROM objects o
-       LEFT JOIN categories c ON c.id = o.category_id
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
+       LEFT JOIN categories c ON c.id = o.category_id
+       LEFT JOIN categories c2 ON c2.id = s.category_id
        WHERE ${whereClause}
        ORDER BY o.name
        LIMIT ? OFFSET ?`,
@@ -59,7 +63,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       success: true,
       objects: objects.map((o: any) => ({
         id: o.id,
-        categoryId: o.category_id,
+        categoryId: o.resolved_category_id || o.category_id,
         categoryName: o.category_name,
         subcategoryId: o.subcategory_id,
         subcategoryName: o.subcategory_name,
@@ -95,12 +99,17 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   try {
     const { id } = req.params;
 
+    // Récupérer la catégorie soit directement (o.category_id) soit via la sous-catégorie (s.category_id)
     const obj = await db.queryOne(
-      `SELECT o.*, c.name as category_name, c.slug as category_slug,
+      `SELECT o.*, 
+              COALESCE(c.name, c2.name) as category_name, 
+              COALESCE(c.slug, c2.slug) as category_slug,
+              COALESCE(c.id, c2.id) as resolved_category_id,
               s.name as subcategory_name, s.slug as subcategory_slug
        FROM objects o
-       LEFT JOIN categories c ON c.id = o.category_id
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
+       LEFT JOIN categories c ON c.id = o.category_id
+       LEFT JOIN categories c2 ON c2.id = s.category_id
        WHERE o.id = ?`,
       [id]
     );
@@ -187,7 +196,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         createdAt: obj.created_at,
         updatedAt: obj.updated_at,
         category: obj.category_name ? {
-          id: obj.category_id,
+          id: obj.resolved_category_id || obj.category_id,
           name: obj.category_name,
           slug: obj.category_slug
         } : null,

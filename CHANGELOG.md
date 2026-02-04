@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.4] - 2026-02-04
+
+### Corrigé
+- Correction de l'affichage de la catégorie dans la fiche objet quand l'objet est associé uniquement à une sous-catégorie
+- La catégorie parente est maintenant récupérée via la sous-catégorie si `category_id` est NULL
+- Correction de l'erreur "Catégorie non trouvée" lors du clic sur "Configurer les champs" depuis un objet
+
 ## [1.2.3] - 2026-02-04
 
 ### Corrigé
