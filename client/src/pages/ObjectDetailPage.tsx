@@ -97,6 +97,64 @@ export default function ObjectDetailPage() {
     }
   })
 
+  // Fonction pour obtenir le kilométrage actuel depuis les champs personnalisés
+  const getCurrentMileage = (): string => {
+    const mileage = object?.customFields?.kilometrage
+    return mileage ? String(mileage) : ''
+  }
+
+  // Fonction pour ouvrir le modal carburant avec le kilométrage pré-rempli
+  const openFuelModal = () => {
+    setFuelData(prev => ({ ...prev, mileage: getCurrentMileage() }))
+    setFuelModal(true)
+  }
+
+  // Fonction pour ouvrir le modal maintenance avec le kilométrage pré-rempli
+  const openMaintenanceModal = () => {
+    setMaintenanceData(prev => ({ ...prev, mileage: getCurrentMileage() }))
+    setMaintenanceModal(true)
+  }
+
+  // Fonction pour ouvrir le modal contrôle technique avec le kilométrage pré-rempli
+  const openControlModal = () => {
+    const today = new Date()
+    const expDate = new Date(today)
+    expDate.setFullYear(expDate.getFullYear() + 2)
+    setControlData({
+      date: today.toISOString().split('T')[0],
+      expirationDate: expDate.toISOString().split('T')[0],
+      result: 'passed',
+      mileage: getCurrentMileage(),
+      center: '',
+      cost: '',
+      notes: ''
+    })
+    setControlModal(true)
+  }
+
+  // Fonction pour mettre à jour le kilométrage dans les champs personnalisés
+  const updateMileageIfHigher = async (newMileage: number | string | null) => {
+    if (!newMileage) return
+    const mileageNum = typeof newMileage === 'string' ? parseInt(newMileage) : newMileage
+    if (isNaN(mileageNum)) return
+    
+    const currentMileage = object?.customFields?.kilometrage ? parseInt(object.customFields.kilometrage) : 0
+    
+    if (mileageNum > currentMileage) {
+      try {
+        await api.put(`/objects/${id}`, {
+          customFields: {
+            ...object?.customFields,
+            kilometrage: mileageNum
+          }
+        })
+        queryClient.invalidateQueries({ queryKey: ['object', id] })
+      } catch (error) {
+        console.error('Erreur mise à jour kilométrage:', error)
+      }
+    }
+  }
+
   // Récupérer l'objet
   const { data: object, isLoading, error } = useQuery({
     queryKey: ['object', id],
@@ -202,10 +260,12 @@ export default function ObjectDetailPage() {
     mutationFn: async (data: any) => {
       return api.post(`/objects/${id}/fuel`, data)
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       toast.success('Plein ajouté')
       setFuelModal(false)
+      // Mettre à jour le kilométrage si supérieur
+      updateMileageIfHigher(variables.mileage)
       setFuelData({ date: new Date().toISOString().split('T')[0], fuelType: '', quantity: '', cost: '', mileage: '', station: '', notes: '' })
     },
     onError: (err: any) => {
@@ -288,10 +348,12 @@ export default function ObjectDetailPage() {
     mutationFn: async (data: any) => {
       return api.post(`/objects/${id}/maintenance`, data)
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       toast.success('Entretien ajouté')
       setMaintenanceModal(false)
+      // Mettre à jour le kilométrage si supérieur
+      updateMileageIfHigher(variables.mileage)
       setMaintenanceData({ date: new Date().toISOString().split('T')[0], type: '', description: '', cost: '', mileage: '', nextDate: '', provider: '', notes: '' })
     },
     onError: (err: any) => {
@@ -427,10 +489,12 @@ export default function ObjectDetailPage() {
       }
       return api.post(`/objects/${id}/technical-control`, mappedData)
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       toast.success('Contrôle technique ajouté')
       setControlModal(false)
+      // Mettre à jour le kilométrage si supérieur
+      updateMileageIfHigher(variables.mileage)
       const today = new Date()
       const expDate = new Date(today)
       expDate.setFullYear(expDate.getFullYear() + 2)
@@ -928,7 +992,7 @@ export default function ObjectDetailPage() {
                   <Settings2 className="w-4 h-4" />
                 </Button>
               )}
-              <Button size="sm" onClick={() => setFuelModal(true)}>
+              <Button size="sm" onClick={openFuelModal}>
                 <Plus className="w-4 h-4 mr-1" />
                 Ajouter un plein
               </Button>
@@ -1017,7 +1081,7 @@ export default function ObjectDetailPage() {
                   <Settings2 className="w-4 h-4" />
                 </Button>
               )}
-              <Button size="sm" onClick={() => setMaintenanceModal(true)}>
+              <Button size="sm" onClick={openMaintenanceModal}>
                 <Plus className="w-4 h-4 mr-1" />
                 Ajouter un entretien
               </Button>
@@ -1114,7 +1178,7 @@ export default function ObjectDetailPage() {
                   <Settings2 className="w-4 h-4" />
                 </Button>
               )}
-              <Button size="sm" onClick={() => setControlModal(true)}>
+              <Button size="sm" onClick={openControlModal}>
                 <Plus className="w-4 h-4 mr-1" />
                 Ajouter un contrôle
               </Button>
