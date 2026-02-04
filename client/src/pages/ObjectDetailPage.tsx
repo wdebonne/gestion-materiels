@@ -999,7 +999,7 @@ export default function ObjectDetailPage() {
                   placeholder="Filtrer..."
                   value={fuelFilter}
                   onChange={(e) => setFuelFilter(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
                 />
               </div>
               {isAdmin && (
@@ -1019,7 +1019,9 @@ export default function ObjectDetailPage() {
                 const filteredFuel = object.fuelRecords.filter((record: any) => {
                   if (!fuelFilter) return true
                   const search = fuelFilter.toLowerCase()
+                  const dateFormatted = record.date ? formatDate(record.date).toLowerCase() : ''
                   return (
+                    dateFormatted.includes(search) ||
                     record.date?.toLowerCase().includes(search) ||
                     record.fuelType?.toLowerCase().includes(search) ||
                     record.station?.toLowerCase().includes(search) ||
@@ -1119,7 +1121,7 @@ export default function ObjectDetailPage() {
                   placeholder="Filtrer..."
                   value={maintenanceFilter}
                   onChange={(e) => setMaintenanceFilter(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
                 />
               </div>
               {isAdmin && (
@@ -1139,7 +1141,9 @@ export default function ObjectDetailPage() {
                 const filteredMaintenance = object.maintenanceRecords.filter((record: any) => {
                   if (!maintenanceFilter) return true
                   const search = maintenanceFilter.toLowerCase()
+                  const dateFormatted = record.date ? formatDate(record.date).toLowerCase() : ''
                   return (
+                    dateFormatted.includes(search) ||
                     record.date?.toLowerCase().includes(search) ||
                     record.type?.toLowerCase().includes(search) ||
                     record.provider?.toLowerCase().includes(search) ||
@@ -1242,7 +1246,7 @@ export default function ObjectDetailPage() {
                   placeholder="Filtrer..."
                   value={controlFilter}
                   onChange={(e) => setControlFilter(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
                 />
               </div>
               {(user?.role === 'admin' || user?.role === 'supervisor') && (
@@ -1268,7 +1272,11 @@ export default function ObjectDetailPage() {
                   if (!controlFilter) return true
                   const search = controlFilter.toLowerCase()
                   const resultText = control.result === 'passed' ? 'favorable' : control.result === 'failed' ? 'défavorable' : 'contre-visite'
+                  const dateFormatted = control.date ? formatDate(control.date).toLowerCase() : ''
+                  const expiryFormatted = control.expiryDate ? formatDate(control.expiryDate).toLowerCase() : ''
                   return (
+                    dateFormatted.includes(search) ||
+                    expiryFormatted.includes(search) ||
                     control.date?.toLowerCase().includes(search) ||
                     control.centerName?.toLowerCase().includes(search) ||
                     control.expiryDate?.toLowerCase().includes(search) ||
