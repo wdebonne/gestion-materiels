@@ -33,8 +33,11 @@ RUN npm install --legacy-peer-deps --include=dev
 COPY src/ ./src/
 COPY tsconfig.json ./
 
-# Build server only
-RUN npm run build:server
+# Debug: show what we have
+RUN ls -la && cat tsconfig.json
+
+# Build server only (with verbose output)
+RUN npx tsc --version && npx tsc || (echo "TypeScript build failed" && exit 1)
 
 # Production stage
 FROM node:20-alpine AS production
