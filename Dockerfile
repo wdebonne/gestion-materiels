@@ -34,10 +34,12 @@ COPY src/ ./src/
 COPY tsconfig.json ./
 
 # Debug: show what we have
-RUN ls -la && cat tsconfig.json
+RUN ls -la && ls -la src/
 
-# Build server only (with verbose output)
-RUN npx tsc --version && npx tsc || (echo "TypeScript build failed" && exit 1)
+# Build server - show all errors
+RUN npx tsc --version
+RUN npx tsc 2>&1 || true
+RUN npx tsc
 
 # Production stage
 FROM node:20-alpine AS production
