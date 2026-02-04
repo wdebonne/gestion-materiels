@@ -117,7 +117,7 @@ npm run dev
 
 | Rôle | Email | Mot de passe |
 |------|-------|--------------|
-| Administrateur | admin@admin.com | admin123 |
+| Administrateur | admin@example.com | admin123 |
 
 ⚠️ **Important** : Changez ces identifiants dès la première connexion !
 
