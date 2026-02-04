@@ -1633,14 +1633,12 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setMaintenanceData({ ...maintenanceData, date: e.target.value })}
                 required
               />
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type d'entretien</label>
-                <input
-                  list="maintenance-types-list"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              <div className="relative">
+                <Input
+                  label="Type d'entretien"
                   value={maintenanceData.type}
                   onChange={(e) => setMaintenanceData({ ...maintenanceData, type: e.target.value })}
-                  placeholder="Sélectionner ou saisir..."
+                  list="maintenance-types-list"
                   required
                 />
                 <datalist id="maintenance-types-list">
@@ -1672,14 +1670,12 @@ export default function ObjectDetailPage() {
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Prestataire</label>
-                <input
-                  list="maintenance-providers-list"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              <div className="relative">
+                <Input
+                  label="Prestataire"
                   value={maintenanceData.provider}
                   onChange={(e) => setMaintenanceData({ ...maintenanceData, provider: e.target.value })}
-                  placeholder="Sélectionner ou saisir..."
+                  list="maintenance-providers-list"
                 />
                 <datalist id="maintenance-providers-list">
                   {maintenanceProviders.map((p) => (
@@ -1734,14 +1730,12 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, date: e.target.value })}
                 required
               />
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Type d'entretien</label>
-                <input
-                  list="maintenance-types-list-edit"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              <div className="relative">
+                <Input
+                  label="Type d'entretien"
                   value={maintenanceEditModal?.type || ''}
                   onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, type: e.target.value })}
-                  placeholder="Sélectionner ou saisir..."
+                  list="maintenance-types-list-edit"
                   required
                 />
                 <datalist id="maintenance-types-list-edit">
@@ -1773,14 +1767,12 @@ export default function ObjectDetailPage() {
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Prestataire</label>
-                <input
-                  list="maintenance-providers-list-edit"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              <div className="relative">
+                <Input
+                  label="Prestataire"
                   value={maintenanceEditModal?.provider || ''}
                   onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, provider: e.target.value })}
-                  placeholder="Sélectionner ou saisir..."
+                  list="maintenance-providers-list-edit"
                 />
                 <datalist id="maintenance-providers-list-edit">
                   {maintenanceProviders.map((p) => (
