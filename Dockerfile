@@ -32,14 +32,10 @@ RUN npm install --legacy-peer-deps --include=dev
 # Copy server source
 COPY src/ ./src/
 COPY tsconfig.json ./
+COPY build-server.js ./
 
-# Debug: show what we have
-RUN ls -la && ls -la src/
-
-# Build server - show all errors
-RUN npx tsc --version
-RUN npx tsc 2>&1 || true
-RUN npx tsc
+# Build server with esbuild (faster, no type checking)
+RUN npm run build:server:fast
 
 # Production stage
 FROM node:20-alpine AS production
