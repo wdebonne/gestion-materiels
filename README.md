@@ -62,7 +62,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 1. **Cloner le dépôt**
 ```bash
-git clone https://github.com/wdebonne/gestion-materiels.git
+git clone https://github.com/votre-repos/gestion-materiels.git
 cd gestion-materiels
 ```
 
