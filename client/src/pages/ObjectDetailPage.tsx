@@ -415,7 +415,17 @@ export default function ObjectDetailPage() {
 
   const addControlMutation = useMutation({
     mutationFn: async (data: any) => {
-      return api.post(`/objects/${id}/technical-control`, data)
+      // Mapper les champs client vers les champs attendus par le serveur
+      const mappedData = {
+        controlDate: data.date,
+        expiryDate: data.expirationDate,
+        result: data.result,
+        mileage: data.mileage ? parseInt(data.mileage) : null,
+        centerName: data.center,
+        cost: data.cost ? parseFloat(data.cost) : null,
+        notes: data.notes
+      }
+      return api.post(`/objects/${id}/technical-control`, mappedData)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
@@ -441,7 +451,17 @@ export default function ObjectDetailPage() {
 
   const updateControlMutation = useMutation({
     mutationFn: async ({ entryId, data }: { entryId: number; data: any }) => {
-      return api.put(`/objects/${id}/technical-control/${entryId}`, data)
+      // Mapper les champs client vers les champs attendus par le serveur
+      const mappedData = {
+        controlDate: data.date,
+        expiryDate: data.expirationDate,
+        result: data.result,
+        mileage: data.mileage,
+        centerName: data.center,
+        cost: data.cost,
+        notes: data.notes
+      }
+      return api.put(`/objects/${id}/technical-control/${entryId}`, mappedData)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
