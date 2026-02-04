@@ -82,14 +82,19 @@ export default function ObjectDetailPage() {
     notes: ''
   })
 
-  const [controlData, setControlData] = useState({
-    date: new Date().toISOString().split('T')[0],
-    expirationDate: '',
-    result: 'passed',
-    mileage: '',
-    center: '',
-    cost: '',
-    notes: ''
+  const [controlData, setControlData] = useState(() => {
+    const today = new Date()
+    const expDate = new Date(today)
+    expDate.setFullYear(expDate.getFullYear() + 2)
+    return {
+      date: today.toISOString().split('T')[0],
+      expirationDate: expDate.toISOString().split('T')[0],
+      result: 'passed',
+      mileage: '',
+      center: '',
+      cost: '',
+      notes: ''
+    }
   })
 
   // Récupérer l'objet
@@ -416,7 +421,18 @@ export default function ObjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       toast.success('Contrôle technique ajouté')
       setControlModal(false)
-      setControlData({ date: new Date().toISOString().split('T')[0], expirationDate: '', result: 'passed', mileage: '', center: '', cost: '', notes: '' })
+      const today = new Date()
+      const expDate = new Date(today)
+      expDate.setFullYear(expDate.getFullYear() + 2)
+      setControlData({ 
+        date: today.toISOString().split('T')[0], 
+        expirationDate: expDate.toISOString().split('T')[0], 
+        result: 'passed', 
+        mileage: '', 
+        center: '', 
+        cost: '', 
+        notes: '' 
+      })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
