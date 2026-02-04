@@ -47,15 +47,15 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
             id={inputId}
             type={type}
             className={cn(
-              "block w-full rounded-lg border border-gray-300 bg-white text-gray-900",
+              "block w-full rounded-lg border border-gray-200 bg-white text-gray-900 shadow-sm",
               sizeClasses[size],
               "placeholder:text-gray-400",
-              "focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none",
+              "focus:border-primary-500 focus:ring-4 focus:ring-primary-500/10 focus:outline-none",
               "disabled:bg-gray-50 disabled:text-gray-500 disabled:cursor-not-allowed",
-              "transition-colors duration-200",
+              "transition-all duration-200",
               icon && iconSizeClasses[size],
               rightIcon && "pr-10",
-              error && "border-red-500 focus:border-red-500 focus:ring-red-500/20",
+              error && "border-red-300 focus:border-red-500 focus:ring-red-500/10",
               className
             )}
             {...props}

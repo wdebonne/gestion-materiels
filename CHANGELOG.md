@@ -7,6 +7,33 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.0] - 2026-02-04
+
+### Ajouté
+
+#### Interface Utilisateur Moderne
+- Nouvelle palette de couleurs (Sky Blue) plus professionnelle
+- Système d'ombres personnalisées (`shadow-soft`, `shadow-medium`, `shadow-hard`)
+- Effet Glassmorphism sur la barre de navigation supérieure
+- Fond d'écran avec dégradé radial subtil
+- Scrollbars personnalisées plus fines et élégantes
+
+### Modifié
+
+#### Composants UI Redessinés
+- **Boutons** : Dégradés subtils, effet d'enfoncement au clic (`active:scale`)
+- **Cartes** : Ombres diffuses, animation de survol avec élévation
+- **Champs de saisie** : Focus ring plus élégant (ring-4 avec opacité)
+- **Sidebar** : Espacement amélioré, indicateurs d'état plus visibles
+- **Header** : Semi-transparent avec backdrop-blur
+
+#### Améliorations Visuelles
+- Transitions fluides sur tous les éléments interactifs
+- Couleurs d'accent plus cohérentes
+- Meilleure hiérarchie visuelle dans la navigation
+
+---
+
 ## [1.1.0] - 2026-02-04
 
 ### Ajouté

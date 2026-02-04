@@ -12,8 +12,8 @@ export default function Card({ children, className, onClick, hoverable = false }
   return (
     <div
       className={cn(
-        "bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden",
-        hoverable && "transition-all duration-200 hover:shadow-md hover:border-gray-300 cursor-pointer",
+        "bg-white rounded-xl border border-gray-100 shadow-soft overflow-hidden",
+        hoverable && "transition-all duration-300 hover:shadow-medium hover:-translate-y-1 cursor-pointer",
         onClick && "cursor-pointer",
         className
       )}

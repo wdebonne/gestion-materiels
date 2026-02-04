@@ -2,11 +2,20 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
+![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
+
+## ✨ Points forts
+
+- 🎨 **Interface moderne** avec effets Glassmorphism et animations fluides
+- 🔌 **Système de plugins** extensible avec import ZIP
+- 📱 **Design responsive** adapté mobile et desktop
+- 🔒 **Sécurisé** avec authentification JWT
+- 🐳 **Docker ready** pour un déploiement facile
 
 ## 📋 Fonctionnalités
 
@@ -50,6 +59,13 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔄 Migration SQLite vers MySQL/MariaDB
 - 🔐 Gestion des permissions par catégorie
 
+### 🎨 Interface Utilisateur (v1.2)
+- 🌟 Design moderne avec palette Sky Blue
+- ✨ Effets Glassmorphism sur la navigation
+- 🎭 Animations fluides et transitions
+- 📐 Composants UI soignés (boutons, cartes, inputs)
+- 🎯 Hiérarchie visuelle claire
+
 ## 🚀 Installation
 
 ### Prérequis
@@ -62,7 +78,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 1. **Cloner le dépôt**
 ```bash
-git clone https://github.com/votre-repos/gestion-materiels.git
+git clone https://github.com/wdebonne/gestion-materiels.git
 cd gestion-materiels
 ```
 

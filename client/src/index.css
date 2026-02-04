@@ -16,25 +16,33 @@
 body {
   margin: 0;
   min-height: 100vh;
-  @apply bg-gray-50 text-gray-900;
+  @apply bg-gray-50 text-gray-900 antialiased;
+  background-image: radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.03) 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, rgba(14, 165, 233, 0.03) 0px, transparent 50%);
+  background-attachment: fixed;
 }
 
 /* Scrollbar personnalisée */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-track {
-  @apply bg-gray-100;
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
-  @apply bg-gray-300 rounded-full;
+  @apply bg-gray-300 rounded-full hover:bg-gray-400 transition-colors;
 }
 
-::-webkit-scrollbar-thumb:hover {
-  @apply bg-gray-400;
+/* Glassmorphism utilities */
+.glass {
+  @apply bg-white/70 backdrop-blur-md border border-white/20;
+}
+
+.glass-card {
+  @apply bg-white/80 backdrop-blur-sm border border-gray-100 shadow-soft;
 }
 
 /* Animations */
