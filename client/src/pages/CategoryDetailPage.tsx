@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   Plus, Search, ChevronRight, ArrowLeft, Edit2, Trash2, 
-  FolderOpen, LayoutGrid, Package
+  FolderOpen, LayoutGrid, Package, Settings2
 } from 'lucide-react'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, ImageCard, 
@@ -325,6 +325,14 @@ export default function CategoryDetailPage() {
                 <div className="flex gap-2">
                   <Button variant="ghost" size="sm" onClick={() => navigate('/categories')}>
                     <ArrowLeft className="w-4 h-4" />
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => navigate(`/categories/${category.slug}/fields`)}
+                    title="Configurer les champs"
+                  >
+                    <Settings2 className="w-4 h-4" />
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleCategoryEdit}>
                     <Edit2 className="w-4 h-4" />

@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X,
-  Image as ImageIcon
+  Image as ImageIcon, Settings2
 } from 'lucide-react'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select,
@@ -100,6 +100,22 @@ export default function ObjectDetailPage() {
         technicalControls?: any[];
         activePlugins?: Array<{ id: number; slug: string; name: string; icon: string }>;
       }
+    },
+    enabled: !!id
+  })
+
+  // Récupérer la configuration des champs personnalisés
+  const { data: fieldsConfig } = useQuery({
+    queryKey: ['customFieldsForObject', id],
+    queryFn: async () => {
+      const response = await api.get(`/custom-fields/for-object/${id}`)
+      return response.data.fields as Array<{
+        fieldName: string;
+        fieldLabel: string;
+        fieldType: string;
+        isVisible: boolean;
+        isSystem: boolean;
+      }>
     },
     enabled: !!id
   })
@@ -330,6 +346,59 @@ export default function ObjectDetailPage() {
                         onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value })}
                         options={statusOptions}
                       />
+                      {/* Champs personnalisés en mode édition */}
+                      {fieldsConfig && fieldsConfig.filter(f => !f.isSystem && f.isVisible).length > 0 && (
+                        <div className="pt-4 border-t space-y-4">
+                          <h4 className="font-medium text-gray-700">Champs personnalisés</h4>
+                          {fieldsConfig.filter(f => !f.isSystem && f.isVisible).map((field) => {
+                            const value = editFormData?.customFields?.[field.fieldName] || ''
+                            const handleFieldChange = (newValue: string) => {
+                              setEditFormData({
+                                ...editFormData,
+                                customFields: {
+                                  ...editFormData?.customFields,
+                                  [field.fieldName]: newValue
+                                }
+                              })
+                            }
+                            
+                            if (field.fieldType === 'textarea') {
+                              return (
+                                <TextArea
+                                  key={field.fieldName}
+                                  label={field.fieldLabel}
+                                  value={value}
+                                  onChange={(e) => handleFieldChange(e.target.value)}
+                                  rows={2}
+                                />
+                              )
+                            }
+                            if (field.fieldType === 'select' && field.fieldOptions) {
+                              return (
+                                <Select
+                                  key={field.fieldName}
+                                  label={field.fieldLabel}
+                                  value={value}
+                                  onChange={(e) => handleFieldChange(e.target.value)}
+                                  options={[
+                                    { value: '', label: 'Sélectionner...' },
+                                    ...field.fieldOptions.map((opt: string) => ({ value: opt, label: opt }))
+                                  ]}
+                                />
+                              )
+                            }
+                            return (
+                              <Input
+                                key={field.fieldName}
+                                label={field.fieldLabel}
+                                type={field.fieldType === 'number' ? 'number' : field.fieldType === 'date' ? 'date' : 'text'}
+                                value={value}
+                                onChange={(e) => handleFieldChange(e.target.value)}
+                              />
+                            )
+                          })}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <>
@@ -386,31 +455,101 @@ export default function ObjectDetailPage() {
       {/* Contenu des onglets */}
       {activeTab === 'details' && (
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Informations détaillées</CardTitle>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                const basePath = object.subcategory 
+                  ? `/categories/${object.category?.slug}/${object.subcategory.slug}`
+                  : `/categories/${object.category?.slug}`
+                navigate(`${basePath}/fields`)
+              }}
+              title="Configurer les champs"
+            >
+              <Settings2 className="w-4 h-4" />
+            </Button>
           </CardHeader>
           <CardBody>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <h4 className="text-sm font-medium text-gray-500 mb-1">Catégorie</h4>
-                <p className="text-gray-900">{object.category?.name || '-'}</p>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500 mb-1">Sous-catégorie</h4>
-                <p className="text-gray-900">{object.subcategory?.name || '-'}</p>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500 mb-1">Dernière modification</h4>
-                <p className="text-gray-900">{object.updatedAt ? formatDate(object.updatedAt) : '-'}</p>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500 mb-1">Identifiant</h4>
-                <p className="text-gray-900 font-mono text-sm">#{object.id}</p>
-              </div>
+              {/* Afficher les champs selon la configuration */}
+              {fieldsConfig ? (
+                fieldsConfig.filter(f => f.isVisible).map((field) => {
+                  // Champs système
+                  if (field.isSystem) {
+                    switch (field.fieldName) {
+                      case 'category':
+                        return (
+                          <div key={field.fieldName}>
+                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900">{object.category?.name || '-'}</p>
+                          </div>
+                        )
+                      case 'subcategory':
+                        return (
+                          <div key={field.fieldName}>
+                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900">{object.subcategory?.name || '-'}</p>
+                          </div>
+                        )
+                      case 'updatedAt':
+                        return (
+                          <div key={field.fieldName}>
+                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900">{object.updatedAt ? formatDate(object.updatedAt) : '-'}</p>
+                          </div>
+                        )
+                      case 'id':
+                        return (
+                          <div key={field.fieldName}>
+                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900 font-mono text-sm">#{object.id}</p>
+                          </div>
+                        )
+                      default:
+                        return null
+                    }
+                  }
+                  // Champs personnalisés
+                  const value = object.customFields?.[field.fieldName]
+                  return (
+                    <div key={field.fieldName}>
+                      <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
+                      <p className="text-gray-900">
+                        {value !== undefined && value !== null && value !== '' 
+                          ? (field.fieldType === 'date' ? formatDate(String(value)) : String(value))
+                          : '-'
+                        }
+                      </p>
+                    </div>
+                  )
+                })
+              ) : (
+                // Affichage par défaut si pas de configuration
+                <>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Catégorie</h4>
+                    <p className="text-gray-900">{object.category?.name || '-'}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Sous-catégorie</h4>
+                    <p className="text-gray-900">{object.subcategory?.name || '-'}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Dernière modification</h4>
+                    <p className="text-gray-900">{object.updatedAt ? formatDate(object.updatedAt) : '-'}</p>
+                  </div>
+                  <div>
+                    <h4 className="text-sm font-medium text-gray-500 mb-1">Identifiant</h4>
+                    <p className="text-gray-900 font-mono text-sm">#{object.id}</p>
+                  </div>
+                </>
+              )}
             </div>
 
-            {/* Champs personnalisés */}
-            {object.customFields && Object.keys(object.customFields).length > 0 && (
+            {/* Champs personnalisés non configurés (rétrocompatibilité) */}
+            {!fieldsConfig && object.customFields && Object.keys(object.customFields).length > 0 && (
               <div className="mt-6 pt-6 border-t">
                 <h3 className="font-medium text-gray-900 mb-4">Champs personnalisés</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

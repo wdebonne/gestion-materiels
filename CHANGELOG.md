@@ -7,6 +7,34 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.2] - 2026-02-04
+
+### Ajouté
+
+#### Configuration des Champs Personnalisés
+- Nouvelle page de configuration des champs par catégorie/sous-catégorie
+- Possibilité de masquer les champs système (Catégorie, Sous-catégorie, etc.)
+- Ajout de champs personnalisés avec différents types :
+  - Texte, Nombre, Date, Liste déroulante, Zone de texte
+  - Email, Téléphone, URL, Case à cocher
+- Héritage des configurations : les sous-catégories héritent de leur catégorie parente
+- Réorganisation de l'ordre d'affichage des champs (drag & drop)
+- Réinitialisation aux valeurs par défaut
+- Prévisualisation en temps réel de la configuration
+
+#### API Champs Personnalisés
+- Nouvelle route `/api/custom-fields` avec endpoints complets
+- Table `custom_fields_config` pour stocker les configurations
+- Support de la personnalisation par catégorie et sous-catégorie
+
+#### Interface Utilisateur
+- Bouton ⚙️ dans les pages catégorie/sous-catégorie pour configurer les champs
+- Édition des champs personnalisés directement dans la fiche objet
+- Affichage dynamique des champs selon la configuration
+- Centrage du nom sur les cartes d'objets (ImageCard)
+
+---
+
 ## [1.2.1] - 2026-02-04
 
 ### Ajouté

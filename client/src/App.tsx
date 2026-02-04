@@ -22,6 +22,7 @@ import BackupPage from '@/pages/settings/BackupPage'
 import DatabasePage from '@/pages/settings/DatabasePage'
 import ProfilePage from '@/pages/ProfilePage'
 import PluginPage from '@/pages/PluginPage'
+import CustomFieldsPage from '@/pages/CustomFieldsPage'
 
 // Route protégée
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -74,7 +75,9 @@ function App() {
         <Route index element={<DashboardPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="categories/:categorySlug" element={<CategoryDetailPage />} />
+        <Route path="categories/:categorySlug/fields" element={<CustomFieldsPage />} />
         <Route path="categories/:categorySlug/:subcategorySlug" element={<SubcategoryDetailPage />} />
+        <Route path="categories/:categorySlug/:subcategorySlug/fields" element={<CustomFieldsPage />} />
         <Route path="objects/:objectId" element={<ObjectDetailPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="alerts" element={<AlertsPage />} />

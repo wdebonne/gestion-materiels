@@ -22,6 +22,7 @@ import alertRoutes from './routes/alert.routes';
 import uploadRoutes from './routes/upload.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import permissionRoutes from './routes/permission.routes';
+import customFieldsRoutes from './routes/customFields.routes';
 
 // Import des services
 import { initDatabase } from './database';
@@ -64,6 +65,7 @@ app.use('/api/alerts', alertRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/custom-fields', customFieldsRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {

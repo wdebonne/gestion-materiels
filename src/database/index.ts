@@ -428,6 +428,25 @@ class DatabaseManager {
         ip_address VARCHAR(45),
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Table de configuration des champs personnalisables par catégorie/sous-catégorie
+      `CREATE TABLE IF NOT EXISTS custom_fields_config (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        category_id INTEGER,
+        subcategory_id INTEGER,
+        field_name VARCHAR(100) NOT NULL,
+        field_label VARCHAR(255) NOT NULL,
+        field_type VARCHAR(50) DEFAULT 'text',
+        field_options ${textType},
+        is_required ${boolType} DEFAULT 0,
+        is_visible ${boolType} DEFAULT 1,
+        is_system ${boolType} DEFAULT 0,
+        sort_order INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+        FOREIGN KEY (subcategory_id) REFERENCES subcategories(id) ON DELETE CASCADE
       )`
     ];
 
