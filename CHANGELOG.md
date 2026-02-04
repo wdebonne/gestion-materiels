@@ -7,6 +7,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.6] - 2026-02-04
+
+### Amélioré
+- La recherche filtre maintenant aussi sur les champs personnalisés
+- Possibilité de rechercher par plaque d'immatriculation, marque, ou tout autre champ personnalisé
+
 ## [1.2.5] - 2026-02-04
 
 ### Corrigé

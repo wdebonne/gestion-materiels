@@ -29,9 +29,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     }
 
     if (search) {
-      whereClause += ' AND (o.name LIKE ? OR o.reference LIKE ? OR o.serial_number LIKE ?)';
+      // Recherche dans les champs standards ET dans les champs personnalisés (JSON)
+      whereClause += ' AND (o.name LIKE ? OR o.reference LIKE ? OR o.serial_number LIKE ? OR o.custom_fields LIKE ?)';
       const searchPattern = `%${search}%`;
-      params.push(searchPattern, searchPattern, searchPattern);
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
     }
 
     // Pagination
