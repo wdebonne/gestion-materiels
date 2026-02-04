@@ -2,9 +2,11 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
+![React](https://img.shields.io/badge/React-18-61dafb.svg)
 
 ## 📋 Fonctionnalités
 
@@ -19,16 +21,26 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🎴 Affichage en cartes avec images
 - 📝 Fiches détaillées pour chaque objet
 - 🔍 Recherche et filtres avancés
+- 📊 Champs personnalisés et spécifications
 
 ### Plugins intégrés
 - ⛽ **Carburant** : Suivi des consommations et coûts
 - 🔧 **Maintenance** : Historique des interventions
 - 📋 **Contrôle technique** : Suivi des échéances
+- 📅 **Calendrier** : Planning et événements
+
+### 🔌 Système de Plugins Avancé (Nouveau!)
+- 📦 Import de plugins via fichiers ZIP
+- 🗄️ Création dynamique de tables de base de données
+- 📄 Pages personnalisées définies en JSON
+- 🔗 API dynamiques configurables
+- 🎨 Composants UI : Header, Filtres, DataGrid, Stats, Formulaires
 
 ### Calendrier & Alertes
 - 📅 Calendrier interactif avec vue jour/semaine/mois
 - ⚠️ Système d'alertes automatiques
 - 📧 Notifications par email
+- 🔔 Compteur d'alertes en temps réel
 
 ### Administration
 - ⚙️ Paramètres généraux (nom du site, logo, favicon)
@@ -36,6 +48,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 📝 Templates d'emails personnalisables
 - 💾 Sauvegarde et restauration de base de données
 - 🔄 Migration SQLite vers MySQL/MariaDB
+- 🔐 Gestion des permissions par catégorie
 
 ## 🚀 Installation
 
@@ -49,7 +62,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 1. **Cloner le dépôt**
 ```bash
-git clone https://github.com/votre-repo/gestion-materiels.git
+git clone https://github.com/wdebonne/gestion-materiels.git
 cd gestion-materiels
 ```
 
@@ -82,13 +95,13 @@ npm run dev
 
 5. **Accéder à l'application**
 - Frontend : http://localhost:5173
-- Backend API : http://localhost:3001
+- Backend API : http://localhost:3000
 
 ### Identifiants par défaut
 
 | Rôle | Email | Mot de passe |
 |------|-------|--------------|
-| Administrateur | admin@example.com | admin123 |
+| Administrateur | admin@admin.com | admin123 |
 
 ⚠️ **Important** : Changez ces identifiants dès la première connexion !
 
@@ -152,19 +165,34 @@ gestion-materiels/
 ├── client/                 # Frontend React
 │   ├── src/
 │   │   ├── components/    # Composants réutilisables
+│   │   │   ├── ui/        # Composants UI (Button, Modal, etc.)
+│   │   │   ├── Layout.tsx # Layout principal
+│   │   │   └── DynamicPluginPage.tsx # Pages plugins dynamiques
 │   │   ├── pages/         # Pages de l'application
+│   │   │   └── settings/  # Pages d'administration
 │   │   ├── stores/        # État global (Zustand)
 │   │   └── lib/           # Utilitaires et API
 │   └── ...
 ├── src/                    # Backend Node.js
 │   ├── routes/            # Routes API
 │   ├── services/          # Services métier
-│   ├── middleware/        # Middlewares
+│   │   ├── plugin.service.ts         # Gestion plugins
+│   │   ├── pluginAdvanced.service.ts # Plugins avancés (ZIP, tables)
+│   │   ├── email.service.ts          # Service email
+│   │   └── cron.service.ts           # Tâches planifiées
+│   ├── middleware/        # Middlewares (auth)
 │   ├── database/          # Gestion BDD
 │   └── server.ts          # Point d'entrée
 ├── data/                   # Base de données SQLite
 ├── uploads/                # Fichiers uploadés
 ├── backups/                # Sauvegardes
+├── plugins/                # Plugins installés
+│   └── pages/             # Pages des plugins
+├── examples/               # Exemples de plugins
+│   └── plugins/           # Plugins d'exemple (ZIP)
+├── docs/                   # Documentation
+│   ├── PLUGIN_STRUCTURE.md # Structure des plugins
+│   └── DEPLOIEMENT_PORTAINER.md # Déploiement Portainer
 ├── nginx/                  # Configuration Nginx
 ├── docker-compose.yml
 ├── Dockerfile
@@ -177,7 +205,7 @@ gestion-materiels/
 
 | Variable | Description | Défaut |
 |----------|-------------|--------|
-| `PORT` | Port du serveur | 3001 |
+| `PORT` | Port du serveur | 3000 |
 | `NODE_ENV` | Environnement | development |
 | `JWT_SECRET` | Secret JWT (obligatoire) | - |
 | `JWT_REFRESH_SECRET` | Secret refresh token | - |
@@ -253,7 +281,15 @@ DELETE /api/objects/:id       # Supprimer un objet
 
 ```
 GET  /api/plugins                     # Liste des plugins
-PUT  /api/plugins/:name               # Activer/désactiver
+GET  /api/plugins/menu                # Plugins de type menu (navigation)
+GET  /api/plugins/:id                 # Détail d'un plugin
+PUT  /api/plugins/:id                 # Activer/désactiver
+PUT  /api/plugins/:id/settings        # Modifier les paramètres
+PUT  /api/plugins/:id/associations    # Associer à des catégories
+POST /api/plugins/import              # Importer un plugin (JSON)
+POST /api/plugins/import-zip          # Importer un plugin avancé (ZIP)
+GET  /api/plugins/:slug/pages         # Pages d'un plugin
+GET  /api/plugins/:slug/data/*        # API dynamique d'un plugin
 
 # Carburant
 GET  /api/objects/:id/fuel            # Historique carburant
@@ -350,8 +386,14 @@ Les contributions sont les bienvenues ! N'hésitez pas à :
 ## 📞 Support
 
 Pour toute question ou problème :
-- Ouvrir une issue sur GitHub
-- Consulter la documentation
+- Ouvrir une issue sur [GitHub](https://github.com/wdebonne/gestion-materiels/issues)
+- Consulter la [documentation](docs/)
+
+## 📚 Documentation
+
+- [Structure des plugins](docs/PLUGIN_STRUCTURE.md) - Comment créer des plugins
+- [Déploiement Portainer](docs/DEPLOIEMENT_PORTAINER.md) - Déployer avec Docker/Portainer
+- [Exemples de plugins](examples/plugins/) - Plugins d'exemple
 
 ---
 

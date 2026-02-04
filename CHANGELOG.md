@@ -7,6 +7,44 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.1.0] - 2026-02-04
+
+### Ajouté
+
+#### Système de Plugins Avancé
+- Import de plugins via fichiers ZIP
+- Création dynamique de tables de base de données depuis JSON
+- Pages de plugins dynamiques définies en JSON
+- API endpoints configurables dans les plugins
+- Composants UI dynamiques : Header, Filtres, DataGrid, DataTable, Stats, Form
+- Service `pluginAdvanced.service.ts` pour la gestion avancée
+- Composant `DynamicPluginPage.tsx` pour le rendu des pages
+- Route `/plugin/:pluginSlug` pour les plugins de type menu
+- Exemples de plugins : image-manager, file-manager
+
+#### Gestion des Plugins
+- Types de plugins : `menu` (page dédiée) et `object` (associé aux objets)
+- Association des plugins aux catégories et sous-catégories
+- Route personnalisable pour chaque plugin
+- Indicateurs visuels (tables, pages) dans la page de gestion
+
+#### Documentation
+- Guide de déploiement Portainer (`docs/DEPLOIEMENT_PORTAINER.md`)
+- Documentation structure des plugins (`docs/PLUGIN_STRUCTURE.md`)
+- README pour les exemples de plugins
+
+#### Améliorations
+- Compteur d'alertes en temps réel dans la navigation
+- Navigation dynamique pour les plugins de type menu
+- Gestion des permissions par catégorie/sous-catégorie
+
+### Modifié
+- Architecture des routes pour supporter les plugins dynamiques
+- Layout pour distinguer les plugins built-in des plugins dynamiques
+- Page de gestion des plugins avec import ZIP
+
+---
+
 ## [1.0.0] - 2024-01-15
 
 ### Ajouté
