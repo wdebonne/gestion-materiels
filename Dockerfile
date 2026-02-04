@@ -52,11 +52,11 @@ RUN npm install --legacy-peer-deps --omit=dev
 # Copy built server
 COPY --from=server-builder /app/dist ./dist
 
-# Copy built client to public folder
-COPY --from=client-builder /app/client/dist ./public
+# Copy built client to correct location (server expects ../client/dist from dist/)
+COPY --from=client-builder /app/client/dist ./client/dist
 
 # Create necessary directories
-RUN mkdir -p data uploads backups logs
+RUN mkdir -p data uploads backups logs plugins
 
 # Set environment variables
 ENV NODE_ENV=production
