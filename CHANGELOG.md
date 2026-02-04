@@ -7,6 +7,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.14] - 2026-02-04
+
+### Ajouté
+- **Tri des tableaux plugins** : Bouton double flèche (haut/bas) pour inverser l'ordre des listes
+- Choix entre "Plus récent en premier" et "Plus ancien en premier"
+- Fonctionne sur Carburant, Entretiens et Contrôle technique
+- Tri par défaut : plus récent en premier
+
 ## [1.2.13] - 2026-02-04
 
 ### Amélioré

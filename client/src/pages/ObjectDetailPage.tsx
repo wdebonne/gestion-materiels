@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X, Trash2, Pencil,
-  Image as ImageIcon, Settings2, Search
+  Image as ImageIcon, Settings2, Search, ArrowUpDown
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { 
@@ -29,6 +29,11 @@ export default function ObjectDetailPage() {
   const [fuelFilter, setFuelFilter] = useState('')
   const [maintenanceFilter, setMaintenanceFilter] = useState('')
   const [controlFilter, setControlFilter] = useState('')
+  
+  // Ordre de tri pour les tableaux (true = plus récent en premier, false = plus ancien en premier)
+  const [fuelSortDesc, setFuelSortDesc] = useState(true)
+  const [maintenanceSortDesc, setMaintenanceSortDesc] = useState(true)
+  const [controlSortDesc, setControlSortDesc] = useState(true)
   
   // Modals pour les plugins
   const [fuelModal, setFuelModal] = useState(false)
@@ -1002,6 +1007,13 @@ export default function ObjectDetailPage() {
                   className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
                 />
               </div>
+              <button
+                onClick={() => setFuelSortDesc(!fuelSortDesc)}
+                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title={fuelSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
+              >
+                <ArrowUpDown className="w-4 h-4" />
+              </button>
               {isAdmin && (
                 <Button size="sm" variant="secondary" onClick={() => setStationsModal(true)} title="Gérer les stations">
                   <Settings2 className="w-4 h-4" />
@@ -1030,7 +1042,13 @@ export default function ObjectDetailPage() {
                     record.mileage?.toString().includes(search)
                   )
                 })
-                return filteredFuel.length > 0 ? (
+                // Trier par date
+                const sortedFuel = [...filteredFuel].sort((a: any, b: any) => {
+                  const dateA = new Date(a.date).getTime()
+                  const dateB = new Date(b.date).getTime()
+                  return fuelSortDesc ? dateB - dateA : dateA - dateB
+                })
+                return sortedFuel.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
@@ -1046,7 +1064,7 @@ export default function ObjectDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredFuel.map((record: any) => (
+                    {sortedFuel.map((record: any) => (
                       <tr key={record.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.fuelType || '-'}</td>
@@ -1124,6 +1142,13 @@ export default function ObjectDetailPage() {
                   className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
                 />
               </div>
+              <button
+                onClick={() => setMaintenanceSortDesc(!maintenanceSortDesc)}
+                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title={maintenanceSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
+              >
+                <ArrowUpDown className="w-4 h-4" />
+              </button>
               {isAdmin && (
                 <Button size="sm" variant="secondary" onClick={() => setMaintenanceSettingsModal(true)} title="Gérer les types et prestataires">
                   <Settings2 className="w-4 h-4" />
@@ -1152,7 +1177,13 @@ export default function ObjectDetailPage() {
                     record.mileage?.toString().includes(search)
                   )
                 })
-                return filteredMaintenance.length > 0 ? (
+                // Trier par date
+                const sortedMaintenance = [...filteredMaintenance].sort((a: any, b: any) => {
+                  const dateA = new Date(a.date).getTime()
+                  const dateB = new Date(b.date).getTime()
+                  return maintenanceSortDesc ? dateB - dateA : dateA - dateB
+                })
+                return sortedMaintenance.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
@@ -1167,7 +1198,7 @@ export default function ObjectDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {filteredMaintenance.map((record: any) => (
+                    {sortedMaintenance.map((record: any) => (
                       <tr key={record.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.type}</td>
@@ -1249,6 +1280,13 @@ export default function ObjectDetailPage() {
                   className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
                 />
               </div>
+              <button
+                onClick={() => setControlSortDesc(!controlSortDesc)}
+                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title={controlSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
+              >
+                <ArrowUpDown className="w-4 h-4" />
+              </button>
               {(user?.role === 'admin' || user?.role === 'supervisor') && (
                 <Button 
                   size="sm" 
@@ -1285,7 +1323,13 @@ export default function ObjectDetailPage() {
                     control.mileage?.toString().includes(search)
                   )
                 })
-                return filteredControl.length > 0 ? (
+                // Trier par date
+                const sortedControl = [...filteredControl].sort((a: any, b: any) => {
+                  const dateA = new Date(a.date).getTime()
+                  const dateB = new Date(b.date).getTime()
+                  return controlSortDesc ? dateB - dateA : dateA - dateB
+                })
+                return sortedControl.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -1302,7 +1346,7 @@ export default function ObjectDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {filteredControl.map((control: any) => (
+                    {sortedControl.map((control: any) => (
                       <tr key={control.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                           {formatDate(control.date)}
