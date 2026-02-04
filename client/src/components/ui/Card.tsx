@@ -105,7 +105,7 @@ export function ImageCard({ title, description, image, icon, count, onClick, cla
       </div>
 
       {/* Contenu */}
-      <div className="p-4">
+      <div className="p-4 text-center">
         <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">
           {title}
         </h3>

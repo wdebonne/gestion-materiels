@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.1] - 2026-02-04
+
+### Ajouté
+
+#### Menu Latéral Rétractable
+- Bouton "Réduire" en bas du menu pour réduire/agrandir la sidebar
+- État réduit : seules les icônes sont visibles (largeur 80px au lieu de 256px)
+- Tooltips au survol des éléments en mode réduit
+- Badges d'alertes compacts en mode réduit
+- Persistance de l'état dans le localStorage (conservé après rechargement)
+- Animations fluides de transition (300ms)
+- Version affichée en format court en mode réduit
+
+---
+
 ## [1.2.0] - 2026-02-04
 
 ### Ajouté
