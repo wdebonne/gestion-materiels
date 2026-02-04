@@ -26,8 +26,8 @@ RUN apk add --no-cache python3 make g++
 # Copy server package files
 COPY package*.json ./
 
-# Install server dependencies
-RUN npm install --legacy-peer-deps
+# Install ALL dependencies (including devDependencies for TypeScript)
+RUN npm install --legacy-peer-deps --include=dev
 
 # Copy server source
 COPY src/ ./src/
