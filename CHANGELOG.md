@@ -7,6 +7,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.13] - 2026-02-04
+
+### Amélioré
+- **Champs de filtrage** : Fond blanc pour une meilleure cohérence visuelle avec le style du site
+- **Recherche par date** : Les filtres recherchent maintenant aussi dans les dates formatées (ex: "février", "2026")
+
+### Corrigé
+- Correction du filtrage carburant qui ne filtrait pas correctement sur les dates affichées
+- Amélioration de la recherche dans les tableaux Entretiens et Contrôle technique
+
 ## [1.2.12] - 2026-02-04
 
 ### Ajouté
