@@ -801,6 +801,97 @@ router.delete('/maintenance-providers/:providerId', authenticateToken, requireAd
   }
 });
 
+// === CENTRES DE CONTRÔLE TECHNIQUE ===
+
+// GET /api/objects/control-centers/list - Liste des centres de contrôle
+router.get('/control-centers/list', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const centers = await db.query('SELECT * FROM control_centers ORDER BY name ASC');
+    res.json({ success: true, centers });
+  } catch (error: any) {
+    console.error('Erreur get control centers:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/objects/control-centers - Ajouter un centre de contrôle
+router.post('/control-centers', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, address, phone } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'INSERT INTO control_centers (name, address, phone) VALUES (?, ?, ?)',
+      [name.trim(), address?.trim() || null, phone?.trim() || null]
+    );
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Centre de contrôle ajouté',
+      center: { id: result.lastInsertRowid, name: name.trim(), address: address?.trim() || null, phone: phone?.trim() || null }
+    });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ce centre de contrôle existe déjà' });
+    }
+    console.error('Erreur add control center:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/objects/control-centers/:id - Modifier un centre de contrôle
+router.put('/control-centers/:centerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { centerId } = req.params;
+    const { name, address, phone } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'UPDATE control_centers SET name = ?, address = ?, phone = ? WHERE id = ?',
+      [name.trim(), address?.trim() || null, phone?.trim() || null, centerId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Centre de contrôle non trouvé' });
+    }
+
+    res.json({ success: true, message: 'Centre de contrôle modifié' });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ce nom de centre existe déjà' });
+    }
+    console.error('Erreur update control center:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/objects/control-centers/:id - Supprimer un centre de contrôle
+router.delete('/control-centers/:centerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { centerId } = req.params;
+
+    const result = await db.execute(
+      'DELETE FROM control_centers WHERE id = ?',
+      [centerId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Centre de contrôle non trouvé' });
+    }
+
+    res.json({ success: true, message: 'Centre de contrôle supprimé' });
+  } catch (error: any) {
+    console.error('Erreur delete control center:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // === PLUGIN: CONTRÔLE TECHNIQUE ===
 
 // POST /api/objects/:id/technical-control - Ajouter un contrôle technique
@@ -889,6 +980,56 @@ router.delete('/:id/technical-control/:controlId', authenticateToken, requireAdm
     res.json({ success: true, message: 'Contrôle technique supprimé' });
   } catch (error: any) {
     console.error('Erreur delete technical control:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/objects/:id/technical-control/:controlId - Modifier un contrôle technique
+router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, controlId } = req.params;
+    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes } = req.body;
+
+    const result = await db.execute(
+      `UPDATE technical_controls SET 
+        control_date = ?, expiry_date = ?, mileage = ?, result = ?, 
+        center_name = ?, cost = ?, document = ?, notes = ?
+       WHERE id = ? AND object_id = ?`,
+      [controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes, controlId, id]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Contrôle non trouvé' });
+    }
+
+    // Mettre à jour l'alerte si expiryDate a changé
+    if (expiryDate) {
+      const obj = await db.queryOne('SELECT name FROM objects WHERE id = ?', [id]);
+      // Supprimer l'ancienne alerte
+      await db.execute(
+        "DELETE FROM alerts WHERE plugin_reference = 'technical-control' AND plugin_reference_id = ?",
+        [controlId]
+      );
+      // Créer une nouvelle alerte
+      await db.execute(
+        `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `Contrôle technique: ${obj?.name}`,
+          `Le contrôle technique expire le ${expiryDate}`,
+          'technical_control',
+          'warning',
+          id,
+          'technical-control',
+          controlId,
+          expiryDate
+        ]
+      );
+    }
+
+    res.json({ success: true, message: 'Contrôle technique modifié' });
+  } catch (error: any) {
+    console.error('Erreur update technical control:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });

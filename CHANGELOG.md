@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.11] - 2026-02-04
+
+### Ajouté
+- **Plugin Contrôle technique** : Gestion complète des centres de contrôle
+- Bouton paramètres (⚙️) à côté de "Ajouter un contrôle" pour gérer les centres de contrôle
+- Modal de gestion des centres de contrôle (nom, adresse, téléphone)
+- Champ Centre de contrôle avec autocomplétion (datalist)
+- Table `control_centers` pour stocker les centres
+- Routes API CRUD pour les centres de contrôle : GET, POST, PUT, DELETE
+- Les administrateurs peuvent modifier et supprimer les contrôles techniques
+- Affichage de l'historique des contrôles en tableau (avec date d'expiration en couleur)
+- Boutons d'action (modifier/supprimer) dans le tableau pour les admins
+- Modal d'édition de contrôle technique avec autocomplétion du centre
+- Route PUT `/api/objects/:id/technical-control/:controlId` pour modification
+
 ## [1.2.10] - 2026-02-04
 
 ### Ajouté

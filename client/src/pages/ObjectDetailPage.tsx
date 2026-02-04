@@ -41,6 +41,11 @@ export default function ObjectDetailPage() {
   const [maintenanceProviderEditData, setMaintenanceProviderEditData] = useState<{ id?: number; name: string; address: string; phone: string } | null>(null)
   const [maintenanceProviderDeleteConfirm, setMaintenanceProviderDeleteConfirm] = useState<number | null>(null)
   const [controlModal, setControlModal] = useState(false)
+  const [controlEditModal, setControlEditModal] = useState<any>(null) // Pour édition contrôle technique
+  const [controlDeleteConfirm, setControlDeleteConfirm] = useState<number | null>(null) // Pour suppression contrôle technique
+  const [controlCentersModal, setControlCentersModal] = useState(false) // Pour gestion des centres de contrôle
+  const [controlCenterEditData, setControlCenterEditData] = useState<{ id?: number; name: string; address?: string; phone?: string } | null>(null)
+  const [controlCenterDeleteConfirm, setControlCenterDeleteConfirm] = useState<number | null>(null)
   const [customPluginModal, setCustomPluginModal] = useState<any>(null) // Pour les plugins personnalisés
 
   // Données des formulaires de plugins
@@ -144,6 +149,15 @@ export default function ObjectDetailPage() {
     queryFn: async () => {
       const response = await api.get('/objects/maintenance-providers/list')
       return response.data.providers as Array<{ id: number; name: string; address?: string; phone?: string }>
+    }
+  })
+
+  // Récupérer les centres de contrôle technique
+  const { data: controlCenters = [], refetch: refetchControlCenters } = useQuery({
+    queryKey: ['controlCenters'],
+    queryFn: async () => {
+      const response = await api.get('/objects/control-centers/list')
+      return response.data.centers as Array<{ id: number; name: string; address?: string; phone?: string }>
     }
   })
 
@@ -406,6 +420,77 @@ export default function ObjectDetailPage() {
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
+    }
+  })
+
+  const updateControlMutation = useMutation({
+    mutationFn: async ({ entryId, data }: { entryId: number; data: any }) => {
+      return api.put(`/objects/${id}/technical-control/${entryId}`, data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['object', id] })
+      toast.success('Contrôle technique modifié')
+      setControlEditModal(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Erreur lors de la modification')
+    }
+  })
+
+  const deleteControlMutation = useMutation({
+    mutationFn: async (entryId: number) => {
+      return api.delete(`/objects/${id}/technical-control/${entryId}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['object', id] })
+      toast.success('Contrôle technique supprimé')
+      setControlDeleteConfirm(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Erreur lors de la suppression')
+    }
+  })
+
+  // Mutations pour les centres de contrôle
+  const addControlCenterMutation = useMutation({
+    mutationFn: async (data: { name: string; address?: string; phone?: string }) => {
+      return api.post('/objects/control-centers', data)
+    },
+    onSuccess: () => {
+      refetchControlCenters()
+      toast.success('Centre de contrôle ajouté')
+      setControlCenterEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de l\'ajout')
+    }
+  })
+
+  const updateControlCenterMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { name: string; address?: string; phone?: string } }) => {
+      return api.put(`/objects/control-centers/${id}`, data)
+    },
+    onSuccess: () => {
+      refetchControlCenters()
+      toast.success('Centre de contrôle modifié')
+      setControlCenterEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la modification')
+    }
+  })
+
+  const deleteControlCenterMutation = useMutation({
+    mutationFn: async (centerId: number) => {
+      return api.delete(`/objects/control-centers/${centerId}`)
+    },
+    onSuccess: () => {
+      refetchControlCenters()
+      toast.success('Centre de contrôle supprimé')
+      setControlCenterDeleteConfirm(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression')
     }
   })
 
@@ -982,47 +1067,101 @@ export default function ObjectDetailPage() {
               <ClipboardCheck className="w-5 h-5 text-blue-600" />
               Contrôles techniques
             </CardTitle>
-            <Button size="sm" onClick={() => setControlModal(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Ajouter un contrôle
-            </Button>
+            <div className="flex items-center gap-2">
+              {(user?.role === 'admin' || user?.role === 'supervisor') && (
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => setControlCentersModal(true)}
+                  title="Gérer les centres de contrôle"
+                >
+                  <Settings2 className="w-4 h-4" />
+                </Button>
+              )}
+              <Button size="sm" onClick={() => setControlModal(true)}>
+                <Plus className="w-4 h-4 mr-1" />
+                Ajouter un contrôle
+              </Button>
+            </div>
           </CardHeader>
           <CardBody className="p-0">
             {object.technicalControls && object.technicalControls.length > 0 ? (
-              <div className="divide-y divide-gray-200">
-                {object.technicalControls.map((control: any) => (
-                  <div key={control.id} className="p-4 hover:bg-gray-50">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <div className="flex items-center gap-2">
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Résultat</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Centre</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kilométrage</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Coût</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiration</th>
+                      {(user?.role === 'admin' || user?.role === 'supervisor') && (
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      )}
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {object.technicalControls.map((control: any) => (
+                      <tr key={control.id} className="hover:bg-gray-50">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                          {formatDate(control.date)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
                           <Badge variant={control.result === 'passed' ? 'success' : control.result === 'failed' ? 'danger' : 'warning'}>
                             {control.result === 'passed' ? 'Favorable' : 
                              control.result === 'failed' ? 'Défavorable' : 'Contre-visite'}
                           </Badge>
-                          <span className="text-sm text-gray-500">
-                            {formatDate(control.date)}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                          {control.center && <span>{control.center}</span>}
-                          {control.mileage && <span>{control.mileage} km</span>}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium text-gray-900">{formatCurrency(control.cost)}</p>
-                        {control.expirationDate && (
-                          <p className={`text-xs mt-1 ${
-                            new Date(control.expirationDate) < new Date() 
-                              ? 'text-red-600' 
-                              : 'text-green-600'
-                          }`}>
-                            Expire le {formatDate(control.expirationDate)}
-                          </p>
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          {control.center || '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                          {control.mileage ? `${control.mileage} km` : '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
+                          {formatCurrency(control.cost)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm">
+                          {control.expirationDate ? (
+                            <span className={new Date(control.expirationDate) < new Date() ? 'text-red-600' : 'text-green-600'}>
+                              {formatDate(control.expirationDate)}
+                            </span>
+                          ) : '-'}
+                        </td>
+                        {(user?.role === 'admin' || user?.role === 'supervisor') && (
+                          <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
+                            <div className="flex items-center justify-end gap-1">
+                              <button
+                                onClick={() => setControlEditModal({
+                                  id: control.id,
+                                  date: control.date?.split('T')[0] || '',
+                                  expirationDate: control.expirationDate?.split('T')[0] || '',
+                                  result: control.result || 'passed',
+                                  mileage: control.mileage?.toString() || '',
+                                  center: control.center || '',
+                                  cost: control.cost?.toString() || '',
+                                  notes: control.notes || ''
+                                })}
+                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                title="Modifier"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setControlDeleteConfirm(control.id)}
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
                         )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="text-center py-12">
@@ -1842,11 +1981,19 @@ export default function ObjectDetailPage() {
               ]}
             />
             <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Centre de contrôle"
-                value={controlData.center}
-                onChange={(e) => setControlData({ ...controlData, center: e.target.value })}
-              />
+              <div className="relative">
+                <Input
+                  label="Centre de contrôle"
+                  value={controlData.center}
+                  onChange={(e) => setControlData({ ...controlData, center: e.target.value })}
+                  list="controlCenters-list"
+                />
+                <datalist id="controlCenters-list">
+                  {controlCenters.map((center) => (
+                    <option key={center.id} value={center.name} />
+                  ))}
+                </datalist>
+              </div>
               <Input
                 label="Coût (€)"
                 type="number"
@@ -1985,6 +2132,266 @@ export default function ObjectDetailPage() {
             </Button>
           </ModalFooter>
         </form>
+      </Modal>
+
+      {/* Modal Paramètres Centres de contrôle */}
+      <Modal 
+        isOpen={controlCentersModal} 
+        onClose={() => {
+          setControlCentersModal(false)
+          setControlCenterEditData(null)
+          setControlCenterDeleteConfirm(null)
+        }} 
+        title="Gestion des centres de contrôle"
+        size="lg"
+      >
+        <ModalBody>
+          {/* Formulaire d'ajout/modification de centre */}
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            const formData = new FormData(e.target as HTMLFormElement)
+            const data = {
+              name: formData.get('centerName') as string,
+              address: formData.get('centerAddress') as string || undefined,
+              phone: formData.get('centerPhone') as string || undefined
+            }
+            
+            if (controlCenterEditData?.id) {
+              updateControlCenterMutation.mutate({ id: controlCenterEditData.id, data })
+            } else {
+              addControlCenterMutation.mutate(data)
+            }
+            ;(e.target as HTMLFormElement).reset()
+          }} className="mb-6 p-4 bg-gray-50 rounded-lg">
+            <h4 className="font-medium mb-3">
+              {controlCenterEditData?.id ? 'Modifier le centre' : 'Ajouter un centre de contrôle'}
+            </h4>
+            <div className="space-y-3">
+              <Input
+                name="centerName"
+                placeholder="Nom du centre"
+                defaultValue={controlCenterEditData?.name || ''}
+                required
+              />
+              <Input
+                name="centerAddress"
+                placeholder="Adresse (optionnel)"
+                defaultValue={controlCenterEditData?.address || ''}
+              />
+              <Input
+                name="centerPhone"
+                placeholder="Téléphone (optionnel)"
+                defaultValue={controlCenterEditData?.phone || ''}
+              />
+              <div className="flex gap-2">
+                <Button type="submit" size="sm" loading={addControlCenterMutation.isPending || updateControlCenterMutation.isPending}>
+                  {controlCenterEditData?.id ? 'Modifier' : 'Ajouter'}
+                </Button>
+                {controlCenterEditData?.id && (
+                  <Button type="button" size="sm" variant="secondary" onClick={() => setControlCenterEditData(null)}>
+                    Annuler
+                  </Button>
+                )}
+              </div>
+            </div>
+          </form>
+
+          {/* Liste des centres de contrôle */}
+          <div>
+            <h4 className="font-medium mb-3">Centres de contrôle existants</h4>
+            {controlCenters.length === 0 ? (
+              <p className="text-gray-500 text-sm">Aucun centre de contrôle enregistré</p>
+            ) : (
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {controlCenters.map((center) => (
+                  <div 
+                    key={center.id} 
+                    className={`flex items-center justify-between p-3 rounded-lg border ${
+                      controlCenterDeleteConfirm === center.id ? 'border-red-300 bg-red-50' : 'border-gray-200 bg-white'
+                    }`}
+                  >
+                    <div>
+                      <p className="font-medium">{center.name}</p>
+                      {(center.address || center.phone) && (
+                        <p className="text-xs text-gray-500">
+                          {[center.address, center.phone].filter(Boolean).join(' - ')}
+                        </p>
+                      )}
+                    </div>
+                    {controlCenterDeleteConfirm === center.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-red-600">Confirmer ?</span>
+                        <Button 
+                          size="sm" 
+                          variant="danger"
+                          onClick={() => deleteControlCenterMutation.mutate(center.id)}
+                          loading={deleteControlCenterMutation.isPending}
+                        >
+                          Oui
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="secondary"
+                          onClick={() => setControlCenterDeleteConfirm(null)}
+                        >
+                          Non
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => setControlCenterEditData(center)}
+                          className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                          title="Modifier"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setControlCenterDeleteConfirm(center.id)}
+                          className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => {
+            setControlCentersModal(false)
+            setControlCenterEditData(null)
+            setControlCenterDeleteConfirm(null)
+          }}>
+            Fermer
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal Édition contrôle technique */}
+      <Modal
+        isOpen={!!controlEditModal}
+        onClose={() => setControlEditModal(null)}
+        title="Modifier le contrôle technique"
+      >
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (controlEditModal) {
+            updateControlMutation.mutate({
+              entryId: controlEditModal.id,
+              data: {
+                date: controlEditModal.date,
+                expirationDate: controlEditModal.expirationDate,
+                result: controlEditModal.result,
+                mileage: controlEditModal.mileage ? parseInt(controlEditModal.mileage) : null,
+                center: controlEditModal.center,
+                cost: controlEditModal.cost ? parseFloat(controlEditModal.cost) : null,
+                notes: controlEditModal.notes
+              }
+            })
+          }
+        }}>
+          <ModalBody className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Date du contrôle"
+                type="date"
+                value={controlEditModal?.date || ''}
+                onChange={(e) => setControlEditModal({ ...controlEditModal, date: e.target.value })}
+                required
+              />
+              <Input
+                label="Date d'expiration"
+                type="date"
+                value={controlEditModal?.expirationDate || ''}
+                onChange={(e) => setControlEditModal({ ...controlEditModal, expirationDate: e.target.value })}
+                required
+              />
+            </div>
+            <Select
+              label="Résultat"
+              value={controlEditModal?.result || 'passed'}
+              onChange={(e) => setControlEditModal({ ...controlEditModal, result: e.target.value })}
+              options={[
+                { value: 'passed', label: 'Favorable' },
+                { value: 'minor', label: 'Contre-visite mineure' },
+                { value: 'failed', label: 'Défavorable' }
+              ]}
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="relative">
+                <Input
+                  label="Centre de contrôle"
+                  value={controlEditModal?.center || ''}
+                  onChange={(e) => setControlEditModal({ ...controlEditModal, center: e.target.value })}
+                  list="controlCenters-edit-list"
+                />
+                <datalist id="controlCenters-edit-list">
+                  {controlCenters.map((center) => (
+                    <option key={center.id} value={center.name} />
+                  ))}
+                </datalist>
+              </div>
+              <Input
+                label="Coût (€)"
+                type="number"
+                step="0.01"
+                value={controlEditModal?.cost || ''}
+                onChange={(e) => setControlEditModal({ ...controlEditModal, cost: e.target.value })}
+              />
+            </div>
+            <Input
+              label="Kilométrage"
+              type="number"
+              value={controlEditModal?.mileage || ''}
+              onChange={(e) => setControlEditModal({ ...controlEditModal, mileage: e.target.value })}
+            />
+            <TextArea
+              label="Notes"
+              value={controlEditModal?.notes || ''}
+              onChange={(e) => setControlEditModal({ ...controlEditModal, notes: e.target.value })}
+              rows={2}
+            />
+          </ModalBody>
+          <ModalFooter>
+            <Button type="button" variant="secondary" onClick={() => setControlEditModal(null)}>
+              Annuler
+            </Button>
+            <Button type="submit" loading={updateControlMutation.isPending}>
+              Enregistrer
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* Modal Confirmation suppression contrôle technique */}
+      <Modal
+        isOpen={!!controlDeleteConfirm}
+        onClose={() => setControlDeleteConfirm(null)}
+        title="Confirmer la suppression"
+        size="sm"
+      >
+        <ModalBody>
+          <p className="text-gray-600">
+            Êtes-vous sûr de vouloir supprimer ce contrôle technique ? Cette action est irréversible.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setControlDeleteConfirm(null)}>
+            Annuler
+          </Button>
+          <Button 
+            variant="danger" 
+            loading={deleteControlMutation.isPending}
+            onClick={() => controlDeleteConfirm && deleteControlMutation.mutate(controlDeleteConfirm)}
+          >
+            Supprimer
+          </Button>
+        </ModalFooter>
       </Modal>
     </div>
   )

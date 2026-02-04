@@ -354,6 +354,15 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault}
       )`,
 
+      // Table pour les centres de contrôle technique
+      `CREATE TABLE IF NOT EXISTS control_centers (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL UNIQUE,
+        address VARCHAR(500),
+        phone VARCHAR(50),
+        created_at DATETIME ${timestampDefault}
+      )`,
+
       // Table pour le plugin Contrôle Technique
       `CREATE TABLE IF NOT EXISTS technical_controls (
         id INTEGER PRIMARY KEY ${autoIncrement},
