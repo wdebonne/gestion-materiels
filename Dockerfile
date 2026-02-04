@@ -30,8 +30,8 @@ RUN npm install --legacy-peer-deps
 COPY src/ ./src/
 COPY tsconfig.json ./
 
-# Build server
-RUN npm run build
+# Build server only
+RUN npm run build:server
 
 # Production stage
 FROM node:20-alpine AS production
