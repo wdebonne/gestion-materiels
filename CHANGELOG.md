@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.7] - 2026-02-04
+
+### Amélioré
+- **Plugin Carburant** : Calcul automatique du prix unitaire (€/L) à partir du coût total et de la quantité
+- **Plugin Carburant** : Le type de carburant est récupéré automatiquement depuis les champs personnalisés de l'objet
+- **Plugin Carburant** : Affichage enrichi du tableau avec colonnes Type et Prix/L
+
+### Corrigé
+- Correction de l'erreur 500 lors de l'ajout d'un plein carburant
+- Alignement des noms de champs entre frontend (`date`, `cost`) et backend (`entryDate`, `unitPrice`)
+- Gestion correcte des valeurs NULL pour les champs optionnels
+
 ## [1.2.6] - 2026-02-04
 
 ### Amélioré

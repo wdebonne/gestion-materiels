@@ -585,8 +585,10 @@ export default function ObjectDetailPage() {
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantité</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coût</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prix/L</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coût total</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kilométrage</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station</th>
                     </tr>
@@ -595,7 +597,9 @@ export default function ObjectDetailPage() {
                     {object.fuelRecords.map((record: any) => (
                       <tr key={record.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.fuelType || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.quantity} L</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.unitPrice ? `${parseFloat(record.unitPrice).toFixed(3)} €/L` : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.station || '-'}</td>

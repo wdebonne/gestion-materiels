@@ -216,9 +216,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         fuelRecords: pluginData.fuel?.map((f: any) => ({
           id: f.id,
           date: f.entry_date,
+          fuelType: f.fuel_type,
           quantity: f.quantity,
           unitPrice: f.unit_price,
           totalPrice: f.total_price,
+          cost: f.total_price, // Alias pour le frontend
           mileage: f.mileage,
           station: f.station,
           notes: f.notes
@@ -425,20 +427,50 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
 router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { fuelType, quantity, unitPrice, mileage, station, entryDate, notes } = req.body;
+    // Support des noms de champs du frontend (date, cost) et backend (entryDate, unitPrice)
+    const { fuelType, quantity, cost, mileage, station, entryDate, date, notes } = req.body;
 
-    const totalPrice = quantity && unitPrice ? quantity * unitPrice : null;
+    // Utiliser les valeurs du frontend si disponibles
+    const finalEntryDate = date || entryDate;
+    const totalPrice = cost ? parseFloat(cost) : null;
+    const qty = quantity ? parseFloat(quantity) : null;
+    
+    // Calculer le prix unitaire (€/L) = coût total / quantité
+    const unitPriceCalculated = (totalPrice && qty && qty > 0) ? (totalPrice / qty) : null;
+
+    // Récupérer le type de carburant depuis les customFields de l'objet si non fourni
+    let finalFuelType = fuelType;
+    if (!finalFuelType) {
+      const objectData = await db.query(
+        'SELECT custom_fields FROM objects WHERE id = ?',
+        [id]
+      );
+      if (objectData && objectData.length > 0 && objectData[0].custom_fields) {
+        try {
+          const customFields = JSON.parse(objectData[0].custom_fields);
+          // Chercher le type de carburant dans différents noms possibles
+          finalFuelType = customFields.fuelType || customFields.typeCarburant || 
+                         customFields['Type de carburant'] || customFields.carburant ||
+                         customFields.fuel_type;
+        } catch (e) {
+          // Ignorer les erreurs de parsing JSON
+        }
+      }
+      // Valeur par défaut si toujours non défini
+      finalFuelType = finalFuelType || 'Carburant';
+    }
 
     const result = await db.execute(
       `INSERT INTO fuel_entries (object_id, fuel_type, quantity, unit_price, total_price, mileage, station, entry_date, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, fuelType, quantity, unitPrice, totalPrice, mileage, station, entryDate, notes]
+      [id, finalFuelType, qty, unitPriceCalculated, totalPrice, mileage || null, station || null, finalEntryDate, notes || null]
     );
 
     res.status(201).json({
       success: true,
       message: 'Entrée carburant ajoutée',
-      entryId: result.lastInsertRowid
+      entryId: result.lastInsertRowid,
+      unitPrice: unitPriceCalculated ? unitPriceCalculated.toFixed(3) : null
     });
   } catch (error: any) {
     console.error('Erreur add fuel entry:', error);
