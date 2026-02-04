@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  # Application principale
+  # Application principale (SQLite uniquement)
   app:
     build:
       context: .
@@ -15,15 +15,9 @@ services:
       - PORT=3001
       - JWT_SECRET=${JWT_SECRET:-votre_secret_jwt_tres_long_et_securise}
       - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET:-votre_refresh_secret_tres_long}
-      - DB_TYPE=${DB_TYPE:-sqlite}
+      - DB_TYPE=sqlite
       - SQLITE_PATH=/app/data/database.sqlite
-      # Configuration MySQL (si DB_TYPE=mysql)
-      - MYSQL_HOST=${MYSQL_HOST:-mysql}
-      - MYSQL_PORT=${MYSQL_PORT:-3306}
-      - MYSQL_USER=${MYSQL_USER:-gestion}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-gestion_password}
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-gestion_materiels}
-      # Configuration SMTP
+      # Configuration SMTP (optionnel)
       - SMTP_HOST=${SMTP_HOST:-}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER:-}
@@ -36,55 +30,12 @@ services:
       - app-logs:/app/logs
     networks:
       - gestion-network
-    depends_on:
-      mysql:
-        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
-
-  # Base de données MySQL (optionnel - commentez si vous utilisez SQLite)
-  mysql:
-    image: mysql:8.0
-    container_name: gestion-materiels-mysql
-    restart: unless-stopped
-    environment:
-      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-root_password}
-      - MYSQL_DATABASE=${MYSQL_DATABASE:-gestion_materiels}
-      - MYSQL_USER=${MYSQL_USER:-gestion}
-      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-gestion_password}
-    volumes:
-      - mysql-data:/var/lib/mysql
-    networks:
-      - gestion-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
-
-  # Reverse proxy Nginx (optionnel - pour production avec SSL)
-  nginx:
-    image: nginx:alpine
-    container_name: gestion-materiels-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-    networks:
-      - gestion-network
-    depends_on:
-      - app
-    profiles:
-      - production
+      start_period: 15s
 
 volumes:
   app-data:
@@ -95,8 +46,6 @@ volumes:
     name: gestion-materiels-backups
   app-logs:
     name: gestion-materiels-logs
-  mysql-data:
-    name: gestion-materiels-mysql
 
 networks:
   gestion-network:
