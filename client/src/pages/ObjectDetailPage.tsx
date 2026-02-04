@@ -33,6 +33,13 @@ export default function ObjectDetailPage() {
   const [stationEditData, setStationEditData] = useState<{ id?: number; name: string; address: string } | null>(null)
   const [stationDeleteConfirm, setStationDeleteConfirm] = useState<number | null>(null)
   const [maintenanceModal, setMaintenanceModal] = useState(false)
+  const [maintenanceEditModal, setMaintenanceEditModal] = useState<any>(null) // Pour édition maintenance
+  const [maintenanceDeleteConfirm, setMaintenanceDeleteConfirm] = useState<number | null>(null) // Pour suppression maintenance
+  const [maintenanceSettingsModal, setMaintenanceSettingsModal] = useState(false) // Pour gestion types et prestataires
+  const [maintenanceTypeEditData, setMaintenanceTypeEditData] = useState<{ id?: number; name: string } | null>(null)
+  const [maintenanceTypeDeleteConfirm, setMaintenanceTypeDeleteConfirm] = useState<number | null>(null)
+  const [maintenanceProviderEditData, setMaintenanceProviderEditData] = useState<{ id?: number; name: string; address: string; phone: string } | null>(null)
+  const [maintenanceProviderDeleteConfirm, setMaintenanceProviderDeleteConfirm] = useState<number | null>(null)
   const [controlModal, setControlModal] = useState(false)
   const [customPluginModal, setCustomPluginModal] = useState<any>(null) // Pour les plugins personnalisés
 
@@ -119,6 +126,24 @@ export default function ObjectDetailPage() {
     queryFn: async () => {
       const response = await api.get('/objects/fuel-stations/list')
       return response.data.stations as Array<{ id: number; name: string; address?: string }>
+    }
+  })
+
+  // Récupérer les types d'entretien
+  const { data: maintenanceTypes = [], refetch: refetchMaintenanceTypes } = useQuery({
+    queryKey: ['maintenanceTypes'],
+    queryFn: async () => {
+      const response = await api.get('/objects/maintenance-types/list')
+      return response.data.types as Array<{ id: number; name: string }>
+    }
+  })
+
+  // Récupérer les prestataires d'entretien
+  const { data: maintenanceProviders = [], refetch: refetchMaintenanceProviders } = useQuery({
+    queryKey: ['maintenanceProviders'],
+    queryFn: async () => {
+      const response = await api.get('/objects/maintenance-providers/list')
+      return response.data.providers as Array<{ id: number; name: string; address?: string; phone?: string }>
     }
   })
 
@@ -252,6 +277,120 @@ export default function ObjectDetailPage() {
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
+    }
+  })
+
+  const updateMaintenanceMutation = useMutation({
+    mutationFn: async ({ entryId, data }: { entryId: number, data: any }) => {
+      return api.put(`/objects/${id}/maintenance/${entryId}`, data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['object', id] })
+      toast.success('Entretien modifié')
+      setMaintenanceEditModal(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Erreur lors de la modification')
+    }
+  })
+
+  const deleteMaintenanceMutation = useMutation({
+    mutationFn: async (entryId: number) => {
+      return api.delete(`/objects/${id}/maintenance/${entryId}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['object', id] })
+      toast.success('Entretien supprimé')
+      setMaintenanceDeleteConfirm(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Erreur lors de la suppression')
+    }
+  })
+
+  // Mutations pour les types d'entretien
+  const addMaintenanceTypeMutation = useMutation({
+    mutationFn: async (data: { name: string }) => {
+      return api.post('/objects/maintenance-types', data)
+    },
+    onSuccess: () => {
+      refetchMaintenanceTypes()
+      toast.success('Type d\'entretien ajouté')
+      setMaintenanceTypeEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de l\'ajout')
+    }
+  })
+
+  const updateMaintenanceTypeMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { name: string } }) => {
+      return api.put(`/objects/maintenance-types/${id}`, data)
+    },
+    onSuccess: () => {
+      refetchMaintenanceTypes()
+      toast.success('Type d\'entretien modifié')
+      setMaintenanceTypeEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la modification')
+    }
+  })
+
+  const deleteMaintenanceTypeMutation = useMutation({
+    mutationFn: async (typeId: number) => {
+      return api.delete(`/objects/maintenance-types/${typeId}`)
+    },
+    onSuccess: () => {
+      refetchMaintenanceTypes()
+      toast.success('Type d\'entretien supprimé')
+      setMaintenanceTypeDeleteConfirm(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression')
+    }
+  })
+
+  // Mutations pour les prestataires
+  const addMaintenanceProviderMutation = useMutation({
+    mutationFn: async (data: { name: string; address?: string; phone?: string }) => {
+      return api.post('/objects/maintenance-providers', data)
+    },
+    onSuccess: () => {
+      refetchMaintenanceProviders()
+      toast.success('Prestataire ajouté')
+      setMaintenanceProviderEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de l\'ajout')
+    }
+  })
+
+  const updateMaintenanceProviderMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { name: string; address?: string; phone?: string } }) => {
+      return api.put(`/objects/maintenance-providers/${id}`, data)
+    },
+    onSuccess: () => {
+      refetchMaintenanceProviders()
+      toast.success('Prestataire modifié')
+      setMaintenanceProviderEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la modification')
+    }
+  })
+
+  const deleteMaintenanceProviderMutation = useMutation({
+    mutationFn: async (providerId: number) => {
+      return api.delete(`/objects/maintenance-providers/${providerId}`)
+    },
+    onSuccess: () => {
+      refetchMaintenanceProviders()
+      toast.success('Prestataire supprimé')
+      setMaintenanceProviderDeleteConfirm(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression')
     }
   })
 
@@ -751,37 +890,80 @@ export default function ObjectDetailPage() {
               <Wrench className="w-5 h-5 text-orange-600" />
               Historique des entretiens
             </CardTitle>
-            <Button size="sm" onClick={() => setMaintenanceModal(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Ajouter un entretien
-            </Button>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <Button size="sm" variant="secondary" onClick={() => setMaintenanceSettingsModal(true)} title="Gérer les types et prestataires">
+                  <Settings2 className="w-4 h-4" />
+                </Button>
+              )}
+              <Button size="sm" onClick={() => setMaintenanceModal(true)}>
+                <Plus className="w-4 h-4 mr-1" />
+                Ajouter un entretien
+              </Button>
+            </div>
           </CardHeader>
           <CardBody className="p-0">
             {object.maintenanceRecords && object.maintenanceRecords.length > 0 ? (
-              <div className="divide-y divide-gray-200">
-                {object.maintenanceRecords.map((record: any) => (
-                  <div key={record.id} className="p-4 hover:bg-gray-50">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <p className="font-medium text-gray-900">{record.type}</p>
-                        <p className="text-sm text-gray-500 mt-1">{record.description}</p>
-                        <div className="flex items-center gap-4 mt-2 text-xs text-gray-400">
-                          <span>{formatDate(record.date)}</span>
-                          {record.mileage && <span>{record.mileage} km</span>}
-                          {record.provider && <span>{record.provider}</span>}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-medium text-gray-900">{formatCurrency(record.cost)}</p>
-                        {record.nextDate && (
-                          <p className="text-xs text-orange-600 mt-1">
-                            Prochain: {formatDate(record.nextDate)}
-                          </p>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coût</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kilométrage</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prochain</th>
+                      {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200">
+                    {object.maintenanceRecords.map((record: any) => (
+                      <tr key={record.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.type}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.provider || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {record.nextDate ? (
+                            <span className="text-orange-600">{formatDate(record.nextDate)}</span>
+                          ) : '-'}
+                        </td>
+                        {isAdmin && (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setMaintenanceEditModal({
+                                  id: record.id,
+                                  date: record.date,
+                                  type: record.type || '',
+                                  description: record.description || '',
+                                  cost: record.cost || '',
+                                  mileage: record.mileage || '',
+                                  nextDate: record.nextDate || '',
+                                  provider: record.provider || '',
+                                  notes: record.notes || ''
+                                })}
+                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                title="Modifier"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setMaintenanceDeleteConfirm(record.id)}
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
                         )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             ) : (
               <div className="text-center py-12">
@@ -1191,7 +1373,18 @@ export default function ObjectDetailPage() {
 
       {/* Modal Entretien */}
       <Modal isOpen={maintenanceModal} onClose={() => setMaintenanceModal(false)} title="Ajouter un entretien">
-        <form onSubmit={(e) => { e.preventDefault(); addMaintenanceMutation.mutate(maintenanceData); }}>
+        <form onSubmit={(e) => { 
+          e.preventDefault(); 
+          addMaintenanceMutation.mutate({
+            maintenanceDate: maintenanceData.date,
+            maintenanceType: maintenanceData.type,
+            notes: maintenanceData.description || maintenanceData.notes,
+            cost: maintenanceData.cost,
+            mileage: maintenanceData.mileage,
+            nextDate: maintenanceData.nextDate,
+            provider: maintenanceData.provider
+          }); 
+        }}>
           <ModalBody className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <Input
@@ -1201,13 +1394,22 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setMaintenanceData({ ...maintenanceData, date: e.target.value })}
                 required
               />
-              <Input
-                label="Type d'entretien"
-                value={maintenanceData.type}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, type: e.target.value })}
-                placeholder="Ex: Vidange"
-                required
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type d'entretien</label>
+                <input
+                  list="maintenance-types-list"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={maintenanceData.type}
+                  onChange={(e) => setMaintenanceData({ ...maintenanceData, type: e.target.value })}
+                  placeholder="Sélectionner ou saisir..."
+                  required
+                />
+                <datalist id="maintenance-types-list">
+                  {maintenanceTypes.map((t) => (
+                    <option key={t.id} value={t.name} />
+                  ))}
+                </datalist>
+              </div>
             </div>
             <TextArea
               label="Description"
@@ -1231,11 +1433,21 @@ export default function ObjectDetailPage() {
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
-              <Input
-                label="Prestataire"
-                value={maintenanceData.provider}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, provider: e.target.value })}
-              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Prestataire</label>
+                <input
+                  list="maintenance-providers-list"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={maintenanceData.provider}
+                  onChange={(e) => setMaintenanceData({ ...maintenanceData, provider: e.target.value })}
+                  placeholder="Sélectionner ou saisir..."
+                />
+                <datalist id="maintenance-providers-list">
+                  {maintenanceProviders.map((p) => (
+                    <option key={p.id} value={p.name} />
+                  ))}
+                </datalist>
+              </div>
               <Input
                 label="Prochain entretien"
                 type="date"
@@ -1253,6 +1465,350 @@ export default function ObjectDetailPage() {
             </Button>
           </ModalFooter>
         </form>
+      </Modal>
+
+      {/* Modal Édition Entretien */}
+      <Modal isOpen={!!maintenanceEditModal} onClose={() => setMaintenanceEditModal(null)} title="Modifier l'entretien">
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (maintenanceEditModal) {
+            updateMaintenanceMutation.mutate({
+              entryId: maintenanceEditModal.id,
+              data: {
+                maintenanceDate: maintenanceEditModal.date,
+                maintenanceType: maintenanceEditModal.type,
+                notes: maintenanceEditModal.description || maintenanceEditModal.notes,
+                cost: maintenanceEditModal.cost,
+                mileage: maintenanceEditModal.mileage,
+                nextDate: maintenanceEditModal.nextDate,
+                provider: maintenanceEditModal.provider
+              }
+            })
+          }
+        }}>
+          <ModalBody className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Date"
+                type="date"
+                value={maintenanceEditModal?.date || ''}
+                onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, date: e.target.value })}
+                required
+              />
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Type d'entretien</label>
+                <input
+                  list="maintenance-types-list-edit"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={maintenanceEditModal?.type || ''}
+                  onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, type: e.target.value })}
+                  placeholder="Sélectionner ou saisir..."
+                  required
+                />
+                <datalist id="maintenance-types-list-edit">
+                  {maintenanceTypes.map((t) => (
+                    <option key={t.id} value={t.name} />
+                  ))}
+                </datalist>
+              </div>
+            </div>
+            <TextArea
+              label="Description"
+              value={maintenanceEditModal?.description || ''}
+              onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, description: e.target.value })}
+              rows={2}
+            />
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Coût (€)"
+                type="number"
+                step="0.01"
+                value={maintenanceEditModal?.cost || ''}
+                onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, cost: e.target.value })}
+              />
+              <Input
+                label="Kilométrage"
+                type="number"
+                value={maintenanceEditModal?.mileage || ''}
+                onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, mileage: e.target.value })}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Prestataire</label>
+                <input
+                  list="maintenance-providers-list-edit"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  value={maintenanceEditModal?.provider || ''}
+                  onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, provider: e.target.value })}
+                  placeholder="Sélectionner ou saisir..."
+                />
+                <datalist id="maintenance-providers-list-edit">
+                  {maintenanceProviders.map((p) => (
+                    <option key={p.id} value={p.name} />
+                  ))}
+                </datalist>
+              </div>
+              <Input
+                label="Prochain entretien"
+                type="date"
+                value={maintenanceEditModal?.nextDate || ''}
+                onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, nextDate: e.target.value })}
+              />
+            </div>
+          </ModalBody>
+          <ModalFooter>
+            <Button type="button" variant="secondary" onClick={() => setMaintenanceEditModal(null)}>
+              Annuler
+            </Button>
+            <Button type="submit" loading={updateMaintenanceMutation.isPending}>
+              Modifier
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* Modal Confirmation suppression entretien */}
+      <Modal isOpen={!!maintenanceDeleteConfirm} onClose={() => setMaintenanceDeleteConfirm(null)} title="Confirmer la suppression">
+        <ModalBody>
+          <p className="text-gray-600">Êtes-vous sûr de vouloir supprimer cet entretien ? Cette action est irréversible.</p>
+        </ModalBody>
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={() => setMaintenanceDeleteConfirm(null)}>
+            Annuler
+          </Button>
+          <Button 
+            variant="danger" 
+            loading={deleteMaintenanceMutation.isPending}
+            onClick={() => maintenanceDeleteConfirm && deleteMaintenanceMutation.mutate(maintenanceDeleteConfirm)}
+          >
+            Supprimer
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal Gestion Types et Prestataires d'entretien */}
+      <Modal isOpen={maintenanceSettingsModal} onClose={() => setMaintenanceSettingsModal(false)} title="Gérer les types et prestataires" size="lg">
+        <ModalBody className="space-y-6">
+          {/* Types d'entretien */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-gray-900">Types d'entretien</h4>
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={() => setMaintenanceTypeEditData({ name: '' })}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Ajouter
+              </Button>
+            </div>
+            
+            {maintenanceTypeEditData && !maintenanceTypeEditData.id && (
+              <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+                <div className="flex gap-2">
+                  <Input
+                    placeholder="Nom du type d'entretien"
+                    value={maintenanceTypeEditData.name}
+                    onChange={(e) => setMaintenanceTypeEditData({ ...maintenanceTypeEditData, name: e.target.value })}
+                    className="flex-1"
+                  />
+                  <Button size="sm" onClick={() => addMaintenanceTypeMutation.mutate({ name: maintenanceTypeEditData.name })} loading={addMaintenanceTypeMutation.isPending}>
+                    Ajouter
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => setMaintenanceTypeEditData(null)}>
+                    <X className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {maintenanceTypes.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">Aucun type d'entretien configuré</p>
+              ) : (
+                maintenanceTypes.map((type) => (
+                  <div key={type.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    {maintenanceTypeEditData?.id === type.id ? (
+                      <div className="flex gap-2 flex-1">
+                        <Input
+                          value={maintenanceTypeEditData.name}
+                          onChange={(e) => setMaintenanceTypeEditData({ ...maintenanceTypeEditData, name: e.target.value })}
+                          className="flex-1"
+                        />
+                        <Button size="sm" onClick={() => updateMaintenanceTypeMutation.mutate({ id: type.id, data: { name: maintenanceTypeEditData.name } })} loading={updateMaintenanceTypeMutation.isPending}>
+                          Enregistrer
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setMaintenanceTypeEditData(null)}>
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    ) : maintenanceTypeDeleteConfirm === type.id ? (
+                      <div className="flex items-center justify-between flex-1">
+                        <span className="text-sm text-red-600">Confirmer la suppression ?</span>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="danger" onClick={() => deleteMaintenanceTypeMutation.mutate(type.id)} loading={deleteMaintenanceTypeMutation.isPending}>
+                            Oui
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setMaintenanceTypeDeleteConfirm(null)}>
+                            Non
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-sm font-medium">{type.name}</span>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setMaintenanceTypeEditData({ id: type.id, name: type.name })}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setMaintenanceTypeDeleteConfirm(type.id)}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <hr />
+
+          {/* Prestataires */}
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-medium text-gray-900">Prestataires</h4>
+              <Button 
+                size="sm" 
+                variant="secondary"
+                onClick={() => setMaintenanceProviderEditData({ name: '', address: '', phone: '' })}
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                Ajouter
+              </Button>
+            </div>
+            
+            {maintenanceProviderEditData && !maintenanceProviderEditData.id && (
+              <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
+                <Input
+                  placeholder="Nom du prestataire"
+                  value={maintenanceProviderEditData.name}
+                  onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, name: e.target.value })}
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <Input
+                    placeholder="Adresse (optionnel)"
+                    value={maintenanceProviderEditData.address}
+                    onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, address: e.target.value })}
+                  />
+                  <Input
+                    placeholder="Téléphone (optionnel)"
+                    value={maintenanceProviderEditData.phone}
+                    onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, phone: e.target.value })}
+                  />
+                </div>
+                <div className="flex justify-end gap-2">
+                  <Button size="sm" variant="ghost" onClick={() => setMaintenanceProviderEditData(null)}>
+                    Annuler
+                  </Button>
+                  <Button size="sm" onClick={() => addMaintenanceProviderMutation.mutate(maintenanceProviderEditData)} loading={addMaintenanceProviderMutation.isPending}>
+                    Ajouter
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="space-y-2 max-h-48 overflow-y-auto">
+              {maintenanceProviders.length === 0 ? (
+                <p className="text-sm text-gray-500 text-center py-4">Aucun prestataire configuré</p>
+              ) : (
+                maintenanceProviders.map((provider) => (
+                  <div key={provider.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                    {maintenanceProviderEditData?.id === provider.id ? (
+                      <div className="flex-1 space-y-2">
+                        <Input
+                          value={maintenanceProviderEditData.name}
+                          onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, name: e.target.value })}
+                          placeholder="Nom"
+                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          <Input
+                            placeholder="Adresse"
+                            value={maintenanceProviderEditData.address}
+                            onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, address: e.target.value })}
+                          />
+                          <Input
+                            placeholder="Téléphone"
+                            value={maintenanceProviderEditData.phone}
+                            onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, phone: e.target.value })}
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <Button size="sm" variant="ghost" onClick={() => setMaintenanceProviderEditData(null)}>
+                            Annuler
+                          </Button>
+                          <Button size="sm" onClick={() => updateMaintenanceProviderMutation.mutate({ id: provider.id, data: maintenanceProviderEditData })} loading={updateMaintenanceProviderMutation.isPending}>
+                            Enregistrer
+                          </Button>
+                        </div>
+                      </div>
+                    ) : maintenanceProviderDeleteConfirm === provider.id ? (
+                      <div className="flex items-center justify-between flex-1">
+                        <span className="text-sm text-red-600">Confirmer la suppression ?</span>
+                        <div className="flex gap-2">
+                          <Button size="sm" variant="danger" onClick={() => deleteMaintenanceProviderMutation.mutate(provider.id)} loading={deleteMaintenanceProviderMutation.isPending}>
+                            Oui
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setMaintenanceProviderDeleteConfirm(null)}>
+                            Non
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div>
+                          <span className="text-sm font-medium">{provider.name}</span>
+                          {(provider.address || provider.phone) && (
+                            <p className="text-xs text-gray-500">
+                              {[provider.address, provider.phone].filter(Boolean).join(' • ')}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex gap-1">
+                          <button
+                            onClick={() => setMaintenanceProviderEditData({ id: provider.id, name: provider.name, address: provider.address || '', phone: provider.phone || '' })}
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => setMaintenanceProviderDeleteConfirm(provider.id)}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setMaintenanceSettingsModal(false)}>
+            Fermer
+          </Button>
+        </ModalFooter>
       </Modal>
 
       {/* Modal Contrôle technique */}

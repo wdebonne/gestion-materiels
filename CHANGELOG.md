@@ -7,6 +7,26 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.10] - 2026-02-04
+
+### Ajouté
+- **Plugin Maintenance** : Gestion complète des types d'entretien et prestataires
+- Bouton paramètres (⚙️) à côté de "Ajouter un entretien" pour gérer les types et prestataires
+- Modal de gestion avec deux sections : Types d'entretien et Prestataires
+- Champs avec autocomplétion (datalist) pour Type d'entretien et Prestataire
+- Tables `maintenance_types` et `maintenance_providers` pour stocker les données
+- Routes API CRUD pour les types d'entretien : GET, POST, PUT, DELETE
+- Routes API CRUD pour les prestataires : GET, POST, PUT, DELETE (avec adresse et téléphone)
+- Les administrateurs peuvent modifier et supprimer les entrées d'entretien
+- Affichage de l'historique des entretiens en tableau (comme le carburant)
+- Boutons d'action (modifier/supprimer) dans le tableau entretien pour les admins
+- Modal d'édition d'entretien avec autocomplétion
+- Route PUT `/api/objects/:id/maintenance/:maintenanceId` pour modification
+
+### Corrigé
+- Correction de l'erreur 500 lors de l'ajout d'un entretien (mapping des champs client → serveur)
+- Les champs `date` et `type` sont maintenant correctement mappés vers `maintenanceDate` et `maintenanceType`
+
 ## [1.2.9] - 2026-02-04
 
 ### Ajouté

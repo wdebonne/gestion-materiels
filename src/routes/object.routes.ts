@@ -619,6 +619,188 @@ router.delete('/fuel-stations/:stationId', authenticateToken, requireAdmin, asyn
   }
 });
 
+// === TYPES D'ENTRETIEN ===
+
+// GET /api/objects/maintenance-types/list - Liste des types d'entretien
+router.get('/maintenance-types/list', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const types = await db.query('SELECT * FROM maintenance_types ORDER BY name ASC');
+    res.json({ success: true, types });
+  } catch (error: any) {
+    console.error('Erreur get maintenance types:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/objects/maintenance-types - Ajouter un type d'entretien
+router.post('/maintenance-types', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'INSERT INTO maintenance_types (name) VALUES (?)',
+      [name.trim()]
+    );
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Type d\'entretien ajouté',
+      type: { id: result.lastInsertRowid, name: name.trim() }
+    });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ce type d\'entretien existe déjà' });
+    }
+    console.error('Erreur add maintenance type:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/objects/maintenance-types/:id - Modifier un type d'entretien
+router.put('/maintenance-types/:typeId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { typeId } = req.params;
+    const { name } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'UPDATE maintenance_types SET name = ? WHERE id = ?',
+      [name.trim(), typeId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Type d\'entretien non trouvé' });
+    }
+
+    res.json({ success: true, message: 'Type d\'entretien modifié' });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ce type d\'entretien existe déjà' });
+    }
+    console.error('Erreur update maintenance type:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/objects/maintenance-types/:id - Supprimer un type d'entretien
+router.delete('/maintenance-types/:typeId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { typeId } = req.params;
+
+    const result = await db.execute(
+      'DELETE FROM maintenance_types WHERE id = ?',
+      [typeId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Type d\'entretien non trouvé' });
+    }
+
+    res.json({ success: true, message: 'Type d\'entretien supprimé' });
+  } catch (error: any) {
+    console.error('Erreur delete maintenance type:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// === PRESTATAIRES D'ENTRETIEN ===
+
+// GET /api/objects/maintenance-providers/list - Liste des prestataires
+router.get('/maintenance-providers/list', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const providers = await db.query('SELECT * FROM maintenance_providers ORDER BY name ASC');
+    res.json({ success: true, providers });
+  } catch (error: any) {
+    console.error('Erreur get maintenance providers:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/objects/maintenance-providers - Ajouter un prestataire
+router.post('/maintenance-providers', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, address, phone } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'INSERT INTO maintenance_providers (name, address, phone) VALUES (?, ?, ?)',
+      [name.trim(), address?.trim() || null, phone?.trim() || null]
+    );
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Prestataire ajouté',
+      provider: { id: result.lastInsertRowid, name: name.trim(), address: address?.trim() || null, phone: phone?.trim() || null }
+    });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ce prestataire existe déjà' });
+    }
+    console.error('Erreur add maintenance provider:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/objects/maintenance-providers/:id - Modifier un prestataire
+router.put('/maintenance-providers/:providerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { providerId } = req.params;
+    const { name, address, phone } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'UPDATE maintenance_providers SET name = ?, address = ?, phone = ? WHERE id = ?',
+      [name.trim(), address?.trim() || null, phone?.trim() || null, providerId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Prestataire non trouvé' });
+    }
+
+    res.json({ success: true, message: 'Prestataire modifié' });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ce nom de prestataire existe déjà' });
+    }
+    console.error('Erreur update maintenance provider:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/objects/maintenance-providers/:id - Supprimer un prestataire
+router.delete('/maintenance-providers/:providerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { providerId } = req.params;
+
+    const result = await db.execute(
+      'DELETE FROM maintenance_providers WHERE id = ?',
+      [providerId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Prestataire non trouvé' });
+    }
+
+    res.json({ success: true, message: 'Prestataire supprimé' });
+  } catch (error: any) {
+    console.error('Erreur delete maintenance provider:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // === PLUGIN: CONTRÔLE TECHNIQUE ===
 
 // POST /api/objects/:id/technical-control - Ajouter un contrôle technique
@@ -804,6 +986,60 @@ router.delete('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin
     res.json({ success: true, message: 'Maintenance supprimée' });
   } catch (error: any) {
     console.error('Erreur delete maintenance:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/objects/:id/maintenance/:maintenanceId - Modifier une maintenance
+router.put('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, maintenanceId } = req.params;
+    const { 
+      maintenanceType, maintenanceDate, nextDate, mileage, nextMileage,
+      cost, provider, document, notes, addToCalendar 
+    } = req.body;
+
+    const result = await db.execute(
+      `UPDATE maintenances SET 
+        maintenance_type = ?, maintenance_date = ?, next_date = ?, 
+        mileage = ?, next_mileage = ?, cost = ?, provider = ?, 
+        document = ?, notes = ?, add_to_calendar = ?
+       WHERE id = ? AND object_id = ?`,
+      [maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, maintenanceId, id]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Maintenance non trouvée' });
+    }
+
+    // Mettre à jour l'alerte si nextDate a changé
+    if (nextDate) {
+      const obj = await db.queryOne('SELECT name FROM objects WHERE id = ?', [id]);
+      // Supprimer l'ancienne alerte
+      await db.execute(
+        "DELETE FROM alerts WHERE plugin_reference = 'maintenance' AND plugin_reference_id = ?",
+        [maintenanceId]
+      );
+      // Créer une nouvelle alerte
+      await db.execute(
+        `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `Maintenance: ${obj?.name}`,
+          `${maintenanceType} prévue le ${nextDate}`,
+          'maintenance',
+          'info',
+          id,
+          'maintenance',
+          maintenanceId,
+          nextDate
+        ]
+      );
+    }
+
+    res.json({ success: true, message: 'Maintenance modifiée' });
+  } catch (error: any) {
+    console.error('Erreur update maintenance:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });

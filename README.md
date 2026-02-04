@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.6-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.10-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
@@ -41,8 +41,8 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 👀 Prévisualisation en temps réel
 
 ### Plugins intégrés
-- ⛽ **Carburant** : Suivi des consommations et coûts
-- 🔧 **Maintenance** : Historique des interventions
+- ⛽ **Carburant** : Suivi des consommations et coûts, gestion des stations
+- 🔧 **Maintenance** : Historique des interventions, gestion des types d'entretien et prestataires
 - 📋 **Contrôle technique** : Suivi des échéances
 - 📅 **Calendrier** : Planning et événements
 
