@@ -20,6 +20,9 @@ FROM node:20-alpine AS server-builder
 
 WORKDIR /app
 
+# Install build dependencies for native modules (better-sqlite3)
+RUN apk add --no-cache python3 make g++
+
 # Copy server package files
 COPY package*.json ./
 
@@ -37,6 +40,9 @@ RUN npm run build:server
 FROM node:20-alpine AS production
 
 WORKDIR /app
+
+# Install build dependencies for native modules
+RUN apk add --no-cache python3 make g++
 
 # Install production dependencies only
 COPY package*.json ./
