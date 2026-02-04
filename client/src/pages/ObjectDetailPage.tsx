@@ -1959,7 +1959,17 @@ export default function ObjectDetailPage() {
                 label="Date du contrôle"
                 type="date"
                 value={controlData.date}
-                onChange={(e) => setControlData({ ...controlData, date: e.target.value })}
+                onChange={(e) => {
+                  const newDate = e.target.value
+                  // Calculer automatiquement la date d'expiration à +2 ans
+                  let expirationDate = controlData.expirationDate
+                  if (newDate) {
+                    const expDate = new Date(newDate)
+                    expDate.setFullYear(expDate.getFullYear() + 2)
+                    expirationDate = expDate.toISOString().split('T')[0]
+                  }
+                  setControlData({ ...controlData, date: newDate, expirationDate })
+                }}
                 required
               />
               <Input
@@ -2301,7 +2311,17 @@ export default function ObjectDetailPage() {
                 label="Date du contrôle"
                 type="date"
                 value={controlEditModal?.date || ''}
-                onChange={(e) => setControlEditModal({ ...controlEditModal, date: e.target.value })}
+                onChange={(e) => {
+                  const newDate = e.target.value
+                  // Calculer automatiquement la date d'expiration à +2 ans
+                  let expirationDate = controlEditModal?.expirationDate || ''
+                  if (newDate) {
+                    const expDate = new Date(newDate)
+                    expDate.setFullYear(expDate.getFullYear() + 2)
+                    expirationDate = expDate.toISOString().split('T')[0]
+                  }
+                  setControlEditModal({ ...controlEditModal, date: newDate, expirationDate })
+                }}
                 required
               />
               <Input
