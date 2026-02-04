@@ -19,7 +19,9 @@ import {
   Package,
   Truck,
   ClipboardList,
-  Plug
+  Plug,
+  Home,
+  FolderOpen
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 
@@ -84,8 +86,8 @@ export default function Layout() {
 
   // Navigation de base
   const baseNavigation = [
-    { name: 'Tableau de bord', href: '/', icon: LayoutGrid },
-    { name: 'Catégories', href: '/categories', icon: LayoutGrid },
+    { name: 'Tableau de bord', href: '/', icon: Home },
+    { name: 'Catégories', href: '/categories', icon: FolderOpen },
     { name: 'Alertes', href: '/alerts', icon: Bell, badge: alertsCount },
   ]
 
