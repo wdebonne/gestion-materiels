@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.9] - 2026-02-04
+
+### Ajouté
+- **Plugin Carburant** : Gestion des stations de carburant (ajouter, modifier, supprimer)
+- Bouton paramètres (icône engrenage) à côté de "Ajouter un plein" pour gérer les stations
+- Champ Station avec autocomplétion basée sur la liste des stations enregistrées
+- Table `fuel_stations` pour stocker les stations favorites
+- Routes API CRUD pour les stations : GET, POST, PUT, DELETE
+
+### Amélioré
+- L'autocomplétion du champ Station fonctionne dans les modals d'ajout et de modification
+
 ## [1.2.8] - 2026-02-04
 
 ### Ajouté

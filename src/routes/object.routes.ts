@@ -528,6 +528,97 @@ router.delete('/:id/fuel/:entryId', authenticateToken, requireAdmin, async (req:
   }
 });
 
+// === STATIONS DE CARBURANT ===
+
+// GET /api/objects/fuel-stations - Liste des stations
+router.get('/fuel-stations/list', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const stations = await db.query('SELECT * FROM fuel_stations ORDER BY name ASC');
+    res.json({ success: true, stations });
+  } catch (error: any) {
+    console.error('Erreur get fuel stations:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/objects/fuel-stations - Ajouter une station
+router.post('/fuel-stations', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, address } = req.body;
+    
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'INSERT INTO fuel_stations (name, address) VALUES (?, ?)',
+      [name.trim(), address?.trim() || null]
+    );
+
+    res.status(201).json({ 
+      success: true, 
+      message: 'Station ajoutée',
+      station: { id: result.lastInsertRowid, name: name.trim(), address: address?.trim() || null }
+    });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Cette station existe déjà' });
+    }
+    console.error('Erreur add fuel station:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/objects/fuel-stations/:id - Modifier une station
+router.put('/fuel-stations/:stationId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { stationId } = req.params;
+    const { name, address } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const result = await db.execute(
+      'UPDATE fuel_stations SET name = ?, address = ? WHERE id = ?',
+      [name.trim(), address?.trim() || null, stationId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Station non trouvée' });
+    }
+
+    res.json({ success: true, message: 'Station modifiée' });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
+      return res.status(400).json({ success: false, message: 'Ce nom de station existe déjà' });
+    }
+    console.error('Erreur update fuel station:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/objects/fuel-stations/:id - Supprimer une station
+router.delete('/fuel-stations/:stationId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { stationId } = req.params;
+
+    const result = await db.execute(
+      'DELETE FROM fuel_stations WHERE id = ?',
+      [stationId]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Station non trouvée' });
+    }
+
+    res.json({ success: true, message: 'Station supprimée' });
+  } catch (error: any) {
+    console.error('Erreur delete fuel station:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // === PLUGIN: CONTRÔLE TECHNIQUE ===
 
 // POST /api/objects/:id/technical-control - Ajouter un contrôle technique

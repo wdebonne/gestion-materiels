@@ -330,6 +330,14 @@ class DatabaseManager {
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
       )`,
 
+      // Table pour les stations de carburant
+      `CREATE TABLE IF NOT EXISTS fuel_stations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL UNIQUE,
+        address VARCHAR(500),
+        created_at DATETIME ${timestampDefault}
+      )`,
+
       // Table pour le plugin Contrôle Technique
       `CREATE TABLE IF NOT EXISTS technical_controls (
         id INTEGER PRIMARY KEY ${autoIncrement},

@@ -29,6 +29,9 @@ export default function ObjectDetailPage() {
   const [fuelModal, setFuelModal] = useState(false)
   const [fuelEditModal, setFuelEditModal] = useState<any>(null) // Pour édition carburant
   const [fuelDeleteConfirm, setFuelDeleteConfirm] = useState<number | null>(null) // Pour suppression carburant
+  const [stationsModal, setStationsModal] = useState(false) // Pour gestion des stations
+  const [stationEditData, setStationEditData] = useState<{ id?: number; name: string; address: string } | null>(null)
+  const [stationDeleteConfirm, setStationDeleteConfirm] = useState<number | null>(null)
   const [maintenanceModal, setMaintenanceModal] = useState(false)
   const [controlModal, setControlModal] = useState(false)
   const [customPluginModal, setCustomPluginModal] = useState<any>(null) // Pour les plugins personnalisés
@@ -110,6 +113,15 @@ export default function ObjectDetailPage() {
     enabled: !!id
   })
 
+  // Récupérer les stations de carburant
+  const { data: fuelStations = [], refetch: refetchStations } = useQuery({
+    queryKey: ['fuelStations'],
+    queryFn: async () => {
+      const response = await api.get('/objects/fuel-stations/list')
+      return response.data.stations as Array<{ id: number; name: string; address?: string }>
+    }
+  })
+
   // Récupérer la configuration des champs personnalisés
   const { data: fieldsConfig } = useQuery({
     queryKey: ['customFieldsForObject', id],
@@ -182,6 +194,49 @@ export default function ObjectDetailPage() {
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur lors de la suppression')
+    }
+  })
+
+  // Mutations pour les stations
+  const addStationMutation = useMutation({
+    mutationFn: async (data: { name: string; address?: string }) => {
+      return api.post('/objects/fuel-stations', data)
+    },
+    onSuccess: () => {
+      refetchStations()
+      toast.success('Station ajoutée')
+      setStationEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de l\'ajout')
+    }
+  })
+
+  const updateStationMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: { name: string; address?: string } }) => {
+      return api.put(`/objects/fuel-stations/${id}`, data)
+    },
+    onSuccess: () => {
+      refetchStations()
+      toast.success('Station modifiée')
+      setStationEditData(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la modification')
+    }
+  })
+
+  const deleteStationMutation = useMutation({
+    mutationFn: async (stationId: number) => {
+      return api.delete(`/objects/fuel-stations/${stationId}`)
+    },
+    onSuccess: () => {
+      refetchStations()
+      toast.success('Station supprimée')
+      setStationDeleteConfirm(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression')
     }
   })
 
@@ -607,10 +662,17 @@ export default function ObjectDetailPage() {
               <Fuel className="w-5 h-5 text-green-600" />
               Historique carburant
             </CardTitle>
-            <Button size="sm" onClick={() => setFuelModal(true)}>
-              <Plus className="w-4 h-4 mr-1" />
-              Ajouter un plein
-            </Button>
+            <div className="flex items-center gap-2">
+              {isAdmin && (
+                <Button size="sm" variant="secondary" onClick={() => setStationsModal(true)} title="Gérer les stations">
+                  <Settings2 className="w-4 h-4" />
+                </Button>
+              )}
+              <Button size="sm" onClick={() => setFuelModal(true)}>
+                <Plus className="w-4 h-4 mr-1" />
+                Ajouter un plein
+              </Button>
+            </div>
           </CardHeader>
           <CardBody className="p-0">
             {object.fuelRecords && object.fuelRecords.length > 0 ? (
@@ -866,11 +928,20 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setFuelData({ ...fuelData, mileage: e.target.value })}
               />
             </div>
-            <Input
-              label="Station"
-              value={fuelData.station}
-              onChange={(e) => setFuelData({ ...fuelData, station: e.target.value })}
-            />
+            <div className="relative">
+              <Input
+                label="Station"
+                value={fuelData.station}
+                onChange={(e) => setFuelData({ ...fuelData, station: e.target.value })}
+                list="fuel-stations-list"
+                placeholder="Sélectionner ou saisir une station"
+              />
+              <datalist id="fuel-stations-list">
+                {fuelStations.map((s) => (
+                  <option key={s.id} value={s.name} />
+                ))}
+              </datalist>
+            </div>
             <TextArea
               label="Notes"
               value={fuelData.notes}
@@ -947,11 +1018,20 @@ export default function ObjectDetailPage() {
                   value={fuelEditModal.mileage}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, mileage: e.target.value })}
                 />
-                <Input
-                  label="Station"
-                  value={fuelEditModal.station}
-                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, station: e.target.value })}
-                />
+                <div className="relative">
+                  <Input
+                    label="Station"
+                    value={fuelEditModal.station}
+                    onChange={(e) => setFuelEditModal({ ...fuelEditModal, station: e.target.value })}
+                    list="fuel-stations-edit-list"
+                    placeholder="Sélectionner ou saisir une station"
+                  />
+                  <datalist id="fuel-stations-edit-list">
+                    {fuelStations.map((s) => (
+                      <option key={s.id} value={s.name} />
+                    ))}
+                  </datalist>
+                </div>
               </div>
               <TextArea
                 label="Notes"
@@ -987,6 +1067,122 @@ export default function ObjectDetailPage() {
             variant="danger" 
             loading={deleteFuelMutation.isPending}
             onClick={() => fuelDeleteConfirm && deleteFuelMutation.mutate(fuelDeleteConfirm)}
+          >
+            Supprimer
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal Gestion des Stations */}
+      <Modal isOpen={stationsModal} onClose={() => setStationsModal(false)} title="Gérer les stations">
+        <ModalBody className="space-y-4">
+          <div className="flex justify-end">
+            <Button size="sm" onClick={() => setStationEditData({ name: '', address: '' })}>
+              <Plus className="w-4 h-4 mr-1" />
+              Ajouter une station
+            </Button>
+          </div>
+          
+          {fuelStations.length > 0 ? (
+            <div className="divide-y divide-gray-200 border rounded-lg">
+              {fuelStations.map((station) => (
+                <div key={station.id} className="flex items-center justify-between p-3 hover:bg-gray-50">
+                  <div>
+                    <p className="font-medium text-gray-900">{station.name}</p>
+                    {station.address && (
+                      <p className="text-sm text-gray-500">{station.address}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setStationEditData({ id: station.id, name: station.name, address: station.address || '' })}
+                      className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                      title="Modifier"
+                    >
+                      <Pencil className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setStationDeleteConfirm(station.id)}
+                      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <p>Aucune station enregistrée</p>
+              <p className="text-sm mt-1">Ajoutez des stations pour les retrouver facilement lors de vos pleins</p>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setStationsModal(false)}>
+            Fermer
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal Ajout/Edition Station */}
+      <Modal 
+        isOpen={!!stationEditData} 
+        onClose={() => setStationEditData(null)} 
+        title={stationEditData?.id ? 'Modifier la station' : 'Ajouter une station'}
+      >
+        {stationEditData && (
+          <form onSubmit={(e) => {
+            e.preventDefault()
+            if (stationEditData.id) {
+              updateStationMutation.mutate({ id: stationEditData.id, data: { name: stationEditData.name, address: stationEditData.address } })
+            } else {
+              addStationMutation.mutate({ name: stationEditData.name, address: stationEditData.address })
+            }
+          }}>
+            <ModalBody className="space-y-4">
+              <Input
+                label="Nom de la station"
+                value={stationEditData.name}
+                onChange={(e) => setStationEditData({ ...stationEditData, name: e.target.value })}
+                placeholder="Ex: Total Barentin"
+                required
+              />
+              <Input
+                label="Adresse (optionnel)"
+                value={stationEditData.address}
+                onChange={(e) => setStationEditData({ ...stationEditData, address: e.target.value })}
+                placeholder="Ex: 123 rue de la Gare, 76360 Barentin"
+              />
+            </ModalBody>
+            <ModalFooter>
+              <Button type="button" variant="secondary" onClick={() => setStationEditData(null)}>
+                Annuler
+              </Button>
+              <Button type="submit" loading={addStationMutation.isPending || updateStationMutation.isPending}>
+                {stationEditData.id ? 'Enregistrer' : 'Ajouter'}
+              </Button>
+            </ModalFooter>
+          </form>
+        )}
+      </Modal>
+
+      {/* Modal Confirmation Suppression Station */}
+      <Modal isOpen={!!stationDeleteConfirm} onClose={() => setStationDeleteConfirm(null)} title="Supprimer la station">
+        <ModalBody>
+          <p className="text-gray-600">
+            Êtes-vous sûr de vouloir supprimer cette station ? Cette action est irréversible.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={() => setStationDeleteConfirm(null)}>
+            Annuler
+          </Button>
+          <Button 
+            variant="danger" 
+            loading={deleteStationMutation.isPending}
+            onClick={() => stationDeleteConfirm && deleteStationMutation.mutate(stationDeleteConfirm)}
           >
             Supprimer
           </Button>
