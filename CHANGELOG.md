@@ -23,6 +23,10 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - Route PUT `/api/objects/:id/technical-control/:controlId` pour modification
 - **Calcul automatique de la date d'expiration** : +2 ans par défaut lors de l'ajout/modification d'un contrôle technique
 
+### Corrigé
+- Correction de l'erreur 500 lors de l'ajout d'un contrôle technique (mapping des champs client → serveur)
+- Les champs `date`, `expirationDate`, `center` sont maintenant correctement mappés vers `controlDate`, `expiryDate`, `centerName`
+
 ## [1.2.10] - 2026-02-04
 
 ### Ajouté
