@@ -101,8 +101,9 @@ async function startServer() {
     initCronJobs();
     console.log('✅ Tâches planifiées initialisées');
 
-    app.listen(PORT, () => {
-      console.log(`🚀 Serveur démarré sur http://localhost:${PORT}`);
+    // Listen on 0.0.0.0 for Docker compatibility
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`🚀 Serveur démarré sur http://0.0.0.0:${PORT}`);
       console.log(`📊 Mode: ${process.env.NODE_ENV || 'development'}`);
     });
   } catch (error) {
