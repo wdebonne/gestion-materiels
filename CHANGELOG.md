@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.12] - 2026-02-04
+
+### Ajouté
+- **Filtres de recherche** sur les tableaux plugins (Carburant, Entretiens, Contrôle technique)
+- Champ de recherche intégré dans l'en-tête de chaque tableau
+- Filtrage en temps réel sur tous les champs visibles (date, station, coût, type, prestataire, centre, etc.)
+- Message "Aucun résultat" personnalisé quand le filtre ne correspond à aucune entrée
+- **Synchronisation du kilométrage** entre les plugins et les champs personnalisés
+- Pré-remplissage automatique du kilométrage depuis le champ personnalisé "kilometrage"
+- Mise à jour automatique du champ kilométrage quand une valeur plus élevée est saisie
+
+### Amélioré
+- Uniformisation du style des champs de formulaire dans les modals (Type d'entretien, Prestataire)
+- Meilleure cohérence visuelle entre les différents formulaires de plugins
+
 ## [1.2.11] - 2026-02-04
 
 ### Ajouté

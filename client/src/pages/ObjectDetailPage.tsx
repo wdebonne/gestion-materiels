@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X, Trash2, Pencil,
-  Image as ImageIcon, Settings2
+  Image as ImageIcon, Settings2, Search
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { 
@@ -24,6 +24,11 @@ export default function ObjectDetailPage() {
   const [activeTab, setActiveTab] = useState('details')
   const [isEditing, setIsEditing] = useState(false)
   const [editFormData, setEditFormData] = useState<any>(null)
+  
+  // Filtres pour les tableaux
+  const [fuelFilter, setFuelFilter] = useState('')
+  const [maintenanceFilter, setMaintenanceFilter] = useState('')
+  const [controlFilter, setControlFilter] = useState('')
   
   // Modals pour les plugins
   const [fuelModal, setFuelModal] = useState(false)
@@ -981,12 +986,22 @@ export default function ObjectDetailPage() {
 
       {activeTab === 'fuel' && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
             <CardTitle className="flex items-center gap-2">
               <Fuel className="w-5 h-5 text-green-600" />
               Historique carburant
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Filtrer..."
+                  value={fuelFilter}
+                  onChange={(e) => setFuelFilter(e.target.value)}
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+                />
+              </div>
               {isAdmin && (
                 <Button size="sm" variant="secondary" onClick={() => setStationsModal(true)} title="Gérer les stations">
                   <Settings2 className="w-4 h-4" />
@@ -1000,6 +1015,20 @@ export default function ObjectDetailPage() {
           </CardHeader>
           <CardBody className="p-0">
             {object.fuelRecords && object.fuelRecords.length > 0 ? (
+              (() => {
+                const filteredFuel = object.fuelRecords.filter((record: any) => {
+                  if (!fuelFilter) return true
+                  const search = fuelFilter.toLowerCase()
+                  return (
+                    record.date?.toLowerCase().includes(search) ||
+                    record.fuelType?.toLowerCase().includes(search) ||
+                    record.station?.toLowerCase().includes(search) ||
+                    record.quantity?.toString().includes(search) ||
+                    record.cost?.toString().includes(search) ||
+                    record.mileage?.toString().includes(search)
+                  )
+                })
+                return filteredFuel.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
@@ -1015,7 +1044,7 @@ export default function ObjectDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {object.fuelRecords.map((record: any) => (
+                    {filteredFuel.map((record: any) => (
                       <tr key={record.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.fuelType || '-'}</td>
@@ -1058,6 +1087,13 @@ export default function ObjectDetailPage() {
                   </tbody>
                 </table>
               </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Fuel className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">Aucun résultat pour "{fuelFilter}"</p>
+                  </div>
+                )
+              })()
             ) : (
               <div className="text-center py-12">
                 <Fuel className="w-12 h-12 text-gray-300 mx-auto mb-4" />
@@ -1070,12 +1106,22 @@ export default function ObjectDetailPage() {
 
       {activeTab === 'maintenance' && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
             <CardTitle className="flex items-center gap-2">
               <Wrench className="w-5 h-5 text-orange-600" />
               Historique des entretiens
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Filtrer..."
+                  value={maintenanceFilter}
+                  onChange={(e) => setMaintenanceFilter(e.target.value)}
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+                />
+              </div>
               {isAdmin && (
                 <Button size="sm" variant="secondary" onClick={() => setMaintenanceSettingsModal(true)} title="Gérer les types et prestataires">
                   <Settings2 className="w-4 h-4" />
@@ -1089,6 +1135,20 @@ export default function ObjectDetailPage() {
           </CardHeader>
           <CardBody className="p-0">
             {object.maintenanceRecords && object.maintenanceRecords.length > 0 ? (
+              (() => {
+                const filteredMaintenance = object.maintenanceRecords.filter((record: any) => {
+                  if (!maintenanceFilter) return true
+                  const search = maintenanceFilter.toLowerCase()
+                  return (
+                    record.date?.toLowerCase().includes(search) ||
+                    record.type?.toLowerCase().includes(search) ||
+                    record.provider?.toLowerCase().includes(search) ||
+                    record.description?.toLowerCase().includes(search) ||
+                    record.cost?.toString().includes(search) ||
+                    record.mileage?.toString().includes(search)
+                  )
+                })
+                return filteredMaintenance.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50">
@@ -1103,7 +1163,7 @@ export default function ObjectDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
-                    {object.maintenanceRecords.map((record: any) => (
+                    {filteredMaintenance.map((record: any) => (
                       <tr key={record.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.type}</td>
@@ -1150,6 +1210,13 @@ export default function ObjectDetailPage() {
                   </tbody>
                 </table>
               </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">Aucun résultat pour "{maintenanceFilter}"</p>
+                  </div>
+                )
+              })()
             ) : (
               <div className="text-center py-12">
                 <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-4" />
@@ -1162,12 +1229,22 @@ export default function ObjectDetailPage() {
 
       {activeTab === 'control' && (
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
+          <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
             <CardTitle className="flex items-center gap-2">
               <ClipboardCheck className="w-5 h-5 text-blue-600" />
               Contrôles techniques
             </CardTitle>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="relative">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                <input
+                  type="text"
+                  placeholder="Filtrer..."
+                  value={controlFilter}
+                  onChange={(e) => setControlFilter(e.target.value)}
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+                />
+              </div>
               {(user?.role === 'admin' || user?.role === 'supervisor') && (
                 <Button 
                   size="sm" 
@@ -1186,6 +1263,21 @@ export default function ObjectDetailPage() {
           </CardHeader>
           <CardBody className="p-0">
             {object.technicalControls && object.technicalControls.length > 0 ? (
+              (() => {
+                const filteredControl = object.technicalControls.filter((control: any) => {
+                  if (!controlFilter) return true
+                  const search = controlFilter.toLowerCase()
+                  const resultText = control.result === 'passed' ? 'favorable' : control.result === 'failed' ? 'défavorable' : 'contre-visite'
+                  return (
+                    control.date?.toLowerCase().includes(search) ||
+                    control.centerName?.toLowerCase().includes(search) ||
+                    control.expiryDate?.toLowerCase().includes(search) ||
+                    resultText.includes(search) ||
+                    control.cost?.toString().includes(search) ||
+                    control.mileage?.toString().includes(search)
+                  )
+                })
+                return filteredControl.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -1202,7 +1294,7 @@ export default function ObjectDetailPage() {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
-                    {object.technicalControls.map((control: any) => (
+                    {filteredControl.map((control: any) => (
                       <tr key={control.id} className="hover:bg-gray-50">
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
                           {formatDate(control.date)}
@@ -1263,6 +1355,13 @@ export default function ObjectDetailPage() {
                   </tbody>
                 </table>
               </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <ClipboardCheck className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                    <p className="text-gray-500">Aucun résultat pour "{controlFilter}"</p>
+                  </div>
+                )
+              })()
             ) : (
               <div className="text-center py-12">
                 <ClipboardCheck className="w-12 h-12 text-gray-300 mx-auto mb-4" />
