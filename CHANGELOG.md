@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.8] - 2026-02-04
+
+### Ajouté
+- **Plugin Carburant** : Les administrateurs peuvent modifier et supprimer les entrées de l'historique carburant
+- Boutons d'action (modifier/supprimer) dans le tableau carburant pour les admins
+- Modal d'édition avec recalcul automatique du prix unitaire
+- Confirmation avant suppression d'une entrée
+
+### Backend
+- Route PUT `/api/objects/:id/fuel/:entryId` pour modification
+- La route DELETE existante est désormais utilisée depuis l'interface
+
 ## [1.2.7] - 2026-02-04
 
 ### Amélioré

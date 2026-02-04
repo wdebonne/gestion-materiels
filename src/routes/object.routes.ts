@@ -478,6 +478,35 @@ router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthR
   }
 });
 
+// PUT /api/objects/:id/fuel/:entryId - Modifier une entrée carburant
+router.put('/:id/fuel/:entryId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, entryId } = req.params;
+    const { fuelType, quantity, cost, mileage, station, date, notes } = req.body;
+
+    const totalPrice = cost ? parseFloat(cost) : null;
+    const qty = quantity ? parseFloat(quantity) : null;
+    const unitPriceCalculated = (totalPrice && qty && qty > 0) ? (totalPrice / qty) : null;
+
+    const result = await db.execute(
+      `UPDATE fuel_entries SET 
+        fuel_type = ?, quantity = ?, unit_price = ?, total_price = ?, 
+        mileage = ?, station = ?, entry_date = ?, notes = ?
+       WHERE id = ? AND object_id = ?`,
+      [fuelType || 'Carburant', qty, unitPriceCalculated, totalPrice, mileage || null, station || null, date, notes || null, entryId, id]
+    );
+
+    if (result.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Entrée non trouvée' });
+    }
+
+    res.json({ success: true, message: 'Entrée carburant modifiée', unitPrice: unitPriceCalculated });
+  } catch (error: any) {
+    console.error('Erreur update fuel entry:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // DELETE /api/objects/:id/fuel/:entryId - Supprimer une entrée carburant
 router.delete('/:id/fuel/:entryId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {

@@ -3,9 +3,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
-  ClipboardCheck, Plus, Save, X,
+  ClipboardCheck, Plus, Save, X, Trash2, Pencil,
   Image as ImageIcon, Settings2
 } from 'lucide-react'
+import { useAuthStore } from '@/stores/auth.store'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select,
   LoadingInline, Alert, Card, CardBody, CardHeader, CardTitle, Tabs, Badge
@@ -18,12 +19,16 @@ export default function ObjectDetailPage() {
   const { objectId: id } = useParams<{ objectId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const isAdmin = user?.role === 'admin'
   const [activeTab, setActiveTab] = useState('details')
   const [isEditing, setIsEditing] = useState(false)
   const [editFormData, setEditFormData] = useState<any>(null)
   
   // Modals pour les plugins
   const [fuelModal, setFuelModal] = useState(false)
+  const [fuelEditModal, setFuelEditModal] = useState<any>(null) // Pour édition carburant
+  const [fuelDeleteConfirm, setFuelDeleteConfirm] = useState<number | null>(null) // Pour suppression carburant
   const [maintenanceModal, setMaintenanceModal] = useState(false)
   const [controlModal, setControlModal] = useState(false)
   const [customPluginModal, setCustomPluginModal] = useState<any>(null) // Pour les plugins personnalisés
@@ -31,6 +36,7 @@ export default function ObjectDetailPage() {
   // Données des formulaires de plugins
   const [fuelData, setFuelData] = useState({
     date: new Date().toISOString().split('T')[0],
+    fuelType: '',
     quantity: '',
     cost: '',
     mileage: '',
@@ -144,10 +150,38 @@ export default function ObjectDetailPage() {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       toast.success('Plein ajouté')
       setFuelModal(false)
-      setFuelData({ date: new Date().toISOString().split('T')[0], quantity: '', cost: '', mileage: '', station: '', notes: '' })
+      setFuelData({ date: new Date().toISOString().split('T')[0], fuelType: '', quantity: '', cost: '', mileage: '', station: '', notes: '' })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
+    }
+  })
+
+  const updateFuelMutation = useMutation({
+    mutationFn: async ({ entryId, data }: { entryId: number, data: any }) => {
+      return api.put(`/objects/${id}/fuel/${entryId}`, data)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['object', id] })
+      toast.success('Plein modifié')
+      setFuelEditModal(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Erreur lors de la modification')
+    }
+  })
+
+  const deleteFuelMutation = useMutation({
+    mutationFn: async (entryId: number) => {
+      return api.delete(`/objects/${id}/fuel/${entryId}`)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['object', id] })
+      toast.success('Plein supprimé')
+      setFuelDeleteConfirm(null)
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.error || 'Erreur lors de la suppression')
     }
   })
 
@@ -591,6 +625,7 @@ export default function ObjectDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coût total</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kilométrage</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station</th>
+                      {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-200">
@@ -603,6 +638,35 @@ export default function ObjectDetailPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.station || '-'}</td>
+                        {isAdmin && (
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setFuelEditModal({
+                                  id: record.id,
+                                  date: record.date,
+                                  fuelType: record.fuelType || '',
+                                  quantity: record.quantity || '',
+                                  cost: record.cost || '',
+                                  mileage: record.mileage || '',
+                                  station: record.station || '',
+                                  notes: record.notes || ''
+                                })}
+                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                title="Modifier"
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setFuelDeleteConfirm(record.id)}
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                title="Supprimer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -823,6 +887,110 @@ export default function ObjectDetailPage() {
             </Button>
           </ModalFooter>
         </form>
+      </Modal>
+
+      {/* Modal Édition Carburant */}
+      <Modal isOpen={!!fuelEditModal} onClose={() => setFuelEditModal(null)} title="Modifier le plein">
+        {fuelEditModal && (
+          <form onSubmit={(e) => { 
+            e.preventDefault(); 
+            updateFuelMutation.mutate({ 
+              entryId: fuelEditModal.id, 
+              data: {
+                date: fuelEditModal.date,
+                fuelType: fuelEditModal.fuelType,
+                quantity: fuelEditModal.quantity,
+                cost: fuelEditModal.cost,
+                mileage: fuelEditModal.mileage,
+                station: fuelEditModal.station,
+                notes: fuelEditModal.notes
+              }
+            }); 
+          }}>
+            <ModalBody className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Date"
+                  type="date"
+                  value={fuelEditModal.date}
+                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, date: e.target.value })}
+                  required
+                />
+                <Input
+                  label="Type de carburant"
+                  value={fuelEditModal.fuelType}
+                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, fuelType: e.target.value })}
+                  placeholder="Ex: Diesel, SP95..."
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Quantité (L)"
+                  type="number"
+                  step="0.01"
+                  value={fuelEditModal.quantity}
+                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, quantity: e.target.value })}
+                  required
+                />
+                <Input
+                  label="Coût total (€)"
+                  type="number"
+                  step="0.01"
+                  value={fuelEditModal.cost}
+                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, cost: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <Input
+                  label="Kilométrage"
+                  type="number"
+                  value={fuelEditModal.mileage}
+                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, mileage: e.target.value })}
+                />
+                <Input
+                  label="Station"
+                  value={fuelEditModal.station}
+                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, station: e.target.value })}
+                />
+              </div>
+              <TextArea
+                label="Notes"
+                value={fuelEditModal.notes}
+                onChange={(e) => setFuelEditModal({ ...fuelEditModal, notes: e.target.value })}
+                rows={2}
+              />
+            </ModalBody>
+            <ModalFooter>
+              <Button type="button" variant="secondary" onClick={() => setFuelEditModal(null)}>
+                Annuler
+              </Button>
+              <Button type="submit" loading={updateFuelMutation.isPending}>
+                Enregistrer
+              </Button>
+            </ModalFooter>
+          </form>
+        )}
+      </Modal>
+
+      {/* Modal Confirmation Suppression Carburant */}
+      <Modal isOpen={!!fuelDeleteConfirm} onClose={() => setFuelDeleteConfirm(null)} title="Confirmer la suppression">
+        <ModalBody>
+          <p className="text-gray-600">
+            Êtes-vous sûr de vouloir supprimer cette entrée carburant ? Cette action est irréversible.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button type="button" variant="secondary" onClick={() => setFuelDeleteConfirm(null)}>
+            Annuler
+          </Button>
+          <Button 
+            variant="danger" 
+            loading={deleteFuelMutation.isPending}
+            onClick={() => fuelDeleteConfirm && deleteFuelMutation.mutate(fuelDeleteConfirm)}
+          >
+            Supprimer
+          </Button>
+        </ModalFooter>
       </Modal>
 
       {/* Modal Entretien */}
