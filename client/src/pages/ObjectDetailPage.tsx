@@ -1150,7 +1150,7 @@ export default function ObjectDetailPage() {
                           </Badge>
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
-                          {control.center || '-'}
+                          {control.centerName || '-'}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
                           {control.mileage ? `${control.mileage} km` : '-'}
@@ -1159,9 +1159,9 @@ export default function ObjectDetailPage() {
                           {formatCurrency(control.cost)}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm">
-                          {control.expirationDate ? (
-                            <span className={new Date(control.expirationDate) < new Date() ? 'text-red-600' : 'text-green-600'}>
-                              {formatDate(control.expirationDate)}
+                          {control.expiryDate ? (
+                            <span className={new Date(control.expiryDate) < new Date() ? 'text-red-600' : 'text-green-600'}>
+                              {formatDate(control.expiryDate)}
                             </span>
                           ) : '-'}
                         </td>
@@ -1172,10 +1172,10 @@ export default function ObjectDetailPage() {
                                 onClick={() => setControlEditModal({
                                   id: control.id,
                                   date: control.date?.split('T')[0] || '',
-                                  expirationDate: control.expirationDate?.split('T')[0] || '',
+                                  expirationDate: control.expiryDate?.split('T')[0] || '',
                                   result: control.result || 'passed',
                                   mileage: control.mileage?.toString() || '',
-                                  center: control.center || '',
+                                  center: control.centerName || '',
                                   cost: control.cost?.toString() || '',
                                   notes: control.notes || ''
                                 })}
