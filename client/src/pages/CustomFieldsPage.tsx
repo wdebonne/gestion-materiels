@@ -157,11 +157,12 @@ export default function CustomFieldsPage() {
         }))
       })
     },
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Configuration sauvegardée')
       setHasChanges(false)
-      refetchFields()
-      queryClient.invalidateQueries({ queryKey: ['customFieldsConfig'] })
+      // Invalider le cache puis rafraîchir les données
+      await queryClient.invalidateQueries({ queryKey: ['customFieldsConfig'] })
+      await refetchFields()
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Erreur lors de la sauvegarde')

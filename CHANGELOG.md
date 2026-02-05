@@ -7,6 +7,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.24] - 2026-02-05
+
+### Amélioré
+- **Rafraîchissement automatique des champs personnalisés** : La page de configuration des champs se rafraîchit automatiquement après la sauvegarde
+
 ## [1.2.23] - 2026-02-05
 
 ### Ajouté
