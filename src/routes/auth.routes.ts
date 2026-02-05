@@ -32,11 +32,11 @@ function generateTokens(user: any): { accessToken: string; refreshToken: string 
 
   const accessToken = jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-  });
+  } as jwt.SignOptions);
 
   const refreshToken = jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d'
-  });
+  } as jwt.SignOptions);
 
   return { accessToken, refreshToken };
 }

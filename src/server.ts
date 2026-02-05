@@ -31,7 +31,7 @@ import { initPluginSystem } from './services/plugin.service';
 import { initCronJobs } from './services/cron.service';
 
 const app: Application = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT) || 3000;
 
 // Middlewares de sécurité et logging
 app.use(helmet({
