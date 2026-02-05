@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.18] - 2026-02-05
+
+### Corrigé
+- **Système de sauvegarde SQLite** : Ajout d'un checkpoint WAL avant la sauvegarde pour garantir que toutes les données sont écrites dans le fichier principal
+- **Restauration des sauvegardes** : Suppression des fichiers WAL (-wal et -shm) existants avant la restauration pour éviter les conflits de données
+- **Seed admin** : Le seed vérifie maintenant s'il existe un utilisateur admin (par rôle) au lieu de vérifier un email spécifique, évitant ainsi la recréation d'un compte admin par défaut lors d'une restauration
+
 ## [1.2.17] - 2026-02-05
 
 ### Ajouté

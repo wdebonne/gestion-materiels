@@ -88,6 +88,12 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
     // Ajouter la base de données SQLite
     if (dbType === 'sqlite') {
       const dbPath = process.env.DB_PATH || './data/database.sqlite';
+      
+      // IMPORTANT: Forcer un checkpoint WAL pour s'assurer que toutes les données
+      // sont écrites dans le fichier principal avant la sauvegarde
+      const sqliteDb = db.getSQLiteDb();
+      sqliteDb.pragma('wal_checkpoint(TRUNCATE)');
+      
       if (fs.existsSync(dbPath)) {
         archive.file(dbPath, { name: 'database.sqlite' });
       }
@@ -278,6 +284,12 @@ router.post('/restore', authenticateToken, requireAdmin, async (req: AuthRequest
         const sqliteDb = db.getSQLiteDb();
         sqliteDb.close();
         
+        // Supprimer les fichiers WAL existants pour éviter les conflits
+        const walPath = targetDbPath + '-wal';
+        const shmPath = targetDbPath + '-shm';
+        if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
+        if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
+        
         // Copier la base de données
         fs.copyFileSync(backupDbPath, targetDbPath);
         
@@ -366,6 +378,12 @@ router.post('/upload', authenticateToken, requireAdmin, backupUpload.single('bac
         // Fermer la connexion actuelle
         const sqliteDb = db.getSQLiteDb();
         sqliteDb.close();
+        
+        // Supprimer les fichiers WAL existants pour éviter les conflits
+        const walPath = targetDbPath + '-wal';
+        const shmPath = targetDbPath + '-shm';
+        if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
+        if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
         
         // Copier la base de données
         fs.copyFileSync(backupDbPath, targetDbPath);

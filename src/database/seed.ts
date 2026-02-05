@@ -324,18 +324,19 @@ const DEFAULT_PLUGINS = [
 export async function seedDatabase(): Promise<void> {
   console.log('🌱 Début du seed de la base de données...');
 
-  // Créer l'utilisateur admin par défaut
-  const adminPassword = await bcrypt.hash('admin123', 12);
-  const existingAdmin = await db.queryOne('SELECT id FROM users WHERE email = ?', ['admin@example.com']);
+  // Créer l'utilisateur admin par défaut seulement s'il n'y a aucun admin dans la base
+  // Cela évite de recréer un admin par défaut lors d'une restauration de backup
+  const existingAdmin = await db.queryOne('SELECT id FROM users WHERE role = ?', ['admin']);
   
   if (!existingAdmin) {
+    const adminPassword = await bcrypt.hash('admin123', 12);
     await db.execute(
       `INSERT INTO users (email, password, first_name, last_name, role, is_active) VALUES (?, ?, ?, ?, ?, ?)`,
       ['admin@example.com', adminPassword, 'Admin', 'Système', 'admin', 1]
     );
     console.log('✅ Utilisateur admin créé (admin@example.com / admin123)');
   } else {
-    console.log('ℹ️ Utilisateur admin existe déjà');
+    console.log('ℹ️ Un utilisateur admin existe déjà');
   }
 
   // Insérer les paramètres par défaut
