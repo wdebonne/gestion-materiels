@@ -2,21 +2,62 @@ import cron from 'node-cron';
 import { db } from '../database';
 import { sendAlertEmail } from './email.service';
 
+// Récupérer les paramètres d'alertes
+async function getAlertSettings(): Promise<{
+  technical_control: { days: number; priority: string };
+  maintenance: { days: number; priority: string };
+  fuel: { days: number; priority: string };
+  custom: { days: number; priority: string };
+}> {
+  const defaultSettings = {
+    technical_control: { days: 30, priority: 'medium' },
+    maintenance: { days: 14, priority: 'low' },
+    fuel: { days: 7, priority: 'low' },
+    custom: { days: 7, priority: 'low' }
+  };
+
+  try {
+    const setting = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'alert_settings'"
+    );
+
+    if (setting && setting.value) {
+      const parsed = JSON.parse(setting.value);
+      return { ...defaultSettings, ...parsed };
+    }
+  } catch (error) {
+    console.error('Erreur récupération paramètres alertes:', error);
+  }
+
+  return defaultSettings;
+}
+
+// Convertir la priorité en sévérité
+function priorityToSeverity(priority: string, daysUntilExpiry: number): string {
+  // Si très proche de l'échéance, toujours critique
+  if (daysUntilExpiry <= 7) return 'critical';
+  if (daysUntilExpiry <= 15) return 'warning';
+  
+  // Sinon, utiliser la priorité configurée
+  switch (priority) {
+    case 'high': return 'warning';
+    case 'medium': return 'info';
+    default: return 'info';
+  }
+}
+
 // Vérifier les alertes à envoyer
 async function checkAlerts(): Promise<void> {
   try {
-    // Récupérer les paramètres de rappel
-    const reminderDaysSetting = await db.queryOne(
-      "SELECT setting_value FROM settings WHERE setting_key = 'reminder_days_before'"
-    );
-    const reminderDays = parseInt(reminderDaysSetting?.setting_value || '30');
+    // Récupérer les paramètres d'alerte configurés
+    const alertSettings = await getAlertSettings();
 
     // Vérifier les contrôles techniques arrivant à échéance
     const technicalControls = await db.query(
       `SELECT tc.*, o.name as object_name FROM technical_controls tc
        INNER JOIN objects o ON o.id = tc.object_id
        WHERE tc.reminder_sent = 0 
-       AND date(tc.expiry_date) <= date('now', '+${reminderDays} days')
+       AND date(tc.expiry_date) <= date('now', '+${alertSettings.technical_control.days} days')
        AND date(tc.expiry_date) >= date('now')`
     );
 
@@ -31,9 +72,7 @@ async function checkAlerts(): Promise<void> {
         (new Date(tc.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
 
-      let severity = 'info';
-      if (daysUntilExpiry <= 7) severity = 'critical';
-      else if (daysUntilExpiry <= 15) severity = 'warning';
+      const severity = priorityToSeverity(alertSettings.technical_control.priority, daysUntilExpiry);
 
       if (!existingAlert) {
         const alertResult = await db.execute(
@@ -41,7 +80,7 @@ async function checkAlerts(): Promise<void> {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             `Contrôle technique: ${tc.object_name}`,
-            `Le contrôle technique expire dans ${daysUntilExpiry} jour(s)`,
+            `Le contrôle technique expire le ${tc.expiry_date}`,
             'technical_control',
             severity,
             tc.object_id,
@@ -62,7 +101,7 @@ async function checkAlerts(): Promise<void> {
         // Mettre à jour la sévérité
         await db.execute(
           'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
-          [severity, `Le contrôle technique expire dans ${daysUntilExpiry} jour(s)`, existingAlert.id]
+          [severity, `Le contrôle technique expire le ${tc.expiry_date}`, existingAlert.id]
         );
       }
     }
@@ -72,7 +111,7 @@ async function checkAlerts(): Promise<void> {
       `SELECT m.*, o.name as object_name FROM maintenances m
        INNER JOIN objects o ON o.id = m.object_id
        WHERE m.reminder_sent = 0 AND m.next_date IS NOT NULL
-       AND date(m.next_date) <= date('now', '+${reminderDays} days')
+       AND date(m.next_date) <= date('now', '+${alertSettings.maintenance.days} days')
        AND date(m.next_date) >= date('now')`
     );
 
@@ -86,8 +125,7 @@ async function checkAlerts(): Promise<void> {
         (new Date(m.next_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
 
-      let severity = 'info';
-      if (daysUntilDue <= 7) severity = 'warning';
+      const severity = priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
 
       if (!existingAlert) {
         const alertResult = await db.execute(
@@ -95,7 +133,7 @@ async function checkAlerts(): Promise<void> {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             `Maintenance: ${m.object_name}`,
-            `${m.maintenance_type} prévue dans ${daysUntilDue} jour(s)`,
+            `${m.maintenance_type} prévue le ${m.next_date}`,
             'maintenance',
             severity,
             m.object_id,

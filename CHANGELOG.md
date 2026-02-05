@@ -7,6 +7,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.26] - 2026-02-05
+
+### Ajouté
+- **Paramètres des alertes** : Nouveau bouton "Paramètres" sur la page Alertes permettant de configurer :
+  - Le nombre de jours avant l'échéance pour déclencher une alerte (par type)
+  - Le niveau de priorité par défaut (basse, moyenne, élevée) pour chaque type d'alerte
+- Configuration distincte pour : Contrôle technique, Maintenance, Carburant, Autres alertes
+
+### API
+- `GET /api/alerts/settings` - Récupérer les paramètres des alertes
+- `PUT /api/alerts/settings` - Mettre à jour les paramètres des alertes
+
+### Amélioré
+- **Service cron** : Utilise désormais les paramètres configurés pour déclencher les alertes
+- **Calendrier** : Correction du chargement initial des événements
+
 ## [1.2.25] - 2026-02-05
 
 ### Corrigé

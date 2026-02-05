@@ -96,6 +96,68 @@ router.get('/count', authenticateToken, async (req: AuthRequest, res: Response) 
   }
 });
 
+// GET /api/alerts/settings - Récupérer les paramètres des alertes
+router.get('/settings', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const setting = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'alert_settings'"
+    );
+
+    const defaultSettings = {
+      technical_control: { days: 30, priority: 'medium' },
+      maintenance: { days: 14, priority: 'low' },
+      fuel: { days: 7, priority: 'low' },
+      custom: { days: 7, priority: 'low' }
+    };
+
+    if (setting && setting.value) {
+      try {
+        const settings = JSON.parse(setting.value);
+        res.json({ success: true, settings: { ...defaultSettings, ...settings } });
+      } catch {
+        res.json({ success: true, settings: defaultSettings });
+      }
+    } else {
+      res.json({ success: true, settings: defaultSettings });
+    }
+  } catch (error: any) {
+    console.error('Erreur get alert settings:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/alerts/settings - Mettre à jour les paramètres des alertes
+router.put('/settings', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { settings } = req.body;
+
+    if (!settings) {
+      return res.status(400).json({ success: false, message: 'Paramètres requis' });
+    }
+
+    const existingSetting = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'alert_settings'"
+    );
+
+    if (existingSetting) {
+      await db.execute(
+        "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'alert_settings'",
+        [JSON.stringify(settings)]
+      );
+    } else {
+      await db.execute(
+        "INSERT INTO settings (key, value) VALUES ('alert_settings', ?)",
+        [JSON.stringify(settings)]
+      );
+    }
+
+    res.json({ success: true, message: 'Paramètres enregistrés' });
+  } catch (error: any) {
+    console.error('Erreur save alert settings:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // PUT /api/alerts/:id/read - Marquer une alerte comme lue
 router.put('/:id/read', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

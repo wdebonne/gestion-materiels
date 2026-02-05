@@ -55,6 +55,7 @@ export default function CalendarPage() {
   const [filterEventType, setFilterEventType] = useState<string>('')
   const [showFilters, setShowFilters] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isInitialized, setIsInitialized] = useState(false)
 
   const [dateRange, setDateRange] = useState({
     start: startOfMonth(subMonths(new Date(), 1)).toISOString(),
@@ -84,7 +85,9 @@ export default function CalendarPage() {
       })
       const response = await api.get(`/calendar?${params}`)
       return response.data.events || []
-    }
+    },
+    staleTime: 30000, // Considérer les données comme fraîches pendant 30 secondes
+    refetchOnMount: true
   })
 
   // Récupérer le statut de synchronisation
@@ -279,10 +282,20 @@ export default function CalendarPage() {
   }
 
   const handleDatesSet = (info: any) => {
-    setDateRange({
-      start: info.start.toISOString(),
-      end: info.end.toISOString()
+    // Ne mettre à jour que si la plage a vraiment changé pour éviter les re-renders inutiles
+    const newStart = info.start.toISOString()
+    const newEnd = info.end.toISOString()
+    
+    setDateRange(prev => {
+      if (prev.start !== newStart || prev.end !== newEnd) {
+        return { start: newStart, end: newEnd }
+      }
+      return prev
     })
+    
+    if (!isInitialized) {
+      setIsInitialized(true)
+    }
   }
 
   // Navigation du calendrier

@@ -1,13 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { 
   Bell, Check, AlertTriangle, Fuel, Wrench, ClipboardCheck,
-  Filter, CheckCheck, Trash2
+  Filter, CheckCheck, Trash2, Settings, Save
 } from 'lucide-react'
 import { 
   Button, Card, CardBody, CardHeader, CardTitle, Badge, 
-  LoadingInline, Select, Modal, ModalBody, ModalFooter
+  LoadingInline, Select, Modal, ModalBody, ModalFooter, Input
 } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -26,12 +26,61 @@ interface Alert {
   createdAt: string
 }
 
+interface AlertSettings {
+  technical_control: { days: number; priority: 'low' | 'medium' | 'high' }
+  maintenance: { days: number; priority: 'low' | 'medium' | 'high' }
+  fuel: { days: number; priority: 'low' | 'medium' | 'high' }
+  custom: { days: number; priority: 'low' | 'medium' | 'high' }
+}
+
 export default function AlertsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [deleteConfirm, setDeleteConfirm] = useState<Alert | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+  const [alertSettings, setAlertSettings] = useState<AlertSettings>({
+    technical_control: { days: 30, priority: 'medium' },
+    maintenance: { days: 14, priority: 'low' },
+    fuel: { days: 7, priority: 'low' },
+    custom: { days: 7, priority: 'low' }
+  })
+
+  // Récupérer les paramètres d'alertes
+  const { data: settingsData } = useQuery({
+    queryKey: ['alert-settings'],
+    queryFn: async () => {
+      try {
+        const response = await api.get('/alerts/settings')
+        return response.data.settings
+      } catch {
+        return null
+      }
+    }
+  })
+
+  // Mettre à jour les settings locaux quand les données sont chargées
+  useEffect(() => {
+    if (settingsData) {
+      setAlertSettings(settingsData)
+    }
+  }, [settingsData])
+
+  // Mutation pour sauvegarder les paramètres
+  const saveSettingsMutation = useMutation({
+    mutationFn: async (settings: AlertSettings) => {
+      return api.put('/alerts/settings', { settings })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['alert-settings'] })
+      toast.success('Paramètres d\'alertes enregistrés')
+      setShowSettings(false)
+    },
+    onError: () => {
+      toast.error('Erreur lors de la sauvegarde')
+    }
+  })
 
   // Récupérer les alertes
   const { data, isLoading } = useQuery({
@@ -179,6 +228,13 @@ export default function AlertsPage() {
             Tout marquer comme lu
           </Button>
         )}
+        <Button 
+          variant="secondary"
+          icon={<Settings className="w-4 h-4" />}
+          onClick={() => setShowSettings(true)}
+        >
+          Paramètres
+        </Button>
       </div>
 
       {/* Filtres */}
@@ -351,6 +407,176 @@ export default function AlertsPage() {
             onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm.id)}
           >
             Supprimer
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal paramètres des alertes */}
+      <Modal
+        isOpen={showSettings}
+        onClose={() => setShowSettings(false)}
+        title="Paramètres des alertes"
+        size="lg"
+      >
+        <ModalBody className="space-y-6">
+          <p className="text-sm text-gray-500">
+            Configurez le délai d'affichage des alertes avant l'échéance et leur niveau de priorité pour chaque type.
+          </p>
+
+          {/* Contrôle technique */}
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+                <ClipboardCheck className="w-5 h-5" />
+              </div>
+              <h3 className="font-medium text-gray-900">Contrôle technique</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Jours avant l'échéance"
+                type="number"
+                min={1}
+                max={365}
+                value={alertSettings.technical_control.days}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  technical_control: { ...alertSettings.technical_control, days: parseInt(e.target.value) || 30 }
+                })}
+              />
+              <Select
+                label="Priorité par défaut"
+                value={alertSettings.technical_control.priority}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  technical_control: { ...alertSettings.technical_control, priority: e.target.value as 'low' | 'medium' | 'high' }
+                })}
+                options={[
+                  { value: 'low', label: 'Basse' },
+                  { value: 'medium', label: 'Moyenne' },
+                  { value: 'high', label: 'Élevée' }
+                ]}
+              />
+            </div>
+          </div>
+
+          {/* Maintenance */}
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-orange-100 text-orange-600">
+                <Wrench className="w-5 h-5" />
+              </div>
+              <h3 className="font-medium text-gray-900">Entretien / Maintenance</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Jours avant l'échéance"
+                type="number"
+                min={1}
+                max={365}
+                value={alertSettings.maintenance.days}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  maintenance: { ...alertSettings.maintenance, days: parseInt(e.target.value) || 14 }
+                })}
+              />
+              <Select
+                label="Priorité par défaut"
+                value={alertSettings.maintenance.priority}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  maintenance: { ...alertSettings.maintenance, priority: e.target.value as 'low' | 'medium' | 'high' }
+                })}
+                options={[
+                  { value: 'low', label: 'Basse' },
+                  { value: 'medium', label: 'Moyenne' },
+                  { value: 'high', label: 'Élevée' }
+                ]}
+              />
+            </div>
+          </div>
+
+          {/* Carburant */}
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-green-100 text-green-600">
+                <Fuel className="w-5 h-5" />
+              </div>
+              <h3 className="font-medium text-gray-900">Carburant</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Jours avant l'échéance"
+                type="number"
+                min={1}
+                max={365}
+                value={alertSettings.fuel.days}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  fuel: { ...alertSettings.fuel, days: parseInt(e.target.value) || 7 }
+                })}
+              />
+              <Select
+                label="Priorité par défaut"
+                value={alertSettings.fuel.priority}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  fuel: { ...alertSettings.fuel, priority: e.target.value as 'low' | 'medium' | 'high' }
+                })}
+                options={[
+                  { value: 'low', label: 'Basse' },
+                  { value: 'medium', label: 'Moyenne' },
+                  { value: 'high', label: 'Élevée' }
+                ]}
+              />
+            </div>
+          </div>
+
+          {/* Autre */}
+          <div className="border rounded-lg p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 rounded-lg bg-gray-100 text-gray-600">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <h3 className="font-medium text-gray-900">Autres alertes</h3>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                label="Jours avant l'échéance"
+                type="number"
+                min={1}
+                max={365}
+                value={alertSettings.custom.days}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  custom: { ...alertSettings.custom, days: parseInt(e.target.value) || 7 }
+                })}
+              />
+              <Select
+                label="Priorité par défaut"
+                value={alertSettings.custom.priority}
+                onChange={(e) => setAlertSettings({
+                  ...alertSettings,
+                  custom: { ...alertSettings.custom, priority: e.target.value as 'low' | 'medium' | 'high' }
+                })}
+                options={[
+                  { value: 'low', label: 'Basse' },
+                  { value: 'medium', label: 'Moyenne' },
+                  { value: 'high', label: 'Élevée' }
+                ]}
+              />
+            </div>
+          </div>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setShowSettings(false)}>
+            Annuler
+          </Button>
+          <Button 
+            icon={<Save className="w-4 h-4" />}
+            loading={saveSettingsMutation.isPending}
+            onClick={() => saveSettingsMutation.mutate(alertSettings)}
+          >
+            Enregistrer
           </Button>
         </ModalFooter>
       </Modal>
