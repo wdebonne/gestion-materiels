@@ -74,7 +74,8 @@ export default function AlertsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alert-settings'] })
-      toast.success('Paramètres d\'alertes enregistrés')
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
+      toast.success('Paramètres d\'alertes enregistrés et alertes mises à jour')
       setShowSettings(false)
     },
     onError: () => {
