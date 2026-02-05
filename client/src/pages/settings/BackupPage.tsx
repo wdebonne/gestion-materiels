@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { 
   Download, Upload, Trash2, Clock, HardDrive, 
-  RefreshCw, CheckCircle, AlertTriangle, FileArchive, UploadCloud, Mail, Settings
+  RefreshCw, CheckCircle, AlertTriangle, FileArchive, UploadCloud, Mail, Settings,
+  Database, Image, Puzzle, FolderArchive, Server, RotateCcw
 } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, CardTitle, Button, 
@@ -186,8 +187,85 @@ export default function BackupPage() {
       {/* En-tête */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Sauvegardes</h1>
-        <p className="text-gray-500 mt-1">Gérez les sauvegardes de la base de données</p>
+        <p className="text-gray-500 mt-1">Gérez les sauvegardes complètes du site (base de données, fichiers, images et plugins)</p>
       </div>
+
+      {/* Sauvegarde Totale - Card principale */}
+      <Card className="border-2 border-primary-200 bg-gradient-to-br from-primary-50 to-white">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-primary-700">
+            <FolderArchive className="w-6 h-6" />
+            Sauvegarde Totale du Site
+          </CardTitle>
+        </CardHeader>
+        <CardBody>
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Créez une sauvegarde complète de votre site incluant tous les éléments essentiels :
+            </p>
+            
+            {/* Éléments inclus dans la sauvegarde */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="flex items-center gap-2 p-3 bg-white rounded-lg border border-gray-200">
+                <Database className="w-5 h-5 text-blue-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Base de données</p>
+                  <p className="text-xs text-gray-500">Toutes les données</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 bg-white rounded-lg border border-gray-200">
+                <Image className="w-5 h-5 text-green-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Images & Fichiers</p>
+                  <p className="text-xs text-gray-500">Dossier uploads</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 bg-white rounded-lg border border-gray-200">
+                <Puzzle className="w-5 h-5 text-purple-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Plugins</p>
+                  <p className="text-xs text-gray-500">Extensions installées</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 bg-white rounded-lg border border-gray-200">
+                <Server className="w-5 h-5 text-orange-500" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900">Configuration</p>
+                  <p className="text-xs text-gray-500">Paramètres système</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <Button
+                size="lg"
+                onClick={() => createBackupMutation.mutate()}
+                loading={createBackupMutation.isPending}
+                className="flex-1"
+              >
+                <Download className="w-5 h-5 mr-2" />
+                Créer une sauvegarde complète (ZIP)
+              </Button>
+              <Button
+                size="lg"
+                variant="secondary"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex-1"
+              >
+                <RotateCcw className="w-5 h-5 mr-2" />
+                Restaurer depuis un fichier ZIP
+              </Button>
+            </div>
+
+            {lastBackup && (
+              <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
+                <CheckCircle className="w-4 h-4 text-green-500" />
+                Dernière sauvegarde : {formatDate(lastBackup.createdAt)} ({formatFileSize(lastBackup.size)})
+              </div>
+            )}
+          </div>
+        </CardBody>
+      </Card>
 
       {/* Actions rapides */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -198,9 +276,9 @@ export default function BackupPage() {
                 <Download className="w-8 h-8 text-green-600" />
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-gray-900">Créer une sauvegarde</h3>
+                <h3 className="font-semibold text-gray-900">Sauvegarde rapide</h3>
                 <p className="text-sm text-gray-500 mt-1">
-                  Exportez une copie complète de la base de données
+                  Créer une sauvegarde complète immédiatement
                 </p>
               </div>
               <Button
@@ -237,19 +315,43 @@ export default function BackupPage() {
         </Card>
       </div>
 
-      {/* Restaurer une sauvegarde externe */}
-      <Card>
+      {/* Restauration globale depuis fichier externe */}
+      <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-orange-700">
+            <RotateCcw className="w-6 h-6" />
+            Restauration Globale
+          </CardTitle>
+        </CardHeader>
         <CardBody>
-          <div className="flex items-center gap-4">
-            <div className="p-4 bg-orange-100 rounded-xl">
-              <UploadCloud className="w-8 h-8 text-orange-600" />
+          <div className="space-y-4">
+            <p className="text-gray-600">
+              Restaurez l'intégralité de votre site à partir d'un fichier de sauvegarde ZIP. Cette opération remplacera :
+            </p>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
+                <Database className="w-4 h-4 text-orange-500" />
+                <span className="text-sm text-gray-700">Base de données</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
+                <Image className="w-4 h-4 text-orange-500" />
+                <span className="text-sm text-gray-700">Images & Fichiers</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
+                <Puzzle className="w-4 h-4 text-orange-500" />
+                <span className="text-sm text-gray-700">Plugins</span>
+              </div>
+              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
+                <Server className="w-4 h-4 text-orange-500" />
+                <span className="text-sm text-gray-700">Configuration</span>
+              </div>
             </div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900">Restaurer une sauvegarde externe</h3>
-              <p className="text-sm text-gray-500 mt-1">
-                Importez et restaurez un fichier de sauvegarde (.zip) depuis votre ordinateur
-              </p>
-            </div>
+
+            <Alert type="warning">
+              <strong>⚠️ Attention :</strong> La restauration remplacera toutes les données actuelles par celles contenues dans le fichier de sauvegarde. Cette action est irréversible.
+            </Alert>
+
             <input
               ref={fileInputRef}
               type="file"
@@ -260,9 +362,10 @@ export default function BackupPage() {
             <Button
               variant="secondary"
               onClick={() => fileInputRef.current?.click()}
+              className="w-full sm:w-auto"
             >
-              <Upload className="w-4 h-4 mr-2" />
-              Importer
+              <UploadCloud className="w-4 h-4 mr-2" />
+              Sélectionner un fichier ZIP de sauvegarde
             </Button>
           </div>
         </CardBody>
@@ -433,19 +536,38 @@ export default function BackupPage() {
       <Modal
         isOpen={!!restoreConfirm}
         onClose={() => setRestoreConfirm(null)}
-        title="Restaurer la sauvegarde"
-        size="sm"
+        title="Restauration Globale du Site"
+        size="md"
       >
         <ModalBody>
           <div className="flex items-center gap-3 text-yellow-600 mb-4">
             <AlertTriangle className="w-6 h-6" />
-            <span className="font-medium">Attention !</span>
+            <span className="font-medium">Attention - Restauration Complète !</span>
           </div>
           <p className="text-gray-600">
             Êtes-vous sûr de vouloir restaurer la sauvegarde <strong>{restoreConfirm?.filename}</strong> ?
           </p>
-          <p className="text-sm text-red-600 mt-2">
-            Toutes les données actuelles seront remplacées par celles de la sauvegarde.
+          
+          <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+            <p className="text-sm font-medium text-yellow-800 mb-2">Cette restauration va remplacer :</p>
+            <ul className="text-sm text-yellow-700 space-y-1">
+              <li className="flex items-center gap-2">
+                <Database className="w-4 h-4" /> Base de données complète
+              </li>
+              <li className="flex items-center gap-2">
+                <Image className="w-4 h-4" /> Toutes les images et fichiers uploadés
+              </li>
+              <li className="flex items-center gap-2">
+                <Puzzle className="w-4 h-4" /> Tous les plugins installés
+              </li>
+              <li className="flex items-center gap-2">
+                <Server className="w-4 h-4" /> Configuration et paramètres
+              </li>
+            </ul>
+          </div>
+          
+          <p className="text-sm text-red-600 mt-4 font-medium">
+            ⚠️ Cette action est irréversible. Toutes les données actuelles seront remplacées.
           </p>
         </ModalBody>
         <ModalFooter>
@@ -457,7 +579,8 @@ export default function BackupPage() {
             loading={restoreMutation.isPending}
             onClick={() => restoreConfirm && restoreMutation.mutate(restoreConfirm.id)}
           >
-            Restaurer
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Restaurer tout le site
           </Button>
         </ModalFooter>
       </Modal>
@@ -495,13 +618,13 @@ export default function BackupPage() {
       <Modal
         isOpen={!!uploadConfirm}
         onClose={() => setUploadConfirm(null)}
-        title="Restaurer une sauvegarde externe"
-        size="sm"
+        title="Restauration Globale du Site"
+        size="md"
       >
         <ModalBody>
           <div className="flex items-center gap-3 text-orange-600 mb-4">
             <AlertTriangle className="w-6 h-6" />
-            <span className="font-medium">Attention !</span>
+            <span className="font-medium">Attention - Restauration Complète !</span>
           </div>
           <p className="text-gray-600">
             Vous êtes sur le point de restaurer le fichier <strong>{uploadConfirm?.name}</strong>
@@ -509,8 +632,27 @@ export default function BackupPage() {
           <p className="text-sm text-gray-500 mt-2">
             Taille : {uploadConfirm && formatFileSize(uploadConfirm.size)}
           </p>
-          <p className="text-sm text-red-600 mt-3">
-            ⚠️ Toutes les données actuelles seront remplacées par celles de la sauvegarde.
+          
+          <div className="mt-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+            <p className="text-sm font-medium text-orange-800 mb-2">Cette restauration va remplacer :</p>
+            <ul className="text-sm text-orange-700 space-y-1">
+              <li className="flex items-center gap-2">
+                <Database className="w-4 h-4" /> Base de données complète
+              </li>
+              <li className="flex items-center gap-2">
+                <Image className="w-4 h-4" /> Toutes les images et fichiers uploadés
+              </li>
+              <li className="flex items-center gap-2">
+                <Puzzle className="w-4 h-4" /> Tous les plugins installés
+              </li>
+              <li className="flex items-center gap-2">
+                <Server className="w-4 h-4" /> Configuration et paramètres
+              </li>
+            </ul>
+          </div>
+          
+          <p className="text-sm text-red-600 mt-4 font-medium">
+            ⚠️ Cette action est irréversible. Assurez-vous d'avoir une sauvegarde des données actuelles si nécessaire.
           </p>
         </ModalBody>
         <ModalFooter>
@@ -522,7 +664,8 @@ export default function BackupPage() {
             loading={uploadMutation.isPending}
             onClick={() => uploadConfirm && uploadMutation.mutate(uploadConfirm)}
           >
-            Restaurer
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Restaurer tout le site
           </Button>
         </ModalFooter>
       </Modal>
