@@ -22,6 +22,9 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ### Amélioré
 - Migration automatique de la base de données pour ajouter la colonne `attachments`
 
+### Corrigé
+- Correction des erreurs TypeScript pour le build (PORT converti en number, jwt.SignOptions)
+
 ## [1.2.15] - 2026-02-04
 
 ### Ajouté
