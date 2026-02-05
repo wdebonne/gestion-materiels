@@ -330,9 +330,10 @@ export default function CategoryDetailPage() {
                     variant="outline" 
                     size="sm" 
                     onClick={() => navigate(`/categories/${category.slug}/fields`)}
-                    title="Configurer les champs"
+                    title="Configurer les champs affichés pour cette catégorie (applicable à toutes les sous-catégories sauf configuration spécifique)"
                   >
-                    <Settings2 className="w-4 h-4" />
+                    <Settings2 className="w-4 h-4 mr-1" />
+                    <span className="hidden sm:inline">Champs</span>
                   </Button>
                   <Button variant="outline" size="sm" onClick={handleCategoryEdit}>
                     <Edit2 className="w-4 h-4" />

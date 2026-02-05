@@ -200,9 +200,10 @@ export default function SubcategoryDetailPage() {
                     variant="outline" 
                     size="sm" 
                     onClick={() => navigate(`/categories/${categorySlug}/${subcategorySlug}/fields`)}
-                    title="Configurer les champs"
+                    title="Configurer les champs spécifiques à cette sous-catégorie (ex: champs différents pour tronçonneuses vs tondeuses)"
                   >
-                    <Settings2 className="w-4 h-4" />
+                    <Settings2 className="w-4 h-4 mr-1" />
+                    <span className="hidden sm:inline">Champs</span>
                   </Button>
                 </div>
               </div>

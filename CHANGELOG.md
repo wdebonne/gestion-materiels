@@ -7,6 +7,24 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.19] - 2026-02-05
+
+### Ajouté
+- **Configuration des champs par sous-catégorie** : Possibilité de définir des champs personnalisés différents pour chaque sous-catégorie
+- **Badge de niveau de configuration** : Indication claire dans l'interface si on configure une catégorie ou une sous-catégorie
+- **Indication d'héritage** : Message clair quand une sous-catégorie hérite de la configuration de sa catégorie parente
+- **Bouton "Créer config. spécifique"** : Permet de créer facilement une configuration propre à une sous-catégorie
+
+### Amélioré
+- **Boutons de configuration des champs** : Tooltips explicatifs sur les pages Catégorie et Sous-catégorie
+- **Texte du bouton** : Affichage "Champs" avec icône pour plus de clarté
+- **Message d'héritage amélioré** : Affiche le nom de la catégorie parente et une explication détaillée
+
+### Exemple d'utilisation
+- Une tronçonneuse et une tondeuse sont dans la catégorie "Matériels"
+- Mais peuvent avoir des champs différents (ex: "Pas de la chaîne" pour les tronçonneuses uniquement)
+- Chaque sous-catégorie peut avoir sa propre configuration de champs
+
 ## [1.2.18] - 2026-02-05
 
 ### Corrigé

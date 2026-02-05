@@ -302,9 +302,21 @@ export default function CustomFieldsPage() {
             <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
               <Settings2 className="w-6 h-6 text-primary-600" />
               Configuration des champs
+              {subcategory ? (
+                <Badge variant={fieldsConfig?.inherited ? 'default' : 'success'} size="sm">
+                  {fieldsConfig?.inherited ? 'Sous-catégorie (héritée)' : 'Sous-catégorie'}
+                </Badge>
+              ) : (
+                <Badge variant="info" size="sm">Catégorie</Badge>
+              )}
             </h1>
             <p className="text-gray-500 mt-1">
               Personnalisez les informations affichées pour : <strong>{targetName}</strong>
+              {subcategory && !fieldsConfig?.inherited && (
+                <span className="text-green-600 ml-2">
+                  (configuration spécifique à cette sous-catégorie)
+                </span>
+              )}
             </p>
           </div>
         </div>
@@ -326,8 +338,27 @@ export default function CustomFieldsPage() {
 
       {fieldsConfig?.inherited && subcategory && (
         <Alert type="info">
-          Cette sous-catégorie hérite de la configuration de la catégorie parente. 
-          Modifiez les champs ci-dessous pour créer une configuration spécifique.
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div>
+              <p className="font-medium">Configuration héritée de la catégorie "{category.name}"</p>
+              <p className="text-sm mt-1">
+                Cette sous-catégorie utilise les mêmes champs que la catégorie parente. 
+                Créez une configuration spécifique pour afficher des champs différents pour "{subcategory.name}".
+              </p>
+            </div>
+            <Button 
+              size="sm" 
+              onClick={() => {
+                // Marquer qu'on veut créer une config spécifique
+                setHasChanges(true)
+                toast.success('Modifiez les champs puis cliquez sur Sauvegarder pour créer une configuration spécifique')
+              }}
+              className="whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              Créer config. spécifique
+            </Button>
+          </div>
         </Alert>
       )}
 
