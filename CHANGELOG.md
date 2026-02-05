@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.22] - 2026-02-05
+
+### Amélioré
+- **Sélecteur de sous-catégories** : Désormais disponible à tous les niveaux (catégorie ET sous-catégorie)
+- **Chargement des sous-catégories** : Les sous-catégories sont maintenant toujours chargées pour le sélecteur
+- **Cohérence de l'interface** : Mêmes options de configuration disponibles partout
+
 ## [1.2.21] - 2026-02-05
 
 ### Corrigé

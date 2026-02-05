@@ -84,15 +84,15 @@ export default function CustomFieldsPage() {
   })
 
   // Récupérer les sous-catégories de la catégorie (pour le sélecteur d'application)
-  // On charge toujours les sous-catégories au niveau catégorie pour permettre la restriction
+  // On charge toujours les sous-catégories pour permettre la restriction (catégorie OU sous-catégorie)
   const { data: subcategoriesData } = useQuery({
     queryKey: ['subcategories', category?.id],
     queryFn: async () => {
       const response = await api.get(`/categories/${category?.id}/subcategories`)
       return response.data.subcategories as Array<{ id: number; name: string; slug: string }>
     },
-    // Charger uniquement si on est au niveau catégorie (pas de subcategorySlug)
-    enabled: !!category?.id && !subcategorySlug
+    // Charger dès qu'on a la catégorie (niveau catégorie OU sous-catégorie)
+    enabled: !!category?.id
   })
 
   // Récupérer la configuration des champs
@@ -556,8 +556,8 @@ export default function CustomFieldsPage() {
               <span className="text-sm text-gray-700">Champ obligatoire</span>
             </label>
             
-            {/* Sélecteur de sous-catégories applicables (uniquement au niveau catégorie) */}
-            {!subcategorySlug && subcategoriesData && subcategoriesData.length > 0 && (
+            {/* Sélecteur de sous-catégories applicables */}
+            {subcategoriesData && subcategoriesData.length > 0 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Appliquer uniquement à certaines sous-catégories
@@ -686,8 +686,8 @@ export default function CustomFieldsPage() {
                 <span className="text-sm text-gray-700">Champ obligatoire</span>
               </label>
               
-              {/* Sélecteur de sous-catégories applicables (uniquement au niveau catégorie) */}
-              {!subcategorySlug && subcategoriesData && subcategoriesData.length > 0 && (
+              {/* Sélecteur de sous-catégories applicables */}
+              {subcategoriesData && subcategoriesData.length > 0 && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Appliquer uniquement à certaines sous-catégories
