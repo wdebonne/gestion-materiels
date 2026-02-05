@@ -7,6 +7,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.29] - 2026-02-05
+
+### Ajouté
+- **Route API `/api/alerts/check`** : Permet de forcer manuellement la vérification des alertes (superviseurs uniquement)
+
 ## [1.2.28] - 2026-02-05
 
 ### Corrigé

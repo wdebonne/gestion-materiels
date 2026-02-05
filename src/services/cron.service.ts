@@ -47,7 +47,7 @@ function priorityToSeverity(priority: string, daysUntilExpiry: number): string {
 }
 
 // Vérifier les alertes à envoyer
-async function checkAlerts(): Promise<void> {
+export async function checkAlerts(): Promise<void> {
   try {
     // Récupérer les paramètres d'alerte configurés
     const alertSettings = await getAlertSettings();

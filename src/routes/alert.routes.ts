@@ -266,4 +266,17 @@ router.delete('/:id', authenticateToken, requireSupervisor, async (req: AuthRequ
   }
 });
 
+// POST /api/alerts/check - Forcer la vérification des alertes
+router.post('/check', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const cronService = await import('../services/cron.service');
+    await cronService.checkAlerts();
+    
+    res.json({ success: true, message: 'Vérification des alertes effectuée' });
+  } catch (error: any) {
+    console.error('Erreur check alerts:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 export default router;
