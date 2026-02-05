@@ -8,6 +8,7 @@ import extract from 'extract-zip';
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import { sendBackupEmail } from '../services/email.service';
+import { logService } from '../services/log.service';
 
 // Configuration multer pour les backups
 const backupStorage = multer.diskStorage({
@@ -177,6 +178,16 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       },
       emailSent,
       emailError
+    });
+
+    // Logger la création de backup
+    await logService.success('backup', 'Sauvegarde créée avec succès', {
+      filename,
+      fileSize: stats.size,
+      emailSent
+    }, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email
     });
   } catch (error: any) {
     console.error('Erreur create backup:', error);

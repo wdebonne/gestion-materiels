@@ -6,6 +6,7 @@ import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, JwtPayload } from '../middleware/auth.middleware';
 import { sendEmail } from '../services/email.service';
+import { logService } from '../services/log.service';
 
 const router = Router();
 
@@ -58,16 +59,30 @@ router.post('/login', loginValidation, async (req: AuthRequest, res: Response) =
     );
 
     if (!user) {
+      await logService.warning('auth', 'Tentative de connexion avec email inconnu', { email }, {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
       return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
     }
 
     if (!user.is_active) {
+      await logService.warning('auth', 'Tentative de connexion sur compte désactivé', { email }, {
+        userId: user.id,
+        userEmail: user.email,
+        ipAddress: req.ip
+      });
       return res.status(401).json({ success: false, message: 'Compte désactivé' });
     }
 
     // Vérifier le mot de passe
     const isValid = await bcrypt.compare(password, user.password);
     if (!isValid) {
+      await logService.warning('auth', 'Tentative de connexion avec mot de passe incorrect', { email }, {
+        userId: user.id,
+        userEmail: user.email,
+        ipAddress: req.ip
+      });
       return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
     }
 
@@ -81,10 +96,22 @@ router.post('/login', loginValidation, async (req: AuthRequest, res: Response) =
     const tokens = generateTokens(user);
 
     // Log de l'activité
-    await db.execute(
-      'INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
-      [user.id, 'login', 'Connexion réussie', req.ip]
-    );
+    try {
+      await db.execute(
+        'INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+        [user.id, 'login', 'Connexion réussie', req.ip]
+      );
+    } catch (e) {
+      // La table activity_logs n'existe peut-être pas
+    }
+
+    // Log avec le nouveau système
+    await logService.success('auth', 'Connexion réussie', { role: user.role }, {
+      userId: user.id,
+      userEmail: user.email,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
 
     res.json({
       success: true,

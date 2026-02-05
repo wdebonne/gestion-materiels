@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.22-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.23-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
@@ -74,6 +74,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 💾 Sauvegarde et restauration de base de données
 - 🔄 Migration SQLite vers MySQL/MariaDB
 - 🔐 Gestion des permissions par catégorie
+- 📋 **Journal des logs** avec filtrage, export et paramètres avancés
 
 ### 🎨 Interface Utilisateur (v1.2)
 - 🌟 Design moderne avec palette Sky Blue

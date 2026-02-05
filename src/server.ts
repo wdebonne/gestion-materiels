@@ -23,12 +23,14 @@ import uploadRoutes from './routes/upload.routes';
 import dashboardRoutes from './routes/dashboard.routes';
 import permissionRoutes from './routes/permission.routes';
 import customFieldsRoutes from './routes/customFields.routes';
+import logRoutes from './routes/log.routes';
 
 // Import des services
 import { initDatabase } from './database';
 import { seedDatabase } from './database/seed';
 import { initPluginSystem } from './services/plugin.service';
 import { initCronJobs } from './services/cron.service';
+import { logService } from './services/log.service';
 
 const app: Application = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -66,6 +68,7 @@ app.use('/api/upload', uploadRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/custom-fields', customFieldsRoutes);
+app.use('/api/logs', logRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {
@@ -96,6 +99,10 @@ async function startServer() {
     await seedDatabase();
     console.log('✅ Données par défaut initialisées');
 
+    // Initialiser le système de logs
+    await logService.init();
+    console.log('✅ Système de logs initialisé');
+
     // Initialiser le système de plugins
     await initPluginSystem();
     console.log('✅ Système de plugins initialisé');
@@ -108,6 +115,12 @@ async function startServer() {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Serveur démarré sur http://0.0.0.0:${PORT}`);
       console.log(`📊 Mode: ${process.env.NODE_ENV || 'development'}`);
+      
+      // Logger le démarrage du serveur
+      logService.success('system', 'Serveur démarré', { 
+        port: PORT, 
+        mode: process.env.NODE_ENV || 'development' 
+      });
     });
   } catch (error) {
     console.error('❌ Erreur au démarrage:', error);

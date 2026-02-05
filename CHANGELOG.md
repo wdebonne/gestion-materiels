@@ -7,6 +7,39 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.23] - 2026-02-05
+
+### Ajouté
+- **Système de logs complet** : Nouveau menu "Logs" dans les paramètres (administrateurs uniquement)
+- **Service de logs** : Enregistrement automatique des événements système avec niveaux (info, warning, error, debug, success) et catégories (auth, system, user, backup, plugin, database, email, api, security)
+- **Page de gestion des logs** avec :
+  - Statistiques en temps réel (total, 24h, 7j, 30j, erreurs, avertissements)
+  - Filtrage avancé par niveau, catégorie, période et recherche textuelle
+  - Pagination configurable (25, 50, 100, 200 par page)
+  - Vue détaillée de chaque log (IP, user agent, requête, etc.)
+  - Export des logs en CSV ou JSON
+  - Suppression manuelle ou par filtres
+- **Paramètres de logs configurables** :
+  - Durée de rétention des logs (1-365 jours)
+  - Nettoyage automatique des vieux logs
+  - Activation/désactivation par niveau et catégorie
+  - Options de logging (requêtes API, tentatives auth, événements système)
+  - Limite d'export configurable
+- **Logs automatiques** pour les événements importants :
+  - Connexions réussies et échouées
+  - Création de sauvegardes
+  - Démarrage du serveur
+  - Modifications des paramètres de logs
+
+### API
+- `GET /api/logs` - Récupérer les logs avec filtres et pagination
+- `GET /api/logs/stats` - Statistiques des logs
+- `GET /api/logs/settings` - Récupérer les paramètres de logs
+- `PUT /api/logs/settings` - Modifier les paramètres de logs
+- `GET /api/logs/export` - Exporter les logs (CSV/JSON)
+- `POST /api/logs/cleanup` - Nettoyage manuel des vieux logs
+- `DELETE /api/logs` - Supprimer des logs selon les filtres
+
 ## [1.2.22] - 2026-02-05
 
 ### Amélioré

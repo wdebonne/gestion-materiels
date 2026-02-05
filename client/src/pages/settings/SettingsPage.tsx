@@ -7,7 +7,8 @@ import {
   Puzzle, 
   Database,
   HardDrive,
-  Lock
+  Lock,
+  ScrollText
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -58,6 +59,12 @@ const settingsNavItems = [
     to: '/settings/database', 
     icon: Database, 
     label: 'Base de données',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/logs', 
+    icon: ScrollText, 
+    label: 'Logs',
     adminOnly: true
   },
 ]
