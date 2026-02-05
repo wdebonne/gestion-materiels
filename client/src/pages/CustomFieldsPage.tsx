@@ -84,13 +84,15 @@ export default function CustomFieldsPage() {
   })
 
   // Récupérer les sous-catégories de la catégorie (pour le sélecteur d'application)
+  // On charge toujours les sous-catégories au niveau catégorie pour permettre la restriction
   const { data: subcategoriesData } = useQuery({
     queryKey: ['subcategories', category?.id],
     queryFn: async () => {
       const response = await api.get(`/categories/${category?.id}/subcategories`)
       return response.data.subcategories as Array<{ id: number; name: string; slug: string }>
     },
-    enabled: !!category?.id && category?.hasSubcategories && !subcategorySlug
+    // Charger uniquement si on est au niveau catégorie (pas de subcategorySlug)
+    enabled: !!category?.id && !subcategorySlug
   })
 
   // Récupérer la configuration des champs

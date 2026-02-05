@@ -7,6 +7,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.21] - 2026-02-05
+
+### Corrigé
+- **Sélecteur de sous-catégories** : Correction du bug où le sélecteur n'apparaissait pas toujours lors de la modification d'un champ au niveau catégorie
+- **Chargement des sous-catégories** : Suppression de la condition `hasSubcategories` qui empêchait le chargement des sous-catégories dans certains cas
+
 ## [1.2.20] - 2026-02-05
 
 ### Ajouté
