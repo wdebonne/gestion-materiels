@@ -22,6 +22,7 @@ interface CustomField {
   isVisible: boolean
   isSystem: boolean
   sortOrder: number
+  applicableSubcategories?: number[] | null
 }
 
 const FIELD_TYPES = [
@@ -55,7 +56,8 @@ export default function CustomFieldsPage() {
     fieldLabel: '',
     fieldType: 'text',
     fieldOptions: '',
-    isRequired: false
+    isRequired: false,
+    applicableSubcategories: [] as number[]
   })
   const [hasChanges, setHasChanges] = useState(false)
   const [resetConfirm, setResetConfirm] = useState(false)
@@ -79,6 +81,16 @@ export default function CustomFieldsPage() {
       return response.data.subcategory
     },
     enabled: !!categorySlug && !!subcategorySlug
+  })
+
+  // Récupérer les sous-catégories de la catégorie (pour le sélecteur d'application)
+  const { data: subcategoriesData } = useQuery({
+    queryKey: ['subcategories', category?.id],
+    queryFn: async () => {
+      const response = await api.get(`/categories/${category?.id}/subcategories`)
+      return response.data.subcategories as Array<{ id: number; name: string; slug: string }>
+    },
+    enabled: !!category?.id && category?.hasSubcategories && !subcategorySlug
   })
 
   // Récupérer la configuration des champs
@@ -239,11 +251,12 @@ export default function CustomFieldsPage() {
       isRequired: newField.isRequired,
       isVisible: true,
       isSystem: false,
-      sortOrder: fields.length
+      sortOrder: fields.length,
+      applicableSubcategories: newField.applicableSubcategories.length > 0 ? newField.applicableSubcategories : null
     }
 
     setFields([...fields, field])
-    setNewField({ fieldName: '', fieldLabel: '', fieldType: 'text', fieldOptions: '', isRequired: false })
+    setNewField({ fieldName: '', fieldLabel: '', fieldType: 'text', fieldOptions: '', isRequired: false, applicableSubcategories: [] })
     setShowAddModal(false)
     setHasChanges(true)
   }
@@ -398,13 +411,22 @@ export default function CustomFieldsPage() {
 
                 {/* Info du champ */}
                 <div className="flex-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <span className="font-medium text-gray-900">{field.fieldLabel}</span>
                     {field.isSystem && (
                       <Badge variant="default" size="sm">Système</Badge>
                     )}
                     {!field.isSystem && (
                       <Badge variant="info" size="sm">Personnalisé</Badge>
+                    )}
+                    {/* Afficher les sous-catégories applicables */}
+                    {!field.isSystem && field.applicableSubcategories && field.applicableSubcategories.length > 0 && subcategoriesData && (
+                      <Badge variant="warning" size="sm" title="Ce champ s'applique uniquement à certaines sous-catégories">
+                        {field.applicableSubcategories.length === 1 
+                          ? subcategoriesData.find(s => s.id === field.applicableSubcategories![0])?.name || 'Sous-cat.'
+                          : `${field.applicableSubcategories.length} sous-cat.`
+                        }
+                      </Badge>
                     )}
                   </div>
                   <span className="text-sm text-gray-500">
@@ -531,6 +553,43 @@ export default function CustomFieldsPage() {
               />
               <span className="text-sm text-gray-700">Champ obligatoire</span>
             </label>
+            
+            {/* Sélecteur de sous-catégories applicables (uniquement au niveau catégorie) */}
+            {!subcategorySlug && subcategoriesData && subcategoriesData.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Appliquer uniquement à certaines sous-catégories
+                </label>
+                <p className="text-xs text-gray-500 mb-2">
+                  Laissez vide pour appliquer à toutes les sous-catégories
+                </p>
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                  {subcategoriesData.map((sub) => (
+                    <label key={sub.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                      <input
+                        type="checkbox"
+                        checked={newField.applicableSubcategories.includes(sub.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setNewField({ 
+                              ...newField, 
+                              applicableSubcategories: [...newField.applicableSubcategories, sub.id]
+                            })
+                          } else {
+                            setNewField({ 
+                              ...newField, 
+                              applicableSubcategories: newField.applicableSubcategories.filter(id => id !== sub.id)
+                            })
+                          }
+                        }}
+                        className="rounded border-gray-300 text-primary-600"
+                      />
+                      <span className="text-sm text-gray-700">{sub.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </ModalBody>
         <ModalFooter>
@@ -624,6 +683,50 @@ export default function CustomFieldsPage() {
                 />
                 <span className="text-sm text-gray-700">Champ obligatoire</span>
               </label>
+              
+              {/* Sélecteur de sous-catégories applicables (uniquement au niveau catégorie) */}
+              {!subcategorySlug && subcategoriesData && subcategoriesData.length > 0 && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Appliquer uniquement à certaines sous-catégories
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Laissez vide pour appliquer à toutes les sous-catégories
+                  </p>
+                  <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                    {subcategoriesData.map((sub) => (
+                      <label key={sub.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                        <input
+                          type="checkbox"
+                          checked={(editField.field.applicableSubcategories || []).includes(sub.id)}
+                          onChange={(e) => {
+                            const currentSubs = editField.field.applicableSubcategories || []
+                            if (e.target.checked) {
+                              setEditField({ 
+                                ...editField, 
+                                field: { 
+                                  ...editField.field, 
+                                  applicableSubcategories: [...currentSubs, sub.id]
+                                }
+                              })
+                            } else {
+                              setEditField({ 
+                                ...editField, 
+                                field: { 
+                                  ...editField.field, 
+                                  applicableSubcategories: currentSubs.filter(id => id !== sub.id)
+                                }
+                              })
+                            }
+                          }}
+                          className="rounded border-gray-300 text-primary-600"
+                        />
+                        <span className="text-sm text-gray-700">{sub.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </ModalBody>

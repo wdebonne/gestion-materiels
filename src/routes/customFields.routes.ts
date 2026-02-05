@@ -59,7 +59,8 @@ router.get('/config/category/:categoryId', authenticateToken, async (req: AuthRe
         isRequired: !!c.is_required,
         isVisible: !!c.is_visible,
         isSystem: !!c.is_system,
-        sortOrder: c.sort_order
+        sortOrder: c.sort_order,
+        applicableSubcategories: c.applicable_subcategories ? JSON.parse(c.applicable_subcategories) : null
       }))
     });
   } catch (error: any) {
@@ -132,7 +133,8 @@ router.get('/config/subcategory/:subcategoryId', authenticateToken, async (req: 
         isRequired: !!c.is_required,
         isVisible: !!c.is_visible,
         isSystem: !!c.is_system,
-        sortOrder: c.sort_order
+        sortOrder: c.sort_order,
+        applicableSubcategories: c.applicable_subcategories ? JSON.parse(c.applicable_subcategories) : null
       })),
       inherited: !configs[0]?.subcategory_id
     });
@@ -201,19 +203,32 @@ router.get('/for-object/:objectId', authenticateToken, async (req: AuthRequest, 
 
     res.json({
       success: true,
-      fields: configs.map((c: any) => ({
-        id: c.id,
-        categoryId: c.category_id,
-        subcategoryId: c.subcategory_id,
-        fieldName: c.field_name,
-        fieldLabel: c.field_label,
-        fieldType: c.field_type,
-        fieldOptions: c.field_options ? JSON.parse(c.field_options) : null,
-        isRequired: !!c.is_required,
-        isVisible: !!c.is_visible,
-        isSystem: !!c.is_system,
-        sortOrder: c.sort_order
-      }))
+      fields: configs
+        .filter((c: any) => {
+          // Si le champ a des sous-catégories applicables définies, vérifier si l'objet est dans l'une d'elles
+          if (c.applicable_subcategories && object.subcategory_id) {
+            const applicableSubs = JSON.parse(c.applicable_subcategories);
+            if (Array.isArray(applicableSubs) && applicableSubs.length > 0) {
+              return applicableSubs.includes(object.subcategory_id);
+            }
+          }
+          // Si pas de restriction, le champ s'applique à tout
+          return true;
+        })
+        .map((c: any) => ({
+          id: c.id,
+          categoryId: c.category_id,
+          subcategoryId: c.subcategory_id,
+          fieldName: c.field_name,
+          fieldLabel: c.field_label,
+          fieldType: c.field_type,
+          fieldOptions: c.field_options ? JSON.parse(c.field_options) : null,
+          isRequired: !!c.is_required,
+          isVisible: !!c.is_visible,
+          isSystem: !!c.is_system,
+          sortOrder: c.sort_order,
+          applicableSubcategories: c.applicable_subcategories ? JSON.parse(c.applicable_subcategories) : null
+        }))
     });
   } catch (error: any) {
     console.error('Erreur get object custom fields:', error);
@@ -251,8 +266,8 @@ router.post('/config', authenticateToken, requireAdmin, [
       const field = fields[i];
       await db.execute(
         `INSERT INTO custom_fields_config 
-         (category_id, subcategory_id, field_name, field_label, field_type, field_options, is_required, is_visible, is_system, sort_order)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (category_id, subcategory_id, field_name, field_label, field_type, field_options, is_required, is_visible, is_system, sort_order, applicable_subcategories)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           subcategoryId ? null : categoryId,
           subcategoryId || null,
@@ -263,7 +278,10 @@ router.post('/config', authenticateToken, requireAdmin, [
           field.isRequired ? 1 : 0,
           field.isVisible !== false ? 1 : 0,
           field.isSystem ? 1 : 0,
-          field.sortOrder ?? i
+          field.sortOrder ?? i,
+          field.applicableSubcategories && field.applicableSubcategories.length > 0 
+            ? JSON.stringify(field.applicableSubcategories) 
+            : null
         ]
       );
     }

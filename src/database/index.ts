@@ -526,6 +526,12 @@ class DatabaseManager {
         table: 'calendar_events',
         column: 'external_id',
         type: 'VARCHAR(500)'
+      },
+      // Ajouter la colonne applicable_subcategories pour restreindre les champs à certaines sous-catégories
+      {
+        table: 'custom_fields_config',
+        column: 'applicable_subcategories',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
       }
     ];
 

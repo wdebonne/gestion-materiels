@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.19-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.20-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
@@ -34,13 +34,14 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 ### ⚙️ Configuration des Champs
 - 🎛️ Personnalisation des champs par catégorie et sous-catégorie
-- 🔀 **Configuration spécifique par sous-catégorie** : Champs différents pour tronçonneuses vs tondeuses par exemple
+- 🔀 **Configuration spécifique par sous-catégorie** : Champs différents pour tronçonneuses vs tondeuses
+- 🎯 **Restriction par sous-catégorie** : Limiter un champ à certaines sous-catégories seulement
 - 👁️ Masquage des champs système non pertinents
 - ➕ Ajout de champs personnalisés (texte, nombre, date, liste...)
 - 📋 Héritage automatique des configurations (sous-catégorie → catégorie)
 - 🔄 Réorganisation de l'ordre des champs par glisser-déposer
 - 👀 Prévisualisation en temps réel des modifications
-- 🏷️ Badges visuels indiquant le niveau de configuration
+- 🏷️ Badges visuels indiquant le niveau de configuration et les restrictions
 
 ### Plugins intégrés
 - ⛽ **Carburant** : Suivi des consommations et coûts, gestion des stations, filtrage avancé, pièces jointes (PDF/images)

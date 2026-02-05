@@ -7,6 +7,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.20] - 2026-02-05
+
+### Ajouté
+- **Restriction des champs par sous-catégorie** : Possibilité de limiter un champ personnalisé à certaines sous-catégories seulement
+- **Sélecteur de sous-catégories applicables** : Nouvelle option dans les modales d'ajout et d'édition de champ au niveau catégorie
+- **Badge de restriction** : Affichage d'un badge orange indiquant à quelle(s) sous-catégorie(s) un champ s'applique
+- **Migration automatique** : Ajout de la colonne `applicable_subcategories` dans la table `custom_fields_config`
+
+### Amélioré
+- **Filtrage intelligent** : Les champs restreints à certaines sous-catégories n'apparaissent que pour les objets concernés
+- **Interface utilisateur** : Le sélecteur n'apparaît que lors de la configuration au niveau catégorie
+
+### Exemple d'utilisation
+- Créer un champ "Pas de la chaîne" au niveau "Matériels"
+- Cocher uniquement "Tronçonneuses" dans les sous-catégories applicables
+- Ce champ n'apparaîtra que sur les tronçonneuses, pas sur les tondeuses
+
 ## [1.2.19] - 2026-02-05
 
 ### Ajouté
