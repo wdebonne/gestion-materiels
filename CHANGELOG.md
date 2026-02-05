@@ -10,7 +10,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [1.2.25] - 2026-02-05
 
 ### Corrigé
-- **Calendrier - Affichage des en-têtes** : Les en-têtes de jours affichent maintenant uniquement le numéro du jour (ex: "5", "6") au lieu de "lun. 5", "mar. 6"
+- **Calendrier - Affichage des en-têtes** : Les en-têtes de jours affichent maintenant les jours de la semaine (lun., mar., mer...) au lieu des numéros
 - **Calendrier - Erreur 500 sur sync/status** : La route de statut de synchronisation retourne maintenant un statut par défaut en cas d'erreur au lieu d'une erreur 500
 
 ## [1.2.24] - 2026-02-05
