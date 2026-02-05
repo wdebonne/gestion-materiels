@@ -27,8 +27,8 @@ const storage = multer.diskStorage({
   }
 });
 
-// Filtrer les types de fichiers
-const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+// Filtrer les types de fichiers (images uniquement)
+const imageFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
   const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml'];
   
   if (allowedTypes.includes(file.mimetype)) {
@@ -38,8 +38,31 @@ const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilt
   }
 };
 
-// Configuration multer
-const upload = multer({
+// Filtrer les types de fichiers (images et PDF)
+const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedTypes = [
+    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+    'application/pdf'
+  ];
+  
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Type de fichier non autorisé. Utilisez: JPG, PNG, GIF, WebP, SVG ou PDF'));
+  }
+};
+
+// Configuration multer pour images uniquement
+const uploadImage = multer({
+  storage,
+  fileFilter: imageFilter,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB max
+  }
+});
+
+// Configuration multer pour fichiers (images + PDF)
+const uploadFile = multer({
   storage,
   fileFilter,
   limits: {
@@ -48,7 +71,7 @@ const upload = multer({
 });
 
 // POST /api/upload/image - Upload une image
-router.post('/image', authenticateToken, upload.single('image'), (req: Request, res: Response) => {
+router.post('/image', authenticateToken, uploadImage.single('image'), (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
@@ -71,8 +94,32 @@ router.post('/image', authenticateToken, upload.single('image'), (req: Request, 
   }
 });
 
+// POST /api/upload/file - Upload un fichier (image ou PDF)
+router.post('/file', authenticateToken, uploadFile.single('file'), (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
+    }
+
+    // Construire l'URL
+    const url = `/uploads/${req.file.filename}`;
+
+    res.json({
+      success: true,
+      url,
+      filename: req.file.filename,
+      originalName: req.file.originalname,
+      size: req.file.size,
+      mimetype: req.file.mimetype
+    });
+  } catch (error: any) {
+    console.error('Erreur upload fichier:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // POST /api/upload/images - Upload plusieurs images
-router.post('/images', authenticateToken, upload.array('images', 10), (req: Request, res: Response) => {
+router.post('/images', authenticateToken, uploadImage.array('images', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     

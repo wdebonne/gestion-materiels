@@ -223,7 +223,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           cost: f.total_price, // Alias pour le frontend
           mileage: f.mileage,
           station: f.station,
-          notes: f.notes
+          notes: f.notes,
+          attachments: f.attachments ? JSON.parse(f.attachments) : []
         })) || [],
         maintenanceRecords: pluginData.maintenances?.map((m: any) => ({
           id: m.id,
@@ -234,7 +235,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           mileage: m.mileage,
           nextDate: m.next_date,
           provider: m.provider,
-          notes: m.notes
+          notes: m.notes,
+          attachments: m.attachments ? JSON.parse(m.attachments) : []
         })) || [],
         technicalControls: pluginData.technicalControls?.map((t: any) => ({
           id: t.id,
@@ -245,7 +247,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           centerName: t.center_name,
           cost: t.cost,
           document: t.document,
-          notes: t.notes
+          notes: t.notes,
+          attachments: t.attachments ? JSON.parse(t.attachments) : []
         })) || [],
         alerts: alerts.map((a: any) => ({
           id: a.id,
@@ -428,7 +431,7 @@ router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthR
   try {
     const { id } = req.params;
     // Support des noms de champs du frontend (date, cost) et backend (entryDate, unitPrice)
-    const { fuelType, quantity, cost, mileage, station, entryDate, date, notes } = req.body;
+    const { fuelType, quantity, cost, mileage, station, entryDate, date, notes, attachments } = req.body;
 
     // Utiliser les valeurs du frontend si disponibles
     const finalEntryDate = date || entryDate;
@@ -460,10 +463,13 @@ router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthR
       finalFuelType = finalFuelType || 'Carburant';
     }
 
+    // Sérialiser les pièces jointes en JSON
+    const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
+
     const result = await db.execute(
-      `INSERT INTO fuel_entries (object_id, fuel_type, quantity, unit_price, total_price, mileage, station, entry_date, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, finalFuelType, qty, unitPriceCalculated, totalPrice, mileage || null, station || null, finalEntryDate, notes || null]
+      `INSERT INTO fuel_entries (object_id, fuel_type, quantity, unit_price, total_price, mileage, station, entry_date, notes, attachments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, finalFuelType, qty, unitPriceCalculated, totalPrice, mileage || null, station || null, finalEntryDate, notes || null, attachmentsJson]
     );
 
     res.status(201).json({
@@ -482,18 +488,21 @@ router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthR
 router.put('/:id/fuel/:entryId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id, entryId } = req.params;
-    const { fuelType, quantity, cost, mileage, station, date, notes } = req.body;
+    const { fuelType, quantity, cost, mileage, station, date, notes, attachments } = req.body;
 
     const totalPrice = cost ? parseFloat(cost) : null;
     const qty = quantity ? parseFloat(quantity) : null;
     const unitPriceCalculated = (totalPrice && qty && qty > 0) ? (totalPrice / qty) : null;
+    
+    // Sérialiser les pièces jointes en JSON
+    const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
     const result = await db.execute(
       `UPDATE fuel_entries SET 
         fuel_type = ?, quantity = ?, unit_price = ?, total_price = ?, 
-        mileage = ?, station = ?, entry_date = ?, notes = ?
+        mileage = ?, station = ?, entry_date = ?, notes = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [fuelType || 'Carburant', qty, unitPriceCalculated, totalPrice, mileage || null, station || null, date, notes || null, entryId, id]
+      [fuelType || 'Carburant', qty, unitPriceCalculated, totalPrice, mileage || null, station || null, date, notes || null, attachmentsJson, entryId, id]
     );
 
     if (result.changes === 0) {
@@ -898,12 +907,15 @@ router.delete('/control-centers/:centerId', authenticateToken, requireAdmin, asy
 router.post('/:id/technical-control', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes } = req.body;
+    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments } = req.body;
+
+    // Sérialiser les pièces jointes en JSON
+    const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
     const insertResult = await db.execute(
-      `INSERT INTO technical_controls (object_id, control_date, expiry_date, mileage, result, center_name, cost, document, notes)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes]
+      `INSERT INTO technical_controls (object_id, control_date, expiry_date, mileage, result, center_name, cost, document, notes, attachments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes, attachmentsJson]
     );
 
     // Créer une alerte pour le prochain contrôle
@@ -988,14 +1000,17 @@ router.delete('/:id/technical-control/:controlId', authenticateToken, requireAdm
 router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id, controlId } = req.params;
-    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes } = req.body;
+    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments } = req.body;
+
+    // Sérialiser les pièces jointes en JSON
+    const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
     const result = await db.execute(
       `UPDATE technical_controls SET 
         control_date = ?, expiry_date = ?, mileage = ?, result = ?, 
-        center_name = ?, cost = ?, document = ?, notes = ?
+        center_name = ?, cost = ?, document = ?, notes = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes, controlId, id]
+      [controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes, attachmentsJson, controlId, id]
     );
 
     if (result.changes === 0) {
@@ -1042,13 +1057,16 @@ router.post('/:id/maintenance', authenticateToken, requireSupervisor, async (req
     const { id } = req.params;
     const { 
       maintenanceType, maintenanceDate, nextDate, mileage, nextMileage,
-      cost, provider, document, notes, addToCalendar 
+      cost, provider, document, notes, addToCalendar, attachments 
     } = req.body;
 
+    // Sérialiser les pièces jointes en JSON
+    const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
+
     const insertResult = await db.execute(
-      `INSERT INTO maintenances (object_id, maintenance_type, maintenance_date, next_date, mileage, next_mileage, cost, provider, document, notes, add_to_calendar)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0]
+      `INSERT INTO maintenances (object_id, maintenance_type, maintenance_date, next_date, mileage, next_mileage, cost, provider, document, notes, add_to_calendar, attachments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson]
     );
 
     // Créer une alerte pour la prochaine maintenance
@@ -1137,16 +1155,19 @@ router.put('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin, a
     const { id, maintenanceId } = req.params;
     const { 
       maintenanceType, maintenanceDate, nextDate, mileage, nextMileage,
-      cost, provider, document, notes, addToCalendar 
+      cost, provider, document, notes, addToCalendar, attachments 
     } = req.body;
+
+    // Sérialiser les pièces jointes en JSON
+    const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
     const result = await db.execute(
       `UPDATE maintenances SET 
         maintenance_type = ?, maintenance_date = ?, next_date = ?, 
         mileage = ?, next_mileage = ?, cost = ?, provider = ?, 
-        document = ?, notes = ?, add_to_calendar = ?
+        document = ?, notes = ?, add_to_calendar = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, maintenanceId, id]
+      [maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson, maintenanceId, id]
     );
 
     if (result.changes === 0) {

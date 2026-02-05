@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.16] - 2026-02-05
+
+### Ajouté
+- **Pièces jointes** dans les plugins Carburant, Entretien et Contrôle technique
+- Nouveau composant `FileUpload` pour uploader des PDFs et images (drag & drop supporté)
+- Nouveau composant `AttachmentViewer` pour visualiser les pièces jointes
+- Nouvel endpoint API `/api/upload/file` pour uploader des fichiers (images + PDF)
+- Colonne "Pièces jointes" dans les tableaux avec prévisualisation
+- Support des formats : JPEG, PNG, GIF, WebP, SVG, PDF
+- Prévisualisation des images et PDFs en modal
+- Conservation des pièces jointes lors de la modification des entrées
+
+### Amélioré
+- Migration automatique de la base de données pour ajouter la colonne `attachments`
+
 ## [1.2.15] - 2026-02-04
 
 ### Ajouté

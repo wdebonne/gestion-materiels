@@ -326,6 +326,7 @@ class DatabaseManager {
         station VARCHAR(255),
         entry_date DATE NOT NULL,
         notes ${textType},
+        attachments ${textType},
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
       )`,
@@ -485,6 +486,64 @@ class DatabaseManager {
 
     for (const table of tables) {
       await this.execute(table);
+    }
+
+    // Exécuter les migrations pour ajouter les colonnes manquantes
+    await this.runMigrations();
+  }
+
+  // Méthode pour ajouter les colonnes manquantes aux tables existantes
+  private async runMigrations(): Promise<void> {
+    const migrations = [
+      // Ajouter la colonne attachments à fuel_entries si elle n'existe pas
+      {
+        table: 'fuel_entries',
+        column: 'attachments',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // Transformer document en attachments pour maintenances (JSON)
+      {
+        table: 'maintenances',
+        column: 'attachments',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // Transformer document en attachments pour technical_controls (JSON)
+      {
+        table: 'technical_controls',
+        column: 'attachments',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      }
+    ];
+
+    for (const migration of migrations) {
+      try {
+        // Vérifier si la colonne existe déjà
+        if (this.config.type === 'sqlite') {
+          const tableInfo = this.sqliteDb!.prepare(`PRAGMA table_info(${migration.table})`).all() as any[];
+          const columnExists = tableInfo.some(col => col.name === migration.column);
+          
+          if (!columnExists) {
+            await this.execute(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.type}`);
+            console.log(`Migration: Ajout de la colonne ${migration.column} à ${migration.table}`);
+          }
+        } else {
+          // MySQL
+          const [columns] = await this.mysqlPool!.execute(
+            `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = ? AND COLUMN_NAME = ?`,
+            [migration.table, migration.column]
+          ) as any[];
+          
+          if (columns.length === 0) {
+            await this.execute(`ALTER TABLE ${migration.table} ADD COLUMN ${migration.column} ${migration.type}`);
+            console.log(`Migration: Ajout de la colonne ${migration.column} à ${migration.table}`);
+          }
+        }
+      } catch (error: any) {
+        // Ignorer les erreurs si la colonne existe déjà
+        if (!error.message.includes('duplicate column') && !error.message.includes('Duplicate column')) {
+          console.error(`Erreur migration ${migration.table}.${migration.column}:`, error.message);
+        }
+      }
     }
   }
 

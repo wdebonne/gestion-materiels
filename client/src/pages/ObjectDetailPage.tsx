@@ -4,13 +4,15 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X, Trash2, Pencil,
-  Image as ImageIcon, Settings2, Search, ArrowUpDown
+  Image as ImageIcon, Settings2, Search, ArrowUpDown, Paperclip
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select,
-  LoadingInline, Alert, Card, CardBody, CardHeader, CardTitle, Tabs, Badge
+  LoadingInline, Alert, Card, CardBody, CardHeader, CardTitle, Tabs, Badge,
+  FileUpload, AttachmentViewer
 } from '@/components/ui'
+import type { UploadedFile } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { formatDate, formatCurrency } from '@/lib/utils'
@@ -59,17 +61,37 @@ export default function ObjectDetailPage() {
   const [customPluginModal, setCustomPluginModal] = useState<any>(null) // Pour les plugins personnalisés
 
   // Données des formulaires de plugins
-  const [fuelData, setFuelData] = useState({
+  const [fuelData, setFuelData] = useState<{
+    date: string
+    fuelType: string
+    quantity: string
+    cost: string
+    mileage: string
+    station: string
+    notes: string
+    attachments: UploadedFile[]
+  }>({
     date: new Date().toISOString().split('T')[0],
     fuelType: '',
     quantity: '',
     cost: '',
     mileage: '',
     station: '',
-    notes: ''
+    notes: '',
+    attachments: []
   })
 
-  const [maintenanceData, setMaintenanceData] = useState({
+  const [maintenanceData, setMaintenanceData] = useState<{
+    date: string
+    type: string
+    description: string
+    cost: string
+    mileage: string
+    nextDate: string
+    provider: string
+    notes: string
+    attachments: UploadedFile[]
+  }>({
     date: new Date().toISOString().split('T')[0],
     type: '',
     description: '',
@@ -77,7 +99,8 @@ export default function ObjectDetailPage() {
     mileage: '',
     nextDate: '',
     provider: '',
-    notes: ''
+    notes: '',
+    attachments: []
   })
 
   // Données pour le formulaire de plugin personnalisé
@@ -92,7 +115,16 @@ export default function ObjectDetailPage() {
     notes: ''
   })
 
-  const [controlData, setControlData] = useState(() => {
+  const [controlData, setControlData] = useState<{
+    date: string
+    expirationDate: string
+    result: string
+    mileage: string
+    center: string
+    cost: string
+    notes: string
+    attachments: UploadedFile[]
+  }>(() => {
     const today = new Date()
     const expDate = new Date(today)
     expDate.setFullYear(expDate.getFullYear() + 2)
@@ -103,7 +135,8 @@ export default function ObjectDetailPage() {
       mileage: '',
       center: '',
       cost: '',
-      notes: ''
+      notes: '',
+      attachments: []
     }
   })
 
@@ -276,7 +309,7 @@ export default function ObjectDetailPage() {
       setFuelModal(false)
       // Mettre à jour le kilométrage si supérieur
       updateMileageIfHigher(variables.mileage, object)
-      setFuelData({ date: new Date().toISOString().split('T')[0], fuelType: '', quantity: '', cost: '', mileage: '', station: '', notes: '' })
+      setFuelData({ date: new Date().toISOString().split('T')[0], fuelType: '', quantity: '', cost: '', mileage: '', station: '', notes: '', attachments: [] })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
@@ -364,7 +397,7 @@ export default function ObjectDetailPage() {
       setMaintenanceModal(false)
       // Mettre à jour le kilométrage si supérieur
       updateMileageIfHigher(variables.mileage, object)
-      setMaintenanceData({ date: new Date().toISOString().split('T')[0], type: '', description: '', cost: '', mileage: '', nextDate: '', provider: '', notes: '' })
+      setMaintenanceData({ date: new Date().toISOString().split('T')[0], type: '', description: '', cost: '', mileage: '', nextDate: '', provider: '', notes: '', attachments: [] })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
@@ -495,7 +528,8 @@ export default function ObjectDetailPage() {
         mileage: data.mileage ? parseInt(data.mileage) : null,
         centerName: data.center,
         cost: data.cost ? parseFloat(data.cost) : null,
-        notes: data.notes
+        notes: data.notes,
+        attachments: data.attachments
       }
       return api.post(`/objects/${id}/technical-control`, mappedData)
     },
@@ -515,7 +549,8 @@ export default function ObjectDetailPage() {
         mileage: '', 
         center: '', 
         cost: '', 
-        notes: '' 
+        notes: '',
+        attachments: []
       })
     },
     onError: (err: any) => {
@@ -533,7 +568,8 @@ export default function ObjectDetailPage() {
         mileage: data.mileage,
         centerName: data.center,
         cost: data.cost,
-        notes: data.notes
+        notes: data.notes,
+        attachments: data.attachments
       }
       return api.put(`/objects/${id}/technical-control/${entryId}`, mappedData)
     },
@@ -1060,6 +1096,7 @@ export default function ObjectDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coût total</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kilométrage</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pièces jointes</th>
                       {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
                     </tr>
                   </thead>
@@ -1073,6 +1110,13 @@ export default function ObjectDetailPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.station || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {record.attachments && record.attachments.length > 0 ? (
+                            <AttachmentViewer attachments={record.attachments} compact />
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
                         {isAdmin && (
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                             <div className="flex items-center justify-end gap-2">
@@ -1085,7 +1129,8 @@ export default function ObjectDetailPage() {
                                   cost: record.cost || '',
                                   mileage: record.mileage || '',
                                   station: record.station || '',
-                                  notes: record.notes || ''
+                                  notes: record.notes || '',
+                                  attachments: record.attachments || []
                                 })}
                                 className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                                 title="Modifier"
@@ -1194,6 +1239,7 @@ export default function ObjectDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kilométrage</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prochain</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pièces jointes</th>
                       {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
                     </tr>
                   </thead>
@@ -1210,6 +1256,13 @@ export default function ObjectDetailPage() {
                             <span className="text-orange-600">{formatDate(record.nextDate)}</span>
                           ) : '-'}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {record.attachments && record.attachments.length > 0 ? (
+                            <AttachmentViewer attachments={record.attachments} compact />
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
                         {isAdmin && (
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                             <div className="flex items-center justify-end gap-2">
@@ -1223,7 +1276,8 @@ export default function ObjectDetailPage() {
                                   mileage: record.mileage || '',
                                   nextDate: record.nextDate || '',
                                   provider: record.provider || '',
-                                  notes: record.notes || ''
+                                  notes: record.notes || '',
+                                  attachments: record.attachments || []
                                 })}
                                 className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                                 title="Modifier"
@@ -1340,6 +1394,7 @@ export default function ObjectDetailPage() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kilométrage</th>
                       <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Coût</th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiration</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pièces jointes</th>
                       {(user?.role === 'admin' || user?.role === 'supervisor') && (
                         <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                       )}
@@ -1373,6 +1428,13 @@ export default function ObjectDetailPage() {
                             </span>
                           ) : '-'}
                         </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-sm">
+                          {control.attachments && control.attachments.length > 0 ? (
+                            <AttachmentViewer attachments={control.attachments} compact />
+                          ) : (
+                            <span className="text-gray-300">-</span>
+                          )}
+                        </td>
                         {(user?.role === 'admin' || user?.role === 'supervisor') && (
                           <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
                             <div className="flex items-center justify-end gap-1">
@@ -1385,7 +1447,8 @@ export default function ObjectDetailPage() {
                                   mileage: control.mileage?.toString() || '',
                                   center: control.centerName || '',
                                   cost: control.cost?.toString() || '',
-                                  notes: control.notes || ''
+                                  notes: control.notes || '',
+                                  attachments: control.attachments || []
                                 })}
                                 className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
                                 title="Modifier"
@@ -1520,6 +1583,12 @@ export default function ObjectDetailPage() {
               onChange={(e) => setFuelData({ ...fuelData, notes: e.target.value })}
               rows={2}
             />
+            <FileUpload
+              label="Pièces jointes"
+              value={fuelData.attachments}
+              onChange={(files) => setFuelData({ ...fuelData, attachments: files })}
+              hint="Joindre des tickets, factures ou photos (PDF, images)"
+            />
           </ModalBody>
           <ModalFooter>
             <Button type="button" variant="secondary" onClick={() => setFuelModal(false)}>
@@ -1546,7 +1615,8 @@ export default function ObjectDetailPage() {
                 cost: fuelEditModal.cost,
                 mileage: fuelEditModal.mileage,
                 station: fuelEditModal.station,
-                notes: fuelEditModal.notes
+                notes: fuelEditModal.notes,
+                attachments: fuelEditModal.attachments || []
               }
             }); 
           }}>
@@ -1610,6 +1680,12 @@ export default function ObjectDetailPage() {
                 value={fuelEditModal.notes}
                 onChange={(e) => setFuelEditModal({ ...fuelEditModal, notes: e.target.value })}
                 rows={2}
+              />
+              <FileUpload
+                label="Pièces jointes"
+                value={fuelEditModal.attachments || []}
+                onChange={(files) => setFuelEditModal({ ...fuelEditModal, attachments: files })}
+                hint="Joindre des tickets, factures ou photos (PDF, images)"
               />
             </ModalBody>
             <ModalFooter>
@@ -1772,7 +1848,8 @@ export default function ObjectDetailPage() {
             cost: maintenanceData.cost,
             mileage: maintenanceData.mileage,
             nextDate: maintenanceData.nextDate,
-            provider: maintenanceData.provider
+            provider: maintenanceData.provider,
+            attachments: maintenanceData.attachments
           }); 
         }}>
           <ModalBody className="space-y-4">
@@ -1841,6 +1918,12 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setMaintenanceData({ ...maintenanceData, nextDate: e.target.value })}
               />
             </div>
+            <FileUpload
+              label="Pièces jointes"
+              value={maintenanceData.attachments}
+              onChange={(files) => setMaintenanceData({ ...maintenanceData, attachments: files })}
+              hint="Joindre des factures, bons de commande ou photos (PDF, images)"
+            />
           </ModalBody>
           <ModalFooter>
             <Button type="button" variant="secondary" onClick={() => setMaintenanceModal(false)}>
@@ -1867,7 +1950,8 @@ export default function ObjectDetailPage() {
                 cost: maintenanceEditModal.cost,
                 mileage: maintenanceEditModal.mileage,
                 nextDate: maintenanceEditModal.nextDate,
-                provider: maintenanceEditModal.provider
+                provider: maintenanceEditModal.provider,
+                attachments: maintenanceEditModal.attachments || []
               }
             })
           }
@@ -1938,6 +2022,12 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, nextDate: e.target.value })}
               />
             </div>
+            <FileUpload
+              label="Pièces jointes"
+              value={maintenanceEditModal?.attachments || []}
+              onChange={(files) => setMaintenanceEditModal({ ...maintenanceEditModal, attachments: files })}
+              hint="Joindre des factures, bons de commande ou photos (PDF, images)"
+            />
           </ModalBody>
           <ModalFooter>
             <Button type="button" variant="secondary" onClick={() => setMaintenanceEditModal(null)}>
@@ -2267,6 +2357,12 @@ export default function ObjectDetailPage() {
               onChange={(e) => setControlData({ ...controlData, notes: e.target.value })}
               rows={2}
             />
+            <FileUpload
+              label="Pièces jointes"
+              value={controlData.attachments}
+              onChange={(files) => setControlData({ ...controlData, attachments: files })}
+              hint="Joindre le procès-verbal de contrôle technique (PDF, images)"
+            />
           </ModalBody>
           <ModalFooter>
             <Button type="button" variant="secondary" onClick={() => setControlModal(false)}>
@@ -2543,7 +2639,8 @@ export default function ObjectDetailPage() {
                 mileage: controlEditModal.mileage ? parseInt(controlEditModal.mileage) : null,
                 center: controlEditModal.center,
                 cost: controlEditModal.cost ? parseFloat(controlEditModal.cost) : null,
-                notes: controlEditModal.notes
+                notes: controlEditModal.notes,
+                attachments: controlEditModal.attachments || []
               }
             })
           }
@@ -2618,6 +2715,12 @@ export default function ObjectDetailPage() {
               value={controlEditModal?.notes || ''}
               onChange={(e) => setControlEditModal({ ...controlEditModal, notes: e.target.value })}
               rows={2}
+            />
+            <FileUpload
+              label="Pièces jointes"
+              value={controlEditModal?.attachments || []}
+              onChange={(files) => setControlEditModal({ ...controlEditModal, attachments: files })}
+              hint="Joindre le procès-verbal de contrôle technique (PDF, images)"
             />
           </ModalBody>
           <ModalFooter>
