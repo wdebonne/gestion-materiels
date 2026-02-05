@@ -52,19 +52,20 @@ async function checkAlerts(): Promise<void> {
     // Récupérer les paramètres d'alerte configurés
     const alertSettings = await getAlertSettings();
 
-    // Vérifier les contrôles techniques arrivant à échéance
+    // Vérifier les contrôles techniques arrivant à échéance (à venir dans les X jours OU expirés)
     const technicalControls = await db.query(
       `SELECT tc.*, o.name as object_name FROM technical_controls tc
        INNER JOIN objects o ON o.id = tc.object_id
-       WHERE tc.reminder_sent = 0 
-       AND date(tc.expiry_date) <= date('now', '+${alertSettings.technical_control.days} days')
-       AND date(tc.expiry_date) >= date('now')`
+       WHERE (
+         (tc.reminder_sent = 0 AND date(tc.expiry_date) <= date('now', '+${alertSettings.technical_control.days} days') AND date(tc.expiry_date) >= date('now'))
+         OR date(tc.expiry_date) < date('now')
+       )`
     );
 
     for (const tc of technicalControls) {
       // Créer ou mettre à jour l'alerte
       const existingAlert = await db.queryOne(
-        "SELECT id FROM alerts WHERE plugin_reference = 'technical-control' AND plugin_reference_id = ?",
+        "SELECT id FROM alerts WHERE plugin_reference = 'technical-control' AND plugin_reference_id = ? AND is_dismissed = 0",
         [tc.id]
       );
 
@@ -72,7 +73,11 @@ async function checkAlerts(): Promise<void> {
         (new Date(tc.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
 
-      const severity = priorityToSeverity(alertSettings.technical_control.priority, daysUntilExpiry);
+      const isExpired = daysUntilExpiry < 0;
+      const severity = isExpired ? 'critical' : priorityToSeverity(alertSettings.technical_control.priority, daysUntilExpiry);
+      const message = isExpired
+        ? `Le contrôle technique a expiré le ${tc.expiry_date}`
+        : `Le contrôle technique expire le ${tc.expiry_date}`;
 
       if (!existingAlert) {
         const alertResult = await db.execute(
@@ -80,7 +85,7 @@ async function checkAlerts(): Promise<void> {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             `Contrôle technique: ${tc.object_name}`,
-            `Le contrôle technique expire le ${tc.expiry_date}`,
+            message,
             'technical_control',
             severity,
             tc.object_id,
@@ -98,26 +103,28 @@ async function checkAlerts(): Promise<void> {
           console.error('Erreur envoi email alerte CT:', error);
         }
       } else {
-        // Mettre à jour la sévérité
+        // Mettre à jour la sévérité et le message
         await db.execute(
           'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
-          [severity, `Le contrôle technique expire le ${tc.expiry_date}`, existingAlert.id]
+          [severity, message, existingAlert.id]
         );
       }
     }
 
-    // Vérifier les maintenances programmées
+    // Vérifier les maintenances programmées (à venir dans les X jours OU en retard)
     const maintenances = await db.query(
       `SELECT m.*, o.name as object_name FROM maintenances m
        INNER JOIN objects o ON o.id = m.object_id
-       WHERE m.reminder_sent = 0 AND m.next_date IS NOT NULL
-       AND date(m.next_date) <= date('now', '+${alertSettings.maintenance.days} days')
-       AND date(m.next_date) >= date('now')`
+       WHERE m.next_date IS NOT NULL
+       AND (
+         (m.reminder_sent = 0 AND date(m.next_date) <= date('now', '+${alertSettings.maintenance.days} days') AND date(m.next_date) >= date('now'))
+         OR date(m.next_date) < date('now')
+       )`
     );
 
     for (const m of maintenances) {
       const existingAlert = await db.queryOne(
-        "SELECT id FROM alerts WHERE plugin_reference = 'maintenance' AND plugin_reference_id = ?",
+        "SELECT id FROM alerts WHERE plugin_reference = 'maintenance' AND plugin_reference_id = ? AND is_dismissed = 0",
         [m.id]
       );
 
@@ -125,7 +132,11 @@ async function checkAlerts(): Promise<void> {
         (new Date(m.next_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
       );
 
-      const severity = priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
+      const isOverdue = daysUntilDue < 0;
+      const severity = isOverdue ? 'critical' : priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
+      const message = isOverdue 
+        ? `${m.maintenance_type} en retard depuis le ${m.next_date}` 
+        : `${m.maintenance_type} prévue le ${m.next_date}`;
 
       if (!existingAlert) {
         const alertResult = await db.execute(
@@ -133,7 +144,7 @@ async function checkAlerts(): Promise<void> {
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             `Maintenance: ${m.object_name}`,
-            `${m.maintenance_type} prévue le ${m.next_date}`,
+            message,
             'maintenance',
             severity,
             m.object_id,
@@ -149,6 +160,12 @@ async function checkAlerts(): Promise<void> {
         } catch (error) {
           console.error('Erreur envoi email alerte maintenance:', error);
         }
+      } else if (isOverdue) {
+        // Mettre à jour l'alerte existante si en retard
+        await db.execute(
+          'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
+          [severity, message, existingAlert.id]
+        );
       }
     }
 

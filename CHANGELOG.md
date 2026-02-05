@@ -7,6 +7,20 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.28] - 2026-02-05
+
+### Corrigé
+- **Alertes pour échéances passées** : Les alertes sont maintenant générées pour les maintenances et contrôles techniques en retard
+  - Les maintenances en retard affichent "en retard depuis le..." avec une sévérité critique
+  - Les contrôles techniques expirés affichent "a expiré le..." avec une sévérité critique
+  - Les alertes existantes sont mises à jour automatiquement si l'échéance est dépassée
+
+### Amélioré
+- **Service cron** : La vérification des alertes inclut maintenant :
+  - Les échéances à venir (dans les X jours configurés)
+  - Les échéances passées (en retard ou expirées)
+- **Sévérité automatique** : Les éléments en retard/expirés sont automatiquement marqués comme critiques
+
 ## [1.2.27] - 2026-02-05
 
 ### Amélioré
