@@ -415,6 +415,8 @@ class DatabaseManager {
         color VARCHAR(20) DEFAULT '#3b82f6',
         reminder_before INTEGER DEFAULT 0,
         reminder_sent ${boolType} DEFAULT 0,
+        source VARCHAR(50) DEFAULT 'local',
+        external_id VARCHAR(500),
         created_by INTEGER,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
@@ -512,6 +514,18 @@ class DatabaseManager {
         table: 'technical_controls',
         column: 'attachments',
         type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // Ajouter la colonne source à calendar_events pour la synchronisation
+      {
+        table: 'calendar_events',
+        column: 'source',
+        type: "VARCHAR(50) DEFAULT 'local'"
+      },
+      // Ajouter la colonne external_id à calendar_events pour la synchronisation
+      {
+        table: 'calendar_events',
+        column: 'external_id',
+        type: 'VARCHAR(500)'
       }
     ];
 

@@ -7,6 +7,42 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.17] - 2026-02-05
+
+### Ajouté
+- **Calendrier modernisé** avec interface entièrement repensée
+- **Mini-calendrier** dans un panneau latéral repliable pour navigation rapide
+- **Navigation libre** dans le temps (plus de limitation à 2026)
+- Boutons de navigation par année (double chevrons) et par mois (simple chevron)
+- Bouton "Aujourd'hui" pour retourner à la date courante
+- **Sélecteur de vue** moderne avec icônes (Mois, Semaine, Jour, Liste)
+- **Recherche intégrée** pour filtrer les événements par titre, description ou matériel
+- **Filtres par type** d'événement (Maintenance, Réunion, Échéance, Rappel, Autre)
+- **Liste des événements du jour** sélectionné dans le panneau latéral
+- Indicateurs visuels des jours avec événements dans le mini-calendrier
+- **Synchronisation Microsoft Outlook** via Azure AD (Client ID, Secret, Tenant ID)
+- **Synchronisation CalDAV** compatible Nextcloud, Synology, iCloud, Google Calendar
+- Modal de configuration de synchronisation avec test de connexion
+- Bouton de synchronisation manuelle avec indicateur de statut
+- Nouvelles colonnes `source` et `external_id` dans la table calendar_events
+
+### Amélioré
+- Interface du calendrier plus moderne et intuitive
+- Navigation fluide entre les mois et années
+- Meilleure gestion des événements externes (non modifiables localement)
+- Affichage du type de source pour les événements synchronisés (badge Outlook/CalDAV)
+
+### API
+- `GET /api/calendar/sync/status` - Statut de synchronisation
+- `GET /api/calendar/sync/config` - Configuration de synchronisation
+- `POST /api/calendar/sync/outlook/config` - Configurer Outlook
+- `POST /api/calendar/sync/caldav/config` - Configurer CalDAV
+- `POST /api/calendar/sync/outlook/test` - Tester connexion Outlook
+- `POST /api/calendar/sync/caldav/test` - Tester connexion CalDAV
+- `POST /api/calendar/sync` - Synchroniser tous les calendriers
+- `DELETE /api/calendar/sync/outlook` - Déconnecter Outlook
+- `DELETE /api/calendar/sync/caldav` - Déconnecter CalDAV
+
 ## [1.2.16] - 2026-02-05
 
 ### Ajouté

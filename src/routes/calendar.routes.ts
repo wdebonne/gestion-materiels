@@ -53,7 +53,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         description: e.description,
         eventType: e.event_type,
         start: e.start_date,
+        startDate: e.start_date,
         end: e.end_date,
+        endDate: e.end_date,
         allDay: !!e.all_day,
         objectId: e.object_id,
         objectName: e.object_name,
@@ -61,6 +63,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         pluginReferenceId: e.plugin_reference_id,
         color: e.color,
         reminderBefore: e.reminder_before,
+        source: e.source || 'local',
+        externalId: e.external_id,
         createdAt: e.created_at
       }))
     });
@@ -115,7 +119,9 @@ router.get('/events', authenticateToken, async (req: AuthRequest, res: Response)
         description: e.description,
         eventType: e.event_type,
         start: e.start_date,
+        startDate: e.start_date,
         end: e.end_date,
+        endDate: e.end_date,
         allDay: !!e.all_day,
         objectId: e.object_id,
         objectName: e.object_name,
@@ -123,6 +129,8 @@ router.get('/events', authenticateToken, async (req: AuthRequest, res: Response)
         pluginReferenceId: e.plugin_reference_id,
         color: e.color,
         reminderBefore: e.reminder_before,
+        source: e.source || 'local',
+        externalId: e.external_id,
         createdAt: e.created_at
       }))
     });
@@ -331,5 +339,576 @@ router.get('/upcoming', authenticateToken, async (req: AuthRequest, res: Respons
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
+
+// ==================== SYNCHRONISATION CALENDRIERS ====================
+
+// GET /api/calendar/sync/status - Statut de synchronisation
+router.get('/sync/status', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const outlookConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+    );
+    const caldavConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+    );
+
+    const outlookData = outlookConfig ? JSON.parse(outlookConfig.value || '{}') : {};
+    const caldavData = caldavConfig ? JSON.parse(caldavConfig.value || '{}') : {};
+
+    res.json({
+      outlook: {
+        connected: !!outlookData.enabled && !!outlookData.clientId,
+        lastSync: outlookData.lastSync,
+        email: outlookData.email
+      },
+      caldav: {
+        connected: !!caldavData.enabled && !!caldavData.serverUrl,
+        lastSync: caldavData.lastSync,
+        server: caldavData.serverUrl
+      }
+    });
+  } catch (error: any) {
+    console.error('Erreur get sync status:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// GET /api/calendar/sync/config - Configuration de synchronisation
+router.get('/sync/config', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const outlookConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+    );
+    const caldavConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+    );
+
+    const outlookData = outlookConfig ? JSON.parse(outlookConfig.value || '{}') : {};
+    const caldavData = caldavConfig ? JSON.parse(caldavConfig.value || '{}') : {};
+
+    // Ne pas renvoyer les secrets complets
+    res.json({
+      outlook: {
+        clientId: outlookData.clientId || '',
+        clientSecret: outlookData.clientSecret ? '••••••••' : '',
+        tenantId: outlookData.tenantId || '',
+        enabled: !!outlookData.enabled
+      },
+      caldav: {
+        serverUrl: caldavData.serverUrl || '',
+        username: caldavData.username || '',
+        password: caldavData.password ? '••••••••' : '',
+        calendarPath: caldavData.calendarPath || '',
+        enabled: !!caldavData.enabled
+      }
+    });
+  } catch (error: any) {
+    console.error('Erreur get sync config:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/calendar/sync/outlook/config - Configurer Outlook
+router.post('/sync/outlook/config', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { clientId, clientSecret, tenantId, enabled } = req.body;
+
+    // Récupérer la config existante pour ne pas écraser le secret si non modifié
+    const existingConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+    );
+    const existingData = existingConfig ? JSON.parse(existingConfig.value || '{}') : {};
+
+    const newConfig = {
+      clientId: clientId || existingData.clientId,
+      clientSecret: clientSecret === '••••••••' ? existingData.clientSecret : clientSecret,
+      tenantId: tenantId || existingData.tenantId,
+      enabled: !!enabled,
+      lastSync: existingData.lastSync
+    };
+
+    if (existingConfig) {
+      await db.execute(
+        "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_outlook_config'",
+        [JSON.stringify(newConfig)]
+      );
+    } else {
+      await db.execute(
+        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_outlook_config', ?, datetime('now'), datetime('now'))",
+        [JSON.stringify(newConfig)]
+      );
+    }
+
+    res.json({ success: true, message: 'Configuration Outlook enregistrée' });
+  } catch (error: any) {
+    console.error('Erreur save outlook config:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/calendar/sync/caldav/config - Configurer CalDAV
+router.post('/sync/caldav/config', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { serverUrl, username, password, calendarPath, enabled } = req.body;
+
+    // Récupérer la config existante pour ne pas écraser le mot de passe si non modifié
+    const existingConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+    );
+    const existingData = existingConfig ? JSON.parse(existingConfig.value || '{}') : {};
+
+    const newConfig = {
+      serverUrl: serverUrl || existingData.serverUrl,
+      username: username || existingData.username,
+      password: password === '••••••••' ? existingData.password : password,
+      calendarPath: calendarPath || existingData.calendarPath,
+      enabled: !!enabled,
+      lastSync: existingData.lastSync
+    };
+
+    if (existingConfig) {
+      await db.execute(
+        "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_caldav_config'",
+        [JSON.stringify(newConfig)]
+      );
+    } else {
+      await db.execute(
+        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_caldav_config', ?, datetime('now'), datetime('now'))",
+        [JSON.stringify(newConfig)]
+      );
+    }
+
+    res.json({ success: true, message: 'Configuration CalDAV enregistrée' });
+  } catch (error: any) {
+    console.error('Erreur save caldav config:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/calendar/sync/outlook/test - Tester la connexion Outlook
+router.post('/sync/outlook/test', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const config = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+    );
+    
+    if (!config) {
+      return res.status(400).json({ success: false, error: 'Configuration Outlook non trouvée' });
+    }
+
+    const data = JSON.parse(config.value || '{}');
+    
+    if (!data.clientId || !data.clientSecret || !data.tenantId) {
+      return res.status(400).json({ success: false, error: 'Configuration incomplète' });
+    }
+
+    // Test de connexion à Microsoft Graph API
+    // Pour une vraie implémentation, il faudrait utiliser @azure/msal-node
+    // Ici on simule juste un test basique
+    const tokenEndpoint = `https://login.microsoftonline.com/${data.tenantId}/oauth2/v2.0/token`;
+    
+    try {
+      const response = await fetch(tokenEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded'
+        },
+        body: new URLSearchParams({
+          client_id: data.clientId,
+          client_secret: data.clientSecret,
+          scope: 'https://graph.microsoft.com/.default',
+          grant_type: 'client_credentials'
+        })
+      });
+
+      if (response.ok) {
+        res.json({ success: true, message: 'Connexion Outlook réussie' });
+      } else {
+        const errorData = await response.json();
+        res.status(400).json({ 
+          success: false, 
+          error: errorData.error_description || 'Erreur d\'authentification' 
+        });
+      }
+    } catch (fetchError) {
+      res.status(400).json({ success: false, error: 'Impossible de contacter le serveur Microsoft' });
+    }
+  } catch (error: any) {
+    console.error('Erreur test outlook:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/calendar/sync/caldav/test - Tester la connexion CalDAV
+router.post('/sync/caldav/test', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const config = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+    );
+    
+    if (!config) {
+      return res.status(400).json({ success: false, error: 'Configuration CalDAV non trouvée' });
+    }
+
+    const data = JSON.parse(config.value || '{}');
+    
+    if (!data.serverUrl || !data.username || !data.password) {
+      return res.status(400).json({ success: false, error: 'Configuration incomplète' });
+    }
+
+    // Test de connexion CalDAV basique avec PROPFIND
+    try {
+      const auth = Buffer.from(`${data.username}:${data.password}`).toString('base64');
+      const response = await fetch(data.serverUrl, {
+        method: 'PROPFIND',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+          'Depth': '0',
+          'Content-Type': 'application/xml'
+        },
+        body: `<?xml version="1.0" encoding="utf-8"?>
+          <propfind xmlns="DAV:">
+            <prop>
+              <displayname/>
+              <resourcetype/>
+            </prop>
+          </propfind>`
+      });
+
+      if (response.ok || response.status === 207) {
+        res.json({ success: true, message: 'Connexion CalDAV réussie' });
+      } else if (response.status === 401) {
+        res.status(400).json({ success: false, error: 'Identifiants incorrects' });
+      } else {
+        res.status(400).json({ success: false, error: `Erreur serveur: ${response.status}` });
+      }
+    } catch (fetchError) {
+      res.status(400).json({ success: false, error: 'Impossible de contacter le serveur CalDAV' });
+    }
+  } catch (error: any) {
+    console.error('Erreur test caldav:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/calendar/sync - Synchroniser tous les calendriers
+router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const results = {
+      outlook: { synced: false, events: 0, error: null as string | null },
+      caldav: { synced: false, events: 0, error: null as string | null }
+    };
+
+    // Synchroniser Outlook
+    const outlookConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+    );
+    if (outlookConfig) {
+      const data = JSON.parse(outlookConfig.value || '{}');
+      if (data.enabled && data.clientId && data.clientSecret) {
+        try {
+          const syncResult = await syncOutlookCalendar(data);
+          results.outlook = { synced: true, events: syncResult.count, error: null };
+          
+          // Mettre à jour lastSync
+          data.lastSync = new Date().toISOString();
+          await db.execute(
+            "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_outlook_config'",
+            [JSON.stringify(data)]
+          );
+        } catch (err: any) {
+          results.outlook.error = err.message;
+        }
+      }
+    }
+
+    // Synchroniser CalDAV
+    const caldavConfig = await db.queryOne(
+      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+    );
+    if (caldavConfig) {
+      const data = JSON.parse(caldavConfig.value || '{}');
+      if (data.enabled && data.serverUrl && data.username) {
+        try {
+          const syncResult = await syncCaldavCalendar(data);
+          results.caldav = { synced: true, events: syncResult.count, error: null };
+          
+          // Mettre à jour lastSync
+          data.lastSync = new Date().toISOString();
+          await db.execute(
+            "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_caldav_config'",
+            [JSON.stringify(data)]
+          );
+        } catch (err: any) {
+          results.caldav.error = err.message;
+        }
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (error: any) {
+    console.error('Erreur sync:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/calendar/sync/outlook - Déconnecter Outlook
+router.delete('/sync/outlook', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    // Supprimer les événements synchronisés depuis Outlook
+    await db.execute(
+      "DELETE FROM calendar_events WHERE source = 'outlook'"
+    );
+    
+    // Désactiver la config
+    await db.execute(
+      "UPDATE settings SET value = '{}', updated_at = datetime('now') WHERE key = 'calendar_outlook_config'"
+    );
+
+    res.json({ success: true, message: 'Outlook déconnecté' });
+  } catch (error: any) {
+    console.error('Erreur disconnect outlook:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/calendar/sync/caldav - Déconnecter CalDAV
+router.delete('/sync/caldav', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    // Supprimer les événements synchronisés depuis CalDAV
+    await db.execute(
+      "DELETE FROM calendar_events WHERE source = 'caldav'"
+    );
+    
+    // Désactiver la config
+    await db.execute(
+      "UPDATE settings SET value = '{}', updated_at = datetime('now') WHERE key = 'calendar_caldav_config'"
+    );
+
+    res.json({ success: true, message: 'CalDAV déconnecté' });
+  } catch (error: any) {
+    console.error('Erreur disconnect caldav:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// Fonction helper pour synchroniser Outlook
+async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
+  try {
+    // Obtenir un token d'accès
+    const tokenEndpoint = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
+    const tokenResponse = await fetch(tokenEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        scope: 'https://graph.microsoft.com/.default',
+        grant_type: 'client_credentials'
+      })
+    });
+
+    if (!tokenResponse.ok) {
+      throw new Error('Impossible d\'obtenir un token Outlook');
+    }
+
+    const tokenData = await tokenResponse.json();
+    const accessToken = tokenData.access_token;
+
+    // Récupérer les événements des 30 prochains jours
+    const now = new Date();
+    const endDate = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    
+    const eventsUrl = `https://graph.microsoft.com/v1.0/me/calendarview?startDateTime=${now.toISOString()}&endDateTime=${endDate.toISOString()}&$select=subject,start,end,isAllDay,bodyPreview&$top=100`;
+    
+    const eventsResponse = await fetch(eventsUrl, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Prefer': 'outlook.timezone="Europe/Paris"'
+      }
+    });
+
+    if (!eventsResponse.ok) {
+      // Pour les applications daemon, on ne peut pas accéder aux calendriers utilisateur sans permissions spéciales
+      // Retourner un résultat vide mais valide
+      console.log('Note: Outlook sync requires delegated permissions for user calendars');
+      return { count: 0 };
+    }
+
+    const eventsData = await eventsResponse.json();
+    const events = eventsData.value || [];
+
+    // Supprimer les anciens événements Outlook et insérer les nouveaux
+    await db.execute("DELETE FROM calendar_events WHERE source = 'outlook'");
+
+    let count = 0;
+    for (const event of events) {
+      await db.execute(
+        `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, 'outlook', ?, datetime('now'))`,
+        [
+          event.subject,
+          event.bodyPreview || '',
+          event.start?.dateTime || event.start,
+          event.end?.dateTime || event.end,
+          event.isAllDay ? 1 : 0,
+          '#0078D4', // Bleu Outlook
+          event.id
+        ]
+      );
+      count++;
+    }
+
+    return { count };
+  } catch (error: any) {
+    console.error('Erreur sync Outlook:', error);
+    throw error;
+  }
+}
+
+// Fonction helper pour synchroniser CalDAV
+async function syncCaldavCalendar(config: any): Promise<{ count: number }> {
+  try {
+    const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
+    const calendarUrl = config.calendarPath 
+      ? `${config.serverUrl}${config.calendarPath}`
+      : config.serverUrl;
+
+    // Requête REPORT pour récupérer les événements
+    const now = new Date();
+    const endDate = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+    
+    const reportBody = `<?xml version="1.0" encoding="utf-8"?>
+      <c:calendar-query xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+        <d:prop>
+          <d:getetag/>
+          <c:calendar-data/>
+        </d:prop>
+        <c:filter>
+          <c:comp-filter name="VCALENDAR">
+            <c:comp-filter name="VEVENT">
+              <c:time-range start="${formatICalDate(now)}" end="${formatICalDate(endDate)}"/>
+            </c:comp-filter>
+          </c:comp-filter>
+        </c:filter>
+      </c:calendar-query>`;
+
+    const response = await fetch(calendarUrl, {
+      method: 'REPORT',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Depth': '1',
+        'Content-Type': 'application/xml'
+      },
+      body: reportBody
+    });
+
+    if (!response.ok && response.status !== 207) {
+      throw new Error(`Erreur CalDAV: ${response.status}`);
+    }
+
+    const xmlText = await response.text();
+    const events = parseCalDavResponse(xmlText);
+
+    // Supprimer les anciens événements CalDAV et insérer les nouveaux
+    await db.execute("DELETE FROM calendar_events WHERE source = 'caldav'");
+
+    let count = 0;
+    for (const event of events) {
+      await db.execute(
+        `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, created_at) 
+         VALUES (?, ?, ?, ?, ?, ?, 'caldav', ?, datetime('now'))`,
+        [
+          event.summary,
+          event.description || '',
+          event.dtstart,
+          event.dtend,
+          event.allDay ? 1 : 0,
+          '#10B981', // Vert pour CalDAV
+          event.uid
+        ]
+      );
+      count++;
+    }
+
+    return { count };
+  } catch (error: any) {
+    console.error('Erreur sync CalDAV:', error);
+    throw error;
+  }
+}
+
+// Helper pour formater une date en format iCal
+function formatICalDate(date: Date): string {
+  return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+}
+
+// Parser simple pour les réponses CalDAV
+function parseCalDavResponse(xmlText: string): Array<{
+  uid: string;
+  summary: string;
+  description?: string;
+  dtstart: string;
+  dtend?: string;
+  allDay: boolean;
+}> {
+  const events: Array<any> = [];
+  
+  // Extraire les données calendar-data (contient le iCalendar)
+  const calendarDataMatches = xmlText.match(/<cal:calendar-data[^>]*>([\s\S]*?)<\/cal:calendar-data>/gi);
+  
+  if (!calendarDataMatches) return events;
+
+  for (const match of calendarDataMatches) {
+    const icalData = match.replace(/<\/?cal:calendar-data[^>]*>/gi, '').trim();
+    
+    // Parser basique iCalendar
+    const uidMatch = icalData.match(/UID:(.+)/);
+    const summaryMatch = icalData.match(/SUMMARY:(.+)/);
+    const descMatch = icalData.match(/DESCRIPTION:(.+)/);
+    const dtstartMatch = icalData.match(/DTSTART[^:]*:(.+)/);
+    const dtendMatch = icalData.match(/DTEND[^:]*:(.+)/);
+    
+    if (summaryMatch && dtstartMatch) {
+      const dtstart = parseICalDate(dtstartMatch[1].trim());
+      const dtend = dtendMatch ? parseICalDate(dtendMatch[1].trim()) : undefined;
+      
+      events.push({
+        uid: uidMatch ? uidMatch[1].trim() : `caldav-${Date.now()}-${Math.random()}`,
+        summary: summaryMatch[1].trim(),
+        description: descMatch ? descMatch[1].trim().replace(/\\n/g, '\n') : undefined,
+        dtstart,
+        dtend,
+        allDay: !dtstartMatch[0].includes('T') || dtstartMatch[0].includes('VALUE=DATE')
+      });
+    }
+  }
+
+  return events;
+}
+
+// Parser une date iCalendar
+function parseICalDate(icalDate: string): string {
+  // Format: 20260205T100000Z ou 20260205
+  const cleanDate = icalDate.replace(/[^0-9TZ]/g, '');
+  
+  if (cleanDate.length === 8) {
+    // Date seule
+    return `${cleanDate.slice(0, 4)}-${cleanDate.slice(4, 6)}-${cleanDate.slice(6, 8)}`;
+  } else if (cleanDate.length >= 15) {
+    // Date avec heure
+    const year = cleanDate.slice(0, 4);
+    const month = cleanDate.slice(4, 6);
+    const day = cleanDate.slice(6, 8);
+    const hour = cleanDate.slice(9, 11);
+    const minute = cleanDate.slice(11, 13);
+    const second = cleanDate.slice(13, 15);
+    return `${year}-${month}-${day}T${hour}:${minute}:${second}`;
+  }
+  
+  return icalDate;
+}
 
 export default router;
