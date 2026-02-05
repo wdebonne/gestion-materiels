@@ -5,6 +5,56 @@ import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from 
 
 const router = Router();
 
+// Helper pour récupérer les paramètres d'alertes
+async function getAlertSettings(): Promise<{
+  technical_control: { days: number; priority: string };
+  maintenance: { days: number; priority: string };
+  fuel: { days: number; priority: string };
+  custom: { days: number; priority: string };
+}> {
+  const defaultSettings = {
+    technical_control: { days: 30, priority: 'medium' },
+    maintenance: { days: 14, priority: 'low' },
+    fuel: { days: 7, priority: 'low' },
+    custom: { days: 7, priority: 'low' }
+  };
+
+  try {
+    const setting = await db.queryOne(
+      "SELECT * FROM settings WHERE setting_key = 'alert_settings'"
+    );
+    if (setting && setting.setting_value) {
+      const parsed = JSON.parse(setting.setting_value);
+      return { ...defaultSettings, ...parsed };
+    }
+  } catch (error) {
+    console.error('Erreur récupération paramètres alertes:', error);
+  }
+  return defaultSettings;
+}
+
+// Helper pour vérifier si une alerte doit être créée
+function shouldCreateAlert(dueDate: string, daysLimit: number): boolean {
+  const dueDateObj = new Date(dueDate);
+  const now = new Date();
+  const limitDate = new Date();
+  limitDate.setDate(limitDate.getDate() + daysLimit);
+  
+  // Créer l'alerte seulement si la date d'échéance est dans la période configurée
+  return dueDateObj >= now && dueDateObj <= limitDate;
+}
+
+// Helper pour convertir la priorité en sévérité
+function priorityToSeverity(priority: string, daysUntilDue: number): string {
+  if (daysUntilDue <= 7) return 'critical';
+  if (daysUntilDue <= 15) return 'warning';
+  switch (priority) {
+    case 'high': return 'warning';
+    case 'medium': return 'info';
+    default: return 'info';
+  }
+}
+
 // GET /api/objects - Liste des objets
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -918,25 +968,33 @@ router.post('/:id/technical-control', authenticateToken, requireSupervisor, asyn
       [id, controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes, attachmentsJson]
     );
 
-    // Créer une alerte pour le prochain contrôle
+    // Créer une alerte pour le prochain contrôle (seulement si dans la période configurée)
     if (expiryDate) {
       const obj = await db.queryOne('SELECT name FROM objects WHERE id = ?', [id]);
-      await db.execute(
-        `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          `Contrôle technique: ${obj?.name}`,
-          `Le contrôle technique expire le ${expiryDate}`,
-          'technical_control',
-          'warning',
-          id,
-          'technical-control',
-          insertResult.lastInsertRowid,
-          expiryDate
-        ]
-      );
+      const alertSettings = await getAlertSettings();
+      
+      // Vérifier si l'alerte doit être créée selon les paramètres
+      if (shouldCreateAlert(expiryDate, alertSettings.technical_control.days)) {
+        const daysUntilDue = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const severity = priorityToSeverity(alertSettings.technical_control.priority, daysUntilDue);
+        
+        await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            `Contrôle technique: ${obj?.name}`,
+            `Le contrôle technique expire le ${expiryDate}`,
+            'technical_control',
+            severity,
+            id,
+            'technical-control',
+            insertResult.lastInsertRowid,
+            expiryDate
+          ]
+        );
+      }
 
-      // Ajouter au calendrier
+      // Ajouter au calendrier (toujours, indépendamment des paramètres d'alertes)
       await db.execute(
         `INSERT INTO calendar_events (title, description, event_type, start_date, all_day, object_id, plugin_reference, plugin_reference_id, color)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -1025,21 +1083,28 @@ router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin,
         "DELETE FROM alerts WHERE plugin_reference = 'technical-control' AND plugin_reference_id = ?",
         [controlId]
       );
-      // Créer une nouvelle alerte
-      await db.execute(
-        `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          `Contrôle technique: ${obj?.name}`,
-          `Le contrôle technique expire le ${expiryDate}`,
-          'technical_control',
-          'warning',
-          id,
-          'technical-control',
-          controlId,
-          expiryDate
-        ]
-      );
+      
+      // Créer une nouvelle alerte seulement si dans la période configurée
+      const alertSettings = await getAlertSettings();
+      if (shouldCreateAlert(expiryDate, alertSettings.technical_control.days)) {
+        const daysUntilDue = Math.ceil((new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const severity = priorityToSeverity(alertSettings.technical_control.priority, daysUntilDue);
+        
+        await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            `Contrôle technique: ${obj?.name}`,
+            `Le contrôle technique expire le ${expiryDate}`,
+            'technical_control',
+            severity,
+            id,
+            'technical-control',
+            controlId,
+            expiryDate
+          ]
+        );
+      }
     }
 
     res.json({ success: true, message: 'Contrôle technique modifié' });
@@ -1069,25 +1134,33 @@ router.post('/:id/maintenance', authenticateToken, requireSupervisor, async (req
       [id, maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson]
     );
 
-    // Créer une alerte pour la prochaine maintenance
+    // Créer une alerte pour la prochaine maintenance (seulement si dans la période configurée)
     if (nextDate) {
       const obj = await db.queryOne('SELECT name FROM objects WHERE id = ?', [id]);
-      await db.execute(
-        `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          `Maintenance: ${obj?.name}`,
-          `${maintenanceType} prévue le ${nextDate}`,
-          'maintenance',
-          'info',
-          id,
-          'maintenance',
-          insertResult.lastInsertRowid,
-          nextDate
-        ]
-      );
+      const alertSettings = await getAlertSettings();
+      
+      // Vérifier si l'alerte doit être créée selon les paramètres
+      if (shouldCreateAlert(nextDate, alertSettings.maintenance.days)) {
+        const daysUntilDue = Math.ceil((new Date(nextDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const severity = priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
+        
+        await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            `Maintenance: ${obj?.name}`,
+            `${maintenanceType} prévue le ${nextDate}`,
+            'maintenance',
+            severity,
+            id,
+            'maintenance',
+            insertResult.lastInsertRowid,
+            nextDate
+          ]
+        );
+      }
 
-      // Ajouter au calendrier si demandé
+      // Ajouter au calendrier si demandé (toujours, indépendamment des paramètres d'alertes)
       if (addToCalendar) {
         await db.execute(
           `INSERT INTO calendar_events (title, description, event_type, start_date, all_day, object_id, plugin_reference, plugin_reference_id, color)
@@ -1182,21 +1255,28 @@ router.put('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin, a
         "DELETE FROM alerts WHERE plugin_reference = 'maintenance' AND plugin_reference_id = ?",
         [maintenanceId]
       );
-      // Créer une nouvelle alerte
-      await db.execute(
-        `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          `Maintenance: ${obj?.name}`,
-          `${maintenanceType} prévue le ${nextDate}`,
-          'maintenance',
-          'info',
-          id,
-          'maintenance',
-          maintenanceId,
-          nextDate
-        ]
-      );
+      
+      // Créer une nouvelle alerte seulement si dans la période configurée
+      const alertSettings = await getAlertSettings();
+      if (shouldCreateAlert(nextDate, alertSettings.maintenance.days)) {
+        const daysUntilDue = Math.ceil((new Date(nextDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+        const severity = priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
+        
+        await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            `Maintenance: ${obj?.name}`,
+            `${maintenanceType} prévue le ${nextDate}`,
+            'maintenance',
+            severity,
+            id,
+            'maintenance',
+            maintenanceId,
+            nextDate
+          ]
+        );
+      }
     }
 
     res.json({ success: true, message: 'Maintenance modifiée' });
