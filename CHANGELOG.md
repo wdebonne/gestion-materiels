@@ -7,6 +7,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.27] - 2026-02-05
+
+### Amélioré
+- **Rafraîchissement automatique des alertes** : La liste des alertes se met à jour automatiquement après :
+  - Ajout, modification ou suppression d'un plein carburant
+  - Ajout, modification ou suppression d'un entretien
+  - Ajout, modification ou suppression d'un contrôle technique
+- **Compteur d'alertes synchronisé** : Le badge d'alertes dans le menu se met à jour en temps réel
+
 ## [1.2.26] - 2026-02-05
 
 ### Ajouté

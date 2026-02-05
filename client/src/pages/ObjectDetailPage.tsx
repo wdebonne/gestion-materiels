@@ -305,6 +305,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Plein ajouté')
       setFuelModal(false)
       // Mettre à jour le kilométrage si supérieur
@@ -322,6 +323,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Plein modifié')
       setFuelEditModal(null)
     },
@@ -336,6 +338,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Plein supprimé')
       setFuelDeleteConfirm(null)
     },
@@ -393,6 +396,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Entretien ajouté')
       setMaintenanceModal(false)
       // Mettre à jour le kilométrage si supérieur
@@ -410,6 +414,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Entretien modifié')
       setMaintenanceEditModal(null)
     },
@@ -424,6 +429,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Entretien supprimé')
       setMaintenanceDeleteConfirm(null)
     },
@@ -535,6 +541,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Contrôle technique ajouté')
       setControlModal(false)
       // Mettre à jour le kilométrage si supérieur
@@ -575,6 +582,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Contrôle technique modifié')
       setControlEditModal(null)
     },
@@ -589,6 +597,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
+      queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Contrôle technique supprimé')
       setControlDeleteConfirm(null)
     },
