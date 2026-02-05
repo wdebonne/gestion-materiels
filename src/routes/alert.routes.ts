@@ -100,7 +100,7 @@ router.get('/count', authenticateToken, async (req: AuthRequest, res: Response) 
 router.get('/settings', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const setting = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'alert_settings'"
+      "SELECT * FROM settings WHERE setting_key = 'alert_settings'"
     );
 
     const defaultSettings = {
@@ -110,9 +110,9 @@ router.get('/settings', authenticateToken, async (req: AuthRequest, res: Respons
       custom: { days: 7, priority: 'low' }
     };
 
-    if (setting && setting.value) {
+    if (setting && setting.setting_value) {
       try {
-        const settings = JSON.parse(setting.value);
+        const settings = JSON.parse(setting.setting_value);
         res.json({ success: true, settings: { ...defaultSettings, ...settings } });
       } catch {
         res.json({ success: true, settings: defaultSettings });
@@ -136,22 +136,50 @@ router.put('/settings', authenticateToken, requireSupervisor, async (req: AuthRe
     }
 
     const existingSetting = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'alert_settings'"
+      "SELECT * FROM settings WHERE setting_key = 'alert_settings'"
     );
 
     if (existingSetting) {
       await db.execute(
-        "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'alert_settings'",
+        "UPDATE settings SET setting_value = ?, updated_at = datetime('now') WHERE setting_key = 'alert_settings'",
         [JSON.stringify(settings)]
       );
     } else {
       await db.execute(
-        "INSERT INTO settings (key, value) VALUES ('alert_settings', ?)",
+        "INSERT INTO settings (setting_key, setting_value) VALUES ('alert_settings', ?)",
         [JSON.stringify(settings)]
       );
     }
 
-    res.json({ success: true, message: 'Paramètres enregistrés' });
+    // Nettoyer les alertes dont la date d'échéance est au-delà des nouvelles limites
+    // Supprimer les alertes de contrôle technique trop lointaines
+    if (settings.technical_control?.days) {
+      await db.execute(
+        `DELETE FROM alerts WHERE alert_type = 'technical_control' 
+         AND due_date > date('now', '+${settings.technical_control.days} days')
+         AND is_dismissed = 0`
+      );
+      // Réinitialiser reminder_sent pour les contrôles techniques
+      await db.execute(
+        `UPDATE technical_controls SET reminder_sent = 0 
+         WHERE date(expiry_date) > date('now', '+${settings.technical_control.days} days')`
+      );
+    }
+
+    // Nettoyer les alertes de maintenance trop lointaines
+    if (settings.maintenance?.days) {
+      await db.execute(
+        `DELETE FROM alerts WHERE alert_type = 'maintenance' 
+         AND due_date > date('now', '+${settings.maintenance.days} days')
+         AND is_dismissed = 0`
+      );
+      await db.execute(
+        `UPDATE maintenances SET reminder_sent = 0 
+         WHERE date(next_date) > date('now', '+${settings.maintenance.days} days')`
+      );
+    }
+
+    res.json({ success: true, message: 'Paramètres enregistrés et alertes mises à jour' });
   } catch (error: any) {
     console.error('Erreur save alert settings:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });

@@ -18,11 +18,11 @@ async function getAlertSettings(): Promise<{
 
   try {
     const setting = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'alert_settings'"
+      "SELECT * FROM settings WHERE setting_key = 'alert_settings'"
     );
 
-    if (setting && setting.value) {
-      const parsed = JSON.parse(setting.value);
+    if (setting && setting.setting_value) {
+      const parsed = JSON.parse(setting.setting_value);
       return { ...defaultSettings, ...parsed };
     }
   } catch (error) {
