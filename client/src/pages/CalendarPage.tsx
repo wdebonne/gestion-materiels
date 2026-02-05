@@ -748,7 +748,7 @@ export default function CalendarPage() {
                 meridiem: false,
                 hour12: false
               }}
-              dayHeaderFormat={{ weekday: 'short', day: 'numeric' }}
+              dayHeaderFormat={{ day: 'numeric' }}
               moreLinkText={(num) => `+${num} autres`}
               moreLinkClick="popover"
             />

@@ -345,31 +345,50 @@ router.get('/upcoming', authenticateToken, async (req: AuthRequest, res: Respons
 // GET /api/calendar/sync/status - Statut de synchronisation
 router.get('/sync/status', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const outlookConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
-    );
-    const caldavConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
-    );
+    let outlookData: any = {};
+    let caldavData: any = {};
 
-    const outlookData = outlookConfig ? JSON.parse(outlookConfig.value || '{}') : {};
-    const caldavData = caldavConfig ? JSON.parse(caldavConfig.value || '{}') : {};
+    try {
+      const outlookConfig = await db.queryOne(
+        "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+      );
+      if (outlookConfig && outlookConfig.value) {
+        outlookData = JSON.parse(outlookConfig.value);
+      }
+    } catch (e) {
+      // Si le parsing échoue ou si la table n'existe pas, on continue avec les valeurs par défaut
+    }
+
+    try {
+      const caldavConfig = await db.queryOne(
+        "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+      );
+      if (caldavConfig && caldavConfig.value) {
+        caldavData = JSON.parse(caldavConfig.value);
+      }
+    } catch (e) {
+      // Si le parsing échoue ou si la table n'existe pas, on continue avec les valeurs par défaut
+    }
 
     res.json({
       outlook: {
         connected: !!outlookData.enabled && !!outlookData.clientId,
-        lastSync: outlookData.lastSync,
-        email: outlookData.email
+        lastSync: outlookData.lastSync || null,
+        email: outlookData.email || null
       },
       caldav: {
         connected: !!caldavData.enabled && !!caldavData.serverUrl,
-        lastSync: caldavData.lastSync,
-        server: caldavData.serverUrl
+        lastSync: caldavData.lastSync || null,
+        server: caldavData.serverUrl || null
       }
     });
   } catch (error: any) {
     console.error('Erreur get sync status:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    // En cas d'erreur, retourner un statut par défaut plutôt qu'une erreur 500
+    res.json({
+      outlook: { connected: false, lastSync: null, email: null },
+      caldav: { connected: false, lastSync: null, server: null }
+    });
   }
 });
 
