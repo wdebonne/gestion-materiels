@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.37] - 2026-02-06
+
+### Corrigé
+- **TypeScript** : Correction des erreurs de typage dans `calendar.routes.ts`
+  - Ajout des assertions de type pour les réponses JSON des API Outlook/Microsoft Graph
+  - Correction du type `unknown` retourné par `response.json()` pour `errorData`, `tokenData` et `eventsData`
+
 ## [1.2.36] - 2026-02-06
 
 ### Sécurité

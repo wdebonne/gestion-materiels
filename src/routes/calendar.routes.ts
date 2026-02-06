@@ -543,7 +543,7 @@ router.post('/sync/outlook/test', authenticateToken, requireSupervisor, async (r
       if (response.ok) {
         res.json({ success: true, message: 'Connexion Outlook réussie' });
       } else {
-        const errorData = await response.json();
+        const errorData = await response.json() as { error_description?: string };
         res.status(400).json({ 
           success: false, 
           error: errorData.error_description || 'Erreur d\'authentification' 
@@ -733,7 +733,7 @@ async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
       throw new Error('Impossible d\'obtenir un token Outlook');
     }
 
-    const tokenData = await tokenResponse.json();
+    const tokenData = await tokenResponse.json() as { access_token: string };
     const accessToken = tokenData.access_token;
 
     // Récupérer les événements des 30 prochains jours
@@ -756,7 +756,7 @@ async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
       return { count: 0 };
     }
 
-    const eventsData = await eventsResponse.json();
+    const eventsData = await eventsResponse.json() as { value?: Array<{ subject: string; bodyPreview?: string; start?: { dateTime?: string }; end?: { dateTime?: string }; isAllDay?: boolean; id: string }> };
     const events = eventsData.value || [];
 
     // Supprimer les anciens événements Outlook et insérer les nouveaux
@@ -770,8 +770,8 @@ async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
         [
           event.subject,
           event.bodyPreview || '',
-          event.start?.dateTime || event.start,
-          event.end?.dateTime || event.end,
+          event.start?.dateTime || null,
+          event.end?.dateTime || null,
           event.isAllDay ? 1 : 0,
           '#0078D4', // Bleu Outlook
           event.id
