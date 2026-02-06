@@ -2,6 +2,7 @@ import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
@@ -105,6 +106,7 @@ app.use(cors({
   credentials: true
 }));
 app.use(morgan('combined'));
+app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
@@ -119,9 +121,11 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
   }
 
   // Vérifier le token pour les autres fichiers
+  // Priorité : Header Authorization > Cookie auth_token > Query parameter
   const authHeader = req.headers['authorization'];
   const tokenFromQuery = req.query.token as string;
-  const token = (authHeader && authHeader.split(' ')[1]) || tokenFromQuery;
+  const tokenFromCookie = req.cookies?.auth_token;
+  const token = (authHeader && authHeader.split(' ')[1]) || tokenFromCookie || tokenFromQuery;
 
   if (!token) {
     res.status(401).json({ success: false, message: 'Accès non autorisé' });

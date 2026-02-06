@@ -7,6 +7,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.39] - 2026-02-06
+
+### Sécurité
+- **Cookie d'authentification pour les uploads** : Résolution de l'erreur 401 sur les images
+  - Ajout du middleware `cookie-parser` pour la gestion des cookies
+  - Cookie `auth_token` HttpOnly créé lors de la connexion
+  - Le middleware `verifyUploadAccess` accepte maintenant le token via :
+    - Header `Authorization: Bearer <token>`
+    - Cookie `auth_token` (nouveau - pour les balises `<img>`)
+    - Query parameter `?token=<token>`
+  - Cookie mis à jour lors du refresh token
+  - Cookie supprimé lors de la déconnexion
+
+### Dépendances
+- Ajout de `cookie-parser` et `@types/cookie-parser`
+
 ## [1.2.38] - 2026-02-06
 
 ### Sécurité

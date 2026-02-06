@@ -113,6 +113,14 @@ router.post('/login', loginValidation, async (req: AuthRequest, res: Response) =
       userAgent: req.headers['user-agent']
     });
 
+    // Définir un cookie HttpOnly pour l'accès aux fichiers uploadés
+    res.cookie('auth_token', tokens.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
+    });
+
     res.json({
       success: true,
       user: {
@@ -406,6 +414,14 @@ router.post('/refresh', async (req: AuthRequest, res: Response) => {
       userAgent: req.headers['user-agent']
     });
 
+    // Mettre à jour le cookie d'authentification
+    res.cookie('auth_token', tokens.accessToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
+    });
+
     res.json({ success: true, ...tokens });
   } catch (error) {
     await logService.warning('auth', 'Tentative de rafraîchissement de token invalide', {
@@ -439,6 +455,13 @@ router.post('/logout', authenticateToken, async (req: AuthRequest, res: Response
       userEmail: req.user?.email,
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
+    });
+
+    // Supprimer le cookie d'authentification
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict'
     });
 
     res.json({ success: true, message: 'Déconnexion réussie' });

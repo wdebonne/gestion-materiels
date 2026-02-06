@@ -113,9 +113,11 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
   }
 
   // Vérifier le token pour les autres fichiers
+  // Priorité : Header Authorization > Cookie auth_token > Query parameter
   const authHeader = req.headers['authorization'];
   const tokenFromQuery = req.query.token as string;
-  const token = (authHeader && authHeader.split(' ')[1]) || tokenFromQuery;
+  const tokenFromCookie = req.cookies?.auth_token;
+  const token = (authHeader && authHeader.split(' ')[1]) || tokenFromCookie || tokenFromQuery;
 
   if (!token) {
     res.status(401).json({ success: false, message: 'Accès non autorisé' });
@@ -135,7 +137,10 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 
 **Statut** : ✅ Corrigé  
 **Impact résiduel** : Aucun  
-**Méthode d'accès** : Token JWT via header `Authorization: Bearer <token>` ou paramètre `?token=<token>`
+**Méthode d'accès** : 
+- Token JWT via header `Authorization: Bearer <token>`
+- Cookie HttpOnly `auth_token` (pour les balises `<img>` et ressources statiques)
+- Paramètre URL `?token=<token>`
 
 ---
 
