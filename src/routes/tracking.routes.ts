@@ -667,7 +667,7 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
         WHERE 1=1 ${startDate ? 'AND control_date >= ?' : ''} ${endDate ? 'AND control_date <= ?' : ''}
         GROUP BY object_id
       ) tc ON tc.object_id = o.id
-      WHERE 1=1
+      WHERE (COALESCE(f.total, 0) + COALESCE(m.total, 0) + COALESCE(tc.total, 0)) > 0
     `;
     const costByObjectParams: any[] = [];
     if (startDate) costByObjectParams.push(startDate);
@@ -679,8 +679,7 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
 
     costByObjectQuery += objectCondition;
     costByObjectParams.push(...objectParams);
-    costByObjectQuery += ` HAVING (COALESCE(f.total, 0) + COALESCE(m.total, 0) + COALESCE(tc.total, 0)) > 0
-      ORDER BY (COALESCE(f.total, 0) + COALESCE(m.total, 0) + COALESCE(tc.total, 0)) DESC
+    costByObjectQuery += ` ORDER BY (COALESCE(f.total, 0) + COALESCE(m.total, 0) + COALESCE(tc.total, 0)) DESC
       LIMIT 10`;
 
     result.costByObject = (await db.query(costByObjectQuery, costByObjectParams)).map((r: any) => ({
@@ -693,6 +692,24 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
       maintenanceCost: parseFloat(r.maintenance_cost) || 0,
       controlCost: parseFloat(r.control_cost) || 0,
       totalCost: (parseFloat(r.fuel_cost) || 0) + (parseFloat(r.maintenance_cost) || 0) + (parseFloat(r.control_cost) || 0)
+    }));
+
+    // Combiner les coûts par période pour le graphique global
+    const allPeriods = new Set<string>();
+    result.fuelByPeriod.forEach((r: any) => allPeriods.add(r.period));
+    result.maintenanceByPeriod.forEach((r: any) => allPeriods.add(r.period));
+    result.controlByPeriod.forEach((r: any) => allPeriods.add(r.period));
+
+    const fuelByPeriodMap = new Map(result.fuelByPeriod.map((r: any) => [r.period, r.cost]));
+    const maintenanceByPeriodMap = new Map(result.maintenanceByPeriod.map((r: any) => [r.period, r.cost]));
+    const controlByPeriodMap = new Map(result.controlByPeriod.map((r: any) => [r.period, r.cost]));
+
+    result.costByPeriod = Array.from(allPeriods).sort().map(period => ({
+      period,
+      fuelCost: fuelByPeriodMap.get(period) || 0,
+      maintenanceCost: maintenanceByPeriodMap.get(period) || 0,
+      controlCost: controlByPeriodMap.get(period) || 0,
+      totalCost: (fuelByPeriodMap.get(period) || 0) + (maintenanceByPeriodMap.get(period) || 0) + (controlByPeriodMap.get(period) || 0)
     }));
 
     res.json({ success: true, ...result });
