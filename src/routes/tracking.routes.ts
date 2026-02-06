@@ -939,13 +939,14 @@ router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, asy
 
       result.summary.year1 = data1;
       result.summary.year2 = data2;
+      // Calcul de l'évolution : year2 - year1 (comment year2 se compare à year1)
       result.difference = {
-        fuel: data1.fuel - data2.fuel,
-        maintenance: data1.maintenance - data2.maintenance,
-        control: data1.control - data2.control,
-        total: data1.total - data2.total,
-        percentage: data2.total > 0 
-          ? ((data1.total - data2.total) / data2.total * 100)
+        fuel: data2.fuel - data1.fuel,
+        maintenance: data2.maintenance - data1.maintenance,
+        control: data2.control - data1.control,
+        total: data2.total - data1.total,
+        percentage: data1.total > 0 
+          ? ((data2.total - data1.total) / data1.total * 100)
           : 0
       };
 
@@ -1004,14 +1005,14 @@ router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, asy
     result.summary.year1 = data1.totals;
     result.summary.year2 = data2.totals;
 
-    // Calcul des différences
+    // Calcul des différences : évolution de year1 vers year2
     result.difference = {
-      fuel: data1.totals.fuel - data2.totals.fuel,
-      maintenance: data1.totals.maintenance - data2.totals.maintenance,
-      control: data1.totals.control - data2.totals.control,
-      total: data1.totals.total - data2.totals.total,
-      percentage: data2.totals.total > 0 
-        ? ((data1.totals.total - data2.totals.total) / data2.totals.total * 100)
+      fuel: data2.totals.fuel - data1.totals.fuel,
+      maintenance: data2.totals.maintenance - data1.totals.maintenance,
+      control: data2.totals.control - data1.totals.control,
+      total: data2.totals.total - data1.totals.total,
+      percentage: data1.totals.total > 0 
+        ? ((data2.totals.total - data1.totals.total) / data1.totals.total * 100)
         : 0
     };
 
