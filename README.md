@@ -48,7 +48,14 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔍 **Filtres avancés** : Par période, catégorie, sous-catégorie, objet(s), type de données
 - 📉 **Graphiques interactifs** : Évolution des coûts, répartition par type, coûts par objet/catégorie
 - 🔄 **Comparaison de périodes** : Comparer deux périodes pour suivre l'évolution
-- 📑 **Export PDF** : Rapports personnalisables avec pièces jointes optionnelles
+- � **Comparaison annuelle** : Graphiques comparatifs année par année (ex: 2025 vs 2026)
+  - Graphiques en barres mois par mois
+  - Graphiques en lignes par type de coût
+  - Résumé des totaux avec différence et pourcentage
+- 📑 **Export PDF natif** : Téléchargement direct du rapport (jsPDF + html2canvas)
+  - Barre de progression pendant la génération
+  - Capture des graphiques en haute qualité
+  - Pièces jointes optionnelles
 - 🔐 **Permissions granulaires** : Contrôle d'accès par rôle et par utilisateur
 
 ### Plugins intégrés
