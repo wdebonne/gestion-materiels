@@ -19,6 +19,12 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   - Affichage dynamique du label de l'onglet selon le mode sélectionné
   - Résumé comparatif avec différence et pourcentage pour tous les modes
 
+### Corrigé
+- **Calcul des différences** : Correction de la logique (year2 - year1) pour afficher correctement les augmentations/réductions
+- **Filtres avancés** : Correction de l'overflow pour afficher les dropdowns Catégories/Sous-catégories/Objets
+- **Export PDF** : Remplacement des emojis par des symboles ASCII compatibles avec jsPDF
+- **Export PDF comparaison** : Support des modes yearly/monthly en plus du mode period
+
 ### API
 - `GET /api/tracking/yearly-comparison` - Support des paramètres `month1` et `month2` pour la comparaison mensuelle
 

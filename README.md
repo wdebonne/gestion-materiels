@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.33-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.34-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
@@ -47,11 +47,11 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 📈 **Tableau de bord** : Vue consolidée des coûts (carburant, entretiens, contrôles techniques)
 - 🔍 **Filtres avancés** : Par période, catégorie, sous-catégorie, objet(s), type de données
 - 📉 **Graphiques interactifs** : Évolution des coûts, répartition par type, coûts par objet/catégorie
-- 🔄 **Comparaison de périodes** : Comparer deux périodes pour suivre l'évolution
-- � **Comparaison annuelle** : Graphiques comparatifs année par année (ex: 2025 vs 2026)
-  - Graphiques en barres mois par mois
-  - Graphiques en lignes par type de coût
-  - Résumé des totaux avec différence et pourcentage
+- 🔄 **Comparaison unifiée** : Trois modes de comparaison disponibles
+  - Périodes personnalisées : Comparer deux plages de dates libres
+  - Années : Graphiques comparatifs année par année (ex: 2025 vs 2026)
+  - Mois spécifiques : Comparer deux mois (ex: Janvier 2025 vs Janvier 2024)
+- 📊 **Graphiques comparatifs** : Barres mois par mois, lignes par type de coût, résumé avec différence
 - 📑 **Export PDF natif** : Téléchargement direct du rapport (jsPDF + html2canvas)
   - Barre de progression pendant la génération
   - Capture des graphiques en haute qualité
