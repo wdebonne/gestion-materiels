@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
   Shield, Users, User,  
-  Eye, Edit2, Trash2, Save, Search, FolderOpen 
+  Eye, Edit2, Trash2, Save, Search, FolderOpen,
+  BarChart3, Download, ArrowRightLeft
 } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, CardTitle, Button, Badge, 
@@ -554,6 +555,249 @@ function UserPermissionsTab() {
   )
 }
 
+// Onglet pour les permissions des modules
+function ModulePermissionsTab() {
+  const queryClient = useQueryClient()
+  const [supervisorPerms, setSupervisorPerms] = useState<Record<string, any>>({})
+  const [userPerms, setUserPerms] = useState<Record<string, any>>({})
+  const [hasChanges, setHasChanges] = useState(false)
+
+  // Récupérer les modules disponibles
+  const { data: modulesData } = useQuery({
+    queryKey: ['permission-modules'],
+    queryFn: async () => {
+      const response = await api.get('/permissions/modules')
+      return response.data
+    }
+  })
+
+  // Récupérer toutes les permissions de modules
+  const { data: allPermsData, isLoading } = useQuery({
+    queryKey: ['module-permissions-all'],
+    queryFn: async () => {
+      const response = await api.get('/permissions/modules/all-groups')
+      return response.data
+    }
+  })
+
+  // Initialiser les permissions
+  useEffect(() => {
+    if (allPermsData?.permissions && modulesData?.modules) {
+      const supPerms: Record<string, any> = {}
+      const usrPerms: Record<string, any> = {}
+      
+      modulesData.modules.forEach((mod: any) => {
+        supPerms[mod.name] = allPermsData.permissions[mod.name]?.supervisor || {
+          canView: false, canExport: false, canCompare: false
+        }
+        usrPerms[mod.name] = allPermsData.permissions[mod.name]?.user || {
+          canView: false, canExport: false, canCompare: false
+        }
+      })
+      
+      setSupervisorPerms(supPerms)
+      setUserPerms(usrPerms)
+      setHasChanges(false)
+    }
+  }, [allPermsData, modulesData])
+
+  // Mutation pour sauvegarder
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const promises: Promise<any>[] = []
+      
+      modulesData?.modules?.forEach((mod: any) => {
+        promises.push(
+          api.put(`/permissions/modules/${mod.name}/group/supervisor`, supervisorPerms[mod.name])
+        )
+        promises.push(
+          api.put(`/permissions/modules/${mod.name}/group/user`, userPerms[mod.name])
+        )
+      })
+      
+      return Promise.all(promises)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['module-permissions-all'] })
+      queryClient.invalidateQueries({ queryKey: ['tracking-permissions'] })
+      toast.success('Permissions des modules sauvegardées')
+      setHasChanges(false)
+    },
+    onError: () => {
+      toast.error('Erreur lors de la sauvegarde')
+    }
+  })
+
+  const handleChange = (role: 'supervisor' | 'user', moduleName: string, field: string, value: boolean) => {
+    if (role === 'supervisor') {
+      setSupervisorPerms(prev => ({
+        ...prev,
+        [moduleName]: { ...prev[moduleName], [field]: value }
+      }))
+    } else {
+      setUserPerms(prev => ({
+        ...prev,
+        [moduleName]: { ...prev[moduleName], [field]: value }
+      }))
+    }
+    setHasChanges(true)
+  }
+
+  const modules = modulesData?.modules || []
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2 rounded-lg bg-indigo-100">
+            <BarChart3 className="w-5 h-5 text-indigo-600" />
+          </div>
+          <div>
+            <h3 className="font-medium text-gray-900">Permissions des modules</h3>
+            <p className="text-sm text-gray-500">
+              Définissez les accès aux modules spéciaux comme le Suivi des coûts
+            </p>
+          </div>
+        </div>
+        {hasChanges && (
+          <Button 
+            icon={<Save className="w-4 h-4" />} 
+            onClick={() => saveMutation.mutate()}
+            loading={saveMutation.isPending}
+          >
+            Sauvegarder
+          </Button>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="py-8"><LoadingInline /></div>
+      ) : modules.length === 0 ? (
+        <Alert type="info">Aucun module avec permissions configurables</Alert>
+      ) : (
+        <div className="space-y-6">
+          {modules.map((mod: any) => (
+            <Card key={mod.name}>
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-primary-100 rounded-lg">
+                    <BarChart3 className="w-5 h-5 text-primary-600" />
+                  </div>
+                  <div>
+                    <CardTitle>{mod.label}</CardTitle>
+                    <p className="text-sm text-gray-500">{mod.description}</p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardBody>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Groupe
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                          <div className="flex items-center justify-center gap-1">
+                            <Eye className="w-4 h-4" />
+                            <span>Voir</span>
+                          </div>
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                          <div className="flex items-center justify-center gap-1">
+                            <Download className="w-4 h-4" />
+                            <span>Exporter</span>
+                          </div>
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                          <div className="flex items-center justify-center gap-1">
+                            <ArrowRightLeft className="w-4 h-4" />
+                            <span>Comparer</span>
+                          </div>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      <tr className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Shield className="w-5 h-5 text-amber-600" />
+                            <span className="font-medium text-gray-900">Superviseurs</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={supervisorPerms[mod.name]?.canView || false}
+                            onChange={(e) => handleChange('supervisor', mod.name, 'canView', e.target.checked)}
+                            className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={supervisorPerms[mod.name]?.canExport || false}
+                            onChange={(e) => handleChange('supervisor', mod.name, 'canExport', e.target.checked)}
+                            disabled={!supervisorPerms[mod.name]?.canView}
+                            className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={supervisorPerms[mod.name]?.canCompare || false}
+                            onChange={(e) => handleChange('supervisor', mod.name, 'canCompare', e.target.checked)}
+                            disabled={!supervisorPerms[mod.name]?.canView}
+                            className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                          />
+                        </td>
+                      </tr>
+                      <tr className="hover:bg-gray-50">
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <Users className="w-5 h-5 text-blue-600" />
+                            <span className="font-medium text-gray-900">Utilisateurs</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={userPerms[mod.name]?.canView || false}
+                            onChange={(e) => handleChange('user', mod.name, 'canView', e.target.checked)}
+                            className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={userPerms[mod.name]?.canExport || false}
+                            onChange={(e) => handleChange('user', mod.name, 'canExport', e.target.checked)}
+                            disabled={!userPerms[mod.name]?.canView}
+                            className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                          />
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={userPerms[mod.name]?.canCompare || false}
+                            onChange={(e) => handleChange('user', mod.name, 'canCompare', e.target.checked)}
+                            disabled={!userPerms[mod.name]?.canView}
+                            className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500 disabled:opacity-50"
+                          />
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </CardBody>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PermissionsPage() {
   const [activeTab, setActiveTab] = useState('supervisors')
 
@@ -563,7 +807,7 @@ export default function PermissionsPage() {
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Droits & Permissions</h1>
         <p className="text-gray-500 mt-1">
-          Gérez les droits d'accès des groupes et utilisateurs aux catégories
+          Gérez les droits d'accès des groupes et utilisateurs aux catégories et modules
         </p>
       </div>
 
@@ -572,10 +816,11 @@ export default function PermissionsPage() {
         <div className="space-y-2">
           <p className="font-medium">Comment fonctionnent les permissions ?</p>
           <ul className="text-sm space-y-1 list-disc list-inside">
-            <li><strong>Administrateurs</strong> : Accès complet à toutes les catégories (non configurable)</li>
+            <li><strong>Administrateurs</strong> : Accès complet à toutes les catégories et modules (non configurable)</li>
             <li><strong>Superviseurs</strong> : Permissions définies dans l'onglet "Superviseurs"</li>
             <li><strong>Utilisateurs</strong> : Permissions définies dans l'onglet "Utilisateurs"</li>
             <li><strong>Permissions individuelles</strong> : S'ajoutent aux permissions du groupe de l'utilisateur</li>
+            <li><strong>Modules</strong> : Permissions spécifiques pour les modules comme le Suivi des coûts</li>
           </ul>
         </div>
       </Alert>
@@ -587,6 +832,7 @@ export default function PermissionsPage() {
             <Tab value="supervisors" label="Superviseurs" icon={<Shield className="w-4 h-4" />} />
             <Tab value="users" label="Utilisateurs" icon={<Users className="w-4 h-4" />} />
             <Tab value="individual" label="Permissions individuelles" icon={<User className="w-4 h-4" />} />
+            <Tab value="modules" label="Modules" icon={<BarChart3 className="w-4 h-4" />} />
           </Tabs>
 
           <div className="mt-6">
@@ -598,6 +844,9 @@ export default function PermissionsPage() {
             )}
             {activeTab === 'individual' && (
               <UserPermissionsTab />
+            )}
+            {activeTab === 'modules' && (
+              <ModulePermissionsTab />
             )}
           </div>
         </CardBody>

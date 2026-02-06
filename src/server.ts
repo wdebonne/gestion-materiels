@@ -26,6 +26,7 @@ import permissionRoutes from './routes/permission.routes';
 import customFieldsRoutes from './routes/customFields.routes';
 import logRoutes from './routes/log.routes';
 import webhookRoutes from './routes/webhook.routes';
+import trackingRoutes from './routes/tracking.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -113,6 +114,7 @@ app.use('/api/permissions', permissionRoutes);
 app.use('/api/custom-fields', customFieldsRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/webhooks', webhookRoutes);
+app.use('/api/tracking', trackingRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {

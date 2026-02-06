@@ -32,6 +32,13 @@ export function formatCurrency(amount: number): string {
   }).format(amount)
 }
 
+export function formatNumber(value: number, decimals: number = 2): string {
+  return new Intl.NumberFormat('fr-FR', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: decimals
+  }).format(value)
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes === 0) return '0 B'
   const k = 1024

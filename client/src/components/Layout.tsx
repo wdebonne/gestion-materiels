@@ -23,7 +23,8 @@ import {
   ClipboardList,
   Plug,
   Home,
-  FolderOpen
+  FolderOpen,
+  BarChart3
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 
@@ -65,6 +66,15 @@ export default function Layout() {
     }
   })
 
+  // Récupérer les permissions pour le module Suivi
+  const { data: trackingPermissions } = useQuery({
+    queryKey: ['tracking-permissions'],
+    queryFn: async () => {
+      const response = await api.get('/tracking/permissions')
+      return response.data
+    }
+  })
+
   const handleLogout = () => {
     logout()
     navigate('/login')
@@ -91,7 +101,10 @@ export default function Layout() {
     layoutgrid: LayoutGrid,
     Plug,
     plug: Plug,
-    fuel: Truck
+    fuel: Truck,
+    BarChart3,
+    barchart3: BarChart3,
+    tracking: BarChart3
   }
 
   // Navigation de base
@@ -100,6 +113,11 @@ export default function Layout() {
     { name: 'Catégories', href: '/categories', icon: FolderOpen },
     { name: 'Alertes', href: '/alerts', icon: Bell, badge: alertsCount },
   ]
+
+  // Ajouter le menu Suivi si l'utilisateur a les permissions
+  if (trackingPermissions?.canView) {
+    baseNavigation.push({ name: 'Suivi', href: '/tracking', icon: BarChart3 })
+  }
 
   // Ajouter les plugins de type menu à la navigation
   const pluginNavigation = menuPlugins.map((plugin: any) => {

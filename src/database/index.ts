@@ -499,6 +499,33 @@ class DatabaseManager {
         last_response ${textType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault}
+      )`,
+
+      // Table des permissions par module (pour les modules spéciaux comme Suivi)
+      `CREATE TABLE IF NOT EXISTS module_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        module_name VARCHAR(100) NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        can_view ${boolType} DEFAULT 0,
+        can_export ${boolType} DEFAULT 0,
+        can_compare ${boolType} DEFAULT 0,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        UNIQUE(module_name, role)
+      )`,
+
+      // Table des permissions utilisateur par module (override individuel)
+      `CREATE TABLE IF NOT EXISTS user_module_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        user_id INTEGER NOT NULL,
+        module_name VARCHAR(100) NOT NULL,
+        can_view ${boolType} DEFAULT 0,
+        can_export ${boolType} DEFAULT 0,
+        can_compare ${boolType} DEFAULT 0,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(user_id, module_name)
       )`
     ];
 

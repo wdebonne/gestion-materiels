@@ -7,6 +7,40 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.32] - 2026-02-06
+
+### Ajouté
+- **Module Suivi** : Nouveau menu dans la barre latérale pour le suivi des coûts
+  - Tableau de bord avec cartes statistiques (coût total, carburant, entretiens, contrôles)
+  - Filtrage par période, catégorie, sous-catégorie, objet(s) multiples
+  - Filtrage par type de données (carburant, entretiens, contrôles techniques)
+  - Filtres avancés par type de carburant et type d'entretien
+  - Graphiques interactifs (barres, donut) pour l'évolution des coûts
+  - Tableaux détaillés avec tri, pagination et accès aux pièces jointes
+  - Comparaison de périodes pour suivre l'évolution des coûts
+  - Tendances visuelles (hausse/baisse) par rapport à la période de comparaison
+  - Export PDF personnalisable avec options de contenu
+  - Possibilité d'inclure les pièces jointes dans le rapport
+- **Permissions du module Suivi** : Nouvel onglet "Modules" dans Paramètres > Droits
+  - Permissions par rôle (Superviseur, Utilisateur)
+  - Permissions individuelles par utilisateur
+  - Droits : Voir, Exporter, Comparer
+
+### Base de données
+- Table `module_permissions` : Permissions d'accès aux modules par rôle
+- Table `user_module_permissions` : Permissions individuelles par utilisateur
+
+### API
+- `GET /api/tracking/data` - Récupérer les données de suivi filtrées
+- `GET /api/tracking/charts` - Récupérer les données pour les graphiques
+- `GET /api/tracking/filters` - Récupérer les options de filtrage
+- `GET /api/tracking/permissions` - Vérifier les permissions de l'utilisateur
+- `GET /api/permissions/modules` - Lister les modules disponibles
+- `GET /api/permissions/modules/:module/group/:role` - Permissions d'un module par rôle
+- `PUT /api/permissions/modules/:module/group/:role` - Modifier les permissions
+- `GET /api/permissions/modules/:module/user/:userId` - Permissions individuelles
+- `PUT /api/permissions/modules/:module/user/:userId` - Modifier les permissions individuelles
+
 ## [1.2.31] - 2026-02-06
 
 ### Ajouté

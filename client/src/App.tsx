@@ -25,6 +25,7 @@ import WebhooksPage from '@/pages/settings/WebhooksPage'
 import ProfilePage from '@/pages/ProfilePage'
 import PluginPage from '@/pages/PluginPage'
 import CustomFieldsPage from '@/pages/CustomFieldsPage'
+import TrackingPage from '@/pages/TrackingPage'
 
 // Route protégée
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -83,6 +84,7 @@ function App() {
         <Route path="objects/:objectId" element={<ObjectDetailPage />} />
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="alerts" element={<AlertsPage />} />
+        <Route path="tracking" element={<TrackingPage />} />
         <Route path="profile" element={<ProfilePage />} />
         
         {/* Routes dynamiques pour les plugins de type menu */}

@@ -167,4 +167,174 @@ router.get('/effective/:userId', authenticateToken, async (req: AuthRequest, res
   }
 });
 
+// ==================== PERMISSIONS MODULES ====================
+
+// GET /api/permissions/modules - Liste des modules disponibles
+router.get('/modules', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const modules = [
+      { name: 'tracking', label: 'Suivi des coûts', description: 'Accès au module de suivi des dépenses, carburant, entretiens et contrôles techniques' }
+    ];
+    res.json({ success: true, modules });
+  } catch (error: any) {
+    console.error('Erreur get modules:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// GET /api/permissions/modules/:moduleName/group/:role - Récupérer les permissions module d'un groupe
+router.get('/modules/:moduleName/group/:role', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { moduleName, role } = req.params;
+
+    if (!['supervisor', 'user'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Rôle invalide' });
+    }
+
+    const permission = await db.queryOne(
+      `SELECT * FROM module_permissions WHERE module_name = ? AND role = ?`,
+      [moduleName, role]
+    );
+
+    res.json({
+      success: true,
+      permission: permission ? {
+        canView: !!permission.can_view,
+        canExport: !!permission.can_export,
+        canCompare: !!permission.can_compare
+      } : {
+        canView: false,
+        canExport: false,
+        canCompare: false
+      }
+    });
+  } catch (error: any) {
+    console.error('Erreur get module group permissions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/permissions/modules/:moduleName/group/:role - Mettre à jour les permissions module d'un groupe
+router.put('/modules/:moduleName/group/:role', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { moduleName, role } = req.params;
+    const { canView, canExport, canCompare } = req.body;
+
+    if (!['supervisor', 'user'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Rôle invalide' });
+    }
+
+    // Vérifier si l'entrée existe
+    const existing = await db.queryOne(
+      `SELECT id FROM module_permissions WHERE module_name = ? AND role = ?`,
+      [moduleName, role]
+    );
+
+    if (existing) {
+      await db.execute(
+        `UPDATE module_permissions SET can_view = ?, can_export = ?, can_compare = ?, updated_at = datetime('now')
+         WHERE module_name = ? AND role = ?`,
+        [canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0, moduleName, role]
+      );
+    } else {
+      await db.execute(
+        `INSERT INTO module_permissions (module_name, role, can_view, can_export, can_compare) VALUES (?, ?, ?, ?, ?)`,
+        [moduleName, role, canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0]
+      );
+    }
+
+    res.json({ success: true, message: 'Permissions module mises à jour' });
+  } catch (error: any) {
+    console.error('Erreur update module group permissions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// GET /api/permissions/modules/:moduleName/user/:userId - Récupérer les permissions module d'un utilisateur
+router.get('/modules/:moduleName/user/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { moduleName, userId } = req.params;
+
+    const permission = await db.queryOne(
+      `SELECT * FROM user_module_permissions WHERE module_name = ? AND user_id = ?`,
+      [moduleName, userId]
+    );
+
+    res.json({
+      success: true,
+      permission: permission ? {
+        canView: !!permission.can_view,
+        canExport: !!permission.can_export,
+        canCompare: !!permission.can_compare
+      } : null
+    });
+  } catch (error: any) {
+    console.error('Erreur get module user permissions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/permissions/modules/:moduleName/user/:userId - Mettre à jour les permissions module d'un utilisateur
+router.put('/modules/:moduleName/user/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { moduleName, userId } = req.params;
+    const { canView, canExport, canCompare, remove } = req.body;
+
+    if (remove) {
+      await db.execute(
+        `DELETE FROM user_module_permissions WHERE module_name = ? AND user_id = ?`,
+        [moduleName, userId]
+      );
+    } else {
+      // Vérifier si l'entrée existe
+      const existing = await db.queryOne(
+        `SELECT id FROM user_module_permissions WHERE module_name = ? AND user_id = ?`,
+        [moduleName, userId]
+      );
+
+      if (existing) {
+        await db.execute(
+          `UPDATE user_module_permissions SET can_view = ?, can_export = ?, can_compare = ?, updated_at = datetime('now')
+           WHERE module_name = ? AND user_id = ?`,
+          [canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0, moduleName, userId]
+        );
+      } else {
+        await db.execute(
+          `INSERT INTO user_module_permissions (user_id, module_name, can_view, can_export, can_compare) VALUES (?, ?, ?, ?, ?)`,
+          [userId, moduleName, canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0]
+        );
+      }
+    }
+
+    res.json({ success: true, message: 'Permissions module utilisateur mises à jour' });
+  } catch (error: any) {
+    console.error('Erreur update module user permissions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// GET /api/permissions/modules/all-groups - Récupérer toutes les permissions modules de tous les groupes
+router.get('/modules/all-groups', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const permissions = await db.query('SELECT * FROM module_permissions');
+    
+    const result: Record<string, Record<string, any>> = {};
+    for (const p of permissions) {
+      if (!result[p.module_name]) {
+        result[p.module_name] = {};
+      }
+      result[p.module_name][p.role] = {
+        canView: !!p.can_view,
+        canExport: !!p.can_export,
+        canCompare: !!p.can_compare
+      };
+    }
+
+    res.json({ success: true, permissions: result });
+  } catch (error: any) {
+    console.error('Erreur get all module permissions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 export default router;

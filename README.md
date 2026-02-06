@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.31-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.32-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
@@ -42,6 +42,14 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔄 Réorganisation de l'ordre des champs par glisser-déposer
 - 👀 Prévisualisation en temps réel des modifications
 - 🏷️ Badges visuels indiquant le niveau de configuration et les restrictions
+
+### 📊 Module Suivi (Nouveau!)
+- 📈 **Tableau de bord** : Vue consolidée des coûts (carburant, entretiens, contrôles techniques)
+- 🔍 **Filtres avancés** : Par période, catégorie, sous-catégorie, objet(s), type de données
+- 📉 **Graphiques interactifs** : Évolution des coûts, répartition par type, coûts par objet/catégorie
+- 🔄 **Comparaison de périodes** : Comparer deux périodes pour suivre l'évolution
+- 📑 **Export PDF** : Rapports personnalisables avec pièces jointes optionnelles
+- 🔐 **Permissions granulaires** : Contrôle d'accès par rôle et par utilisateur
 
 ### Plugins intégrés
 - ⛽ **Carburant** : Suivi des consommations et coûts, gestion des stations, filtrage avancé, pièces jointes (PDF/images)
