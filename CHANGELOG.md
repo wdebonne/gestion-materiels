@@ -7,6 +7,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.40] - 2026-02-06
+
+### Corrigé
+- **Health check Docker** : Correction de l'erreur SSL sur le health check en production
+  - Le middleware HTTPS excluait pas les requêtes internes de health check
+  - Les requêtes vers `/api/health` depuis `127.0.0.1` ne sont plus redirigées vers HTTPS
+  - Résout l'erreur "SSL routines:packet length too long" dans les containers
+
 ## [1.2.39] - 2026-02-06
 
 ### Sécurité

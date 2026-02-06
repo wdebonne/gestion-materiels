@@ -218,6 +218,19 @@ docker logs gestion-materiels
 # Ou via Portainer : Containers > gestion-materiels > Logs
 ```
 
+### Health check "unhealthy" avec erreur SSL
+
+Si le container affiche un statut "unhealthy" avec une erreur SSL comme :
+```
+SSL routines:packet length too long
+```
+
+Cela signifie que le health check HTTP est redirigé vers HTTPS. Ce problème a été corrigé dans la version 1.2.40+. Si vous utilisez une version antérieure :
+
+1. Mettez à jour vers la dernière version
+2. Reconstruisez l'image : `docker-compose build --no-cache`
+3. Redémarrez : `docker-compose up -d`
+
 ### Erreur de permission sur les volumes
 
 ```bash

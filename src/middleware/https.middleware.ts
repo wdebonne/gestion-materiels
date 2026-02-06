@@ -11,6 +11,15 @@ export const httpsRedirect = (req: Request, res: Response, next: NextFunction): 
     return next();
   }
 
+  // Ne pas rediriger les health checks internes (Docker, Kubernetes, etc.)
+  // Ces requêtes viennent de 127.0.0.1 ou localhost et ciblent /api/health
+  const isHealthCheck = req.path === '/api/health' && 
+    (req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1');
+  
+  if (isHealthCheck) {
+    return next();
+  }
+
   // Vérifier si la requête est déjà en HTTPS
   // Prendre en compte les proxies (Nginx, load balancer, etc.)
   const isHttps = 
