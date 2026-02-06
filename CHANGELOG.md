@@ -7,6 +7,28 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.33] - 2026-02-06
+
+### Amélioré
+- **Module Suivi - Graphiques comparatifs** : Ajout de la comparaison année par année
+  - Sélection de deux années à comparer (ex: 2025 vs 2026)
+  - Graphiques en barres comparatifs mois par mois
+  - Graphiques en lignes par type de coût (carburant, entretiens, contrôles)
+  - Résumé des totaux par année avec différence et pourcentage
+  - Visualisation claire des augmentations/diminutions de coûts
+- **Export PDF amélioré** : Génération PDF native (téléchargement direct)
+  - Utilisation de jsPDF au lieu d'une fenêtre d'impression
+  - Barre de progression pendant la génération
+  - Téléchargement automatique du fichier PDF
+  - Capture des graphiques en images haute qualité (html2canvas)
+
+### Dépendances
+- Ajout de `jspdf` pour la génération PDF native
+- Ajout de `html2canvas` pour la capture des graphiques
+
+### API
+- `GET /api/tracking/yearly-comparison` - Comparer les coûts entre deux années
+
 ## [1.2.32] - 2026-02-06
 
 ### Ajouté

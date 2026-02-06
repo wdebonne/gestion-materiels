@@ -816,4 +816,159 @@ router.get('/permissions', authenticateToken, async (req: AuthRequest, res: Resp
   }
 });
 
+// GET /api/tracking/yearly-comparison - Comparaison annuelle
+router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, async (req: AuthRequest, res: Response) => {
+  try {
+    const { year1, year2, categoryIds, subcategoryIds, objectIds, dataTypes } = req.query;
+    
+    const y1 = parseInt(year1 as string) || new Date().getFullYear();
+    const y2 = parseInt(year2 as string) || y1 - 1;
+    const types = dataTypes ? (dataTypes as string).split(',') : ['fuel', 'maintenance', 'technical_control'];
+
+    // Construction des conditions de filtre d'objet
+    let objectCondition = '';
+    const objectParams: any[] = [];
+    
+    if (objectIds) {
+      const ids = (objectIds as string).split(',').map(Number);
+      objectCondition = ` AND o.id IN (${ids.map(() => '?').join(',')})`;
+      objectParams.push(...ids);
+    } else if (subcategoryIds) {
+      const ids = (subcategoryIds as string).split(',').map(Number);
+      objectCondition = ` AND o.subcategory_id IN (${ids.map(() => '?').join(',')})`;
+      objectParams.push(...ids);
+    } else if (categoryIds) {
+      const ids = (categoryIds as string).split(',').map(Number);
+      objectCondition = ` AND o.category_id IN (${ids.map(() => '?').join(',')})`;
+      objectParams.push(...ids);
+    }
+
+    // Données mensuelles pour chaque année
+    const result: any = {
+      monthly: {
+        year1: [],
+        year2: []
+      },
+      summary: {
+        year1: { total: 0, fuel: 0, maintenance: 0, control: 0 },
+        year2: { total: 0, fuel: 0, maintenance: 0, control: 0 }
+      },
+      difference: {
+        total: 0,
+        fuel: 0,
+        maintenance: 0,
+        control: 0,
+        percentage: 0
+      }
+    };
+
+    // Fonction pour récupérer les données mensuelles d'une année
+    const getYearlyData = async (year: number) => {
+      const monthlyData: any[] = [];
+      let totalFuel = 0;
+      let totalMaintenance = 0;
+      let totalControl = 0;
+
+      for (let month = 1; month <= 12; month++) {
+        const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
+        const endDate = new Date(year, month, 0).toISOString().split('T')[0]; // Dernier jour du mois
+        
+        let fuelCost = 0;
+        let maintenanceCost = 0;
+        let controlCost = 0;
+
+        // Carburant
+        if (types.includes('fuel')) {
+          const fuelQuery = `
+            SELECT COALESCE(SUM(CAST(f.total_price AS DECIMAL(10,2))), 0) as total
+            FROM fuel_entries f
+            JOIN objects o ON o.id = f.object_id
+            WHERE f.entry_date >= ? AND f.entry_date <= ?${objectCondition}
+          `;
+          const fuelResult = await db.queryOne(fuelQuery, [startDate, endDate, ...objectParams]);
+          fuelCost = parseFloat(fuelResult?.total) || 0;
+        }
+
+        // Entretiens
+        if (types.includes('maintenance')) {
+          const maintenanceQuery = `
+            SELECT COALESCE(SUM(CAST(m.cost AS DECIMAL(10,2))), 0) as total
+            FROM maintenances m
+            JOIN objects o ON o.id = m.object_id
+            WHERE m.maintenance_date >= ? AND m.maintenance_date <= ?${objectCondition}
+          `;
+          const maintenanceResult = await db.queryOne(maintenanceQuery, [startDate, endDate, ...objectParams]);
+          maintenanceCost = parseFloat(maintenanceResult?.total) || 0;
+        }
+
+        // Contrôles techniques
+        if (types.includes('technical_control')) {
+          const controlQuery = `
+            SELECT COALESCE(SUM(CAST(tc.cost AS DECIMAL(10,2))), 0) as total
+            FROM technical_controls tc
+            JOIN objects o ON o.id = tc.object_id
+            WHERE tc.control_date >= ? AND tc.control_date <= ?${objectCondition}
+          `;
+          const controlResult = await db.queryOne(controlQuery, [startDate, endDate, ...objectParams]);
+          controlCost = parseFloat(controlResult?.total) || 0;
+        }
+
+        const monthTotal = fuelCost + maintenanceCost + controlCost;
+        totalFuel += fuelCost;
+        totalMaintenance += maintenanceCost;
+        totalControl += controlCost;
+
+        monthlyData.push({
+          month,
+          fuel: fuelCost,
+          maintenance: maintenanceCost,
+          control: controlCost,
+          total: monthTotal
+        });
+      }
+
+      return {
+        monthly: monthlyData,
+        totals: {
+          fuel: totalFuel,
+          maintenance: totalMaintenance,
+          control: totalControl,
+          total: totalFuel + totalMaintenance + totalControl
+        }
+      };
+    };
+
+    // Récupérer les données pour les deux années
+    const data1 = await getYearlyData(y1);
+    const data2 = await getYearlyData(y2);
+
+    result.monthly.year1 = data1.monthly;
+    result.monthly.year2 = data2.monthly;
+    
+    result.summary.year1 = data1.totals;
+    result.summary.year2 = data2.totals;
+
+    // Calcul des différences
+    result.difference = {
+      fuel: data1.totals.fuel - data2.totals.fuel,
+      maintenance: data1.totals.maintenance - data2.totals.maintenance,
+      control: data1.totals.control - data2.totals.control,
+      total: data1.totals.total - data2.totals.total,
+      percentage: data2.totals.total > 0 
+        ? ((data1.totals.total - data2.totals.total) / data2.totals.total * 100)
+        : 0
+    };
+
+    res.json({
+      success: true,
+      year1: y1,
+      year2: y2,
+      ...result
+    });
+  } catch (error: any) {
+    console.error('Erreur yearly comparison:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 export default router;

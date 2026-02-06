@@ -1,15 +1,19 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { 
   BarChart3, TrendingUp, TrendingDown, Calendar, 
   Download, Fuel, Wrench, ClipboardCheck, ChevronDown, ChevronUp,
   X, Search, RefreshCw, ArrowRightLeft, FileText, Paperclip,
-  Building, Car, FolderOpen, Settings2, Eye, EyeOff
+  Building, Car, FolderOpen, Settings2, Eye, EyeOff, Layers
 } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, Button, Badge, 
   LoadingInline, Alert, Input, Tabs, Tab
 } from '@/components/ui'
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  LineChart, Line, ComposedChart
+} from 'recharts'
 import api from '@/lib/api'
 import { cn, formatCurrency, formatNumber } from '@/lib/utils'
 import TrackingPDFExport from '@/components/TrackingPDFExport'
@@ -38,7 +42,13 @@ interface TrackingFilters {
   compareStartDate: string
   compareEndDate: string
   groupBy: 'month' | 'week' | 'year'
+  compareMode: 'period' | 'yearly'
+  year1: number
+  year2: number
 }
+
+// Mois en français (abréviations)
+const MONTHS_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
 
 // Fonction pour obtenir les dates par défaut (année en cours)
 const getDefaultDates = () => {
@@ -337,132 +347,26 @@ function DataTypeFilter({
   )
 }
 
-// Composant graphique simple (barres)
-function SimpleBarChart({
-  data,
-  dataKey = 'cost',
-  labelKey = 'period',
-  color = '#3b82f6',
-  formatValue = formatCurrency,
-  height = 200
-}: {
-  data: any[]
-  dataKey?: string
-  labelKey?: string
-  color?: string
-  formatValue?: (value: number) => string
-  height?: number
-}) {
-  if (!data.length) return null
-
-  const maxValue = Math.max(...data.map(d => d[dataKey] || 0))
-  
-  return (
-    <div className="w-full" style={{ height }}>
-      <div className="flex items-end justify-between gap-1 h-full">
-        {data.map((item, index) => {
-          const value = item[dataKey] || 0
-          const percentage = maxValue > 0 ? (value / maxValue) * 100 : 0
-          
-          return (
-            <div 
-              key={index} 
-              className="flex-1 flex flex-col items-center group"
-              style={{ maxWidth: `${100 / data.length}%` }}
-            >
-              <div 
-                className="w-full relative rounded-t transition-all hover:opacity-80"
-                style={{ 
-                  height: `${Math.max(percentage, 2)}%`,
-                  backgroundColor: color,
-                  minHeight: '4px'
-                }}
-              >
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2 py-1 bg-gray-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 whitespace-nowrap z-10">
-                  {formatValue(value)}
-                </div>
-              </div>
-              <span className="text-xs text-gray-500 mt-1 truncate w-full text-center">
-                {item[labelKey]}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// Composant graphique donut simple
-function SimpleDonutChart({
-  data,
-  colors = ['#3b82f6', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'],
-  size = 150
-}: {
-  data: { label: string; value: number; color?: string }[]
-  colors?: string[]
-  size?: number
-}) {
-  const total = data.reduce((sum, d) => sum + d.value, 0)
-  if (total === 0) return null
-
-  let cumulativePercent = 0
-  const segments = data.map((item, index) => {
-    const percent = (item.value / total) * 100
-    const startPercent = cumulativePercent
-    cumulativePercent += percent
-    return {
-      ...item,
-      percent,
-      startPercent,
-      color: item.color || colors[index % colors.length]
-    }
-  })
-
-  const strokeWidth = 30
-  const radius = (size - strokeWidth) / 2
-  const circumference = 2 * Math.PI * radius
-
-  return (
-    <div className="flex items-center gap-4">
-      <svg width={size} height={size} className="transform -rotate-90">
-        {segments.map((segment, index) => {
-          const offset = (segment.startPercent / 100) * circumference
-          const length = (segment.percent / 100) * circumference
-          
-          return (
-            <circle
-              key={index}
-              cx={size / 2}
-              cy={size / 2}
-              r={radius}
-              fill="none"
-              stroke={segment.color}
-              strokeWidth={strokeWidth}
-              strokeDasharray={`${length} ${circumference - length}`}
-              strokeDashoffset={-offset}
-              className="transition-all"
-            />
-          )
-        })}
-      </svg>
-      <div className="flex flex-col gap-1">
-        {segments.map((segment, index) => (
+// Tooltip personnalisé pour les graphiques
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
+        <p className="font-medium text-gray-900 mb-2">{label}</p>
+        {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2 text-sm">
             <div 
               className="w-3 h-3 rounded-full" 
-              style={{ backgroundColor: segment.color }}
+              style={{ backgroundColor: entry.color }}
             />
-            <span className="text-gray-600">{segment.label}</span>
-            <span className="font-medium text-gray-900">
-              {formatCurrency(segment.value)}
-            </span>
-            <span className="text-gray-400">({segment.percent.toFixed(1)}%)</span>
+            <span className="text-gray-600">{entry.name}:</span>
+            <span className="font-medium">{formatCurrency(entry.value)}</span>
           </div>
         ))}
       </div>
-    </div>
-  )
+    )
+  }
+  return null
 }
 
 // Tableau des données détaillées
@@ -506,8 +410,8 @@ function DataTable({
   }
 
   const SortHeader = ({ label, keyName }: { label: string; keyName: string }) => (
-    <th
-      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+    <th 
+      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
       onClick={() => handleSort(keyName)}
     >
       <div className="flex items-center gap-1">
@@ -526,11 +430,11 @@ function DataTable({
           <thead className="bg-gray-50">
             <tr>
               <SortHeader label="Date" keyName="date" />
-              <SortHeader label="Objet" keyName="objectName" />
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Catégorie</th>
-              <SortHeader label="Type" keyName="fuelType" />
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <SortHeader label="Quantité" keyName="quantity" />
-              <SortHeader label="Prix unitaire" keyName="unitPrice" />
+              <SortHeader label="Prix unit." keyName="unitPrice" />
               <SortHeader label="Total" keyName="totalPrice" />
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station</th>
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pièces</th>
@@ -585,20 +489,10 @@ function DataTable({
               Affichage {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, data.length)} sur {data.length}
             </div>
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === 1}
-                onClick={() => setPage(p => p - 1)}
-              >
+              <Button variant="outline" size="sm" disabled={page === 1} onClick={() => setPage(p => p - 1)}>
                 Précédent
               </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page === totalPages}
-                onClick={() => setPage(p => p + 1)}
-              >
+              <Button variant="outline" size="sm" disabled={page === totalPages} onClick={() => setPage(p => p + 1)}>
                 Suivant
               </Button>
             </div>
@@ -615,12 +509,12 @@ function DataTable({
           <thead className="bg-gray-50">
             <tr>
               <SortHeader label="Date" keyName="date" />
-              <SortHeader label="Objet" keyName="objectName" />
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Catégorie</th>
-              <SortHeader label="Type" keyName="type" />
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
               <SortHeader label="Coût" keyName="cost" />
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prochaine</th>
+              <SortHeader label="Prochaine" keyName="nextDate" />
               <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pièces</th>
             </tr>
           </thead>
@@ -694,9 +588,9 @@ function DataTable({
         <thead className="bg-gray-50">
           <tr>
             <SortHeader label="Date" keyName="date" />
-            <SortHeader label="Objet" keyName="objectName" />
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Catégorie</th>
-            <SortHeader label="Résultat" keyName="result" />
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Résultat</th>
             <SortHeader label="Coût" keyName="cost" />
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Centre</th>
             <SortHeader label="Expiration" keyName="expiryDate" />
@@ -769,7 +663,10 @@ function DataTable({
 }
 
 export default function TrackingPage() {
+  const currentYear = new Date().getFullYear()
   const defaultDates = getDefaultDates()
+  const chartRef = useRef<HTMLDivElement>(null)
+  
   const [filters, setFilters] = useState<TrackingFilters>({
     ...defaultDates,
     categoryIds: [],
@@ -780,11 +677,14 @@ export default function TrackingPage() {
     fuelTypes: [],
     compareEnabled: false,
     ...getComparisonDates(defaultDates.startDate, defaultDates.endDate),
-    groupBy: 'month'
+    groupBy: 'month',
+    compareMode: 'yearly',
+    year1: currentYear,
+    year2: currentYear - 1
   })
   const [showFilters, setShowFilters] = useState(true)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'fuel' | 'maintenance' | 'control'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'fuel' | 'maintenance' | 'control'>('overview')
   const [showPDFExport, setShowPDFExport] = useState(false)
   const [viewingAttachments, setViewingAttachments] = useState<any[] | null>(null)
 
@@ -847,6 +747,25 @@ export default function TrackingPage() {
     enabled: permissions?.canView
   })
 
+  // Récupérer les données de comparaison annuelle
+  const { data: yearlyData } = useQuery({
+    queryKey: ['tracking-yearly', filters.year1, filters.year2, filters.dataTypes, filters.categoryIds, filters.subcategoryIds, filters.objectIds],
+    queryFn: async () => {
+      const params: any = {
+        year1: filters.year1,
+        year2: filters.year2,
+        dataTypes: filters.dataTypes.join(','),
+      }
+      if (filters.categoryIds.length) params.categoryIds = filters.categoryIds.join(',')
+      if (filters.subcategoryIds.length) params.subcategoryIds = filters.subcategoryIds.join(',')
+      if (filters.objectIds.length) params.objectIds = filters.objectIds.join(',')
+      
+      const response = await api.get('/tracking/yearly-comparison', { params })
+      return response.data
+    },
+    enabled: permissions?.canView && permissions?.canCompare
+  })
+
   // Mettre à jour les dates de comparaison quand les dates principales changent
   useEffect(() => {
     if (!filters.compareEnabled) {
@@ -854,6 +773,37 @@ export default function TrackingPage() {
       setFilters(f => ({ ...f, ...compDates }))
     }
   }, [filters.startDate, filters.endDate, filters.compareEnabled])
+
+  // Générer les années disponibles (5 dernières années)
+  const availableYears = useMemo(() => {
+    const years = []
+    for (let i = 0; i <= 5; i++) {
+      years.push(currentYear - i)
+    }
+    return years
+  }, [currentYear])
+
+  // Préparer les données pour les graphiques comparatifs
+  const comparisonChartData = useMemo(() => {
+    if (!yearlyData?.monthly) return []
+    
+    return MONTHS_SHORT.map((month, index) => {
+      const year1Data = yearlyData.monthly.year1?.find((d: any) => d.month === index + 1) || {}
+      const year2Data = yearlyData.monthly.year2?.find((d: any) => d.month === index + 1) || {}
+      
+      return {
+        month,
+        [`${filters.year1}`]: year1Data.total || 0,
+        [`${filters.year2}`]: year2Data.total || 0,
+        [`fuel_${filters.year1}`]: year1Data.fuel || 0,
+        [`fuel_${filters.year2}`]: year2Data.fuel || 0,
+        [`maintenance_${filters.year1}`]: year1Data.maintenance || 0,
+        [`maintenance_${filters.year2}`]: year2Data.maintenance || 0,
+        [`control_${filters.year1}`]: year1Data.control || 0,
+        [`control_${filters.year2}`]: year2Data.control || 0,
+      }
+    })
+  }, [yearlyData, filters.year1, filters.year2])
 
   if (!permissions?.canView) {
     return (
@@ -886,7 +836,7 @@ export default function TrackingPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Suivi des coûts</h1>
           <p className="text-gray-500 mt-1">
-            Analysez les dépenses carburant, entretiens et contrôles techniques
+            Analysez et comparez les dépenses carburant, entretiens et contrôles techniques
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -919,7 +869,7 @@ export default function TrackingPage() {
       {showFilters && (
         <Card>
           <CardBody className="space-y-4">
-            {/* Filtres de base */}
+            {/* Période */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -934,7 +884,6 @@ export default function TrackingPage() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  <Calendar className="w-4 h-4 inline-block mr-1" />
                   Date de fin
                 </label>
                 <Input
@@ -968,7 +917,7 @@ export default function TrackingPage() {
                   />
                   <span className="text-sm font-medium text-gray-700">
                     <ArrowRightLeft className="w-4 h-4 inline-block mr-1" />
-                    Comparer avec période précédente
+                    Comparer périodes
                   </span>
                 </label>
               </div>
@@ -996,6 +945,44 @@ export default function TrackingPage() {
                     value={filters.compareEndDate}
                     onChange={(e) => setFilters(f => ({ ...f, compareEndDate: e.target.value }))}
                   />
+                </div>
+              </div>
+            )}
+
+            {/* Comparaison annuelle */}
+            {permissions?.canCompare && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-purple-50 rounded-lg">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-5 h-5 text-purple-600" />
+                  <span className="text-sm font-medium text-purple-700">Comparaison annuelle</span>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-purple-700 mb-1">
+                    Année 1
+                  </label>
+                  <select
+                    value={filters.year1}
+                    onChange={(e) => setFilters(f => ({ ...f, year1: parseInt(e.target.value) }))}
+                    className="block w-full rounded-lg border border-purple-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none"
+                  >
+                    {availableYears.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-purple-700 mb-1">
+                    Année 2
+                  </label>
+                  <select
+                    value={filters.year2}
+                    onChange={(e) => setFilters(f => ({ ...f, year2: parseInt(e.target.value) }))}
+                    className="block w-full rounded-lg border border-purple-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none"
+                  >
+                    {availableYears.map(year => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
             )}
@@ -1066,103 +1053,35 @@ export default function TrackingPage() {
                       placeholder="Tous les objets"
                       groupBy="category"
                     />
-                    {filters.dataTypes.includes('fuel') && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <Fuel className="w-4 h-4 inline-block mr-1" />
-                          Types de carburant
-                        </label>
-                        <div className="flex flex-wrap gap-2">
-                          {filterOptions.fuelTypes.map((type: string) => (
-                            <label key={type} className="flex items-center gap-1.5">
-                              <input
-                                type="checkbox"
-                                checked={filters.fuelTypes.includes(type)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFilters(f => ({ ...f, fuelTypes: [...f.fuelTypes, type] }))
-                                  } else {
-                                    setFilters(f => ({ ...f, fuelTypes: f.fuelTypes.filter(t => t !== type) }))
-                                  }
-                                }}
-                                className="w-4 h-4 rounded border-gray-300 text-primary-600"
-                              />
-                              <span className="text-sm text-gray-700">{type}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                    {filters.dataTypes.includes('maintenance') && (
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          <Wrench className="w-4 h-4 inline-block mr-1" />
-                          Types d'entretien
-                        </label>
-                        <div className="flex flex-wrap gap-2 max-h-32 overflow-y-auto">
-                          {filterOptions.maintenanceTypes.map((type: string) => (
-                            <label key={type} className="flex items-center gap-1.5">
-                              <input
-                                type="checkbox"
-                                checked={filters.maintenanceTypes.includes(type)}
-                                onChange={(e) => {
-                                  if (e.target.checked) {
-                                    setFilters(f => ({ ...f, maintenanceTypes: [...f.maintenanceTypes, type] }))
-                                  } else {
-                                    setFilters(f => ({ ...f, maintenanceTypes: f.maintenanceTypes.filter(t => t !== type) }))
-                                  }
-                                }}
-                                className="w-4 h-4 rounded border-gray-300 text-primary-600"
-                              />
-                              <span className="text-sm text-gray-700">{type}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </>
                 )}
               </div>
             )}
-
-            {/* Bouton réinitialiser */}
-            <div className="flex justify-end">
-              <Button
-                variant="ghost"
-                size="sm"
-                icon={<X className="w-4 h-4" />}
-                onClick={() => setFilters({
-                  ...getDefaultDates(),
-                  categoryIds: [],
-                  subcategoryIds: [],
-                  objectIds: [],
-                  dataTypes: ['fuel', 'maintenance', 'technical_control'],
-                  maintenanceTypes: [],
-                  fuelTypes: [],
-                  compareEnabled: false,
-                  ...getComparisonDates(defaultDates.startDate, defaultDates.endDate),
-                  groupBy: 'month'
-                })}
-              >
-                Réinitialiser les filtres
-              </Button>
-            </div>
           </CardBody>
         </Card>
       )}
 
-      {/* Cartes statistiques */}
-      {loadingData ? (
-        <div className="py-12"><LoadingInline /></div>
-      ) : (
+      {/* Chargement */}
+      {(loadingData || loadingCharts) && (
+        <Card>
+          <CardBody className="py-12 text-center">
+            <LoadingInline />
+            <p className="mt-2 text-gray-500">Chargement des données...</p>
+          </CardBody>
+        </Card>
+      )}
+
+      {/* Contenu */}
+      {!loadingData && !loadingCharts && (
         <>
+          {/* Cartes statistiques */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <StatCard
               title="Coût total"
               value={formatCurrency(summary.totalCost)}
-              icon={TrendingUp}
+              icon={BarChart3}
               color="purple"
-              comparison={comparison?.percentageChange?.totalCost ? parseFloat(comparison.percentageChange.totalCost) : null}
+              comparison={comparison?.percentageChange?.totalCost}
               trend={comparison?.difference?.totalCost > 0 ? 'up' : comparison?.difference?.totalCost < 0 ? 'down' : 'neutral'}
             />
             {filters.dataTypes.includes('fuel') && (
@@ -1171,7 +1090,7 @@ export default function TrackingPage() {
                 value={formatCurrency(summary.totalFuelCost)}
                 icon={Fuel}
                 color="amber"
-                comparison={comparison?.percentageChange?.totalFuelCost ? parseFloat(comparison.percentageChange.totalFuelCost) : null}
+                comparison={comparison?.percentageChange?.totalFuelCost}
                 trend={comparison?.difference?.totalFuelCost > 0 ? 'up' : comparison?.difference?.totalFuelCost < 0 ? 'down' : 'neutral'}
               />
             )}
@@ -1181,7 +1100,7 @@ export default function TrackingPage() {
                 value={formatCurrency(summary.totalMaintenanceCost)}
                 icon={Wrench}
                 color="blue"
-                comparison={comparison?.percentageChange?.totalMaintenanceCost ? parseFloat(comparison.percentageChange.totalMaintenanceCost) : null}
+                comparison={comparison?.percentageChange?.totalMaintenanceCost}
                 trend={comparison?.difference?.totalMaintenanceCost > 0 ? 'up' : comparison?.difference?.totalMaintenanceCost < 0 ? 'down' : 'neutral'}
               />
             )}
@@ -1191,13 +1110,13 @@ export default function TrackingPage() {
                 value={formatCurrency(summary.totalControlCost)}
                 icon={ClipboardCheck}
                 color="green"
-                comparison={comparison?.percentageChange?.totalControlCost ? parseFloat(comparison.percentageChange.totalControlCost) : null}
+                comparison={comparison?.percentageChange?.totalControlCost}
                 trend={comparison?.difference?.totalControlCost > 0 ? 'up' : comparison?.difference?.totalControlCost < 0 ? 'down' : 'neutral'}
               />
             )}
           </div>
 
-          {/* Cartes secondaires */}
+          {/* Cartes secondaires carburant */}
           {filters.dataTypes.includes('fuel') && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <StatCard
@@ -1230,6 +1149,13 @@ export default function TrackingPage() {
                   label="Vue d'ensemble"
                   icon={<BarChart3 className="w-4 h-4" />}
                 />
+                {permissions?.canCompare && (
+                  <Tab 
+                    value="comparison"
+                    label={`Comparaison ${filters.year1} vs ${filters.year2}`}
+                    icon={<Layers className="w-4 h-4" />}
+                  />
+                )}
                 {filters.dataTypes.includes('fuel') && (
                   <Tab 
                     value="fuel"
@@ -1255,198 +1181,231 @@ export default function TrackingPage() {
             </CardHeader>
             <CardBody>
               {activeTab === 'overview' && (
-                <div className="space-y-8">
-                  {/* Graphiques */}
-                  {loadingCharts ? (
-                    <div className="py-12"><LoadingInline /></div>
-                  ) : (
-                    <>
-                      {/* Evolution des coûts */}
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Évolution des coûts</h3>
-                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                          {filters.dataTypes.includes('fuel') && chartsData?.fuelByPeriod?.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-600 mb-2">Carburant</h4>
-                              <SimpleBarChart 
-                                data={chartsData.fuelByPeriod} 
-                                color="#f59e0b"
-                              />
-                            </div>
-                          )}
-                          {filters.dataTypes.includes('maintenance') && chartsData?.maintenanceByPeriod?.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-600 mb-2">Entretiens</h4>
-                              <SimpleBarChart 
-                                data={chartsData.maintenanceByPeriod} 
-                                color="#3b82f6"
-                              />
-                            </div>
-                          )}
-                          {filters.dataTypes.includes('technical_control') && chartsData?.controlByPeriod?.length > 0 && (
-                            <div>
-                              <h4 className="text-sm font-medium text-gray-600 mb-2">Contrôles techniques</h4>
-                              <SimpleBarChart 
-                                data={chartsData.controlByPeriod} 
-                                color="#10b981"
-                              />
-                            </div>
-                          )}
-                        </div>
+                <div className="space-y-8" ref={chartRef}>
+                  {/* Graphique évolution */}
+                  {chartsData?.costByPeriod?.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Évolution des coûts</h3>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <ComposedChart data={chartsData.costByPeriod}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                            <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend />
+                            {filters.dataTypes.includes('fuel') && (
+                              <Bar dataKey="fuelCost" name="Carburant" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                            )}
+                            {filters.dataTypes.includes('maintenance') && (
+                              <Bar dataKey="maintenanceCost" name="Entretiens" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                            )}
+                            {filters.dataTypes.includes('technical_control') && (
+                              <Bar dataKey="controlCost" name="Contrôles" fill="#10b981" radius={[4, 4, 0, 0]} />
+                            )}
+                            <Line type="monotone" dataKey="totalCost" name="Total" stroke="#8b5cf6" strokeWidth={2} dot={{ fill: '#8b5cf6' }} />
+                          </ComposedChart>
+                        </ResponsiveContainer>
                       </div>
+                    </div>
+                  )}
 
-                      {/* Répartition des coûts */}
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 mb-4">Répartition des coûts</h3>
-                        <div className="flex justify-center">
-                          <SimpleDonutChart
-                            data={[
-                              { label: 'Carburant', value: summary.totalFuelCost, color: '#f59e0b' },
-                              { label: 'Entretiens', value: summary.totalMaintenanceCost, color: '#3b82f6' },
-                              { label: 'Contrôles', value: summary.totalControlCost, color: '#10b981' },
-                            ].filter(d => d.value > 0)}
-                            size={180}
-                          />
-                        </div>
+                  {/* Coûts par objet */}
+                  {chartsData?.costByObject?.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Coûts par objet (Top 10)</h3>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartsData.costByObject.slice(0, 10)} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis type="number" tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                            <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} stroke="#6b7280" />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend />
+                            {filters.dataTypes.includes('fuel') && (
+                              <Bar dataKey="fuelCost" name="Carburant" fill="#f59e0b" stackId="a" />
+                            )}
+                            {filters.dataTypes.includes('maintenance') && (
+                              <Bar dataKey="maintenanceCost" name="Entretiens" fill="#3b82f6" stackId="a" />
+                            )}
+                            {filters.dataTypes.includes('technical_control') && (
+                              <Bar dataKey="controlCost" name="Contrôles" fill="#10b981" stackId="a" />
+                            )}
+                          </BarChart>
+                        </ResponsiveContainer>
                       </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
-                      {/* Top objets coûteux */}
-                      {chartsData?.costByObject?.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">Top 10 - Objets les plus coûteux</h3>
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
-                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Catégorie</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Carburant</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Entretiens</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Contrôles</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Total</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-200">
-                                {chartsData.costByObject.map((item: any) => (
-                                  <tr key={item.id} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3">
-                                      <div className="flex items-center gap-2">
-                                        {item.image && (
-                                          <img src={item.image} alt="" className="w-8 h-8 rounded object-cover" />
-                                        )}
-                                        <div>
-                                          <div className="text-sm font-medium text-gray-900">{item.name}</div>
-                                          {item.reference && (
-                                            <div className="text-xs text-gray-500">{item.reference}</div>
-                                          )}
-                                        </div>
-                                      </div>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-gray-500">{item.categoryName}</td>
-                                    <td className="px-4 py-3 text-sm text-right text-amber-600">{formatCurrency(item.fuelCost)}</td>
-                                    <td className="px-4 py-3 text-sm text-right text-blue-600">{formatCurrency(item.maintenanceCost)}</td>
-                                    <td className="px-4 py-3 text-sm text-right text-green-600">{formatCurrency(item.controlCost)}</td>
-                                    <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">{formatCurrency(item.totalCost)}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+              {activeTab === 'comparison' && permissions?.canCompare && (
+                <div className="space-y-8" ref={chartRef}>
+                  {/* Résumé comparatif */}
+                  {yearlyData?.summary && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <Card className="border-2 border-purple-200">
+                        <CardBody className="p-4">
+                          <h4 className="font-semibold text-purple-700 mb-3">Année {filters.year1}</h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Coût total</span>
+                              <span className="font-bold text-lg">{formatCurrency(yearlyData.summary.year1.total)}</span>
+                            </div>
+                            {filters.dataTypes.includes('fuel') && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Carburant</span>
+                                <span className="font-medium text-amber-600">{formatCurrency(yearlyData.summary.year1.fuel)}</span>
+                              </div>
+                            )}
+                            {filters.dataTypes.includes('maintenance') && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Entretiens</span>
+                                <span className="font-medium text-blue-600">{formatCurrency(yearlyData.summary.year1.maintenance)}</span>
+                              </div>
+                            )}
+                            {filters.dataTypes.includes('technical_control') && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Contrôles</span>
+                                <span className="font-medium text-green-600">{formatCurrency(yearlyData.summary.year1.control)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </CardBody>
+                      </Card>
+
+                      <Card className="border-2 border-indigo-200">
+                        <CardBody className="p-4">
+                          <h4 className="font-semibold text-indigo-700 mb-3">Année {filters.year2}</h4>
+                          <div className="space-y-2">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">Coût total</span>
+                              <span className="font-bold text-lg">{formatCurrency(yearlyData.summary.year2.total)}</span>
+                            </div>
+                            {filters.dataTypes.includes('fuel') && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Carburant</span>
+                                <span className="font-medium text-amber-600">{formatCurrency(yearlyData.summary.year2.fuel)}</span>
+                              </div>
+                            )}
+                            {filters.dataTypes.includes('maintenance') && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Entretiens</span>
+                                <span className="font-medium text-blue-600">{formatCurrency(yearlyData.summary.year2.maintenance)}</span>
+                              </div>
+                            )}
+                            {filters.dataTypes.includes('technical_control') && (
+                              <div className="flex justify-between">
+                                <span className="text-gray-500">Contrôles</span>
+                                <span className="font-medium text-green-600">{formatCurrency(yearlyData.summary.year2.control)}</span>
+                              </div>
+                            )}
+                          </div>
+                        </CardBody>
+                      </Card>
+                    </div>
+                  )}
+
+                  {/* Différence */}
+                  {yearlyData?.difference && (
+                    <Card className={cn(
+                      "border-2",
+                      yearlyData.difference.total > 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+                    )}>
+                      <CardBody className="p-4">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="font-semibold text-gray-900">Différence {filters.year1} vs {filters.year2}</h4>
+                            <p className="text-sm text-gray-500">
+                              {yearlyData.difference.total > 0 
+                                ? `Augmentation de ${yearlyData.difference.percentage?.toFixed(1)}%` 
+                                : `Réduction de ${Math.abs(yearlyData.difference.percentage || 0).toFixed(1)}%`
+                              }
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {yearlyData.difference.total > 0 ? (
+                              <TrendingUp className="w-8 h-8 text-red-500" />
+                            ) : (
+                              <TrendingDown className="w-8 h-8 text-green-500" />
+                            )}
+                            <span className={cn(
+                              "text-2xl font-bold",
+                              yearlyData.difference.total > 0 ? "text-red-600" : "text-green-600"
+                            )}>
+                              {yearlyData.difference.total > 0 ? '+' : ''}{formatCurrency(yearlyData.difference.total)}
+                            </span>
                           </div>
                         </div>
-                      )}
+                      </CardBody>
+                    </Card>
+                  )}
 
-                      {/* Coûts par catégorie */}
-                      {chartsData?.costByCategory?.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">Coûts par catégorie</h3>
-                          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {chartsData.costByCategory.map((item: any) => (
-                              <Card key={item.id}>
-                                <CardBody className="p-4">
-                                  <div className="flex items-center gap-3 mb-3">
-                                    {item.image ? (
-                                      <img src={item.image} alt="" className="w-10 h-10 rounded object-cover" />
-                                    ) : (
-                                      <div className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center">
-                                        <FolderOpen className="w-5 h-5 text-gray-400" />
-                                      </div>
-                                    )}
-                                    <div>
-                                      <div className="font-medium text-gray-900">{item.name}</div>
-                                      <div className="text-lg font-bold text-gray-900">{formatCurrency(item.totalCost)}</div>
-                                    </div>
-                                  </div>
-                                  <div className="space-y-1 text-sm">
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-500">Carburant</span>
-                                      <span className="text-amber-600">{formatCurrency(item.fuelCost)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-500">Entretiens</span>
-                                      <span className="text-blue-600">{formatCurrency(item.maintenanceCost)}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                      <span className="text-gray-500">Contrôles</span>
-                                      <span className="text-green-600">{formatCurrency(item.controlCost)}</span>
-                                    </div>
-                                  </div>
-                                </CardBody>
-                              </Card>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                  {/* Graphique comparatif mois par mois */}
+                  {comparisonChartData.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        Comparaison mensuelle : {filters.year1} vs {filters.year2}
+                      </h3>
+                      <div className="h-96">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={comparisonChartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                            <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend />
+                            <Bar dataKey={`${filters.year1}`} name={`Total ${filters.year1}`} fill="#8b5cf6" radius={[4, 4, 0, 0]} />
+                            <Bar dataKey={`${filters.year2}`} name={`Total ${filters.year2}`} fill="#6366f1" radius={[4, 4, 0, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
 
-                      {/* Type de carburant */}
-                      {filters.dataTypes.includes('fuel') && chartsData?.fuelByType?.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">Répartition par type de carburant</h3>
-                          <div className="flex justify-center">
-                            <SimpleDonutChart
-                              data={chartsData.fuelByType.map((f: any) => ({
-                                label: f.type,
-                                value: f.cost
-                              }))}
-                              colors={['#f59e0b', '#84cc16', '#10b981', '#06b6d4', '#3b82f6']}
-                              size={180}
-                            />
-                          </div>
-                        </div>
-                      )}
+                  {/* Graphiques par type */}
+                  {filters.dataTypes.includes('fuel') && comparisonChartData.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        <Fuel className="w-5 h-5 inline-block mr-2 text-amber-500" />
+                        Carburant : {filters.year1} vs {filters.year2}
+                      </h3>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={comparisonChartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                            <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend />
+                            <Line type="monotone" dataKey={`fuel_${filters.year1}`} name={`${filters.year1}`} stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
+                            <Line type="monotone" dataKey={`fuel_${filters.year2}`} name={`${filters.year2}`} stroke="#d97706" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#d97706' }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
 
-                      {/* Type d'entretien */}
-                      {filters.dataTypes.includes('maintenance') && chartsData?.maintenanceByType?.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">Coûts par type d'entretien</h3>
-                          <div className="overflow-x-auto">
-                            <table className="w-full">
-                              <thead className="bg-gray-50">
-                                <tr>
-                                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Nombre</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Coût total</th>
-                                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Coût moyen</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-gray-200">
-                                {chartsData.maintenanceByType.map((item: any, index: number) => (
-                                  <tr key={index} className="hover:bg-gray-50">
-                                    <td className="px-4 py-3">
-                                      <Badge variant="info">{item.type}</Badge>
-                                    </td>
-                                    <td className="px-4 py-3 text-sm text-right text-gray-500">{item.count}</td>
-                                    <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">{formatCurrency(item.cost)}</td>
-                                    <td className="px-4 py-3 text-sm text-right text-gray-500">
-                                      {formatCurrency(item.count > 0 ? item.cost / item.count : 0)}
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
-                      )}
-                    </>
+                  {filters.dataTypes.includes('maintenance') && comparisonChartData.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                        <Wrench className="w-5 h-5 inline-block mr-2 text-blue-500" />
+                        Entretiens : {filters.year1} vs {filters.year2}
+                      </h3>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={comparisonChartData}>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
+                            <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend />
+                            <Line type="monotone" dataKey={`maintenance_${filters.year1}`} name={`${filters.year1}`} stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
+                            <Line type="monotone" dataKey={`maintenance_${filters.year2}`} name={`${filters.year2}`} stroke="#1d4ed8" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#1d4ed8' }} />
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -1487,7 +1446,9 @@ export default function TrackingPage() {
           chartsData={chartsData}
           summary={summary}
           comparison={comparison}
+          yearlyComparison={yearlyData}
           onClose={() => setShowPDFExport(false)}
+          chartRef={chartRef}
         />
       )}
 
