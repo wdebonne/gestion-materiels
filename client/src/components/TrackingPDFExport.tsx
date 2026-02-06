@@ -162,7 +162,7 @@ export default function TrackingPDFExport({
         setProgress(20)
 
         pdf.setTextColor(0, 0, 0)
-        yPos = addText('📊 RÉSUMÉ', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
+        yPos = addText('[#] RESUME', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
         yPos += 5
 
         // Dessiner les cartes de résumé
@@ -229,7 +229,7 @@ export default function TrackingPDFExport({
           pdf.setFontSize(10)
           pdf.setTextColor(75, 85, 99)
           yPos = addText(
-            `⛽ Carburant : ${formatNumber(summary.totalFuelQuantity)} litres en ${summary.fuelEntryCount} plein(s) (moyenne : ${formatCurrency(summary.fuelEntryCount > 0 ? summary.totalFuelCost / summary.fuelEntryCount : 0)}/plein)`,
+            `> Carburant : ${formatNumber(summary.totalFuelQuantity)} litres en ${summary.fuelEntryCount} plein(s) (moyenne : ${formatCurrency(summary.fuelEntryCount > 0 ? summary.totalFuelCost / summary.fuelEntryCount : 0)}/plein)`,
             margin, yPos
           )
           yPos += 5
@@ -243,7 +243,7 @@ export default function TrackingPDFExport({
 
         checkNewPage(50)
         
-        yPos = addText('📈 COMPARAISON DE PÉRIODES', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
+        yPos = addText('[~] COMPARAISON DE PERIODES', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
         yPos += 5
 
         pdf.setFillColor(239, 246, 255)
@@ -288,7 +288,7 @@ export default function TrackingPDFExport({
 
           checkNewPage(100)
           
-          yPos = addText('📊 GRAPHIQUES', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
+          yPos = addText('[=] GRAPHIQUES', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
           yPos += 5
 
           const imgData = canvas.toDataURL('image/png')
@@ -317,7 +317,7 @@ export default function TrackingPDFExport({
         if (filters.dataTypes.includes('fuel') && data?.fuel?.length > 0) {
           checkNewPage(40)
           
-          yPos = addText(`⛽ DÉTAILS CARBURANT (${data.fuel.length} entrée(s))`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
+          yPos = addText(`[>] DETAILS CARBURANT (${data.fuel.length} entree(s))`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
           yPos += 5
 
           // En-têtes du tableau
@@ -395,7 +395,7 @@ export default function TrackingPDFExport({
           setProgress(80)
           checkNewPage(40)
           
-          yPos = addText(`🔧 DÉTAILS ENTRETIENS (${data.maintenance.length} entrée(s))`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
+          yPos = addText(`[*] DETAILS ENTRETIENS (${data.maintenance.length} entree(s))`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
           yPos += 5
 
           const colWidths = [22, 45, 35, 30, 48]
@@ -467,7 +467,7 @@ export default function TrackingPDFExport({
           setProgress(90)
           checkNewPage(40)
           
-          yPos = addText(`📋 DÉTAILS CONTRÔLES TECHNIQUES (${data.technicalControl.length} entrée(s))`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
+          yPos = addText(`[!] DETAILS CONTROLES TECHNIQUES (${data.technicalControl.length} entree(s))`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
           yPos += 5
 
           const colWidths = [22, 45, 30, 30, 53]
@@ -532,7 +532,7 @@ export default function TrackingPDFExport({
       if (includeAttachments && selectedAttachments.length > 0) {
         checkNewPage(30)
         
-        yPos = addText(`📎 PIÈCES JOINTES (${selectedAttachments.length})`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
+        yPos = addText(`[@] PIECES JOINTES (${selectedAttachments.length})`, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
         yPos += 5
 
         const attachmentsToInclude = allAttachments.filter(a => selectedAttachments.includes(a.id))
