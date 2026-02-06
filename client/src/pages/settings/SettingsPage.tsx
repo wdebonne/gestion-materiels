@@ -8,7 +8,8 @@ import {
   Database,
   HardDrive,
   Lock,
-  ScrollText
+  ScrollText,
+  Webhook
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -65,6 +66,12 @@ const settingsNavItems = [
     to: '/settings/logs', 
     icon: ScrollText, 
     label: 'Logs',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/webhooks', 
+    icon: Webhook, 
+    label: 'Webhooks',
     adminOnly: true
   },
 ]

@@ -483,6 +483,22 @@ class DatabaseManager {
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
         FOREIGN KEY (subcategory_id) REFERENCES subcategories(id) ON DELETE CASCADE
+      )`,
+
+      // Table des webhooks
+      `CREATE TABLE IF NOT EXISTS webhooks (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        url VARCHAR(500) NOT NULL,
+        events ${textType},
+        headers ${textType},
+        secret VARCHAR(255),
+        is_active ${boolType} DEFAULT 1,
+        last_triggered_at DATETIME,
+        last_status INTEGER,
+        last_response ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
       )`
     ];
 

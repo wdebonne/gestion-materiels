@@ -7,6 +7,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.31] - 2026-02-06
+
+### Ajouté
+- **Gestion des Webhooks** : Nouveau menu dans les paramètres pour configurer des webhooks
+  - Création, modification et suppression de webhooks
+  - Sélection des événements à écouter (objets, catégories, alertes, maintenances, etc.)
+  - Configuration d'headers personnalisés
+  - Secret de signature HMAC-SHA256 pour la sécurité
+  - Bouton de test pour vérifier la connexion
+  - Affichage du statut et de la dernière réponse
+  - Activation/désactivation individuelle
+
+### API
+- `GET /api/webhooks` - Lister tous les webhooks
+- `GET /api/webhooks/:id` - Obtenir un webhook par ID
+- `POST /api/webhooks` - Créer un webhook
+- `PUT /api/webhooks/:id` - Modifier un webhook
+- `DELETE /api/webhooks/:id` - Supprimer un webhook
+- `POST /api/webhooks/:id/test` - Tester un webhook
+- `POST /api/webhooks/trigger` - Déclencher les webhooks pour un événement
+
 ## [1.2.30] - 2026-02-06
 
 ### Ajouté
