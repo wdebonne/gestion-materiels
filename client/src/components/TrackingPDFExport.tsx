@@ -26,6 +26,7 @@ export default function TrackingPDFExport({
   data,
   summary,
   comparison,
+  yearlyComparison,
   onClose,
   chartRef
 }: TrackingPDFExportProps) {
@@ -237,40 +238,109 @@ export default function TrackingPDFExport({
       }
 
       // Section comparaison
-      if (includeComparison && comparison) {
+      if (includeComparison) {
         setProgressText('Ajout de la comparaison...')
         setProgress(35)
 
-        checkNewPage(50)
-        
-        yPos = addText('[~] COMPARAISON DE PERIODES', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
-        yPos += 5
+        // Comparaison annuelle ou mensuelle (yearlyComparison)
+        if (yearlyComparison && (filters.compareMode === 'yearly' || filters.compareMode === 'monthly')) {
+          checkNewPage(80)
+          
+          const isMonthly = filters.compareMode === 'monthly'
+          const MONTHS_SHORT = ['Jan', 'Fev', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aout', 'Sep', 'Oct', 'Nov', 'Dec']
+          
+          const label1 = isMonthly 
+            ? `${MONTHS_SHORT[filters.month1 - 1]} ${filters.year1}`
+            : `Annee ${filters.year1}`
+          const label2 = isMonthly 
+            ? `${MONTHS_SHORT[filters.month2 - 1]} ${filters.year2}`
+            : `Annee ${filters.year2}`
+          
+          yPos = addText(`[~] COMPARAISON : ${label1} vs ${label2}`, margin, yPos, { fontSize: 14, fontStyle: 'bold' })
+          yPos += 5
 
-        pdf.setFillColor(239, 246, 255)
-        pdf.roundedRect(margin, yPos, pageWidth - 2 * margin, 35, 3, 3, 'F')
-        
-        pdf.setTextColor(30, 64, 175)
-        pdf.setFontSize(10)
-        pdf.setFont('helvetica', 'bold')
-        pdf.text(
-          `Comparaison avec : ${new Date(comparison.period.start).toLocaleDateString('fr-FR')} - ${new Date(comparison.period.end).toLocaleDateString('fr-FR')}`,
-          margin + 5, yPos + 8
-        )
+          // Carte année/mois 1
+          const cardWidth = (pageWidth - 3 * margin) / 2
+          pdf.setFillColor(243, 232, 255)
+          pdf.roundedRect(margin, yPos, cardWidth, 35, 3, 3, 'F')
+          pdf.setTextColor(107, 33, 168)
+          pdf.setFontSize(10)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text(label1, margin + 5, yPos + 8)
+          pdf.setFont('helvetica', 'normal')
+          pdf.setFontSize(9)
+          pdf.text(`Cout total : ${formatCurrency(yearlyComparison.summary?.year1?.total || 0)}`, margin + 5, yPos + 18)
+          pdf.text(`Carburant : ${formatCurrency(yearlyComparison.summary?.year1?.fuel || 0)}`, margin + 5, yPos + 26)
+          pdf.text(`Entretiens : ${formatCurrency(yearlyComparison.summary?.year1?.maintenance || 0)}`, margin + 5, yPos + 34)
 
-        pdf.setFont('helvetica', 'normal')
-        pdf.setFontSize(9)
-        const diff = comparison.difference.totalCost
-        const diffColor = diff > 0 ? [220, 38, 38] : [22, 163, 74]
-        pdf.setTextColor(diffColor[0], diffColor[1], diffColor[2])
-        pdf.text(
-          `Différence : ${diff > 0 ? '+' : ''}${formatCurrency(diff)} (${comparison.percentageChange.totalCost > 0 ? '+' : ''}${comparison.percentageChange.totalCost?.toFixed(1) || 0}%)`,
-          margin + 5, yPos + 18
-        )
+          // Carte année/mois 2
+          pdf.setFillColor(224, 231, 255)
+          pdf.roundedRect(margin + cardWidth + margin/2, yPos, cardWidth, 35, 3, 3, 'F')
+          pdf.setTextColor(67, 56, 202)
+          pdf.setFontSize(10)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text(label2, margin + cardWidth + margin/2 + 5, yPos + 8)
+          pdf.setFont('helvetica', 'normal')
+          pdf.setFontSize(9)
+          pdf.text(`Cout total : ${formatCurrency(yearlyComparison.summary?.year2?.total || 0)}`, margin + cardWidth + margin/2 + 5, yPos + 18)
+          pdf.text(`Carburant : ${formatCurrency(yearlyComparison.summary?.year2?.fuel || 0)}`, margin + cardWidth + margin/2 + 5, yPos + 26)
+          pdf.text(`Entretiens : ${formatCurrency(yearlyComparison.summary?.year2?.maintenance || 0)}`, margin + cardWidth + margin/2 + 5, yPos + 34)
 
-        pdf.setTextColor(75, 85, 99)
-        pdf.text(`Coût période de comparaison : ${formatCurrency(comparison.summary.totalCost)}`, margin + 5, yPos + 28)
+          yPos += 42
 
-        yPos += 45
+          // Différence
+          const diff = yearlyComparison.difference?.total || 0
+          const diffColor = diff > 0 ? [220, 38, 38] : [22, 163, 74]
+          const bgColor = diff > 0 ? [254, 226, 226] : [220, 252, 231]
+          
+          pdf.setFillColor(bgColor[0], bgColor[1], bgColor[2])
+          pdf.roundedRect(margin, yPos, pageWidth - 2 * margin, 18, 3, 3, 'F')
+          
+          pdf.setTextColor(0, 0, 0)
+          pdf.setFontSize(10)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text(`Difference ${label1} vs ${label2}`, margin + 5, yPos + 8)
+          
+          pdf.setTextColor(diffColor[0], diffColor[1], diffColor[2])
+          pdf.setFontSize(12)
+          const diffText = `${diff > 0 ? '+' : ''}${formatCurrency(diff)} (${diff > 0 ? 'Augmentation' : 'Reduction'} de ${Math.abs(yearlyComparison.difference?.percentage || 0).toFixed(1)}%)`
+          pdf.text(diffText, margin + 5, yPos + 16)
+
+          yPos += 25
+        }
+        // Comparaison de périodes personnalisées (comparison)
+        else if (comparison && comparison.period) {
+          checkNewPage(50)
+          
+          yPos = addText('[~] COMPARAISON DE PERIODES', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
+          yPos += 5
+
+          pdf.setFillColor(239, 246, 255)
+          pdf.roundedRect(margin, yPos, pageWidth - 2 * margin, 35, 3, 3, 'F')
+          
+          pdf.setTextColor(30, 64, 175)
+          pdf.setFontSize(10)
+          pdf.setFont('helvetica', 'bold')
+          pdf.text(
+            `Comparaison avec : ${new Date(comparison.period.start).toLocaleDateString('fr-FR')} - ${new Date(comparison.period.end).toLocaleDateString('fr-FR')}`,
+            margin + 5, yPos + 8
+          )
+
+          pdf.setFont('helvetica', 'normal')
+          pdf.setFontSize(9)
+          const diff = comparison.difference?.totalCost || 0
+          const diffColor = diff > 0 ? [220, 38, 38] : [22, 163, 74]
+          pdf.setTextColor(diffColor[0], diffColor[1], diffColor[2])
+          pdf.text(
+            `Difference : ${diff > 0 ? '+' : ''}${formatCurrency(diff)} (${(comparison.percentageChange?.totalCost || 0) > 0 ? '+' : ''}${(comparison.percentageChange?.totalCost || 0).toFixed(1)}%)`,
+            margin + 5, yPos + 18
+          )
+
+          pdf.setTextColor(75, 85, 99)
+          pdf.text(`Cout periode de comparaison : ${formatCurrency(comparison.summary?.totalCost || 0)}`, margin + 5, yPos + 28)
+
+          yPos += 45
+        }
       }
 
       // Section graphiques (capture du DOM si disponible)
