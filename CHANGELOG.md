@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.36] - 2026-02-06
+
+### Sécurité
+- **Protection des fichiers uploadés** : Les fichiers dans `/uploads` nécessitent maintenant une authentification JWT
+  - Middleware de vérification de token ajouté pour tous les fichiers sensibles
+  - Fichiers publics autorisés : logos, favicons, images du site
+  - Support du token via header `Authorization: Bearer` ou paramètre `?token=`
+  - Correction de la vulnérabilité d'exposition publique des fichiers (CVSS 6.5)
+
+### Documentation
+- **Audit de sécurité** : Ajout du rapport d'audit complet (`docs/AUDIT_SECURITE_API.md`)
+  - Analyse de toutes les routes API et leur niveau de protection
+  - Matrice de conformité OWASP
+  - Plan d'action de sécurité priorisé
+
 ## [1.2.35] - 2026-02-06
 
 ### Amélioré

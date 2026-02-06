@@ -1,10 +1,11 @@
-import express, { Application } from 'express';
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import jwt from 'jsonwebtoken';
 
 // Charger les variables d'environnement
 dotenv.config();
@@ -92,8 +93,37 @@ app.use(morgan('combined'));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Servir les fichiers statiques (uploads)
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+// Middleware de vérification de token pour les fichiers sensibles
+const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): void => {
+  // Permettre l'accès aux fichiers publics (logos, favicons, images de catégories)
+  const publicPatterns = [/^logo/i, /^favicon/i, /^site_/i];
+  const filename = path.basename(req.path);
+  
+  if (publicPatterns.some(pattern => pattern.test(filename))) {
+    return next();
+  }
+
+  // Vérifier le token pour les autres fichiers
+  const authHeader = req.headers['authorization'];
+  const tokenFromQuery = req.query.token as string;
+  const token = (authHeader && authHeader.split(' ')[1]) || tokenFromQuery;
+
+  if (!token) {
+    res.status(401).json({ success: false, message: 'Accès non autorisé' });
+    return;
+  }
+
+  try {
+    jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    next();
+  } catch (error) {
+    res.status(403).json({ success: false, message: 'Token invalide ou expiré' });
+  }
+};
+
+// Servir les fichiers statiques (uploads) avec protection
+app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../uploads')));
+// Plugins restent publics (contiennent uniquement du code/config)
 app.use('/plugins', express.static(path.join(__dirname, '../plugins')));
 
 // Routes API
