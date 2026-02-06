@@ -189,10 +189,10 @@ class JwtRotationService {
    */
   public async getActiveSecrets(): Promise<string[]> {
     try {
-      const secrets = await db.queryAll<{ secret: string }>(
+      const secrets = await db.query<{ secret: string }>(
         "SELECT secret FROM jwt_secrets WHERE is_active = 1 AND expires_at > datetime('now') ORDER BY created_at DESC"
       );
-      return secrets.map(s => s.secret);
+      return secrets.map((s: { secret: string }) => s.secret);
     } catch (error) {
       // Fallback sur le secret de l'environnement
       return [process.env.JWT_SECRET || 'secret'];
@@ -263,7 +263,7 @@ class JwtRotationService {
    * Obtient l'historique des rotations
    */
   public async getRotationHistory(limit: number = 10): Promise<any[]> {
-    return db.queryAll(
+    return db.query(
       `SELECT id, created_at, expires_at, is_active, rotated_by, rotation_reason 
        FROM jwt_secrets 
        ORDER BY created_at DESC 
