@@ -9,6 +9,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [1.2.30] - 2026-02-06
 
+### Ajouté
+- **Synchronisation automatique de la version** : 
+  - Script `scripts/sync-version.js` pour synchroniser la version depuis CHANGELOG.md vers package.json et README.md
+  - Commandes npm : `npm run version:check`, `npm run version:sync`, `npm run version:get`
+  - Synchronisation automatique lors de `npm run build`
+  - Mise à jour automatique de la version en base de données au démarrage du serveur
+
 ### Amélioré
 - **Couleurs des cartes d'alertes selon la priorité** : Les cartes d'alertes affichent maintenant une couleur de fond légère correspondant à leur priorité
   - Priorité Basse : fond bleu clair

@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import path from 'path';
+import fs from 'fs';
 import dotenv from 'dotenv';
 
 // Charger les variables d'environnement
@@ -26,11 +27,52 @@ import customFieldsRoutes from './routes/customFields.routes';
 import logRoutes from './routes/log.routes';
 
 // Import des services
-import { initDatabase } from './database';
+import { initDatabase, db } from './database';
 import { seedDatabase } from './database/seed';
 import { initPluginSystem } from './services/plugin.service';
 import { initCronJobs } from './services/cron.service';
 import { logService } from './services/log.service';
+
+/**
+ * Synchronise la version du package.json vers la base de données
+ */
+async function syncVersionToDatabase() {
+  try {
+    // Lire la version depuis package.json
+    const packageJsonPath = path.join(__dirname, '../package.json');
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+    const version = packageJson.version;
+
+    // Vérifier si le paramètre site_version existe
+    const existing = await db.queryOne(
+      'SELECT * FROM settings WHERE setting_key = ?', 
+      ['site_version']
+    );
+
+    if (existing) {
+      // Mettre à jour si différent
+      if (existing.setting_value !== version) {
+        await db.execute(
+          "UPDATE settings SET setting_value = ?, updated_at = datetime('now') WHERE setting_key = ?",
+          [version, 'site_version']
+        );
+        console.log(`✅ Version synchronisée: ${existing.setting_value} → ${version}`);
+      }
+    } else {
+      // Créer le paramètre s'il n'existe pas
+      await db.execute(
+        "INSERT INTO settings (setting_key, setting_value, setting_type, description) VALUES (?, ?, 'string', 'Version du site')",
+        ['site_version', version]
+      );
+      console.log(`✅ Version initialisée: ${version}`);
+    }
+
+    return version;
+  } catch (error) {
+    console.error('⚠️ Erreur lors de la synchronisation de la version:', error);
+    return null;
+  }
+}
 
 const app: Application = express();
 const PORT = Number(process.env.PORT) || 3000;
@@ -98,6 +140,9 @@ async function startServer() {
     // Initialiser les données par défaut
     await seedDatabase();
     console.log('✅ Données par défaut initialisées');
+
+    // Synchroniser la version depuis package.json
+    await syncVersionToDatabase();
 
     // Initialiser le système de logs
     await logService.init();

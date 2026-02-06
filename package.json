@@ -7,14 +7,17 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "ts-node-dev --respawn --transpile-only src/server.ts",
     "dev:client": "cd client && npm run dev",
-    "build": "npm run build:server && npm run build:client",
+    "build": "npm run version:sync && npm run build:server && npm run build:client",
     "build:server": "tsc",
     "build:server:fast": "node build-server.js",
     "build:client": "cd client && npm run build",
     "start": "node dist/server.js",
     "db:migrate": "ts-node src/database/migrate.ts",
     "db:seed": "ts-node src/database/seed.ts",
-    "test": "jest"
+    "test": "jest",
+    "version:check": "node scripts/sync-version.js --check",
+    "version:sync": "node scripts/sync-version.js --sync",
+    "version:get": "node scripts/sync-version.js --get"
   },
   "dependencies": {
     "archiver": "^6.0.1",
