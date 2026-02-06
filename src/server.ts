@@ -7,6 +7,10 @@ import fs from 'fs';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 
+// Import des middlewares de sécurité avancés
+import { globalLimiter, authLimiter, sensitiveOpsLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter.middleware';
+import { httpsRedirect, httpsStatus } from './middleware/https.middleware';
+
 // Charger les variables d'environnement
 dotenv.config();
 
@@ -28,6 +32,7 @@ import customFieldsRoutes from './routes/customFields.routes';
 import logRoutes from './routes/log.routes';
 import webhookRoutes from './routes/webhook.routes';
 import trackingRoutes from './routes/tracking.routes';
+import securityRoutes from './routes/security.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -35,6 +40,7 @@ import { seedDatabase } from './database/seed';
 import { initPluginSystem } from './services/plugin.service';
 import { initCronJobs } from './services/cron.service';
 import { logService } from './services/log.service';
+import { jwtRotationService } from './services/jwtRotation.service';
 
 /**
  * Synchronise la version du package.json vers la base de données
@@ -79,6 +85,15 @@ async function syncVersionToDatabase() {
 
 const app: Application = express();
 const PORT = Number(process.env.PORT) || 3000;
+
+// Middleware de redirection HTTPS (production uniquement)
+app.use(httpsRedirect);
+
+// Configurer Express pour faire confiance aux proxies (pour rate limiting et IP réelle)
+app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? true : 1);
+
+// Rate limiting global
+app.use(globalLimiter);
 
 // Middlewares de sécurité et logging
 app.use(helmet({
@@ -126,8 +141,11 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 // Plugins restent publics (contiennent uniquement du code/config)
 app.use('/plugins', express.static(path.join(__dirname, '../plugins')));
 
-// Routes API
-app.use('/api/auth', authRoutes);
+// Route de vérification HTTPS (utile pour le debugging)
+app.get('/api/https-status', httpsStatus);
+
+// Routes API avec rate limiting spécifiques
+app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/subcategories', subcategoryRouter);
@@ -135,16 +153,17 @@ app.use('/api/objects', objectRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/plugins', pluginRoutes);
 app.use('/api/email-templates', emailTemplateRoutes);
-app.use('/api/backup', backupRoutes);
+app.use('/api/backup', exportLimiter, backupRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/alerts', alertRoutes);
-app.use('/api/upload', uploadRoutes);
+app.use('/api/upload', uploadLimiter, uploadRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/custom-fields', customFieldsRoutes);
 app.use('/api/logs', logRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/security', securityRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {
@@ -181,6 +200,10 @@ async function startServer() {
     // Initialiser le système de logs
     await logService.init();
     console.log('✅ Système de logs initialisé');
+
+    // Initialiser le service de rotation JWT
+    await jwtRotationService.init();
+    console.log('✅ Service de rotation JWT initialisé');
 
     // Initialiser le système de plugins
     await initPluginSystem();

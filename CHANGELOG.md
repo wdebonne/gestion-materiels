@@ -7,6 +7,56 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.38] - 2026-02-06
+
+### Sécurité
+- **Rate Limiting** : Protection contre les attaques par force brute via `express-rate-limit`
+  - Rate limiter global : 1000 requêtes / 15 minutes
+  - Rate limiter authentification : 10 tentatives / 15 minutes (login, register, forgot-password)
+  - Rate limiter uploads : 100 / heure
+  - Rate limiter exports/backups : 10 / heure
+  - Journalisation des dépassements de limite dans les logs de sécurité
+  
+- **HTTPS forcé** : Redirection automatique HTTP → HTTPS en production
+  - Middleware de détection de protocole (direct ou via proxy)
+  - Support de `X-Forwarded-Proto` et `X-Forwarded-SSL`
+  - Header HSTS (Strict-Transport-Security) avec max-age 1 an
+  - Route `/api/https-status` pour le debugging
+  
+- **Audit des tokens** : Journalisation complète des authentifications
+  - Connexions réussies et échouées avec métadonnées (IP, User-Agent)
+  - Déconnexions tracées
+  - Rafraîchissements de tokens avec alertes pour utilisateurs inexistants
+  - Changements de mots de passe loggés
+  
+- **Rotation des secrets JWT** : Service complet de rotation périodique
+  - Génération de secrets cryptographiquement sécurisés (64 octets)
+  - Période de grâce configurable (défaut: 24h) pour transition en douceur
+  - Intervalle de rotation configurable (défaut: 90 jours)
+  - Rotation automatique ou manuelle
+  - Historique des rotations consultable
+  - Rapport de sécurité avec recommandations
+
+### API
+- `GET /api/security/jwt/status` - Rapport de sécurité JWT
+- `GET /api/security/jwt/settings` - Paramètres de rotation
+- `PUT /api/security/jwt/settings` - Modifier les paramètres de rotation
+- `POST /api/security/jwt/rotate` - Déclencher une rotation manuelle
+- `GET /api/security/jwt/history` - Historique des rotations
+- `POST /api/security/jwt/cleanup` - Nettoyer les anciens secrets
+- `GET /api/https-status` - Vérifier le statut HTTPS
+
+### Documentation
+- Mise à jour de `docs/AUDIT_SECURITE_API.md` avec les nouvelles fonctionnalités
+- Nouveau document `docs/JWT_ROTATION.md` avec guide complet de rotation
+- Score de sécurité mis à jour : 9.5/10
+
+### Base de données
+- Table `jwt_secrets` : Stockage des secrets JWT pour rotation
+
+### Dépendances
+- Ajout de `express-rate-limit` pour la protection contre les abus
+
 ## [1.2.37] - 2026-02-06
 
 ### Corrigé

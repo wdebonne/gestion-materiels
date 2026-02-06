@@ -358,6 +358,14 @@ router.put('/change-password', authenticateToken, [
       [hashedPassword, req.user?.userId]
     );
 
+    // Log du changement de mot de passe
+    await logService.success('auth', 'Mot de passe changé', {}, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     res.json({ success: true, message: 'Mot de passe mis à jour' });
   } catch (error: any) {
     console.error('Erreur change-password:', error);
@@ -379,12 +387,33 @@ router.post('/refresh', async (req: AuthRequest, res: Response) => {
     const user = await db.queryOne('SELECT * FROM users WHERE id = ? AND is_active = 1', [decoded.userId]);
     
     if (!user) {
+      await logService.warning('auth', 'Tentative de rafraîchissement de token pour utilisateur inexistant ou inactif', {
+        decodedUserId: decoded.userId
+      }, {
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
       return res.status(401).json({ success: false, message: 'Utilisateur non trouvé' });
     }
 
     const tokens = generateTokens(user);
+    
+    // Log du rafraîchissement de token
+    await logService.info('auth', 'Token rafraîchi', {}, {
+      userId: user.id,
+      userEmail: user.email,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
+
     res.json({ success: true, ...tokens });
   } catch (error) {
+    await logService.warning('auth', 'Tentative de rafraîchissement de token invalide', {
+      error: error instanceof Error ? error.message : 'Token invalide'
+    }, {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
     res.status(403).json({ success: false, message: 'Refresh token invalide' });
   }
 });
@@ -392,14 +421,35 @@ router.post('/refresh', async (req: AuthRequest, res: Response) => {
 // POST /api/auth/logout - Déconnexion
 router.post('/logout', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    // Log de l'activité
-    await db.execute(
-      'INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
-      [req.user?.userId, 'logout', 'Déconnexion', req.ip]
-    );
+    // Log de l'activité dans la table activity_logs
+    try {
+      await db.execute(
+        'INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
+        [req.user?.userId, 'logout', 'Déconnexion', req.ip]
+      );
+    } catch (e) {
+      // La table activity_logs n'existe peut-être pas
+    }
+
+    // Log détaillé avec le système de logs
+    await logService.success('auth', 'Déconnexion réussie', {
+      sessionDuration: 'N/A' // Pourrait être calculé avec le token
+    }, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent']
+    });
 
     res.json({ success: true, message: 'Déconnexion réussie' });
   } catch (error) {
+    // Log même en cas d'erreur
+    await logService.warning('auth', 'Erreur lors de la déconnexion', {
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, {
+      userId: req.user?.userId,
+      ipAddress: req.ip
+    });
     res.json({ success: true, message: 'Déconnexion réussie' });
   }
 });
