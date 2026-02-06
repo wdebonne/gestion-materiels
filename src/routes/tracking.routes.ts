@@ -619,8 +619,8 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
         GROUP BY object_id
       ) tc ON tc.object_id = o.id
       GROUP BY c.id, c.name, c.image
-      HAVING (fuel_cost + maintenance_cost + control_cost) > 0
-      ORDER BY (fuel_cost + maintenance_cost + control_cost) DESC
+      HAVING (COALESCE(SUM(f.total), 0) + COALESCE(SUM(m.total), 0) + COALESCE(SUM(tc.total), 0)) > 0
+      ORDER BY (COALESCE(SUM(f.total), 0) + COALESCE(SUM(m.total), 0) + COALESCE(SUM(tc.total), 0)) DESC
     `;
     const costByCategoryParams: any[] = [];
     if (startDate) costByCategoryParams.push(startDate);
@@ -679,8 +679,8 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
 
     costByObjectQuery += objectCondition;
     costByObjectParams.push(...objectParams);
-    costByObjectQuery += ` HAVING (fuel_cost + maintenance_cost + control_cost) > 0
-      ORDER BY (fuel_cost + maintenance_cost + control_cost) DESC
+    costByObjectQuery += ` HAVING (COALESCE(f.total, 0) + COALESCE(m.total, 0) + COALESCE(tc.total, 0)) > 0
+      ORDER BY (COALESCE(f.total, 0) + COALESCE(m.total, 0) + COALESCE(tc.total, 0)) DESC
       LIMIT 10`;
 
     result.costByObject = (await db.query(costByObjectQuery, costByObjectParams)).map((r: any) => ({
