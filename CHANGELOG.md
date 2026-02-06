@@ -7,6 +7,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.35] - 2026-02-06
+
+### Amélioré
+- **Responsive Mobile** : Amélioration significative de l'affichage sur mobile
+  - **Composant Tabs** : Scroll horizontal avec barre de défilement cachée
+  - **Graphiques** : Formatage intelligent des axes (€, k€, M€ selon la valeur)
+  - **Graphiques** : Réduction de la taille des labels pour mobile
+  - **Page ObjectDetail** : Image et titre adaptés aux petits écrans
+  - **Composants Card** : Padding responsive (réduit sur mobile)
+
+### Corrigé
+- **Graphiques Suivi** : Les valeurs < 1000€ s'affichent maintenant correctement (au lieu de "0k€")
+- **TypeScript** : Correction de l'erreur `attachments` manquant dans `openControlModal`
+- **TypeScript** : Ajout de `fieldOptions` au type des champs personnalisés
+- **Import inutilisé** : Suppression de l'import `Paperclip` non utilisé
+
 ## [1.2.34] - 2026-02-06
 
 ### Amélioré

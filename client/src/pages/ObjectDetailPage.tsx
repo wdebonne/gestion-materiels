@@ -4,7 +4,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X, Trash2, Pencil,
-  Image as ImageIcon, Settings2, Search, ArrowUpDown, Paperclip
+  Image as ImageIcon, Settings2, Search, ArrowUpDown
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { 
@@ -170,7 +170,8 @@ export default function ObjectDetailPage() {
       mileage: getCurrentMileage(),
       center: '',
       cost: '',
-      notes: ''
+      notes: '',
+      attachments: []
     })
     setControlModal(true)
   }
@@ -276,6 +277,7 @@ export default function ObjectDetailPage() {
         fieldName: string;
         fieldLabel: string;
         fieldType: string;
+        fieldOptions?: string[];
         isVisible: boolean;
         isSystem: boolean;
       }>
@@ -764,12 +766,12 @@ export default function ObjectDetailPage() {
 
       {/* En-tête */}
       <Card>
-        <CardBody>
-          <div className="flex flex-col md:flex-row md:items-start gap-6">
+        <CardBody className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
             {/* Image */}
-            <div className="w-40 h-40 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden">
+            <div className="w-28 h-28 sm:w-40 sm:h-40 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden mx-auto sm:mx-0">
               {isEditing ? (
-                <div className="w-full h-full p-4">
+                <div className="w-full h-full p-2 sm:p-4">
                   <Input
                     placeholder="URL image"
                     value={editFormData?.image || ''}
@@ -870,8 +872,8 @@ export default function ObjectDetailPage() {
                     </div>
                   ) : (
                     <>
-                      <div className="flex items-center gap-3">
-                        <h1 className="text-2xl font-bold text-gray-900">{object.name}</h1>
+                      <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{object.name}</h1>
                         <Badge variant={
                           object.status === 'active' ? 'success' :
                           object.status === 'maintenance' ? 'warning' :
@@ -881,16 +883,16 @@ export default function ObjectDetailPage() {
                         </Badge>
                       </div>
                       {object.description && (
-                        <p className="text-gray-500 mt-2">{object.description}</p>
+                        <p className="text-gray-500 mt-2 text-sm sm:text-base">{object.description}</p>
                       )}
-                      <p className="text-sm text-gray-400 mt-2">
+                      <p className="text-xs sm:text-sm text-gray-400 mt-2">
                         Créé le {object.createdAt ? formatDate(object.createdAt) : '-'}
                       </p>
                     </>
                   )}
                 </div>
 
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-shrink-0">
                   {isEditing ? (
                     <>
                       <Button variant="ghost" size="sm" onClick={handleEditCancel}>
@@ -918,7 +920,9 @@ export default function ObjectDetailPage() {
       </Card>
 
       {/* Onglets */}
-      <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+      <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">
+        <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+      </div>
 
       {/* Contenu des onglets */}
       {activeTab === 'details' && (

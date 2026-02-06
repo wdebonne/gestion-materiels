@@ -52,6 +52,17 @@ interface TrackingFilters {
 // Mois en français (abréviations)
 const MONTHS_SHORT = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc']
 
+// Formateur intelligent pour les axes Y des graphiques
+const formatAxisValue = (value: number): string => {
+  if (value >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}M€`
+  }
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(0)}k€`
+  }
+  return `${value}€`
+}
+
 // Fonction pour obtenir les dates par défaut (année en cours)
 const getDefaultDates = () => {
   const now = new Date()
@@ -1316,8 +1327,8 @@ export default function TrackingPage() {
                         <ResponsiveContainer width="100%" height="100%">
                           <ComposedChart data={chartsData.costByPeriod}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis dataKey="period" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                            <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                            <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="#6b7280" angle={-45} textAnchor="end" height={60} />
+                            <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} width={50} />
                             <Tooltip content={<CustomTooltip />} />
                             <Legend />
                             {filters.dataTypes.includes('fuel') && (
@@ -1344,8 +1355,8 @@ export default function TrackingPage() {
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={chartsData.costByObject.slice(0, 10)} layout="vertical">
                             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis type="number" tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
-                            <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 11 }} stroke="#6b7280" />
+                            <XAxis type="number" tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} />
+                            <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 9 }} stroke="#6b7280" />
                             <Tooltip content={<CustomTooltip />} />
                             <Legend />
                             {filters.dataTypes.includes('fuel') && (
@@ -1605,8 +1616,8 @@ export default function TrackingPage() {
                             <ResponsiveContainer width="100%" height="100%">
                               <BarChart data={comparisonChartData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#6b7280" />
+                                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} width={50} />
                                 <Tooltip content={<CustomTooltip />} />
                                 <Legend />
                                 <Bar dataKey={`${filters.year1}`} name={`Total ${filters.year1}`} fill="#8b5cf6" radius={[4, 4, 0, 0]} />
@@ -1628,8 +1639,8 @@ export default function TrackingPage() {
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={comparisonChartData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#6b7280" />
+                                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} width={50} />
                                 <Tooltip content={<CustomTooltip />} />
                                 <Legend />
                                 <Line type="monotone" dataKey={`fuel_${filters.year1}`} name={`${filters.year1}`} stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
@@ -1650,8 +1661,8 @@ export default function TrackingPage() {
                             <ResponsiveContainer width="100%" height="100%">
                               <LineChart data={comparisonChartData}>
                                 <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis dataKey="month" tick={{ fontSize: 12 }} stroke="#6b7280" />
-                                <YAxis tick={{ fontSize: 12 }} stroke="#6b7280" tickFormatter={(v) => `${(v/1000).toFixed(0)}k€`} />
+                                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#6b7280" />
+                                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} width={50} />
                                 <Tooltip content={<CustomTooltip />} />
                                 <Legend />
                                 <Line type="monotone" dataKey={`maintenance_${filters.year1}`} name={`${filters.year1}`} stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
