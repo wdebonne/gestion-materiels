@@ -7,6 +7,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.30] - 2026-02-06
+
+### Amélioré
+- **Couleurs des cartes d'alertes selon la priorité** : Les cartes d'alertes affichent maintenant une couleur de fond légère correspondant à leur priorité
+  - Priorité Basse : fond bleu clair
+  - Priorité Moyenne : fond orange clair  
+  - Priorité Élevée : fond rouge clair
+- Meilleure identification visuelle du niveau d'importance des alertes
+
 ## [1.2.29] - 2026-02-05
 
 ### Ajouté

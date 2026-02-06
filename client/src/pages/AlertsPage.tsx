@@ -190,6 +190,18 @@ export default function AlertsPage() {
     }
   }
 
+  const getPriorityCardStyle = (priority: string) => {
+    switch (priority) {
+      case 'high':
+        return 'bg-red-50 border-red-200'
+      case 'medium':
+        return 'bg-orange-50 border-orange-200'
+      case 'low':
+      default:
+        return 'bg-blue-50 border-blue-200'
+    }
+  }
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case 'active':
@@ -294,7 +306,7 @@ export default function AlertsPage() {
           {alerts.map((alert: Alert) => (
             <Card 
               key={alert.id}
-              className={alert.status === 'active' ? 'border-l-4 border-l-red-500' : ''}
+              className={`${getPriorityCardStyle(alert.priority)} ${alert.status === 'active' ? 'border-l-4 border-l-red-500' : ''}`}
             >
               <CardBody>
                 <div className="flex items-start gap-4">
