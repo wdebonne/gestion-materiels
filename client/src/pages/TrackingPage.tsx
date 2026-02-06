@@ -888,8 +888,8 @@ export default function TrackingPage() {
 
       {/* Filtres */}
       {showFilters && (
-        <Card>
-          <CardBody className="space-y-4">
+        <Card className="overflow-visible">
+          <CardBody className="space-y-4 overflow-visible">
             {/* Période */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
@@ -1132,7 +1132,7 @@ export default function TrackingPage() {
 
             {/* Filtres avancés */}
             {showAdvanced && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg overflow-visible relative z-10">
                 {!loadingFilters && filterOptions && (
                   <>
                     <MultiSelectFilter
