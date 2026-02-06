@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.34] - 2026-02-06
+
+### Amélioré
+- **Module Suivi - Interface de comparaison unifiée** : Fusion des modes de comparaison
+  - Nouveau sélecteur de mode de comparaison (Périodes personnalisées, Années, Mois spécifiques)
+  - Mode "Périodes personnalisées" : Compare deux plages de dates libres
+  - Mode "Années" : Compare deux années complètes avec graphiques mois par mois
+  - Mode "Mois spécifiques" : Compare deux mois spécifiques (ex: Janvier 2025 vs Janvier 2024)
+  - Interface visuelle avec couleurs distinctives (bleu, violet, vert)
+  - Affichage dynamique du label de l'onglet selon le mode sélectionné
+  - Résumé comparatif avec différence et pourcentage pour tous les modes
+
+### API
+- `GET /api/tracking/yearly-comparison` - Support des paramètres `month1` et `month2` pour la comparaison mensuelle
+
 ## [1.2.33] - 2026-02-06
 
 ### Amélioré
