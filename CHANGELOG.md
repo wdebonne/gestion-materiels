@@ -7,6 +7,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.42] - 2026-02-07
+
+### Corrigé
+- **Tableau de bord - Statistiques des modules** : Correction de l'affichage des statistiques qui restaient à 0
+  - Ajout du calcul du carburant consommé ce mois depuis la table `fuel_entries`
+  - Ajout du comptage des contrôles techniques à venir (30 prochains jours)
+  - Ajout du comptage des entretiens à prévoir (30 prochains jours)
+  - Les trois indicateurs (Carburant, Contrôles, Entretiens) affichent maintenant les bonnes valeurs
+
 ## [1.2.41] - 2026-02-07
 
 ### Corrigé

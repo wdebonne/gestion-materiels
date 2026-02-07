@@ -48,6 +48,30 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
     );
     const subcategoriesCount = subcategoriesResult?.count || 0;
 
+    // Carburant consommé ce mois
+    const fuelResult = await db.queryOne<{ total: number }>(
+      'SELECT COALESCE(SUM(quantity), 0) as total FROM fuel_entries WHERE entry_date >= ? AND entry_date <= ?',
+      [startOfMonth, endOfMonth]
+    );
+    const fuelThisMonth = fuelResult?.total || 0;
+
+    // Contrôles techniques à venir (expiry_date dans les 30 prochains jours)
+    const today = now.toISOString().split('T')[0];
+    const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    const controlsResult = await db.queryOne<{ count: number }>(
+      'SELECT COUNT(*) as count FROM technical_controls WHERE expiry_date >= ? AND expiry_date <= ?',
+      [today, in30Days]
+    );
+    const upcomingControls = controlsResult?.count || 0;
+
+    // Entretiens à prévoir (next_date dans les 30 prochains jours)
+    const maintenanceResult = await db.queryOne<{ count: number }>(
+      'SELECT COUNT(*) as count FROM maintenances WHERE next_date >= ? AND next_date <= ?',
+      [today, in30Days]
+    );
+    const upcomingMaintenance = maintenanceResult?.count || 0;
+
     res.json({
       success: true,
       categoriesCount,
@@ -55,7 +79,10 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
       activeAlertsCount,
       eventsThisMonth,
       subcategoriesCount,
-      totalValue
+      totalValue,
+      fuelThisMonth,
+      upcomingControls,
+      upcomingMaintenance
     });
   } catch (error: any) {
     console.error('Erreur dashboard stats:', error);
