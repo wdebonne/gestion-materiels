@@ -7,6 +7,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.41] - 2026-02-07
+
+### Corrigé
+- **Calendrier - Boutons de vue** : Correction des boutons Mois/Semaine/Jour/Liste qui ne fonctionnaient pas
+  - Installation du plugin manquant `@fullcalendar/list` pour la vue Liste
+  - Import et intégration du `listPlugin` dans le composant FullCalendar
+  - Les 4 modes de vue sont maintenant pleinement fonctionnels
+
 ## [1.2.40] - 2026-02-06
 
 ### Corrigé

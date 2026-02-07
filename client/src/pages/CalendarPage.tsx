@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
 import timeGridPlugin from '@fullcalendar/timegrid'
+import listPlugin from '@fullcalendar/list'
 import interactionPlugin from '@fullcalendar/interaction'
 import frLocale from '@fullcalendar/core/locales/fr'
 import { 
@@ -739,7 +740,7 @@ export default function CalendarPage() {
           ) : (
             <FullCalendar
               ref={calendarRef}
-              plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+              plugins={[dayGridPlugin, timeGridPlugin, listPlugin, interactionPlugin]}
               initialView={currentView}
               locale={frLocale}
               headerToolbar={false}
