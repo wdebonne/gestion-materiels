@@ -232,6 +232,74 @@ router.post('/events', authenticateToken, requireSupervisor, async (req: AuthReq
   }
 });
 
+// PUT /api/calendar/:id - Modifier un événement (raccourci)
+router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const {
+      title, description, eventType, startDate, endDate,
+      allDay, objectId, color, reminderBefore
+    } = req.body;
+
+    const event = await db.queryOne('SELECT * FROM calendar_events WHERE id = ?', [id]);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Événement non trouvé' });
+    }
+
+    if (event.plugin_reference) {
+      return res.status(400).json({ success: false, message: 'Cet événement est lié à un plugin et ne peut pas être modifié directement' });
+    }
+
+    let updateFields = [];
+    let values: any[] = [];
+
+    if (title) { updateFields.push('title = ?'); values.push(title); }
+    if (description !== undefined) { updateFields.push('description = ?'); values.push(description); }
+    if (eventType) { updateFields.push('event_type = ?'); values.push(eventType); }
+    if (startDate) { updateFields.push('start_date = ?'); values.push(startDate); }
+    if (endDate !== undefined) { updateFields.push('end_date = ?'); values.push(endDate); }
+    if (allDay !== undefined) { updateFields.push('all_day = ?'); values.push(allDay ? 1 : 0); }
+    if (objectId !== undefined) { updateFields.push('object_id = ?'); values.push(objectId || null); }
+    if (color) { updateFields.push('color = ?'); values.push(color); }
+    if (reminderBefore !== undefined) { updateFields.push('reminder_before = ?'); values.push(reminderBefore); }
+
+    if (updateFields.length > 0) {
+      values.push(id);
+      await db.execute(
+        `UPDATE calendar_events SET ${updateFields.join(', ')} WHERE id = ?`,
+        values
+      );
+    }
+
+    res.json({ success: true, message: 'Événement modifié' });
+  } catch (error: any) {
+    console.error('Erreur update calendar event:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/calendar/:id - Supprimer un événement (raccourci)
+router.delete('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const event = await db.queryOne('SELECT * FROM calendar_events WHERE id = ?', [id]);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Événement non trouvé' });
+    }
+
+    if (event.plugin_reference) {
+      return res.status(400).json({ success: false, message: 'Cet événement est lié à un plugin et ne peut pas être supprimé directement' });
+    }
+
+    await db.execute('DELETE FROM calendar_events WHERE id = ?', [id]);
+    res.json({ success: true, message: 'Événement supprimé' });
+  } catch (error: any) {
+    console.error('Erreur delete calendar event:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // PUT /api/calendar/events/:id - Modifier un événement
 router.put('/events/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {

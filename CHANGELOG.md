@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.45] - 2026-02-08
+
+### Corrigé
+- **Calendrier - Modification/Suppression d'événement** : Correction de l'erreur 404 lors de la modification ou suppression
+  - Ajout des routes raccourcies `PUT /api/calendar/:id` et `DELETE /api/calendar/:id`
+  - Le client envoyait les requêtes sur `/api/calendar/:id` mais seules `/api/calendar/events/:id` existaient
+
 ## [1.2.44] - 2026-02-08
 
 ### Amélioré
