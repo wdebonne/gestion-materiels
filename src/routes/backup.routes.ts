@@ -7,8 +7,22 @@ import archiver from 'archiver';
 import extract from 'extract-zip';
 import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
-import { sendBackupEmail } from '../services/email.service';
+import { sendBackupEmail, sendBackupDownloadLink } from '../services/email.service';
 import { logService } from '../services/log.service';
+
+// Stockage des tokens de téléchargement temporaires (en mémoire)
+// Format: { token: { backupId, expiresAt, createdBy } }
+const downloadTokens: Map<string, { backupId: number; expiresAt: Date; createdBy: string }> = new Map();
+
+// Nettoyer les tokens expirés toutes les 10 minutes
+setInterval(() => {
+  const now = new Date();
+  for (const [token, data] of downloadTokens.entries()) {
+    if (data.expiresAt < now) {
+      downloadTokens.delete(token);
+    }
+  }
+}, 10 * 60 * 1000);
 
 // Configuration multer pour les backups
 const backupStorage = multer.diskStorage({
@@ -154,9 +168,10 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
     // Envoyer par email si demandé
     let emailSent = false;
     let emailError = null;
+    let downloadLink = null;
     
     if (shouldSendEmail && emailAddress) {
-      // Vérifier la taille (limite 25 MB)
+      // Vérifier la taille (limite 25 MB pour pièce jointe)
       if (stats.size <= 25 * 1024 * 1024) {
         const emailResult = await sendBackupEmail(emailAddress, filePath, filename);
         emailSent = emailResult.success;
@@ -164,7 +179,26 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
           emailError = emailResult.error;
         }
       } else {
-        emailError = 'Fichier trop volumineux pour l\'envoi par email (max 25 MB)';
+        // Générer un lien de téléchargement temporaire pour les gros fichiers
+        const token = uuidv4();
+        const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
+        downloadTokens.set(token, {
+          backupId: result.lastInsertRowid as number,
+          expiresAt,
+          createdBy: req.user?.email || 'unknown'
+        });
+        
+        // Récupérer l'URL du site
+        const siteUrlSetting = await db.queryOne("SELECT setting_value FROM settings WHERE setting_key = 'site_url'");
+        const siteUrl = siteUrlSetting?.setting_value || `${req.protocol}://${req.get('host')}`;
+        downloadLink = `${siteUrl}/api/backup/download/${token}`;
+        
+        // Envoyer l'email avec le lien de téléchargement
+        const emailResult = await sendBackupDownloadLink(emailAddress, downloadLink, filename, stats.size, expiresAt);
+        emailSent = emailResult.success;
+        if (!emailResult.success) {
+          emailError = emailResult.error;
+        }
       }
     }
 
@@ -177,7 +211,8 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
         fileSize: stats.size
       },
       emailSent,
-      emailError
+      emailError,
+      downloadLink
     });
 
     // Logger la création de backup
@@ -216,6 +251,85 @@ router.get('/:id/download', authenticateToken, requireAdmin, async (req: AuthReq
   }
 });
 
+// GET /api/backup/download/:token - Télécharger une sauvegarde via token temporaire (public)
+router.get('/download/:token', async (req, res: Response) => {
+  try {
+    const { token } = req.params;
+
+    const tokenData = downloadTokens.get(token);
+    if (!tokenData) {
+      return res.status(404).json({ success: false, message: 'Lien de téléchargement invalide ou expiré' });
+    }
+
+    if (new Date() > tokenData.expiresAt) {
+      downloadTokens.delete(token);
+      return res.status(410).json({ success: false, message: 'Ce lien de téléchargement a expiré' });
+    }
+
+    const backup = await db.queryOne('SELECT * FROM backups WHERE id = ?', [tokenData.backupId]);
+    if (!backup) {
+      return res.status(404).json({ success: false, message: 'Sauvegarde non trouvée' });
+    }
+
+    if (!fs.existsSync(backup.file_path)) {
+      return res.status(404).json({ success: false, message: 'Fichier de sauvegarde non trouvé' });
+    }
+
+    // Logger le téléchargement
+    await logService.info('backup', `Téléchargement via lien temporaire`, {
+      filename: backup.filename,
+      token: token.substring(0, 8) + '...',
+      createdBy: tokenData.createdBy
+    });
+
+    res.download(backup.file_path, backup.filename);
+  } catch (error: any) {
+    console.error('Erreur download backup via token:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// POST /api/backup/:id/generate-link - Générer un lien de téléchargement temporaire
+router.post('/:id/generate-link', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { expiresInDays = 7 } = req.body;
+
+    const backup = await db.queryOne('SELECT * FROM backups WHERE id = ?', [id]);
+    if (!backup) {
+      return res.status(404).json({ success: false, message: 'Sauvegarde non trouvée' });
+    }
+
+    if (!fs.existsSync(backup.file_path)) {
+      return res.status(404).json({ success: false, message: 'Fichier de sauvegarde non trouvé' });
+    }
+
+    // Générer le token
+    const token = uuidv4();
+    const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+    downloadTokens.set(token, {
+      backupId: parseInt(id),
+      expiresAt,
+      createdBy: req.user?.email || 'unknown'
+    });
+
+    // Récupérer l'URL du site
+    const siteUrlSetting = await db.queryOne("SELECT setting_value FROM settings WHERE setting_key = 'site_url'");
+    const siteUrl = siteUrlSetting?.setting_value || `${req.protocol}://${req.get('host')}`;
+    const downloadLink = `${siteUrl}/api/backup/download/${token}`;
+
+    res.json({
+      success: true,
+      downloadLink,
+      expiresAt: expiresAt.toISOString(),
+      expiresInDays
+    });
+  } catch (error: any) {
+    console.error('Erreur generate download link:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // POST /api/backup/:id/send-email - Envoyer une sauvegarde par email
 router.post('/:id/send-email', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
@@ -235,21 +349,46 @@ router.post('/:id/send-email', authenticateToken, requireAdmin, async (req: Auth
       return res.status(404).json({ success: false, message: 'Fichier de sauvegarde non trouvé' });
     }
 
-    // Vérifier la taille du fichier (limite à 25 MB pour les emails)
+    // Vérifier la taille du fichier (limite à 25 MB pour les emails avec pièce jointe)
     const stats = fs.statSync(backup.file_path);
+    
     if (stats.size > 25 * 1024 * 1024) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Le fichier est trop volumineux pour être envoyé par email (max 25 MB). Veuillez le télécharger directement.' 
+      // Générer un lien de téléchargement temporaire pour les gros fichiers
+      const token = uuidv4();
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
+      downloadTokens.set(token, {
+        backupId: parseInt(id),
+        expiresAt,
+        createdBy: req.user?.email || 'unknown'
       });
-    }
-
-    const result = await sendBackupEmail(email, backup.file_path, backup.filename);
-
-    if (result.success) {
-      res.json({ success: true, message: `Sauvegarde envoyée à ${email}` });
+      
+      // Récupérer l'URL du site
+      const siteUrlSetting = await db.queryOne("SELECT setting_value FROM settings WHERE setting_key = 'site_url'");
+      const siteUrl = siteUrlSetting?.setting_value || `${req.protocol}://${req.get('host')}`;
+      const downloadLink = `${siteUrl}/api/backup/download/${token}`;
+      
+      // Envoyer l'email avec le lien de téléchargement
+      const result = await sendBackupDownloadLink(email, downloadLink, backup.filename, stats.size, expiresAt);
+      
+      if (result.success) {
+        res.json({ 
+          success: true, 
+          message: `Lien de téléchargement envoyé à ${email}`,
+          downloadLink,
+          usedLink: true
+        });
+      } else {
+        res.status(500).json({ success: false, message: result.error || 'Erreur lors de l\'envoi' });
+      }
     } else {
-      res.status(500).json({ success: false, message: result.error || 'Erreur lors de l\'envoi' });
+      // Envoyer directement en pièce jointe
+      const result = await sendBackupEmail(email, backup.file_path, backup.filename);
+
+      if (result.success) {
+        res.json({ success: true, message: `Sauvegarde envoyée à ${email}` });
+      } else {
+        res.status(500).json({ success: false, message: result.error || 'Erreur lors de l\'envoi' });
+      }
     }
   } catch (error: any) {
     console.error('Erreur send backup email:', error);

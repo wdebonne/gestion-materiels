@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { 
-  Download, Upload, Trash2, Clock, HardDrive, 
-  RefreshCw, CheckCircle, AlertTriangle, FileArchive, UploadCloud, Mail, Settings,
-  Database, Image, Puzzle, FolderArchive, Server, RotateCcw
+  Download, Upload, Trash2, HardDrive, 
+  RefreshCw, CheckCircle, AlertTriangle, FileArchive, UploadCloud, Mail, 
+  Database, Image, Puzzle, FolderArchive, Server, RotateCcw, Link2, Copy, ExternalLink
 } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, CardTitle, Button, 
@@ -17,16 +17,22 @@ interface Backup {
   id: number
   filename: string
   size: number
+  fileSize?: number
   createdAt: string
   type: 'manual' | 'auto'
+  backupType?: 'manual' | 'auto'
 }
+
+const MAX_EMAIL_SIZE = 25 * 1024 * 1024 // 25 MB
 
 export default function BackupPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<Backup | null>(null)
   const [restoreConfirm, setRestoreConfirm] = useState<Backup | null>(null)
   const [uploadConfirm, setUploadConfirm] = useState<File | null>(null)
   const [emailModal, setEmailModal] = useState<Backup | null>(null)
+  const [linkModal, setLinkModal] = useState<Backup | null>(null)
   const [emailAddress, setEmailAddress] = useState('')
+  const [generatedLink, setGeneratedLink] = useState<{ link: string; expiresAt: string } | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   
   // Options d'envoi automatique par email
@@ -68,7 +74,11 @@ export default function BackupPage() {
       refetch()
       const data = response.data
       if (data.emailSent) {
-        toast.success('Sauvegarde créée et envoyée par email')
+        if (data.downloadLink) {
+          toast.success('Sauvegarde créée, lien de téléchargement envoyé par email')
+        } else {
+          toast.success('Sauvegarde créée et envoyée par email')
+        }
       } else if (data.emailError) {
         toast.success('Sauvegarde créée')
         toast.error(`Erreur email: ${data.emailError}`)
@@ -135,13 +145,36 @@ export default function BackupPage() {
     mutationFn: async ({ id, email }: { id: number; email: string }) => {
       return api.post(`/backup/${id}/send-email`, { email })
     },
-    onSuccess: () => {
-      toast.success('Sauvegarde envoyée par email avec succès')
+    onSuccess: (response) => {
+      const data = response.data
+      if (data.usedLink) {
+        toast.success('Lien de téléchargement envoyé par email')
+      } else {
+        toast.success('Sauvegarde envoyée par email avec succès')
+      }
       setEmailModal(null)
       setEmailAddress('')
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Erreur lors de l\'envoi')
+    }
+  })
+
+  // Mutation pour générer un lien de téléchargement
+  const generateLinkMutation = useMutation({
+    mutationFn: async (id: number) => {
+      return api.post(`/backup/${id}/generate-link`, { expiresInDays: 7 })
+    },
+    onSuccess: (response) => {
+      const data = response.data
+      setGeneratedLink({
+        link: data.downloadLink,
+        expiresAt: data.expiresAt
+      })
+      toast.success('Lien de téléchargement généré')
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la génération du lien')
     }
   })
 
@@ -179,7 +212,20 @@ export default function BackupPage() {
     }
   }
 
-  const backups = data?.backups || []
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    toast.success('Lien copié dans le presse-papiers')
+  }
+
+  const getBackupSize = (backup: Backup): number => {
+    return backup.size || backup.fileSize || 0
+  }
+
+  const backups: Backup[] = (data?.backups || []).map((b: any) => ({
+    ...b,
+    size: b.size || b.fileSize,
+    type: b.type || b.backupType
+  }))
   const lastBackup = backups[0]
 
   return (
@@ -192,15 +238,15 @@ export default function BackupPage() {
 
       {/* Sauvegarde Totale - Card principale */}
       <Card className="border-2 border-primary-200 bg-gradient-to-br from-primary-50 to-white">
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-primary-700">
             <FolderArchive className="w-6 h-6" />
-            Sauvegarde Totale du Site
+            Créer une sauvegarde
           </CardTitle>
         </CardHeader>
-        <CardBody>
+        <CardBody className="pt-2">
           <div className="space-y-4">
-            <p className="text-gray-600">
+            <p className="text-gray-600 text-sm">
               Créez une sauvegarde complète de votre site incluant tous les éléments essentiels :
             </p>
             
@@ -236,120 +282,44 @@ export default function BackupPage() {
               </div>
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-3 pt-2">
-              <Button
-                size="lg"
-                onClick={() => createBackupMutation.mutate()}
-                loading={createBackupMutation.isPending}
-                className="flex-1"
-              >
-                <Download className="w-5 h-5 mr-2" />
-                Créer une sauvegarde complète (ZIP)
-              </Button>
-              <Button
-                size="lg"
-                variant="secondary"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex-1"
-              >
-                <RotateCcw className="w-5 h-5 mr-2" />
-                Restaurer depuis un fichier ZIP
-              </Button>
-            </div>
+            <Button
+              size="lg"
+              onClick={() => createBackupMutation.mutate()}
+              loading={createBackupMutation.isPending}
+              className="w-full sm:w-auto"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              Créer une sauvegarde complète
+            </Button>
 
             {lastBackup && (
-              <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 p-3 rounded-lg">
-                <CheckCircle className="w-4 h-4 text-green-500" />
-                Dernière sauvegarde : {formatDate(lastBackup.createdAt)} ({formatFileSize(lastBackup.size)})
+              <div className="flex items-center gap-2 text-sm text-gray-600 bg-gray-50 p-3 rounded-lg">
+                <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                <span>
+                  Dernière sauvegarde : <strong>{formatDate(lastBackup.createdAt)}</strong> ({formatFileSize(getBackupSize(lastBackup))})
+                </span>
               </div>
             )}
           </div>
         </CardBody>
       </Card>
 
-      {/* Actions rapides */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card>
-          <CardBody>
-            <div className="flex items-center gap-4">
-              <div className="p-4 bg-green-100 rounded-xl">
-                <Download className="w-8 h-8 text-green-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900">Sauvegarde rapide</h3>
-                <p className="text-sm text-gray-500 mt-1">
-                  Créer une sauvegarde complète immédiatement
-                </p>
-              </div>
-              <Button
-                onClick={() => createBackupMutation.mutate()}
-                loading={createBackupMutation.isPending}
-              >
-                Sauvegarder
-              </Button>
-            </div>
-          </CardBody>
-        </Card>
-
-        <Card>
-          <CardBody>
-            <div className="flex items-center gap-4">
-              <div className="p-4 bg-blue-100 rounded-xl">
-                <Clock className="w-8 h-8 text-blue-600" />
-              </div>
-              <div className="flex-1">
-                <h3 className="font-semibold text-gray-900">Dernière sauvegarde</h3>
-                {lastBackup ? (
-                  <p className="text-sm text-gray-500 mt-1">
-                    {formatDate(lastBackup.createdAt)} ({formatFileSize(lastBackup.size)})
-                  </p>
-                ) : (
-                  <p className="text-sm text-gray-500 mt-1">Aucune sauvegarde</p>
-                )}
-              </div>
-              <Badge variant={lastBackup ? 'success' : 'warning'}>
-                {lastBackup ? 'OK' : 'À faire'}
-              </Badge>
-            </div>
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Restauration globale depuis fichier externe */}
+      {/* Restauration */}
       <Card className="border-2 border-orange-200 bg-gradient-to-br from-orange-50 to-white">
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-orange-700">
             <RotateCcw className="w-6 h-6" />
-            Restauration Globale
+            Restauration
           </CardTitle>
         </CardHeader>
-        <CardBody>
+        <CardBody className="pt-2">
           <div className="space-y-4">
-            <p className="text-gray-600">
-              Restaurez l'intégralité de votre site à partir d'un fichier de sauvegarde ZIP. Cette opération remplacera :
+            <p className="text-gray-600 text-sm">
+              Restaurez l'intégralité de votre site à partir d'un fichier de sauvegarde ZIP :
             </p>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
-                <Database className="w-4 h-4 text-orange-500" />
-                <span className="text-sm text-gray-700">Base de données</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
-                <Image className="w-4 h-4 text-orange-500" />
-                <span className="text-sm text-gray-700">Images & Fichiers</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
-                <Puzzle className="w-4 h-4 text-orange-500" />
-                <span className="text-sm text-gray-700">Plugins</span>
-              </div>
-              <div className="flex items-center gap-2 p-2 bg-white rounded-lg border border-orange-200">
-                <Server className="w-4 h-4 text-orange-500" />
-                <span className="text-sm text-gray-700">Configuration</span>
-              </div>
-            </div>
 
             <Alert type="warning">
-              <strong>⚠️ Attention :</strong> La restauration remplacera toutes les données actuelles par celles contenues dans le fichier de sauvegarde. Cette action est irréversible.
+              <strong>Attention :</strong> La restauration remplacera toutes les données actuelles. Cette action est irréversible.
             </Alert>
 
             <input
@@ -362,10 +332,9 @@ export default function BackupPage() {
             <Button
               variant="secondary"
               onClick={() => fileInputRef.current?.click()}
-              className="w-full sm:w-auto"
             >
               <UploadCloud className="w-4 h-4 mr-2" />
-              Sélectionner un fichier ZIP de sauvegarde
+              Sélectionner un fichier ZIP
             </Button>
           </div>
         </CardBody>
@@ -373,13 +342,13 @@ export default function BackupPage() {
 
       {/* Configuration envoi automatique par email */}
       <Card>
-        <CardHeader>
+        <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2">
-            <Settings className="w-5 h-5" />
+            <Mail className="w-5 h-5" />
             Envoi automatique par email
           </CardTitle>
         </CardHeader>
-        <CardBody>
+        <CardBody className="pt-2">
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -400,7 +369,7 @@ export default function BackupPage() {
             </div>
             
             {autoSendEmail && (
-              <div className="pt-2">
+              <div className="pt-2 space-y-3">
                 <Input
                   label="Adresse email de destination"
                   type="email"
@@ -408,16 +377,10 @@ export default function BackupPage() {
                   value={autoEmailAddress}
                   onChange={(e) => setAutoEmailAddress(e.target.value)}
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  ⚠️ Les sauvegardes de plus de 25 MB ne pourront pas être envoyées par email.
-                </p>
+                <Alert type="info">
+                  <strong>Note :</strong> Les sauvegardes de plus de 25 MB seront envoyées sous forme de lien de téléchargement temporaire (valide 7 jours).
+                </Alert>
               </div>
-            )}
-            
-            {autoSendEmail && autoEmailAddress && (
-              <Alert type="success">
-                Les prochaines sauvegardes seront automatiquement envoyées à <strong>{autoEmailAddress}</strong>
-              </Alert>
             )}
           </div>
         </CardBody>
@@ -483,40 +446,57 @@ export default function BackupPage() {
                         </Badge>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
-                        {formatFileSize(backup.size)}
+                        <div className="flex items-center gap-2">
+                          <span>{formatFileSize(getBackupSize(backup))}</span>
+                          {getBackupSize(backup) > MAX_EMAIL_SIZE && (
+                            <span className="text-xs text-orange-500" title="Ce fichier sera envoyé sous forme de lien">
+                              📎
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
                         {formatDate(backup.createdAt)}
                       </td>
                       <td className="px-6 py-4">
-                        <div className="flex items-center justify-end gap-2">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleDownload(backup)}
-                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                            className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
                             title="Télécharger"
                           >
                             <Download className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => {
+                              setLinkModal(backup)
+                              setGeneratedLink(null)
+                            }}
+                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                            title="Générer un lien de téléchargement"
+                          >
+                            <Link2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => {
                               setEmailModal(backup)
                               setEmailAddress('')
                             }}
-                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"
+                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="Envoyer par email"
                           >
                             <Mail className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setRestoreConfirm(backup)}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="Restaurer"
                           >
                             <Upload className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setDeleteConfirm(backup)}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
                             title="Supprimer"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -536,38 +516,30 @@ export default function BackupPage() {
       <Modal
         isOpen={!!restoreConfirm}
         onClose={() => setRestoreConfirm(null)}
-        title="Restauration Globale du Site"
+        title="Restauration du site"
         size="md"
       >
         <ModalBody>
-          <div className="flex items-center gap-3 text-yellow-600 mb-4">
+          <div className="flex items-center gap-3 text-orange-600 mb-4">
             <AlertTriangle className="w-6 h-6" />
-            <span className="font-medium">Attention - Restauration Complète !</span>
+            <span className="font-medium">Attention - Restauration complète</span>
           </div>
           <p className="text-gray-600">
-            Êtes-vous sûr de vouloir restaurer la sauvegarde <strong>{restoreConfirm?.filename}</strong> ?
+            Restaurer la sauvegarde <strong>{restoreConfirm?.filename}</strong> ?
           </p>
           
-          <div className="mt-4 p-4 bg-yellow-50 rounded-lg border border-yellow-200">
-            <p className="text-sm font-medium text-yellow-800 mb-2">Cette restauration va remplacer :</p>
-            <ul className="text-sm text-yellow-700 space-y-1">
-              <li className="flex items-center gap-2">
-                <Database className="w-4 h-4" /> Base de données complète
-              </li>
-              <li className="flex items-center gap-2">
-                <Image className="w-4 h-4" /> Toutes les images et fichiers uploadés
-              </li>
-              <li className="flex items-center gap-2">
-                <Puzzle className="w-4 h-4" /> Tous les plugins installés
-              </li>
-              <li className="flex items-center gap-2">
-                <Server className="w-4 h-4" /> Configuration et paramètres
-              </li>
+          <div className="mt-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
+            <p className="text-sm font-medium text-orange-800 mb-2">Éléments qui seront remplacés :</p>
+            <ul className="text-sm text-orange-700 space-y-1">
+              <li className="flex items-center gap-2"><Database className="w-4 h-4" /> Base de données</li>
+              <li className="flex items-center gap-2"><Image className="w-4 h-4" /> Images et fichiers</li>
+              <li className="flex items-center gap-2"><Puzzle className="w-4 h-4" /> Plugins</li>
+              <li className="flex items-center gap-2"><Server className="w-4 h-4" /> Configuration</li>
             </ul>
           </div>
           
           <p className="text-sm text-red-600 mt-4 font-medium">
-            ⚠️ Cette action est irréversible. Toutes les données actuelles seront remplacées.
+            ⚠️ Cette action est irréversible.
           </p>
         </ModalBody>
         <ModalFooter>
@@ -580,7 +552,7 @@ export default function BackupPage() {
             onClick={() => restoreConfirm && restoreMutation.mutate(restoreConfirm.id)}
           >
             <RotateCcw className="w-4 h-4 mr-2" />
-            Restaurer tout le site
+            Restaurer
           </Button>
         </ModalFooter>
       </Modal>
@@ -594,7 +566,7 @@ export default function BackupPage() {
       >
         <ModalBody>
           <p className="text-gray-600">
-            Êtes-vous sûr de vouloir supprimer la sauvegarde <strong>{deleteConfirm?.filename}</strong> ?
+            Supprimer la sauvegarde <strong>{deleteConfirm?.filename}</strong> ?
           </p>
           <p className="text-sm text-red-600 mt-2">
             Cette action est irréversible.
@@ -618,41 +590,33 @@ export default function BackupPage() {
       <Modal
         isOpen={!!uploadConfirm}
         onClose={() => setUploadConfirm(null)}
-        title="Restauration Globale du Site"
+        title="Restauration depuis fichier"
         size="md"
       >
         <ModalBody>
           <div className="flex items-center gap-3 text-orange-600 mb-4">
             <AlertTriangle className="w-6 h-6" />
-            <span className="font-medium">Attention - Restauration Complète !</span>
+            <span className="font-medium">Attention - Restauration complète</span>
           </div>
           <p className="text-gray-600">
-            Vous êtes sur le point de restaurer le fichier <strong>{uploadConfirm?.name}</strong>
+            Restaurer depuis le fichier <strong>{uploadConfirm?.name}</strong> ?
           </p>
           <p className="text-sm text-gray-500 mt-2">
             Taille : {uploadConfirm && formatFileSize(uploadConfirm.size)}
           </p>
           
           <div className="mt-4 p-4 bg-orange-50 rounded-lg border border-orange-200">
-            <p className="text-sm font-medium text-orange-800 mb-2">Cette restauration va remplacer :</p>
+            <p className="text-sm font-medium text-orange-800 mb-2">Éléments qui seront remplacés :</p>
             <ul className="text-sm text-orange-700 space-y-1">
-              <li className="flex items-center gap-2">
-                <Database className="w-4 h-4" /> Base de données complète
-              </li>
-              <li className="flex items-center gap-2">
-                <Image className="w-4 h-4" /> Toutes les images et fichiers uploadés
-              </li>
-              <li className="flex items-center gap-2">
-                <Puzzle className="w-4 h-4" /> Tous les plugins installés
-              </li>
-              <li className="flex items-center gap-2">
-                <Server className="w-4 h-4" /> Configuration et paramètres
-              </li>
+              <li className="flex items-center gap-2"><Database className="w-4 h-4" /> Base de données</li>
+              <li className="flex items-center gap-2"><Image className="w-4 h-4" /> Images et fichiers</li>
+              <li className="flex items-center gap-2"><Puzzle className="w-4 h-4" /> Plugins</li>
+              <li className="flex items-center gap-2"><Server className="w-4 h-4" /> Configuration</li>
             </ul>
           </div>
           
           <p className="text-sm text-red-600 mt-4 font-medium">
-            ⚠️ Cette action est irréversible. Assurez-vous d'avoir une sauvegarde des données actuelles si nécessaire.
+            ⚠️ Cette action est irréversible.
           </p>
         </ModalBody>
         <ModalFooter>
@@ -665,7 +629,7 @@ export default function BackupPage() {
             onClick={() => uploadConfirm && uploadMutation.mutate(uploadConfirm)}
           >
             <RotateCcw className="w-4 h-4 mr-2" />
-            Restaurer tout le site
+            Restaurer
           </Button>
         </ModalFooter>
       </Modal>
@@ -677,7 +641,7 @@ export default function BackupPage() {
           setEmailModal(null)
           setEmailAddress('')
         }}
-        title="Envoyer la sauvegarde par email"
+        title="Envoyer par email"
         size="sm"
       >
         <ModalBody>
@@ -686,13 +650,15 @@ export default function BackupPage() {
             <span className="font-medium">Envoi par email</span>
           </div>
           <p className="text-gray-600 mb-4">
-            Envoyer la sauvegarde <strong>{emailModal?.filename}</strong> par email.
+            Envoyer <strong>{emailModal?.filename}</strong>
           </p>
-          {emailModal && emailModal.size > 25 * 1024 * 1024 && (
-            <Alert type="warning" className="mb-4">
-              Le fichier dépasse 25 MB et ne pourra pas être envoyé par email. Veuillez le télécharger directement.
+          
+          {emailModal && getBackupSize(emailModal) > MAX_EMAIL_SIZE && (
+            <Alert type="info" className="mb-4">
+              Ce fichier dépasse 25 MB. Un lien de téléchargement temporaire (7 jours) sera envoyé à la place.
             </Alert>
           )}
+          
           <Input
             label="Adresse email"
             type="email"
@@ -700,9 +666,6 @@ export default function BackupPage() {
             value={emailAddress}
             onChange={(e) => setEmailAddress(e.target.value)}
           />
-          <p className="text-sm text-gray-500 mt-2">
-            La sauvegarde sera envoyée en pièce jointe.
-          </p>
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => {
@@ -713,11 +676,96 @@ export default function BackupPage() {
           </Button>
           <Button 
             loading={sendEmailMutation.isPending}
-            disabled={!emailAddress || (emailModal && emailModal.size > 25 * 1024 * 1024)}
+            disabled={!emailAddress}
             onClick={() => emailModal && sendEmailMutation.mutate({ id: emailModal.id, email: emailAddress })}
           >
             <Mail className="w-4 h-4 mr-2" />
             Envoyer
+          </Button>
+        </ModalFooter>
+      </Modal>
+
+      {/* Modal génération de lien */}
+      <Modal
+        isOpen={!!linkModal}
+        onClose={() => {
+          setLinkModal(null)
+          setGeneratedLink(null)
+        }}
+        title="Lien de téléchargement"
+        size="md"
+      >
+        <ModalBody>
+          <div className="flex items-center gap-3 text-purple-600 mb-4">
+            <Link2 className="w-6 h-6" />
+            <span className="font-medium">Générer un lien de téléchargement</span>
+          </div>
+          
+          <p className="text-gray-600 mb-4">
+            Fichier : <strong>{linkModal?.filename}</strong>
+            <br />
+            <span className="text-sm text-gray-500">Taille : {linkModal && formatFileSize(getBackupSize(linkModal))}</span>
+          </p>
+          
+          {!generatedLink ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-gray-500 mb-4">
+                Générez un lien de téléchargement temporaire valide 7 jours.
+                Ce lien peut être partagé sans nécessiter de connexion.
+              </p>
+              <Button 
+                onClick={() => linkModal && generateLinkMutation.mutate(linkModal.id)}
+                loading={generateLinkMutation.isPending}
+              >
+                <Link2 className="w-4 h-4 mr-2" />
+                Générer le lien
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Alert type="success">
+                Lien généré avec succès !
+              </Alert>
+              
+              <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                <p className="text-xs text-gray-500 mb-2">Lien de téléchargement :</p>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    readOnly
+                    value={generatedLink.link}
+                    className="flex-1 text-sm font-mono bg-white border border-gray-300 rounded px-3 py-2"
+                  />
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => copyToClipboard(generatedLink.link)}
+                    title="Copier"
+                  >
+                    <Copy className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => window.open(generatedLink.link, '_blank')}
+                    title="Ouvrir"
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </Button>
+                </div>
+                <p className="text-xs text-orange-600 mt-2">
+                  ⏰ Expire le : {new Date(generatedLink.expiresAt).toLocaleString('fr-FR')}
+                </p>
+              </div>
+            </div>
+          )}
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => {
+            setLinkModal(null)
+            setGeneratedLink(null)
+          }}>
+            Fermer
           </Button>
         </ModalFooter>
       </Modal>

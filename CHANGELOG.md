@@ -7,6 +7,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.47] - 2026-02-08
+
+### Amélioré
+- **Page Sauvegardes - Design et fonctionnalités** : Refonte complète de l'interface
+  - Design plus cohérent et épuré, suppression des sections redondantes
+  - Nouveau bouton 🔗 pour générer un lien de téléchargement partageable (valide 7 jours)
+  - Modal de génération de lien avec copie en un clic et ouverture directe
+  - Indicateur 📎 sur les fichiers > 25 MB dans la liste
+
+### Ajouté
+- **Téléchargement via lien temporaire** : Nouveau système pour les gros fichiers
+  - Endpoint `GET /api/backup/download/:token` pour téléchargement public sans authentification
+  - Endpoint `POST /api/backup/:id/generate-link` pour générer des liens valides 7 jours
+  - Tokens stockés en mémoire avec nettoyage automatique des liens expirés
+  - Email avec template HTML élégant contenant le lien de téléchargement
+
+- **Gestion intelligente des fichiers volumineux par email** :
+  - Les sauvegardes < 25 MB sont envoyées en pièce jointe classique
+  - Les sauvegardes > 25 MB génèrent automatiquement un lien de téléchargement temporaire
+  - L'envoi par email fonctionne maintenant pour tous les fichiers quelle que soit leur taille
+
 ## [1.2.46] - 2026-02-08
 
 ### Corrigé
