@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.43] - 2026-02-08
+
+### Corrigé
+- **Calendrier - Création d'événement** : Correction de l'erreur 404 lors de la création d'un événement
+  - Ajout de la route `POST /api/calendar` manquante (raccourci vers `/api/calendar/events`)
+  - Le client envoyait les requêtes sur `/api/calendar` mais seule `/api/calendar/events` existait
+
 ## [1.2.42] - 2026-02-07
 
 ### Corrigé

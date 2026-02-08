@@ -74,6 +74,31 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// POST /api/calendar - Créer un événement (raccourci)
+router.post('/', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const {
+      title, description, eventType = 'other', startDate, endDate,
+      allDay, objectId, color = '#3b82f6', reminderBefore = 0
+    } = req.body;
+
+    const result = await db.execute(
+      `INSERT INTO calendar_events (title, description, event_type, start_date, end_date, all_day, object_id, color, reminder_before, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [title, description, eventType, startDate, endDate, allDay ? 1 : 0, objectId || null, color, reminderBefore, req.user?.userId]
+    );
+
+    res.status(201).json({
+      success: true,
+      message: 'Événement créé',
+      eventId: result.lastInsertRowid
+    });
+  } catch (error: any) {
+    console.error('Erreur create calendar event:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // GET /api/calendar/events - Liste des événements
 router.get('/events', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
