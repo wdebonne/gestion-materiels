@@ -7,6 +7,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.44] - 2026-02-08
+
+### Amélioré
+- **Calendrier - Lier à un matériel** : Remplacement du champ Select par un composant Autocomplete
+  - Nouveau composant `Autocomplete` réutilisable avec recherche intégrée
+  - Champ de recherche pour filtrer facilement les matériels
+  - Bouton de suppression (X) pour vider la sélection
+  - Menu déroulant avec défilement pour les longues listes
+  - Fermeture automatique au clic à l'extérieur
+
 ## [1.2.43] - 2026-02-08
 
 ### Corrigé

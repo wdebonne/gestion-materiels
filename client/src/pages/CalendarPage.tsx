@@ -11,7 +11,7 @@ import {
   List, Grid3X3, Clock, RefreshCw, Settings, Cloud, CloudOff,
   Filter, Search, X, ExternalLink
 } from 'lucide-react'
-import { Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select, LoadingInline, Badge } from '@/components/ui'
+import { Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select, Autocomplete, LoadingInline, Badge } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { format, addMonths, subMonths, startOfMonth, endOfMonth, eachDayOfInterval, isSameMonth, isSameDay, isToday, startOfWeek, endOfWeek, addYears, subYears } from 'date-fns'
@@ -875,10 +875,12 @@ export default function CalendarPage() {
                 </div>
               </div>
 
-              <Select
+              <Autocomplete
                 label="Lier à un matériel"
                 value={formData.objectId}
-                onChange={(e) => setFormData({ ...formData, objectId: e.target.value })}
+                onChange={(value) => setFormData({ ...formData, objectId: value })}
+                placeholder="Aucun"
+                emptyMessage="Aucun matériel trouvé"
                 options={[
                   { value: '', label: 'Aucun' },
                   ...(objectsData?.map((obj: any) => ({
