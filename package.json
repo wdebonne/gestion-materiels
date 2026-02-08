@@ -1,6 +1,6 @@
 {
   "name": "gestion-materiels",
-  "version": "1.2.45",
+  "version": "1.2.46",
   "description": "Application web de gestion de matériel municipal",
   "main": "dist/server.js",
   "scripts": {

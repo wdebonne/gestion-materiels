@@ -1,4 +1,4 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { Request, Response, NextFunction } from 'express';
 import { logService } from '../services/log.service';
 
@@ -61,9 +61,10 @@ export const authLimiter = rateLimit({
     res.status(429).json(options.message);
   },
   keyGenerator: (req: Request) => {
-    // Utilise l'IP et l'email (si disponible) comme clé
+    // Utilise l'IP (avec support IPv6) et l'email (si disponible) comme clé
     const email = req.body?.email || '';
-    return `${req.ip}-${email}`;
+    const ip = ipKeyGenerator(req.ip || '');
+    return `${ip}-${email}`;
   }
 });
 

@@ -7,6 +7,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.46] - 2026-02-08
+
+### Corrigé
+- **Rate Limiter - Support IPv6** : Correction de l'erreur `ERR_ERL_KEY_GEN_IPV6`
+  - Utilisation de `ipKeyGenerator` d'express-rate-limit pour normaliser les adresses IPv6
+  - Empêche les utilisateurs IPv6 de contourner les limites de rate limiting
+  - Corrige le crash au démarrage en production
+
 ## [1.2.45] - 2026-02-08
 
 ### Corrigé
