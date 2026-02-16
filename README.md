@@ -424,16 +424,6 @@ Licence d'utilisation personnelle © 2026 [DEBONNE Frédéric]
 
 Ce logiciel est protégé par le droit d'auteur. L'utilisation est autorisée uniquement avec permission écrite de l'auteur. La distribution et la vente sont strictement réservées à l'auteur.
 
-## 🤝 Contribution
-
-Les contributions sont les bienvenues ! N'hésitez pas à :
-
-1. Fork le projet
-2. Créer une branche (`git checkout -b feature/AmazingFeature`)
-3. Commit vos changements (`git commit -m 'Add AmazingFeature'`)
-4. Push la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrir une Pull Request
-
 ## 📞 Support
 
 Pour toute question ou problème :
