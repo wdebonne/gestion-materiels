@@ -420,7 +420,9 @@ npm run test:cov  # Avec couverture
 
 ## 📝 Licence
 
-Ce projet est sous licence MIT. Voir le fichier [LICENSE](LICENSE) pour plus de détails.
+Licence d'utilisation personnelle © 2026 [DEBONNE Frédéric]
+
+Ce logiciel est protégé par le droit d'auteur. L'utilisation est autorisée uniquement avec permission écrite de l'auteur. La distribution et la vente sont strictement réservées à l'auteur.
 
 ## 🤝 Contribution
 
