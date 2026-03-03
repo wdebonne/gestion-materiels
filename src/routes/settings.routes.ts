@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
 import { handleUpload } from '../services/upload.service';
+import { sendTestEmail } from '../services/email.service';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -186,8 +187,6 @@ router.post('/smtp/test', authenticateToken, requireAdmin, async (req: AuthReque
       return res.status(400).json({ success: false, message: 'Adresse email requise' });
     }
 
-    const { sendTestEmail } = await import('../services/email.service');
-    
     const result = await sendTestEmail(email);
     
     if (result.success) {

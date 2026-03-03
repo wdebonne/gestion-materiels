@@ -7,6 +7,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.49] - 2026-03-03
+
+### Corrigé
+- **SMTP - Import dynamique cassé en production** : Correction de l'erreur `Cannot find module email.service`
+  - Remplacement de l'import dynamique `await import()` par un import statique
+  - L'import dynamique ne résolvait pas correctement le chemin dans le build compilé (Docker)
+
 ## [1.2.48] - 2026-03-03
 
 ### Corrigé
