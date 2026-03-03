@@ -180,10 +180,15 @@ router.put('/smtp', authenticateToken, requireAdmin, async (req: AuthRequest, re
 // POST /api/settings/smtp/test - Tester la configuration SMTP
 router.post('/smtp/test', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const { testEmail } = req.body;
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'Adresse email requise' });
+    }
+
     const { sendTestEmail } = await import('../services/email.service');
     
-    const result = await sendTestEmail(testEmail);
+    const result = await sendTestEmail(email);
     
     if (result.success) {
       res.json({ success: true, message: 'Email de test envoyé avec succès' });

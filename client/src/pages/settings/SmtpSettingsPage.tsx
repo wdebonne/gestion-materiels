@@ -75,7 +75,7 @@ export default function SmtpSettingsPage() {
     onError: (err: any) => {
       setTestResult({ 
         success: false, 
-        message: err.response?.data?.error || 'Échec de l\'envoi de l\'email de test'
+        message: err.response?.data?.message || 'Échec de l\'envoi de l\'email de test'
       })
     }
   })

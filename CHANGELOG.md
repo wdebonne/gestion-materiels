@@ -7,6 +7,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.48] - 2026-03-03
+
+### Corrigé
+- **SMTP - Test d'envoi d'email** : Correction de l'erreur 500 lors du test SMTP
+  - Le client envoyait `{ email }` mais le serveur attendait `{ testEmail }` — le champ est maintenant aligné sur `email`
+  - Ajout d'une validation côté serveur renvoyant une erreur 400 si l'adresse email est absente
+  - Correction de la lecture du message d'erreur côté client (`data.message` au lieu de `data.error`)
+
 ## [1.2.47] - 2026-02-08
 
 ### Amélioré
