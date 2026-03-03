@@ -12,46 +12,53 @@ export default function SmtpSettingsPage() {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null)
   
   const [formData, setFormData] = useState({
-    smtpHost: '',
-    smtpPort: '587',
-    smtpSecure: 'tls',
-    smtpUser: '',
-    smtpPassword: '',
-    smtpFrom: '',
-    smtpFromName: ''
+    host: '',
+    port: '587',
+    secure: 'tls',
+    username: '',
+    password: '',
+    fromEmail: '',
+    fromName: ''
   })
 
   // Récupérer les paramètres SMTP
-  const { data: settings, isLoading } = useQuery({
+  const { data: smtpData, isLoading } = useQuery({
     queryKey: ['smtp-settings'],
     queryFn: async () => {
       const response = await api.get('/settings/smtp')
-      return response.data
+      return response.data?.smtp
     }
   })
 
   // Mettre à jour le formulaire quand les settings sont chargés
   useEffect(() => {
-    if (settings) {
+    if (smtpData) {
       setFormData({
-        smtpHost: settings.smtpHost || '',
-        smtpPort: settings.smtpPort || '587',
-        smtpSecure: settings.smtpSecure || 'tls',
-        smtpUser: settings.smtpUser || '',
-        smtpPassword: '', // Ne pas afficher le mot de passe existant
-        smtpFrom: settings.smtpFrom || '',
-        smtpFromName: settings.smtpFromName || ''
+        host: smtpData.host || '',
+        port: String(smtpData.port || '587'),
+        secure: smtpData.secure ? (smtpData.port === 465 ? 'ssl' : 'tls') : 'none',
+        username: smtpData.username || '',
+        password: '',
+        fromEmail: smtpData.fromEmail || '',
+        fromName: smtpData.fromName || ''
       })
     }
-  }, [settings])
+  }, [smtpData])
 
   // Mutation pour sauvegarder
   const saveMutation = useMutation({
-    mutationFn: async (data: any) => {
-      // Ne pas envoyer le mot de passe s'il est vide (garder l'existant)
-      const payload = { ...data }
-      if (!payload.smtpPassword) {
-        delete payload.smtpPassword
+    mutationFn: async (data: typeof formData) => {
+      const payload: any = {
+        host: data.host,
+        port: parseInt(data.port) || 587,
+        secure: data.secure === 'ssl' || data.secure === 'tls',
+        username: data.username,
+        fromEmail: data.fromEmail,
+        fromName: data.fromName,
+        isActive: true
+      }
+      if (data.password) {
+        payload.password = data.password
       }
       return api.put('/settings/smtp', payload)
     },
@@ -60,7 +67,7 @@ export default function SmtpSettingsPage() {
       toast.success('Configuration SMTP enregistrée')
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || 'Erreur lors de la sauvegarde')
+      toast.error(err.response?.data?.message || 'Erreur lors de la sauvegarde')
     }
   })
 
@@ -103,14 +110,12 @@ export default function SmtpSettingsPage() {
 
   return (
     <div className="space-y-6">
-      {/* En-tête */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Configuration SMTP</h1>
         <p className="text-gray-500 mt-1">Configurez l'envoi d'emails pour les notifications et alertes</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* Serveur SMTP */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -122,22 +127,22 @@ export default function SmtpSettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Input
                 label="Hôte SMTP"
-                value={formData.smtpHost}
-                onChange={(e) => setFormData({ ...formData, smtpHost: e.target.value })}
+                value={formData.host}
+                onChange={(e) => setFormData({ ...formData, host: e.target.value })}
                 placeholder="smtp.example.com"
                 hint="Adresse du serveur SMTP"
               />
               <div className="grid grid-cols-2 gap-4">
                 <Input
                   label="Port"
-                  value={formData.smtpPort}
-                  onChange={(e) => setFormData({ ...formData, smtpPort: e.target.value })}
+                  value={formData.port}
+                  onChange={(e) => setFormData({ ...formData, port: e.target.value })}
                   placeholder="587"
                 />
                 <Select
                   label="Sécurité"
-                  value={formData.smtpSecure}
-                  onChange={(e) => setFormData({ ...formData, smtpSecure: e.target.value })}
+                  value={formData.secure}
+                  onChange={(e) => setFormData({ ...formData, secure: e.target.value })}
                   options={[
                     { value: 'none', label: 'Aucune' },
                     { value: 'tls', label: 'TLS/STARTTLS' },
@@ -149,7 +154,6 @@ export default function SmtpSettingsPage() {
           </CardBody>
         </Card>
 
-        {/* Authentification */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -160,18 +164,18 @@ export default function SmtpSettingsPage() {
           <CardBody className="space-y-4">
             <Input
               label="Nom d'utilisateur"
-              value={formData.smtpUser}
-              onChange={(e) => setFormData({ ...formData, smtpUser: e.target.value })}
+              value={formData.username}
+              onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               placeholder="user@example.com"
               hint="Généralement votre adresse email"
             />
             <Input
               label="Mot de passe"
               type={showPassword ? 'text' : 'password'}
-              value={formData.smtpPassword}
-              onChange={(e) => setFormData({ ...formData, smtpPassword: e.target.value })}
-              placeholder={settings?.smtpPassword ? '••••••••' : 'Mot de passe'}
-              hint={settings?.smtpPassword ? 'Laisser vide pour conserver le mot de passe actuel' : ''}
+              value={formData.password}
+              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+              placeholder={smtpData?.password ? '••••••••' : 'Mot de passe'}
+              hint={smtpData?.password ? 'Laisser vide pour conserver le mot de passe actuel' : ''}
               rightIcon={
                 <button
                   type="button"
@@ -185,7 +189,6 @@ export default function SmtpSettingsPage() {
           </CardBody>
         </Card>
 
-        {/* Expéditeur */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -198,15 +201,15 @@ export default function SmtpSettingsPage() {
               <Input
                 label="Email de l'expéditeur"
                 type="email"
-                value={formData.smtpFrom}
-                onChange={(e) => setFormData({ ...formData, smtpFrom: e.target.value })}
+                value={formData.fromEmail}
+                onChange={(e) => setFormData({ ...formData, fromEmail: e.target.value })}
                 placeholder="noreply@example.com"
                 hint="Adresse email qui apparaîtra comme expéditeur"
               />
               <Input
                 label="Nom de l'expéditeur"
-                value={formData.smtpFromName}
-                onChange={(e) => setFormData({ ...formData, smtpFromName: e.target.value })}
+                value={formData.fromName}
+                onChange={(e) => setFormData({ ...formData, fromName: e.target.value })}
                 placeholder="Gestion Matériels"
                 hint="Nom qui apparaîtra dans les emails"
               />
@@ -214,7 +217,6 @@ export default function SmtpSettingsPage() {
           </CardBody>
         </Card>
 
-        {/* Bouton de sauvegarde */}
         <div className="flex justify-end">
           <Button 
             type="submit"
@@ -226,7 +228,6 @@ export default function SmtpSettingsPage() {
         </div>
       </form>
 
-      {/* Test SMTP */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

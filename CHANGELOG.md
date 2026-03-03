@@ -7,6 +7,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.50] - 2026-03-03
+
+### Corrigé
+- **SMTP - Noms de champs client/serveur désalignés** : Correction de la sauvegarde SMTP inopérante
+  - Le client envoyait des champs `smtpHost`, `smtpPort`, etc. mais le serveur attendait `host`, `port`, etc.
+  - Tous les champs sont maintenant alignés entre le client et le serveur
+  - Le champ `isActive` est maintenant envoyé automatiquement à `true` lors de la sauvegarde
+  - Le chargement des paramètres existants fonctionne correctement (lecture de `response.data.smtp`)
+
 ## [1.2.49] - 2026-03-03
 
 ### Corrigé
