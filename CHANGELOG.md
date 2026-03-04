@@ -7,6 +7,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.53] - 2026-03-04
+
+### Corrigé
+- **[CRITIQUE] Page Alertes — Mutations cassées** : Les actions « Marquer comme lu », « Résoudre » et « Tout marquer comme lu » échouaient en 404 car le frontend appelait des endpoints inexistants (`PUT /alerts/:id` au lieu de `PUT /alerts/:id/read`, `POST /alerts/acknowledge-all` au lieu de `PUT /alerts/read-all`)
+- **[CRITIQUE] Page Alertes — Filtres inopérants** : Les filtres par statut (`status`) et par type (`type`) étaient ignorés car le backend n'acceptait que `alertType` et `severity` comme paramètres de requête — ajout du support `type` et `status` côté backend
+- **[CRITIQUE] Page Alertes — Incohérence modèle frontend/backend** : Le frontend utilisait `alert.type`, `alert.priority`, `alert.status` mais le backend retournait `alertType`, `severity`, `isRead`/`isDismissed` — ajout de champs calculés (`type`, `status`, `priority`) dans la réponse API pour compatibilité
+- **[HAUTE] Injection SQL dans les paramètres d'alertes** : `PUT /api/alerts/settings` interpolait `settings.*.days` directement dans les requêtes SQL (`date('now', '+${days} days')`) — remplacé par calcul de date côté serveur avec requêtes paramétrées et validation des valeurs (1-365)
+- **[HAUTE] Pas de filtrage par catégorie sur les alertes** : Les endpoints `GET /api/alerts` et `GET /api/alerts/count` retournaient les alertes de toutes les catégories — filtrage par `getAccessibleCategoryIds` ajouté pour que les utilisateurs non-admin ne voient que les alertes liées à leurs catégories autorisées
+- **[MOYENNE] Boutons admin visibles pour les simples utilisateurs** : Les boutons « Supprimer » et « Paramètres » étaient affichés pour tous les utilisateurs alors que le backend exige `requireSupervisor` — masqués pour le rôle `user`
+- **[BASSE] SQL spécifique SQLite** : `datetime('now')` dans la mise à jour des paramètres remplacé par `new Date().toISOString()` compatible SQLite et MySQL
+
 ## [1.2.52] - 2026-03-04
 
 ### Corrigé

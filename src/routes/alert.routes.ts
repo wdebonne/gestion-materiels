@@ -1,50 +1,71 @@
 import { Router, Response } from 'express';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireSupervisor, getAccessibleCategoryIds } from '../middleware/auth.middleware';
 
 const router = Router();
 
 // GET /api/alerts - Liste des alertes
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { objectId, alertType, severity, showDismissed = 'false' } = req.query;
+    const { objectId, alertType, type, severity, status, showDismissed = 'false' } = req.query;
 
     let whereClause = '1=1';
     const params: any[] = [];
 
-    if (showDismissed !== 'true') {
-      whereClause += ' AND is_dismissed = 0';
+    // Filtrage par statut (active / acknowledged / resolved)
+    if (status) {
+      if (status === 'active') {
+        whereClause += ' AND a.is_read = 0 AND a.is_dismissed = 0';
+      } else if (status === 'acknowledged') {
+        whereClause += ' AND a.is_read = 1 AND a.is_dismissed = 0';
+      } else if (status === 'resolved') {
+        whereClause += ' AND a.is_dismissed = 1';
+      }
+    } else if (showDismissed !== 'true') {
+      whereClause += ' AND a.is_dismissed = 0';
     }
 
     if (objectId) {
-      whereClause += ' AND object_id = ?';
+      whereClause += ' AND a.object_id = ?';
       params.push(objectId);
     }
 
-    if (alertType) {
-      whereClause += ' AND alert_type = ?';
-      params.push(alertType);
+    // Support des deux paramètres 'alertType' et 'type'
+    const effectiveAlertType = alertType || type;
+    if (effectiveAlertType) {
+      whereClause += ' AND a.alert_type = ?';
+      params.push(effectiveAlertType);
     }
 
     if (severity) {
-      whereClause += ' AND severity = ?';
+      whereClause += ' AND a.severity = ?';
       params.push(severity);
     }
 
+    // Filtrage par catégories accessibles (sécurité)
+    const accessibleCategoryIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+    if (accessibleCategoryIds !== null) {
+      if (accessibleCategoryIds.length === 0) {
+        return res.json({ success: true, alerts: [] });
+      }
+      whereClause += ` AND (a.object_id IS NULL OR o.category_id IN (${accessibleCategoryIds.map(() => '?').join(',')}))`;
+      params.push(...accessibleCategoryIds);
+    }
+
     const alerts = await db.query(
-      `SELECT a.*, o.name as object_name 
+      `SELECT a.*, o.name as object_name, o.category_id
        FROM alerts a
        LEFT JOIN objects o ON o.id = a.object_id
        WHERE ${whereClause}
        ORDER BY 
-         CASE severity 
+         CASE a.severity 
            WHEN 'critical' THEN 1 
            WHEN 'warning' THEN 2 
            WHEN 'info' THEN 3 
            ELSE 4 
          END,
-         due_date ASC,
-         created_at DESC`,
+         a.due_date ASC,
+         a.created_at DESC`,
       params
     );
 
@@ -63,7 +84,11 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         isRead: !!a.is_read,
         isDismissed: !!a.is_dismissed,
         dueDate: a.due_date,
-        createdAt: a.created_at
+        createdAt: a.created_at,
+        // Champs calculés pour compatibilité frontend
+        type: a.alert_type,
+        status: a.is_dismissed ? 'resolved' : a.is_read ? 'acknowledged' : 'active',
+        priority: a.severity === 'critical' ? 'high' : a.severity === 'warning' ? 'medium' : 'low',
       }))
     });
   } catch (error: any) {
@@ -75,15 +100,33 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 // GET /api/alerts/count - Nombre d'alertes non lues
 router.get('/count', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await db.queryOne(
-      'SELECT COUNT(*) as count FROM alerts WHERE is_dismissed = 0 AND is_read = 0'
-    );
+    // Filtrage par catégories accessibles (sécurité)
+    const accessibleCategoryIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+    let categoryFilter = '';
+    const categoryParams: any[] = [];
+    if (accessibleCategoryIds !== null) {
+      if (accessibleCategoryIds.length === 0) {
+        return res.json({ success: true, count: 0, bySeverity: {} });
+      }
+      categoryFilter = ` AND (a.object_id IS NULL OR o.category_id IN (${accessibleCategoryIds.map(() => '?').join(',')}))`;
+      categoryParams.push(...accessibleCategoryIds);
+    }
 
-    const bySeverity = await db.query(
-      `SELECT severity, COUNT(*) as count FROM alerts 
-       WHERE is_dismissed = 0 AND is_read = 0 
-       GROUP BY severity`
-    );
+    const result = accessibleCategoryIds !== null
+      ? await db.queryOne(
+          `SELECT COUNT(*) as count FROM alerts a LEFT JOIN objects o ON o.id = a.object_id WHERE a.is_dismissed = 0 AND a.is_read = 0${categoryFilter}`,
+          categoryParams
+        )
+      : await db.queryOne('SELECT COUNT(*) as count FROM alerts WHERE is_dismissed = 0 AND is_read = 0');
+
+    const bySeverity = accessibleCategoryIds !== null
+      ? await db.query(
+          `SELECT a.severity, COUNT(*) as count FROM alerts a LEFT JOIN objects o ON o.id = a.object_id WHERE a.is_dismissed = 0 AND a.is_read = 0${categoryFilter} GROUP BY a.severity`,
+          categoryParams
+        )
+      : await db.query(
+          `SELECT severity, COUNT(*) as count FROM alerts WHERE is_dismissed = 0 AND is_read = 0 GROUP BY severity`
+        );
 
     res.json({
       success: true,
@@ -139,10 +182,16 @@ router.put('/settings', authenticateToken, requireSupervisor, async (req: AuthRe
       "SELECT * FROM settings WHERE setting_key = 'alert_settings'"
     );
 
+    // Valider les valeurs de jours (protection contre l'injection SQL dans le cron)
+    if (settings.technical_control) settings.technical_control.days = Math.max(1, Math.min(365, parseInt(settings.technical_control.days) || 30));
+    if (settings.maintenance) settings.maintenance.days = Math.max(1, Math.min(365, parseInt(settings.maintenance.days) || 14));
+    if (settings.fuel) settings.fuel.days = Math.max(1, Math.min(365, parseInt(settings.fuel.days) || 7));
+    if (settings.custom) settings.custom.days = Math.max(1, Math.min(365, parseInt(settings.custom.days) || 7));
+
     if (existingSetting) {
       await db.execute(
-        "UPDATE settings SET setting_value = ?, updated_at = datetime('now') WHERE setting_key = 'alert_settings'",
-        [JSON.stringify(settings)]
+        "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'alert_settings'",
+        [JSON.stringify(settings), new Date().toISOString()]
       );
     } else {
       await db.execute(
@@ -152,32 +201,34 @@ router.put('/settings', authenticateToken, requireSupervisor, async (req: AuthRe
     }
 
     // Nettoyer les alertes dont la date d'échéance est au-delà des nouvelles limites
+    // Calculer les dates limites côté serveur (évite l'injection SQL)
+    const tcCutoff = new Date();
+    tcCutoff.setDate(tcCutoff.getDate() + settings.technical_control.days);
+    const tcCutoffStr = tcCutoff.toISOString().split('T')[0];
+
+    const maintenanceCutoff = new Date();
+    maintenanceCutoff.setDate(maintenanceCutoff.getDate() + settings.maintenance.days);
+    const maintenanceCutoffStr = maintenanceCutoff.toISOString().split('T')[0];
+
     // Supprimer les alertes de contrôle technique trop lointaines
-    if (settings.technical_control?.days) {
-      await db.execute(
-        `DELETE FROM alerts WHERE alert_type = 'technical_control' 
-         AND due_date > date('now', '+${settings.technical_control.days} days')
-         AND is_dismissed = 0`
-      );
-      // Réinitialiser reminder_sent pour les contrôles techniques
-      await db.execute(
-        `UPDATE technical_controls SET reminder_sent = 0 
-         WHERE date(expiry_date) > date('now', '+${settings.technical_control.days} days')`
-      );
-    }
+    await db.execute(
+      `DELETE FROM alerts WHERE alert_type = 'technical_control' AND due_date > ? AND is_dismissed = 0`,
+      [tcCutoffStr]
+    );
+    await db.execute(
+      `UPDATE technical_controls SET reminder_sent = 0 WHERE expiry_date > ?`,
+      [tcCutoffStr]
+    );
 
     // Nettoyer les alertes de maintenance trop lointaines
-    if (settings.maintenance?.days) {
-      await db.execute(
-        `DELETE FROM alerts WHERE alert_type = 'maintenance' 
-         AND due_date > date('now', '+${settings.maintenance.days} days')
-         AND is_dismissed = 0`
-      );
-      await db.execute(
-        `UPDATE maintenances SET reminder_sent = 0 
-         WHERE date(next_date) > date('now', '+${settings.maintenance.days} days')`
-      );
-    }
+    await db.execute(
+      `DELETE FROM alerts WHERE alert_type = 'maintenance' AND due_date > ? AND is_dismissed = 0`,
+      [maintenanceCutoffStr]
+    );
+    await db.execute(
+      `UPDATE maintenances SET reminder_sent = 0 WHERE next_date > ?`,
+      [maintenanceCutoffStr]
+    );
 
     res.json({ success: true, message: 'Paramètres enregistrés et alertes mises à jour' });
   } catch (error: any) {

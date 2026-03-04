@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/stores/auth.store'
 import { 
   Bell, Check, AlertTriangle, Fuel, Wrench, ClipboardCheck,
   Filter, CheckCheck, Trash2, Settings, Save
@@ -36,6 +37,8 @@ interface AlertSettings {
 export default function AlertsPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor'
   const [statusFilter, setStatusFilter] = useState('all')
   const [typeFilter, setTypeFilter] = useState('all')
   const [deleteConfirm, setDeleteConfirm] = useState<Alert | null>(null)
@@ -98,7 +101,7 @@ export default function AlertsPage() {
   // Mutation pour marquer comme lu
   const acknowledgeMutation = useMutation({
     mutationFn: async (id: number) => {
-      return api.put(`/alerts/${id}`, { status: 'acknowledged' })
+      return api.put(`/alerts/${id}/read`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
@@ -109,7 +112,7 @@ export default function AlertsPage() {
   // Mutation pour résoudre
   const resolveMutation = useMutation({
     mutationFn: async (id: number) => {
-      return api.put(`/alerts/${id}`, { status: 'resolved' })
+      return api.put(`/alerts/${id}/dismiss`)
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
@@ -132,7 +135,7 @@ export default function AlertsPage() {
   // Mutation pour tout marquer comme lu
   const acknowledgeAllMutation = useMutation({
     mutationFn: async () => {
-      return api.post('/alerts/acknowledge-all')
+      return api.put('/alerts/read-all')
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
@@ -241,13 +244,15 @@ export default function AlertsPage() {
             Tout marquer comme lu
           </Button>
         )}
-        <Button 
-          variant="secondary"
-          icon={<Settings className="w-4 h-4" />}
-          onClick={() => setShowSettings(true)}
-        >
-          Paramètres
-        </Button>
+        {isSupervisor && (
+          <Button 
+            variant="secondary"
+            icon={<Settings className="w-4 h-4" />}
+            onClick={() => setShowSettings(true)}
+          >
+            Paramètres
+          </Button>
+        )}
       </div>
 
       {/* Filtres */}
@@ -375,14 +380,16 @@ export default function AlertsPage() {
                             <CheckCheck className="w-4 h-4" />
                           </Button>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDeleteConfirm(alert)}
-                          title="Supprimer"
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
+                        {isSupervisor && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setDeleteConfirm(alert)}
+                            title="Supprimer"
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </div>
