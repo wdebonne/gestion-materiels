@@ -146,7 +146,8 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       values.push(isActive ? 1 : 0);
     }
 
-    updateFields.push("updated_at = datetime('now')");
+    updateFields.push('updated_at = ?');
+    values.push(new Date().toISOString());
     values.push(id);
 
     await db.execute(

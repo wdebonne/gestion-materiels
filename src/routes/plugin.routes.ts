@@ -241,9 +241,10 @@ router.put('/:id/toggle', authenticateToken, requireAdmin, async (req: AuthReque
     }
 
     const newStatus = plugin.is_active ? 0 : 1;
+    const now = new Date().toISOString();
     await db.execute(
-      "UPDATE plugins SET is_active = ?, updated_at = datetime('now') WHERE id = ?",
-      [newStatus, id]
+      "UPDATE plugins SET is_active = ?, updated_at = ? WHERE id = ?",
+      [newStatus, now, id]
     );
 
     res.json({
@@ -263,9 +264,10 @@ router.put('/:id/config', authenticateToken, requireAdmin, async (req: AuthReque
     const { id } = req.params;
     const { config } = req.body;
 
+    const now = new Date().toISOString();
     await db.execute(
-      "UPDATE plugins SET config = ?, updated_at = datetime('now') WHERE id = ?",
-      [JSON.stringify(config), id]
+      "UPDATE plugins SET config = ?, updated_at = ? WHERE id = ?",
+      [JSON.stringify(config), now, id]
     );
 
     res.json({ success: true, message: 'Configuration mise à jour' });
@@ -281,9 +283,10 @@ router.put('/:id/settings', authenticateToken, requireAdmin, async (req: AuthReq
     const { id } = req.params;
     const { settings } = req.body;
 
+    const now = new Date().toISOString();
     await db.execute(
-      "UPDATE plugins SET config = ?, updated_at = datetime('now') WHERE id = ?",
-      [JSON.stringify(settings), id]
+      "UPDATE plugins SET config = ?, updated_at = ? WHERE id = ?",
+      [JSON.stringify(settings), now, id]
     );
 
     res.json({ success: true, message: 'Paramètres mis à jour' });
@@ -303,9 +306,10 @@ router.put('/:id/type', authenticateToken, requireAdmin, async (req: AuthRequest
       return res.status(400).json({ success: false, message: 'Type de plugin invalide (menu ou object)' });
     }
 
+    const now = new Date().toISOString();
     await db.execute(
-      "UPDATE plugins SET plugin_type = ?, route = ?, updated_at = datetime('now') WHERE id = ?",
-      [type, route || null, id]
+      "UPDATE plugins SET plugin_type = ?, route = ?, updated_at = ? WHERE id = ?",
+      [type, route || null, now, id]
     );
 
     res.json({ success: true, message: 'Type de plugin mis à jour' });

@@ -9,10 +9,34 @@ const router = Router();
 // GET /api/users - Liste des utilisateurs (admin)
 router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const users = await db.query(
-      `SELECT id, email, first_name, last_name, role, avatar, is_active, created_at, last_login 
-       FROM users ORDER BY created_at DESC`
-    );
+    let query = `SELECT id, email, first_name, last_name, role, avatar, is_active, created_at, last_login 
+       FROM users`;
+    const conditions: string[] = [];
+    const params: any[] = [];
+
+    // Filtre par recherche (nom, prénom, email)
+    if (req.query.search) {
+      const search = `%${req.query.search}%`;
+      conditions.push('(first_name LIKE ? OR last_name LIKE ? OR email LIKE ?)');
+      params.push(search, search, search);
+    }
+
+    // Filtre par rôles
+    if (req.query.roles) {
+      const roles = (req.query.roles as string).split(',').filter(r => ['admin', 'supervisor', 'user'].includes(r));
+      if (roles.length > 0) {
+        conditions.push(`role IN (${roles.map(() => '?').join(',')})`);
+        params.push(...roles);
+      }
+    }
+
+    if (conditions.length > 0) {
+      query += ' WHERE ' + conditions.join(' AND ');
+    }
+
+    query += ' ORDER BY created_at DESC';
+
+    const users = await db.query(query, params);
 
     res.json({
       success: true,

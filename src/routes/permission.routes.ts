@@ -237,9 +237,9 @@ router.put('/modules/:moduleName/group/:role', authenticateToken, requireAdmin, 
 
     if (existing) {
       await db.execute(
-        `UPDATE module_permissions SET can_view = ?, can_export = ?, can_compare = ?, updated_at = datetime('now')
+        `UPDATE module_permissions SET can_view = ?, can_export = ?, can_compare = ?, updated_at = ?
          WHERE module_name = ? AND role = ?`,
-        [canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0, moduleName, role]
+        [canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0, new Date().toISOString(), moduleName, role]
       );
     } else {
       await db.execute(
@@ -299,9 +299,9 @@ router.put('/modules/:moduleName/user/:userId', authenticateToken, requireAdmin,
 
       if (existing) {
         await db.execute(
-          `UPDATE user_module_permissions SET can_view = ?, can_export = ?, can_compare = ?, updated_at = datetime('now')
+          `UPDATE user_module_permissions SET can_view = ?, can_export = ?, can_compare = ?, updated_at = ?
            WHERE module_name = ? AND user_id = ?`,
-          [canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0, moduleName, userId]
+          [canView ? 1 : 0, canExport ? 1 : 0, canCompare ? 1 : 0, new Date().toISOString(), moduleName, userId]
         );
       } else {
         await db.execute(

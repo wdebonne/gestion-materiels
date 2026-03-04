@@ -115,9 +115,10 @@ class JwtRotationService {
    * Sauvegarde les paramètres dans la base de données
    */
   private async saveSettings(): Promise<void> {
+    const now = new Date().toISOString();
     await db.execute(
-      "UPDATE settings SET setting_value = ?, updated_at = datetime('now') WHERE setting_key = 'jwt_rotation_settings'",
-      [JSON.stringify(this.settings)]
+      "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'jwt_rotation_settings'",
+      [JSON.stringify(this.settings), now]
     );
   }
 
@@ -189,8 +190,10 @@ class JwtRotationService {
    */
   public async getActiveSecrets(): Promise<string[]> {
     try {
+      const now = new Date().toISOString();
       const secrets = await db.query<{ secret: string }>(
-        "SELECT secret FROM jwt_secrets WHERE is_active = 1 AND expires_at > datetime('now') ORDER BY created_at DESC"
+        "SELECT secret FROM jwt_secrets WHERE is_active = 1 AND expires_at > ? ORDER BY created_at DESC",
+        [now]
       );
       return secrets.map((s: { secret: string }) => s.secret);
     } catch (error) {
@@ -224,8 +227,10 @@ class JwtRotationService {
    */
   public async cleanupExpiredSecrets(): Promise<number> {
     try {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const result = await db.execute(
-        "DELETE FROM jwt_secrets WHERE expires_at < datetime('now', '-7 days')"
+        "DELETE FROM jwt_secrets WHERE expires_at < ?",
+        [sevenDaysAgo]
       );
       
       const deletedCount = result.changes || 0;
@@ -276,12 +281,15 @@ class JwtRotationService {
    * Génère un rapport de sécurité JWT
    */
   public async generateSecurityReport(): Promise<any> {
+    const now = new Date().toISOString();
     const activeSecrets = await db.queryOne<{ count: number }>(
-      "SELECT COUNT(*) as count FROM jwt_secrets WHERE is_active = 1 AND expires_at > datetime('now')"
+      "SELECT COUNT(*) as count FROM jwt_secrets WHERE is_active = 1 AND expires_at > ?",
+      [now]
     );
 
     const expiredSecrets = await db.queryOne<{ count: number }>(
-      "SELECT COUNT(*) as count FROM jwt_secrets WHERE expires_at <= datetime('now')"
+      "SELECT COUNT(*) as count FROM jwt_secrets WHERE expires_at <= ?",
+      [now]
     );
 
     const lastRotation = await db.queryOne(

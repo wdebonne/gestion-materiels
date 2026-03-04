@@ -170,12 +170,18 @@ export async function checkAlerts(): Promise<void> {
     }
 
     // Vérifier les événements du calendrier avec rappel
+    const now = new Date().toISOString();
+    const isSQLite = db.getType() === 'sqlite';
+    const dateSubExpr = isSQLite
+      ? "datetime(ce.start_date, '-' || ce.reminder_before || ' minutes')"
+      : "DATE_SUB(ce.start_date, INTERVAL ce.reminder_before MINUTE)";
     const events = await db.query(
       `SELECT ce.*, o.name as object_name FROM calendar_events ce
        LEFT JOIN objects o ON o.id = ce.object_id
        WHERE ce.reminder_sent = 0 AND ce.reminder_before > 0
-       AND datetime(ce.start_date, '-' || ce.reminder_before || ' minutes') <= datetime('now')
-       AND datetime(ce.start_date) > datetime('now')`
+       AND ${dateSubExpr} <= ?
+       AND ce.start_date > ?`,
+      [now, now]
     );
 
     for (const event of events) {

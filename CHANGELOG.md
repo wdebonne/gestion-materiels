@@ -7,6 +7,19 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.57] - 2026-03-04
+
+### Corrigé
+- **[CRITIQUE] SQL spécifique SQLite `datetime('now')` éradiqué du projet** : Remplacement systématique de **toutes** les occurrences restantes de `datetime('now')` par `new Date().toISOString()` (ou paramètre lié) pour une compatibilité totale SQLite/MySQL — corrigé dans 13 fichiers : `webhook.routes.ts` (6), `permission.routes.ts` (2), `auth.routes.ts` (4), `calendar.routes.ts` (14), `emailTemplate.routes.ts` (1), `object.routes.ts` (1), `plugin.routes.ts` (4), `server.ts` (1), `jwtRotation.service.ts` (5), `log.service.ts` (1), `plugin.service.ts` (1), `pluginAdvanced.service.ts` (2), `cron.service.ts` (2) — total : **44 occurrences** corrigées
+- **[HAUTE] Incohérence validation mot de passe dans auth** : Les routes `POST /register`, `POST /reset-password` et `PUT /change-password` validaient un minimum de 6 caractères au lieu de 8 — aligné sur 8 caractères minimum comme le frontend et les routes utilisateurs
+- **[HAUTE] `DEFAULT (datetime('now'))` non conditionnel dans pluginAdvanced** : La création dynamique de tables plugin utilisait `datetime('now')` en dur pour les colonnes timestamp — rendu conditionnel avec `db.getType()` pour utiliser `DEFAULT CURRENT_TIMESTAMP` sous MySQL
+- **[HAUTE] Calcul de dates SQLite dans cron.service** : La requête de rappels calendrier utilisait `datetime(ce.start_date, '-' || ...)` incompatible MySQL — rendu conditionnel avec `DATE_SUB()` pour MySQL
+
+### Amélioré
+- **Recherche utilisateurs** : Le endpoint `GET /api/users` supporte désormais un paramètre `search` (recherche par nom, prénom, email) et `roles` (filtrage par rôle, ex: `?roles=admin,supervisor`)
+- **Performance — Optimisation `PUT /api/settings`** : Remplacement des requêtes SELECT séquentielles par un batch unique + `Promise.all` pour les UPDATE/INSERT
+- **UX — Modal de confirmation dans WebhooksPage** : Remplacement du `confirm()` natif du navigateur par une modal stylisée cohérente avec le reste de l'application (icône Trash2, boutons Annuler/Supprimer avec état de chargement)
+
 ## [1.2.56] - 2026-03-04
 
 ### Corrigé

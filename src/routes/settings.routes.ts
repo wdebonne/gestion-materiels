@@ -67,16 +67,24 @@ router.put('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
       return res.status(400).json({ success: false, message: 'Paramètres invalides' });
     }
 
-    for (const [key, value] of Object.entries(settings)) {
-      const existing = await db.queryOne('SELECT * FROM settings WHERE setting_key = ?', [key]);
-      
+    // Récupérer toutes les clés existantes en une seule requête
+    const keys = Object.keys(settings);
+    const existingSettings = await db.query(
+      `SELECT setting_key FROM settings WHERE setting_key IN (${keys.map(() => '?').join(',')})`,
+      keys
+    );
+    const existingKeys = new Set(existingSettings.map((s: any) => s.setting_key));
+    const now = new Date().toISOString();
+
+    // Exécuter les mises à jour/insertions en parallèle
+    const operations = Object.entries(settings).map(([key, value]) => {
       let stringValue = String(value);
       if (typeof value === 'object') stringValue = JSON.stringify(value);
 
-      if (existing) {
-        await db.execute(
+      if (existingKeys.has(key)) {
+        return db.execute(
           'UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?',
-          [stringValue, new Date().toISOString(), key]
+          [stringValue, now, key]
         );
       } else {
         let type = 'string';
@@ -84,12 +92,13 @@ router.put('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
         if (typeof value === 'boolean') type = 'boolean';
         if (typeof value === 'object') type = 'json';
         
-        await db.execute(
+        return db.execute(
           'INSERT INTO settings (setting_key, setting_value, setting_type) VALUES (?, ?, ?)',
           [key, stringValue, type]
         );
       }
-    }
+    });
+    await Promise.all(operations);
 
     res.json({ success: true, message: 'Paramètres mis à jour' });
   } catch (error: any) {

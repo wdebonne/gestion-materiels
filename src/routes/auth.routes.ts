@@ -18,7 +18,7 @@ const loginValidation = [
 
 const registerValidation = [
   body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
-  body('password').isLength({ min: 6 }).withMessage('Le mot de passe doit contenir au moins 6 caractères'),
+  body('password').isLength({ min: 8 }).withMessage('Le mot de passe doit contenir au moins 8 caractères'),
   body('firstName').optional().trim().escape(),
   body('lastName').optional().trim().escape()
 ];
@@ -88,8 +88,8 @@ router.post('/login', loginValidation, async (req: AuthRequest, res: Response) =
 
     // Mettre à jour la dernière connexion
     await db.execute(
-      "UPDATE users SET last_login = datetime('now') WHERE id = ?",
-      [user.id]
+      'UPDATE users SET last_login = ? WHERE id = ?',
+      [new Date().toISOString(), user.id]
     );
 
     // Générer les tokens
@@ -246,7 +246,7 @@ router.post('/forgot-password', [
 // POST /api/auth/reset-password - Réinitialiser le mot de passe
 router.post('/reset-password', [
   body('token').notEmpty().withMessage('Token requis'),
-  body('password').isLength({ min: 6 }).withMessage('Le mot de passe doit contenir au moins 6 caractères')
+  body('password').isLength({ min: 8 }).withMessage('Le mot de passe doit contenir au moins 8 caractères')
 ], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -261,8 +261,8 @@ router.post('/reset-password', [
 
     // Chercher l'utilisateur avec ce token
     const user = await db.queryOne(
-      "SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > datetime('now')",
-      [hashedToken]
+      'SELECT * FROM users WHERE reset_token = ? AND reset_token_expires > ?',
+      [hashedToken, new Date().toISOString()]
     );
 
     if (!user) {
@@ -322,8 +322,8 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res: Response
     const { firstName, lastName, avatar } = req.body;
 
     await db.execute(
-      "UPDATE users SET first_name = ?, last_name = ?, avatar = ?, updated_at = datetime('now') WHERE id = ?",
-      [firstName, lastName, avatar, req.user?.userId]
+      'UPDATE users SET first_name = ?, last_name = ?, avatar = ?, updated_at = ? WHERE id = ?',
+      [firstName, lastName, avatar, new Date().toISOString(), req.user?.userId]
     );
 
     res.json({ success: true, message: 'Profil mis à jour' });
@@ -336,7 +336,7 @@ router.put('/profile', authenticateToken, async (req: AuthRequest, res: Response
 // PUT /api/auth/change-password - Changer le mot de passe
 router.put('/change-password', authenticateToken, [
   body('currentPassword').notEmpty().withMessage('Mot de passe actuel requis'),
-  body('newPassword').isLength({ min: 6 }).withMessage('Le nouveau mot de passe doit contenir au moins 6 caractères')
+  body('newPassword').isLength({ min: 8 }).withMessage('Le nouveau mot de passe doit contenir au moins 8 caractères')
 ], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -362,8 +362,8 @@ router.put('/change-password', authenticateToken, [
     // Hasher et mettre à jour le nouveau mot de passe
     const hashedPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS || '12'));
     await db.execute(
-      "UPDATE users SET password = ?, updated_at = datetime('now') WHERE id = ?",
-      [hashedPassword, req.user?.userId]
+      'UPDATE users SET password = ?, updated_at = ? WHERE id = ?',
+      [hashedPassword, new Date().toISOString(), req.user?.userId]
     );
 
     // Log du changement de mot de passe

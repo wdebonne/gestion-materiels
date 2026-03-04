@@ -79,9 +79,10 @@ export async function getPluginConfig(pluginSlug: string): Promise<Record<string
 
 // Mettre à jour la configuration d'un plugin
 export async function updatePluginConfig(pluginSlug: string, config: Record<string, any>): Promise<void> {
+  const now = new Date().toISOString();
   await db.execute(
-    "UPDATE plugins SET config = ?, updated_at = datetime('now') WHERE slug = ?",
-    [JSON.stringify(config), pluginSlug]
+    "UPDATE plugins SET config = ?, updated_at = ? WHERE slug = ?",
+    [JSON.stringify(config), now, pluginSlug]
   );
 }
 

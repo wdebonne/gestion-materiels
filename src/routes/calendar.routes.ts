@@ -359,7 +359,8 @@ router.put('/events/:id', authenticateToken, requireSupervisor, async (req: Auth
       values.push(reminderBefore);
     }
 
-    updateFields.push("updated_at = datetime('now')");
+    updateFields.push('updated_at = ?');
+    values.push(new Date().toISOString());
     values.push(id);
 
     await db.execute(
@@ -541,13 +542,14 @@ router.post('/sync/outlook/config', authenticateToken, requireSupervisor, async 
 
     if (existingConfig) {
       await db.execute(
-        "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_outlook_config'",
-        [JSON.stringify(newConfig)]
+        "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_outlook_config'",
+        [JSON.stringify(newConfig), new Date().toISOString()]
       );
     } else {
+      const now = new Date().toISOString();
       await db.execute(
-        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_outlook_config', ?, datetime('now'), datetime('now'))",
-        [JSON.stringify(newConfig)]
+        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_outlook_config', ?, ?, ?)",
+        [JSON.stringify(newConfig), now, now]
       );
     }
 
@@ -580,13 +582,14 @@ router.post('/sync/caldav/config', authenticateToken, requireSupervisor, async (
 
     if (existingConfig) {
       await db.execute(
-        "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_caldav_config'",
-        [JSON.stringify(newConfig)]
+        "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_caldav_config'",
+        [JSON.stringify(newConfig), new Date().toISOString()]
       );
     } else {
+      const now = new Date().toISOString();
       await db.execute(
-        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_caldav_config', ?, datetime('now'), datetime('now'))",
-        [JSON.stringify(newConfig)]
+        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_caldav_config', ?, ?, ?)",
+        [JSON.stringify(newConfig), now, now]
       );
     }
 
@@ -725,8 +728,8 @@ router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) 
           // Mettre à jour lastSync
           data.lastSync = new Date().toISOString();
           await db.execute(
-            "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_outlook_config'",
-            [JSON.stringify(data)]
+            "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_outlook_config'",
+            [JSON.stringify(data), new Date().toISOString()]
           );
         } catch (err: any) {
           results.outlook.error = err.message;
@@ -748,8 +751,8 @@ router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) 
           // Mettre à jour lastSync
           data.lastSync = new Date().toISOString();
           await db.execute(
-            "UPDATE settings SET value = ?, updated_at = datetime('now') WHERE key = 'calendar_caldav_config'",
-            [JSON.stringify(data)]
+            "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_caldav_config'",
+            [JSON.stringify(data), new Date().toISOString()]
           );
         } catch (err: any) {
           results.caldav.error = err.message;
@@ -774,7 +777,8 @@ router.delete('/sync/outlook', authenticateToken, requireSupervisor, async (req:
     
     // Désactiver la config
     await db.execute(
-      "UPDATE settings SET value = '{}', updated_at = datetime('now') WHERE key = 'calendar_outlook_config'"
+      "UPDATE settings SET value = '{}', updated_at = ? WHERE key = 'calendar_outlook_config'",
+      [new Date().toISOString()]
     );
 
     res.json({ success: true, message: 'Outlook déconnecté' });
@@ -794,7 +798,8 @@ router.delete('/sync/caldav', authenticateToken, requireSupervisor, async (req: 
     
     // Désactiver la config
     await db.execute(
-      "UPDATE settings SET value = '{}', updated_at = datetime('now') WHERE key = 'calendar_caldav_config'"
+      "UPDATE settings SET value = '{}', updated_at = ? WHERE key = 'calendar_caldav_config'",
+      [new Date().toISOString()]
     );
 
     res.json({ success: true, message: 'CalDAV déconnecté' });
@@ -859,7 +864,7 @@ async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
     for (const event of events) {
       await db.execute(
         `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, 'outlook', ?, datetime('now'))`,
+         VALUES (?, ?, ?, ?, ?, ?, 'outlook', ?, ?)`,
         [
           event.subject,
           event.bodyPreview || '',
@@ -867,7 +872,8 @@ async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
           event.end?.dateTime || null,
           event.isAllDay ? 1 : 0,
           '#0078D4', // Bleu Outlook
-          event.id
+          event.id,
+          new Date().toISOString()
         ]
       );
       count++;
@@ -931,7 +937,7 @@ async function syncCaldavCalendar(config: any): Promise<{ count: number }> {
     for (const event of events) {
       await db.execute(
         `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, 'caldav', ?, datetime('now'))`,
+         VALUES (?, ?, ?, ?, ?, ?, 'caldav', ?, ?)`,
         [
           event.summary,
           event.description || '',
@@ -939,7 +945,8 @@ async function syncCaldavCalendar(config: any): Promise<{ count: number }> {
           event.dtend,
           event.allDay ? 1 : 0,
           '#10B981', // Vert pour CalDAV
-          event.uid
+          event.uid,
+          new Date().toISOString()
         ]
       );
       count++;

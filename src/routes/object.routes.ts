@@ -493,7 +493,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       values.push(JSON.stringify(customFields));
     }
 
-    updateFields.push("updated_at = datetime('now')");
+    updateFields.push('updated_at = ?');
+    values.push(new Date().toISOString());
     values.push(id);
 
     await db.execute(

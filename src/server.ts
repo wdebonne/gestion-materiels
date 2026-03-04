@@ -62,9 +62,10 @@ async function syncVersionToDatabase() {
     if (existing) {
       // Mettre à jour si différent
       if (existing.setting_value !== version) {
+        const now = new Date().toISOString();
         await db.execute(
-          "UPDATE settings SET setting_value = ?, updated_at = datetime('now') WHERE setting_key = ?",
-          [version, 'site_version']
+          "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?",
+          [version, now, 'site_version']
         );
         console.log(`✅ Version synchronisée: ${existing.setting_value} → ${version}`);
       }

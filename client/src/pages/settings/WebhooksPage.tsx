@@ -88,6 +88,7 @@ export default function WebhooksPage() {
   const [testResult, setTestResult] = useState<{ id: number; success: boolean; message: string; status?: number; duration?: number } | null>(null)
   const [newHeaderKey, setNewHeaderKey] = useState('')
   const [newHeaderValue, setNewHeaderValue] = useState('')
+  const [deleteConfirm, setDeleteConfirm] = useState<WebhookData | null>(null)
 
   // Récupérer les webhooks
   const { data: webhooks = [], isLoading } = useQuery<WebhookData[]>({
@@ -124,6 +125,7 @@ export default function WebhooksPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['webhooks'] })
       toast.success('Webhook supprimé')
+      setDeleteConfirm(null)
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Erreur lors de la suppression')
@@ -222,9 +224,7 @@ export default function WebhooksPage() {
   }
 
   const handleDelete = (webhook: WebhookData) => {
-    if (confirm(`Êtes-vous sûr de vouloir supprimer le webhook "${webhook.name}" ?`)) {
-      deleteMutation.mutate(webhook.id)
-    }
+    setDeleteConfirm(webhook)
   }
 
   const handleAddHeader = () => {
@@ -616,6 +616,39 @@ export default function WebhooksPage() {
             </Button>
           </ModalFooter>
         </form>
+      </Modal>
+
+      {/* Modal confirmation suppression */}
+      <Modal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        title="Supprimer le webhook"
+        size="sm"
+      >
+        <ModalBody>
+          <p className="text-gray-600">
+            Êtes-vous sûr de vouloir supprimer le webhook <strong>{deleteConfirm?.name}</strong> ?
+          </p>
+          <p className="text-sm text-gray-500 mt-2">
+            URL : <code className="bg-gray-100 px-1 rounded text-xs">{deleteConfirm?.url}</code>
+          </p>
+          <p className="text-sm text-red-600 mt-2">
+            Cette action est irréversible.
+          </p>
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>
+            Annuler
+          </Button>
+          <Button 
+            variant="danger" 
+            loading={deleteMutation.isPending}
+            onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm.id)}
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Supprimer
+          </Button>
+        </ModalFooter>
       </Modal>
     </div>
   )

@@ -102,7 +102,8 @@ function generateCreateTableSQL(table: PluginTable): string {
     }
     if (col.default) {
       if (col.default === 'CURRENT_TIMESTAMP') {
-        colDef += " DEFAULT (datetime('now'))";
+        const isSQLite = db.getType() === 'sqlite';
+        colDef += isSQLite ? " DEFAULT (datetime('now'))" : ' DEFAULT CURRENT_TIMESTAMP';
       } else {
         colDef += ` DEFAULT ${col.default}`;
       }
@@ -260,10 +261,11 @@ export async function importPluginFromZip(zipPath: string): Promise<PluginConfig
 
     if (existingPlugin) {
       // Mettre à jour
+      const now = new Date().toISOString();
       await db.execute(
         `UPDATE plugins SET 
           name = ?, version = ?, description = ?, author = ?, icon = ?,
-          plugin_type = ?, route = ?, config = ?, updated_at = datetime('now')
+          plugin_type = ?, route = ?, config = ?, updated_at = ?
         WHERE slug = ?`,
         [
           pluginConfig.name,
@@ -274,6 +276,7 @@ export async function importPluginFromZip(zipPath: string): Promise<PluginConfig
           pluginConfig.type,
           pluginConfig.route || pluginConfig.slug,
           JSON.stringify(fullConfig),
+          now,
           pluginConfig.slug
         ]
       );

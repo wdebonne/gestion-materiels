@@ -53,16 +53,19 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       return res.status(400).json({ success: false, message: 'URL invalide' });
     }
     
+    const now = new Date().toISOString();
     const result = await db.execute(
       `INSERT INTO webhooks (name, url, events, headers, is_active, secret, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         url,
         JSON.stringify(events || []),
         JSON.stringify(headers || {}),
         is_active !== false ? 1 : 0,
-        secret || null
+        secret || null,
+        now,
+        now
       ]
     );
     
@@ -104,7 +107,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
         headers = COALESCE(?, headers),
         is_active = COALESCE(?, is_active),
         secret = COALESCE(?, secret),
-        updated_at = datetime('now')
+        updated_at = ?
        WHERE id = ?`,
       [
         name || null,
@@ -113,6 +116,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
         headers ? JSON.stringify(headers) : null,
         is_active !== undefined ? (is_active ? 1 : 0) : null,
         secret !== undefined ? secret : null,
+        new Date().toISOString(),
         id
       ]
     );
@@ -212,14 +216,15 @@ router.post('/:id/test', authenticateToken, requireAdmin, async (req: AuthReques
       success = response.ok;
       
       // Mettre à jour les stats du webhook
+      const now = new Date().toISOString();
       await db.execute(
         `UPDATE webhooks SET 
-          last_triggered_at = datetime('now'),
+          last_triggered_at = ?,
           last_status = ?,
           last_response = ?,
-          updated_at = datetime('now')
+          updated_at = ?
          WHERE id = ?`,
-        [responseStatus, responseBody.substring(0, 1000), id]
+        [now, responseStatus, responseBody.substring(0, 1000), now, id]
       );
       
     } catch (fetchError: any) {
@@ -227,14 +232,15 @@ router.post('/:id/test', authenticateToken, requireAdmin, async (req: AuthReques
       responseBody = fetchError.message;
       success = false;
       
+      const now = new Date().toISOString();
       await db.execute(
         `UPDATE webhooks SET 
-          last_triggered_at = datetime('now'),
+          last_triggered_at = ?,
           last_status = 0,
           last_response = ?,
-          updated_at = datetime('now')
+          updated_at = ?
          WHERE id = ?`,
-        [fetchError.message.substring(0, 1000), id]
+        [now, fetchError.message.substring(0, 1000), now, id]
       );
     }
     
@@ -323,26 +329,28 @@ router.post('/trigger', authenticateToken, requireSupervisor, async (req: AuthRe
           
           const responseBody = await response.text();
           
+          const now = new Date().toISOString();
           await db.execute(
             `UPDATE webhooks SET 
-              last_triggered_at = datetime('now'),
+              last_triggered_at = ?,
               last_status = ?,
               last_response = ?,
-              updated_at = datetime('now')
+              updated_at = ?
              WHERE id = ?`,
-            [response.status, responseBody.substring(0, 1000), webhook.id]
+            [now, response.status, responseBody.substring(0, 1000), now, webhook.id]
           );
           
           results.push({ webhookId: webhook.id, success: response.ok, status: response.status });
         } catch (fetchError: any) {
+          const now = new Date().toISOString();
           await db.execute(
             `UPDATE webhooks SET 
-              last_triggered_at = datetime('now'),
+              last_triggered_at = ?,
               last_status = 0,
               last_response = ?,
-              updated_at = datetime('now')
+              updated_at = ?
              WHERE id = ?`,
-            [fetchError.message.substring(0, 1000), webhook.id]
+            [now, fetchError.message.substring(0, 1000), now, webhook.id]
           );
           
           results.push({ webhookId: webhook.id, success: false, status: 0 });

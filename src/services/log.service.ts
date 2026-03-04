@@ -137,9 +137,10 @@ class LogService {
     );
 
     if (existing) {
+      const now = new Date().toISOString();
       await db.execute(
-        "UPDATE settings SET setting_value = ?, setting_type = 'json', updated_at = datetime('now') WHERE setting_key = 'log_settings'",
-        [settingValue]
+        "UPDATE settings SET setting_value = ?, setting_type = 'json', updated_at = ? WHERE setting_key = 'log_settings'",
+        [settingValue, now]
       );
     } else {
       await db.execute(
