@@ -7,6 +7,24 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+<<<<<<< HEAD
+## [1.2.50] - 2026-03-04
+
+### Amélioré
+- **Calendrier - Rendu mobile et tablette** : Refonte complète de l'affichage responsive
+  - Barre d'outils sur deux lignes pour éviter le débordement sur petits écrans
+  - Boutons navigation année masqués sur mobile pour gagner de l'espace
+  - Sélecteur de vue compact avec icônes seules sur mobile
+  - Champ de recherche masqué sur mobile, accessible via le panneau filtres
+  - Tailles de texte et espacements adaptatifs (`text-xs sm:text-sm`)
+  - Panneau latéral (mini-calendrier) en overlay sur mobile avec fond semi-transparent
+  - Bouton calendrier dans la toolbar pour ouvrir/fermer le mini-calendrier sur mobile
+  - Fermeture automatique du panneau après sélection d'un jour sur mobile
+  - Correction du bug de grille FullCalendar qui débordait sur mobile (`table-layout: fixed`, `width: 100%`)
+  - Styles FullCalendar responsive : polices réduites, cellules compactes, heures masquées dans les événements
+  - Padding du calendrier principal réduit sur mobile (`p-1 sm:p-2 md:p-4`)
+
+=======
 ## [1.2.50] - 2026-03-03
 
 ### Corrigé
@@ -16,6 +34,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   - Le champ `isActive` est maintenant envoyé automatiquement à `true` lors de la sauvegarde
   - Le chargement des paramètres existants fonctionne correctement (lecture de `response.data.smtp`)
 
+>>>>>>> b91aada31dfb19494a1d2726822318e9d8e7c8b3
 ## [1.2.49] - 2026-03-03
 
 ### Corrigé
