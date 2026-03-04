@@ -140,6 +140,116 @@ router.post('/', authenticateToken, requireAdmin, [
   }
 });
 
+// PUT /api/users/me - Modifier son propre profil
+router.put('/me', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { email, firstName, lastName } = req.body;
+
+    // Vérifier que l'utilisateur existe
+    const user = await db.queryOne('SELECT id, email, first_name, last_name, role, avatar FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+    }
+
+    // Vérifier l'unicité de l'email
+    if (email && email !== user.email) {
+      const existing = await db.queryOne('SELECT id FROM users WHERE email = ? AND id != ?', [email, userId]);
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'Cet email est déjà utilisé' });
+      }
+    }
+
+    // Construire la requête de mise à jour
+    const updateFields: string[] = [];
+    const values: any[] = [];
+
+    if (email) {
+      updateFields.push('email = ?');
+      values.push(email);
+    }
+    if (firstName !== undefined) {
+      updateFields.push('first_name = ?');
+      values.push(firstName);
+    }
+    if (lastName !== undefined) {
+      updateFields.push('last_name = ?');
+      values.push(lastName);
+    }
+
+    if (updateFields.length === 0) {
+      return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour' });
+    }
+
+    updateFields.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(userId);
+
+    await db.execute(
+      `UPDATE users SET ${updateFields.join(', ')} WHERE id = ?`,
+      values
+    );
+
+    // Retourner les données utilisateur mises à jour
+    const updatedUser = await db.queryOne(
+      'SELECT id, email, first_name, last_name, role, avatar FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({
+      id: updatedUser.id,
+      email: updatedUser.email,
+      firstName: updatedUser.first_name,
+      lastName: updatedUser.last_name,
+      role: updatedUser.role,
+      avatar: updatedUser.avatar
+    });
+  } catch (error: any) {
+    console.error('Erreur update profil:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/users/me/password - Changer son mot de passe
+router.put('/me/password', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Mot de passe actuel et nouveau mot de passe requis' });
+    }
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ success: false, error: 'Le nouveau mot de passe doit contenir au moins 8 caractères' });
+    }
+
+    // Récupérer l'utilisateur avec son mot de passe hashé
+    const user = await db.queryOne('SELECT id, password FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ success: false, error: 'Utilisateur non trouvé' });
+    }
+
+    // Vérifier le mot de passe actuel
+    const isValid = await bcrypt.compare(currentPassword, user.password);
+    if (!isValid) {
+      return res.status(400).json({ success: false, error: 'Mot de passe actuel incorrect' });
+    }
+
+    // Hasher et mettre à jour le nouveau mot de passe
+    const hashedPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS || '12'));
+    await db.execute(
+      'UPDATE users SET password = ?, updated_at = ? WHERE id = ?',
+      [hashedPassword, new Date().toISOString(), userId]
+    );
+
+    res.json({ success: true, message: 'Mot de passe modifié avec succès' });
+  } catch (error: any) {
+    console.error('Erreur changement mot de passe:', error);
+    res.status(500).json({ success: false, error: 'Erreur serveur' });
+  }
+});
+
 // PUT /api/users/:id - Modifier un utilisateur
 router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {

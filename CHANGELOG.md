@@ -7,6 +7,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.59] - 2026-03-04
+
+### Ajouté
+- **Route `PUT /api/users/me`** : Permet à l'utilisateur connecté de modifier son propre profil (prénom, nom, email) sans nécessiter le rôle administrateur — retourne les données utilisateur mises à jour pour actualiser le store frontend
+- **Route `PUT /api/users/me/password`** : Permet à l'utilisateur connecté de changer son mot de passe en fournissant le mot de passe actuel et le nouveau (minimum 8 caractères)
+
+### Corrigé
+- **[CRITIQUE] Page Mon profil — Modification impossible** : Le formulaire de modification du prénom, nom et email retournait une erreur 404 (`PUT /api/users/me` inexistant). Le frontend appelait `/api/users/me` mais seule la route `/api/users/:id` (réservée admin) existait côté backend — Express interprétait `"me"` comme un ID numérique, la requête SQL ne trouvait aucun utilisateur et retournait 404
+- **[CRITIQUE] Page Mon profil — Changement de mot de passe impossible** : Le formulaire de changement de mot de passe échouait en 404 (`PUT /api/users/me/password` inexistant) — ajout de la route dédiée avec vérification du mot de passe actuel
+
 ## [1.2.58] - 2026-03-04
 
 ### Ajouté
