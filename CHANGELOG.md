@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.55] - 2026-03-04
+
+### Corrigé
+- **[CRITIQUE] Sécurité — Pas de filtrage par permissions sur le Tableau de bord** : Le endpoint `GET /api/dashboard/stats` retournait les statistiques globales (nombre de catégories, matériels, alertes, carburant, contrôles, entretiens, valeur du parc) de **tout** le système, y compris pour les utilisateurs non-admin à accès limité — toutes les requêtes sont désormais filtrées par `getAccessibleCategoryIds`
+- **[HAUTE] Activité récente non triée par date** : Le frontend appelait `GET /objects?sort=updatedAt` mais le backend ignorait le paramètre `sort`, affichant les matériels triés alphabétiquement au lieu des derniers modifiés — ajout du support du paramètre `sort` (valeurs : `name`, `updatedAt`, `createdAt`, `status`) avec whitelist de sécurité
+- **[BASSE] Import `TrendingUp` inutilisé** : Icône importée de lucide-react mais jamais utilisée dans le composant — supprimée
+
+### Amélioré
+- **Performance — Parallélisation des requêtes du dashboard** : Les 9 requêtes séquentielles du endpoint `GET /api/dashboard/stats` sont désormais exécutées en parallèle via `Promise.all`
+- **UX — Affichage de la valeur totale du parc** : Ajout d'une 5ème carte statistique affichant la valeur totale des matériels (déjà calculée par le backend mais non affichée) avec formatage en euros
+- **UX — Couleur `emerald` pour StatCard** : Ajout du support de la couleur `emerald` dans le composant `StatCard`
+
 ## [1.2.54] - 2026-03-04
 
 ### Corrigé

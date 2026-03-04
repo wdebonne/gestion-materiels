@@ -58,7 +58,7 @@ function priorityToSeverity(priority: string, daysUntilDue: number): string {
 // GET /api/objects - Liste des objets
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { categoryId, subcategoryId, status, search, page = 1, limit = 20 } = req.query;
+    const { categoryId, subcategoryId, status, search, page = 1, limit = 20, sort } = req.query;
 
     let whereClause = '1=1';
     const params: any[] = [];
@@ -110,6 +110,15 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       params
     );
 
+    // Tri
+    const allowedSorts: Record<string, string> = {
+      name: 'o.name ASC',
+      updatedAt: 'o.updated_at DESC',
+      createdAt: 'o.created_at DESC',
+      status: 'o.status ASC, o.name ASC'
+    };
+    const orderBy = allowedSorts[sort as string] || 'o.name ASC';
+
     // Récupérer les objets (catégorie résolue via sous-catégorie si nécessaire)
     const objects = await db.query(
       `SELECT o.*, 
@@ -121,7 +130,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
        LEFT JOIN categories c ON c.id = o.category_id
        LEFT JOIN categories c2 ON c2.id = s.category_id
        WHERE ${whereClause}
-       ORDER BY o.name
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
       [...params, Number(limit), offset]
     );

@@ -128,7 +128,7 @@ interface StatCardProps {
     value: number
     type: 'increase' | 'decrease'
   }
-  color?: 'blue' | 'green' | 'yellow' | 'red' | 'purple'
+  color?: 'blue' | 'green' | 'yellow' | 'red' | 'purple' | 'emerald'
   className?: string
 }
 
@@ -138,7 +138,8 @@ export function StatCard({ title, value, icon, change, color = 'blue', className
     green: 'bg-green-100 text-green-600',
     yellow: 'bg-yellow-100 text-yellow-600',
     red: 'bg-red-100 text-red-600',
-    purple: 'bg-purple-100 text-purple-600'
+    purple: 'bg-purple-100 text-purple-600',
+    emerald: 'bg-emerald-100 text-emerald-600'
   }
 
   return (

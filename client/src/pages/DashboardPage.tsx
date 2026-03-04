@@ -8,7 +8,7 @@ import {
   Fuel,
   Wrench,
   ClipboardCheck,
-  TrendingUp,
+  Euro,
   Clock
 } from 'lucide-react'
 import { StatCard, Card, CardBody, CardHeader, CardTitle, ImageCard, LoadingInline, Alert } from '@/components/ui'
@@ -74,7 +74,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Statistiques */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Catégories"
           value={stats?.categoriesCount || 0}
@@ -86,6 +86,12 @@ export default function DashboardPage() {
           value={stats?.objectsCount || 0}
           icon={<Package className="w-6 h-6" />}
           color="green"
+        />
+        <StatCard
+          title="Valeur du parc"
+          value={`${(stats?.totalValue || 0).toLocaleString('fr-FR')} €`}
+          icon={<Euro className="w-6 h-6" />}
+          color="emerald"
         />
         <StatCard
           title="Alertes actives"
