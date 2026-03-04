@@ -7,11 +7,15 @@ import {
   LoadingInline, Alert, TextArea, ImageUpload 
 } from '@/components/ui'
 import api, { Category } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth.store'
 import toast from 'react-hot-toast'
 
 export default function CategoriesPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor'
+  const isAdmin = user?.role === 'admin'
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingCategory, setEditingCategory] = useState<Category | null>(null)
@@ -104,9 +108,11 @@ export default function CategoriesPage() {
           <h1 className="text-2xl font-bold text-gray-900">Catégories</h1>
           <p className="text-gray-500 mt-1">Gérez les catégories de matériels</p>
         </div>
+        {isSupervisor && (
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
           Nouvelle catégorie
         </Button>
+        )}
       </div>
 
       {/* Recherche */}
@@ -157,7 +163,8 @@ export default function CategoriesPage() {
                 onClick={() => navigate(`/categories/${category.slug}`)}
               />
               
-              {/* Actions au survol */}
+              {/* Actions au survol - superviseurs et admins uniquement */}
+              {isSupervisor && (
               <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => {
@@ -168,6 +175,7 @@ export default function CategoriesPage() {
                 >
                   <Edit2 className="w-4 h-4 text-gray-600" />
                 </button>
+                {isAdmin && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -177,7 +185,9 @@ export default function CategoriesPage() {
                 >
                   <Trash2 className="w-4 h-4 text-red-600" />
                 </button>
+                )}
               </div>
+              )}
             </div>
           ))}
         </div>

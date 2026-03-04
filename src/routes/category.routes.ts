@@ -101,20 +101,24 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       );
     }
 
-    // Compter les objets par catégorie
-    for (const cat of categories) {
-      const countResult = await db.queryOne(
-        'SELECT COUNT(*) as count FROM objects WHERE category_id = ?',
-        [cat.id]
-      );
-      cat.objectCount = countResult?.count || 0;
+    // Compter les objets et sous-catégories en une seule requête
+    const catIds = categories.map((c: any) => c.id);
+    let objectCounts: Map<number, number> = new Map();
+    let subcategoryCounts: Map<number, number> = new Map();
 
-      // Compter les sous-catégories
-      const subCountResult = await db.queryOne(
-        'SELECT COUNT(*) as count FROM subcategories WHERE category_id = ?',
-        [cat.id]
+    if (catIds.length > 0) {
+      const placeholders = catIds.map(() => '?').join(',');
+      const objResults = await db.query(
+        `SELECT category_id, COUNT(*) as count FROM objects WHERE category_id IN (${placeholders}) GROUP BY category_id`,
+        catIds
       );
-      cat.subcategoryCount = subCountResult?.count || 0;
+      objResults.forEach((r: any) => objectCounts.set(r.category_id, r.count));
+
+      const subResults = await db.query(
+        `SELECT category_id, COUNT(*) as count FROM subcategories WHERE category_id IN (${placeholders}) GROUP BY category_id`,
+        catIds
+      );
+      subResults.forEach((r: any) => subcategoryCounts.set(r.category_id, r.count));
     }
 
     res.json({
@@ -124,10 +128,11 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         name: c.name,
         slug: c.slug,
         image: c.image,
+        description: c.description || null,
         hasSubcategories: !!c.has_subcategories,
         sortOrder: c.sort_order,
-        objectCount: c.objectCount,
-        subcategoryCount: c.subcategoryCount,
+        objectCount: objectCounts.get(c.id) || 0,
+        subcategoryCount: subcategoryCounts.get(c.id) || 0,
         createdAt: c.created_at,
         updatedAt: c.updated_at
       }))
@@ -178,6 +183,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         name: category.name,
         slug: category.slug,
         image: category.image,
+        description: category.description || null,
         hasSubcategories: !!category.has_subcategories,
         sortOrder: category.sort_order,
         createdAt: category.created_at,
@@ -213,7 +219,7 @@ router.post('/', authenticateToken, requireSupervisor, [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { name, image, hasSubcategories } = req.body;
+    const { name, image, description, hasSubcategories } = req.body;
     const slug = slugify(name);
 
     // Vérifier l'unicité du slug
@@ -236,8 +242,8 @@ router.post('/', authenticateToken, requireSupervisor, [
     const sortOrder = (lastOrder?.maxOrder || 0) + 1;
 
     const result = await db.execute(
-      'INSERT INTO categories (name, slug, image, has_subcategories, sort_order) VALUES (?, ?, ?, ?, ?)',
-      [name, slug, finalImage, hasSubcategories ? 1 : 0, sortOrder]
+      'INSERT INTO categories (name, slug, description, image, has_subcategories, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
+      [name, slug, description || null, finalImage, hasSubcategories ? 1 : 0, sortOrder]
     );
 
     res.status(201).json({
@@ -247,6 +253,7 @@ router.post('/', authenticateToken, requireSupervisor, [
         id: result.lastInsertRowid,
         name,
         slug,
+        description: description || null,
         image: finalImage,
         hasSubcategories: !!hasSubcategories,
         sortOrder
@@ -262,7 +269,7 @@ router.post('/', authenticateToken, requireSupervisor, [
 router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, image, hasSubcategories, sortOrder } = req.body;
+    const { name, image, description, hasSubcategories, sortOrder } = req.body;
 
     // Vérifier que la catégorie existe
     const category = await db.queryOne('SELECT * FROM categories WHERE id = ?', [id]);
@@ -284,6 +291,11 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       values.push(name, newSlug);
     }
 
+    if (description !== undefined) {
+      updateFields.push('description = ?');
+      values.push(description || null);
+    }
+
     if (image !== undefined) {
       updateFields.push('image = ?');
       values.push(image);
@@ -299,7 +311,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       values.push(sortOrder);
     }
 
-    updateFields.push("updated_at = datetime('now')");
+    updateFields.push('updated_at = ?');
+    values.push(new Date().toISOString());
     values.push(id);
 
     await db.execute(
@@ -345,18 +358,30 @@ router.get('/:categoryId/subcategories', authenticateToken, async (req: AuthRequ
       return res.status(403).json({ success: false, message: 'Accès refusé à cette catégorie' });
     }
 
-    const subcategories = await db.query(
-      'SELECT * FROM subcategories WHERE category_id = ? ORDER BY sort_order, name',
-      [categoryId]
-    );
-
-    // Compter les objets par sous-catégorie
-    for (const sub of subcategories) {
-      const countResult = await db.queryOne(
-        'SELECT COUNT(*) as count FROM objects WHERE subcategory_id = ?',
-        [sub.id]
+    const { search } = req.query;
+    let subcategories;
+    if (search) {
+      subcategories = await db.query(
+        'SELECT * FROM subcategories WHERE category_id = ? AND name LIKE ? ORDER BY sort_order, name',
+        [categoryId, `%${search}%`]
       );
-      sub.objectCount = countResult?.count || 0;
+    } else {
+      subcategories = await db.query(
+        'SELECT * FROM subcategories WHERE category_id = ? ORDER BY sort_order, name',
+        [categoryId]
+      );
+    }
+
+    // Compter les objets par sous-catégorie en une seule requête
+    const subIds = subcategories.map((s: any) => s.id);
+    const objectCounts: Map<number, number> = new Map();
+    if (subIds.length > 0) {
+      const placeholders = subIds.map(() => '?').join(',');
+      const countResults = await db.query(
+        `SELECT subcategory_id, COUNT(*) as count FROM objects WHERE subcategory_id IN (${placeholders}) GROUP BY subcategory_id`,
+        subIds
+      );
+      countResults.forEach((r: any) => objectCounts.set(r.subcategory_id, r.count));
     }
 
     res.json({
@@ -368,7 +393,7 @@ router.get('/:categoryId/subcategories', authenticateToken, async (req: AuthRequ
         slug: s.slug,
         image: s.image,
         sortOrder: s.sort_order,
-        objectCount: s.objectCount,
+        objectCount: objectCounts.get(s.id) || 0,
         createdAt: s.created_at,
         updatedAt: s.updated_at
       }))
@@ -490,7 +515,8 @@ router.put('/:categoryId/subcategories/:id', authenticateToken, requireSuperviso
       values.push(sortOrder);
     }
 
-    updateFields.push("updated_at = datetime('now')");
+    updateFields.push('updated_at = ?');
+    values.push(new Date().toISOString());
     values.push(id);
 
     await db.execute(
@@ -646,7 +672,8 @@ subcategoryRouter.put('/:id', authenticateToken, requireSupervisor, async (req: 
       return res.status(400).json({ success: false, message: 'Aucune donnée à mettre à jour' });
     }
 
-    updates.push("updated_at = datetime('now')");
+    updates.push('updated_at = ?');
+    params.push(new Date().toISOString());
     params.push(id);
 
     await db.execute(

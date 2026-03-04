@@ -10,19 +10,22 @@ import {
   LoadingInline, Alert, TextArea, Card, CardBody, ImageUpload
 } from '@/components/ui'
 import api, { Category, Subcategory, Object as ObjectType } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth.store'
 import toast from 'react-hot-toast'
 
 export default function CategoryDetailPage() {
   const { categorySlug: slug } = useParams<{ categorySlug: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const { user } = useAuthStore()
+  const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor'
+  const isAdmin = user?.role === 'admin'
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSubcategory, setEditingSubcategory] = useState<Subcategory | null>(null)
   const [editingObject, setEditingObject] = useState<ObjectType | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    description: '',
     image: ''
   })
   const [objectFormData, setObjectFormData] = useState({
@@ -31,7 +34,7 @@ export default function CategoryDetailPage() {
     image: '',
     reference: '',
     serialNumber: '',
-    status: 'active',
+    status: 'available',
     location: ''
   })
   const [deleteConfirm, setDeleteConfirm] = useState<Subcategory | null>(null)
@@ -174,12 +177,11 @@ export default function CategoryDetailPage() {
       setEditingSubcategory(subcategory)
       setFormData({
         name: subcategory.name,
-        description: subcategory.description || '',
         image: subcategory.image || ''
       })
     } else {
       setEditingSubcategory(null)
-      setFormData({ name: '', description: '', image: '' })
+      setFormData({ name: '', image: '' })
     }
     setIsModalOpen(true)
   }
@@ -187,7 +189,7 @@ export default function CategoryDetailPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingSubcategory(null)
-    setFormData({ name: '', description: '', image: '' })
+    setFormData({ name: '', image: '' })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -205,7 +207,7 @@ export default function CategoryDetailPage() {
         image: object.image || '',
         reference: object.reference || '',
         serialNumber: object.serialNumber || '',
-        status: object.status || 'active',
+        status: object.status || 'available',
         location: object.location || ''
       })
     } else {
@@ -216,7 +218,7 @@ export default function CategoryDetailPage() {
         image: '',
         reference: '',
         serialNumber: '',
-        status: 'active',
+        status: 'available',
         location: ''
       })
     }
@@ -232,7 +234,7 @@ export default function CategoryDetailPage() {
       image: '',
       reference: '',
       serialNumber: '',
-      status: 'active',
+      status: 'available',
       location: ''
     })
   }
@@ -335,9 +337,11 @@ export default function CategoryDetailPage() {
                     <Settings2 className="w-4 h-4 mr-1" />
                     <span className="hidden sm:inline">Champs</span>
                   </Button>
+                  {isSupervisor && (
                   <Button variant="outline" size="sm" onClick={handleCategoryEdit}>
                     <Edit2 className="w-4 h-4" />
                   </Button>
+                  )}
                 </div>
               </div>
             </div>
@@ -355,6 +359,8 @@ export default function CategoryDetailPage() {
             icon={<Search className="w-5 h-5" />}
           />
         </div>
+        {isSupervisor && (
+        <>
         {category.hasSubcategories ? (
           <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
             Nouvelle sous-catégorie
@@ -363,6 +369,8 @@ export default function CategoryDetailPage() {
           <Button icon={<Plus className="w-4 h-4" />} onClick={() => openObjectModal()}>
             Nouveau matériel
           </Button>
+        )}
+        </>
         )}
       </div>
 
@@ -400,7 +408,8 @@ export default function CategoryDetailPage() {
                 onClick={() => navigate(`/categories/${slug}/${subcategory.slug}`)}
               />
               
-              {/* Actions au survol */}
+              {/* Actions au survol - superviseurs et admins uniquement */}
+              {isSupervisor && (
               <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button
                   onClick={(e) => {
@@ -411,6 +420,7 @@ export default function CategoryDetailPage() {
                 >
                   <Edit2 className="w-4 h-4 text-gray-600" />
                 </button>
+                {isAdmin && (
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
@@ -420,7 +430,9 @@ export default function CategoryDetailPage() {
                 >
                   <Trash2 className="w-4 h-4 text-red-600" />
                 </button>
+                )}
               </div>
+              )}
             </div>
           ))}
         </div>
@@ -459,7 +471,8 @@ export default function CategoryDetailPage() {
                     onClick={() => navigate(`/objects/${object.id}`)}
                   />
                   
-                  {/* Actions au survol */}
+                  {/* Actions au survol - superviseurs et admins uniquement */}
+                  {isSupervisor && (
                   <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button
                       onClick={(e) => {
@@ -470,6 +483,7 @@ export default function CategoryDetailPage() {
                     >
                       <Edit2 className="w-4 h-4 text-gray-600" />
                     </button>
+                    {isAdmin && (
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
@@ -479,7 +493,9 @@ export default function CategoryDetailPage() {
                     >
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </button>
+                    )}
                   </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -502,14 +518,6 @@ export default function CategoryDetailPage() {
               placeholder="Ex: Utilitaires"
               required
               autoFocus
-            />
-
-            <TextArea
-              label="Description"
-              value={formData.description}
-              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-              placeholder="Description de la sous-catégorie..."
-              rows={3}
             />
 
             <ImageUpload

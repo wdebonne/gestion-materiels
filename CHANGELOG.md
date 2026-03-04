@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.54] - 2026-03-04
+
+### Corrigé
+- **[CRITIQUE] Performance — Requêtes N+1 sur la liste des catégories** : `GET /api/categories` exécutait 2 requêtes par catégorie (comptage objets + sous-catégories) dans une boucle — remplacé par 2 requêtes `GROUP BY` avec Maps pour un chargement O(1)
+- **[CRITIQUE] Performance — Requêtes N+1 sur les sous-catégories** : `GET /api/categories/:id/subcategories` exécutait une requête de comptage par sous-catégorie — remplacé par une seule requête `GROUP BY subcategory_id`
+- **[HAUTE] Boutons édition/suppression visibles pour les simples utilisateurs** : Sur `CategoriesPage` et `CategoryDetailPage`, les boutons Modifier/Supprimer et les boutons de création étaient affichés pour tous les rôles alors que le backend exige `requireSupervisor` (PUT) et `requireAdmin` (DELETE) — masqués selon le rôle utilisateur
+- **[HAUTE] Champ `description` absent du schéma DB** : Le frontend envoyait un champ `description` pour les catégories mais la colonne n'existait pas en base — ajout de la colonne `description TEXT` dans la table `categories` et support complet (POST, PUT, GET)
+- **[MOYENNE] Statut par défaut incorrect pour les objets** : Le formulaire de création d'objet utilisait `'active'` comme statut par défaut alors que les options du select commencent par `'available'` — corrigé
+- **[MOYENNE] Recherche non implémentée pour les sous-catégories** : Le frontend envoyait `?search=...` sur `GET /api/categories/:id/subcategories` mais le backend ignorait le paramètre — ajout du filtre `name LIKE ?`
+- **[BASSE] SQL spécifique SQLite `datetime('now')`** : Remplacé dans les 3 routes PUT (catégorie, sous-catégorie imbriquée, sous-catégorie indépendante) par `new Date().toISOString()` compatible SQLite et MySQL
+- **[BASSE] Formulaire sous-catégorie avec champ description inutile** : Le modal de création/édition de sous-catégorie contenait un champ `description` non supporté par la table `subcategories` — supprimé du formulaire
+
 ## [1.2.53] - 2026-03-04
 
 ### Corrigé

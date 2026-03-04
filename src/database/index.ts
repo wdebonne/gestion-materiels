@@ -243,6 +243,7 @@ class DatabaseManager {
         id INTEGER PRIMARY KEY ${autoIncrement},
         name VARCHAR(255) NOT NULL,
         slug VARCHAR(255) UNIQUE NOT NULL,
+        description TEXT,
         image VARCHAR(500),
         has_subcategories ${boolType} DEFAULT 0,
         sort_order INTEGER DEFAULT 0,
