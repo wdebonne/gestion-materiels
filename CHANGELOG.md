@@ -7,6 +7,19 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.52] - 2026-03-04
+
+### Corrigé
+- **[CRITIQUE] Sécurité — Filtrage par catégorie sur le module Suivi des coûts** : Les endpoints `/tracking/data`, `/tracking/charts`, `/tracking/yearly-comparison` et `/tracking/filters` exposaient les données de toutes les catégories. Les utilisateurs non-admin ne voient désormais que les données des catégories auxquelles ils ont accès
+- **[HAUTE] Requête costByCategory sans filtre objet** : Le graphique "Coûts par catégorie" ignorait les filtres catégorie/objet sélectionnés par l'utilisateur — corrigé en appliquant `objectCondition` à la requête
+- **[MOYENNE] percentageChange retournait une chaîne au lieu d'un nombre** : Les cartes statistiques n'affichaient pas correctement le pourcentage d'évolution (sans signe `+` ni symbole `%`) — corrigé en retournant un `number` depuis le backend
+- **[BASSE] Requête de comparaison inutile en mode annuel/mensuel** : Le endpoint `/data` recevait `compareStartDate`/`compareEndDate` même en mode de comparaison annuelle/mensuelle, déclenchant une requête de comparaison inutile — corrigé côté frontend
+
+### Amélioré
+- **Performance — Comparaison annuelle optimisée** : L'endpoint `/yearly-comparison` exécutait 72 requêtes séquentielles (12 mois × 3 types × 2 années). Remplacé par 6 requêtes groupées par mois avec `GROUP BY` et exécutées en parallèle via `Promise.all`
+- **UX — État vide** : Ajout d'un message informatif lorsqu'aucune donnée de suivi n'existe pour la période et les filtres sélectionnés
+- **Code — Nettoyage** : Suppression de 3 appels `objectCondition.replace(/o\./g, 'o.')` qui étaient des no-op (remplaçaient `o.` par `o.`)
+
 ## [1.2.51] - 2026-03-04
 
 ### Amélioré

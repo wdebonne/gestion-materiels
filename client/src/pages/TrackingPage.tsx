@@ -733,7 +733,7 @@ export default function TrackingPage() {
     if (filters.objectIds.length) params.objectIds = filters.objectIds.join(',')
     if (filters.maintenanceTypes.length) params.maintenanceTypes = filters.maintenanceTypes.join(',')
     if (filters.fuelTypes.length) params.fuelTypes = filters.fuelTypes.join(',')
-    if (filters.compareEnabled) {
+    if (filters.compareEnabled && filters.compareMode === 'period') {
       params.compareStartDate = filters.compareStartDate
       params.compareEndDate = filters.compareEndDate
     }
@@ -1209,7 +1209,19 @@ export default function TrackingPage() {
       )}
 
       {/* Contenu */}
-      {!loadingData && !loadingCharts && (
+      {!loadingData && !loadingCharts && summary.totalCost === 0 && !trackingData?.fuel?.length && !trackingData?.maintenance?.length && !trackingData?.technicalControl?.length && (
+        <Card>
+          <CardBody className="py-16 text-center">
+            <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold text-gray-600 mb-2">Aucune donnée pour cette période</h3>
+            <p className="text-sm text-gray-400 max-w-md mx-auto">
+              Modifiez les dates ou les filtres pour afficher des données de suivi. Vérifiez que des entrées de carburant, d'entretien ou de contrôle technique existent pour la période sélectionnée.
+            </p>
+          </CardBody>
+        </Card>
+      )}
+
+      {!loadingData && !loadingCharts && (summary.totalCost > 0 || trackingData?.fuel?.length || trackingData?.maintenance?.length || trackingData?.technicalControl?.length) && (
         <>
           {/* Cartes statistiques */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

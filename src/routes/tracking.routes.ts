@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { db } from '../database';
-import { authenticateToken, AuthRequest } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, getAccessibleCategoryIds } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
 
 const router = Router();
@@ -88,6 +88,9 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
       comparison: null,
     };
 
+    // Filtrage par catégories accessibles (sécurité)
+    const accessibleCategoryIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+
     // Construction des conditions WHERE communes
     let objectCondition = '';
     const objectParams: any[] = [];
@@ -101,6 +104,15 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
     } else if (filters.categoryIds?.length) {
       objectCondition = ` AND o.category_id IN (${filters.categoryIds.map(() => '?').join(',')})`;
       objectParams.push(...filters.categoryIds);
+    }
+
+    // Restreindre aux catégories accessibles si l'utilisateur n'est pas admin
+    if (accessibleCategoryIds !== null) {
+      if (accessibleCategoryIds.length === 0) {
+        return res.json({ success: true, ...result });
+      }
+      objectCondition += ` AND o.category_id IN (${accessibleCategoryIds.map(() => '?').join(',')})`;
+      objectParams.push(...accessibleCategoryIds);
     }
 
     // Récupérer les données de carburant
@@ -130,7 +142,7 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
         fuelParams.push(...filters.fuelTypes);
       }
       
-      fuelQuery += objectCondition.replace(/o\./g, 'o.');
+      fuelQuery += objectCondition;
       fuelParams.push(...objectParams);
       
       fuelQuery += ' ORDER BY f.entry_date DESC';
@@ -189,7 +201,7 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
         maintenanceParams.push(...filters.maintenanceTypes);
       }
 
-      maintenanceQuery += objectCondition.replace(/o\./g, 'o.');
+      maintenanceQuery += objectCondition;
       maintenanceParams.push(...objectParams);
       
       maintenanceQuery += ' ORDER BY m.maintenance_date DESC';
@@ -244,7 +256,7 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
         controlParams.push(filters.endDate);
       }
 
-      controlQuery += objectCondition.replace(/o\./g, 'o.');
+      controlQuery += objectCondition;
       controlParams.push(...objectParams);
       
       controlQuery += ' ORDER BY tc.control_date DESC';
@@ -373,13 +385,13 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
         },
         percentageChange: {
           totalFuelCost: compareResult.summary.totalFuelCost ? 
-            ((result.summary.totalFuelCost - compareResult.summary.totalFuelCost) / compareResult.summary.totalFuelCost * 100).toFixed(1) : null,
+            parseFloat(((result.summary.totalFuelCost - compareResult.summary.totalFuelCost) / compareResult.summary.totalFuelCost * 100).toFixed(1)) : null,
           totalMaintenanceCost: compareResult.summary.totalMaintenanceCost ?
-            ((result.summary.totalMaintenanceCost - compareResult.summary.totalMaintenanceCost) / compareResult.summary.totalMaintenanceCost * 100).toFixed(1) : null,
+            parseFloat(((result.summary.totalMaintenanceCost - compareResult.summary.totalMaintenanceCost) / compareResult.summary.totalMaintenanceCost * 100).toFixed(1)) : null,
           totalControlCost: compareResult.summary.totalControlCost ?
-            ((result.summary.totalControlCost - compareResult.summary.totalControlCost) / compareResult.summary.totalControlCost * 100).toFixed(1) : null,
+            parseFloat(((result.summary.totalControlCost - compareResult.summary.totalControlCost) / compareResult.summary.totalControlCost * 100).toFixed(1)) : null,
           totalCost: compareResult.summary.totalCost ?
-            ((result.summary.totalCost - compareResult.summary.totalCost) / compareResult.summary.totalCost * 100).toFixed(1) : null,
+            parseFloat(((result.summary.totalCost - compareResult.summary.totalCost) / compareResult.summary.totalCost * 100).toFixed(1)) : null,
         }
       };
     }
@@ -398,6 +410,9 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
     
     const types = dataTypes ? (dataTypes as string).split(',') : ['fuel', 'maintenance', 'technical_control'];
     
+    // Filtrage par catégories accessibles (sécurité)
+    const accessibleCategoryIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+
     // Construction des conditions WHERE communes
     let objectCondition = '';
     const objectParams: any[] = [];
@@ -414,6 +429,15 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
       const ids = (categoryIds as string).split(',').map(Number);
       objectCondition = ` AND o.category_id IN (${ids.map(() => '?').join(',')})`;
       objectParams.push(...ids);
+    }
+
+    // Restreindre aux catégories accessibles si l'utilisateur n'est pas admin
+    if (accessibleCategoryIds !== null) {
+      if (accessibleCategoryIds.length === 0) {
+        return res.json({ success: true, fuelByPeriod: [], maintenanceByPeriod: [], controlByPeriod: [], fuelByType: [], maintenanceByType: [], costByCategory: [], costByObject: [], costByPeriod: [] });
+      }
+      objectCondition += ` AND o.category_id IN (${accessibleCategoryIds.map(() => '?').join(',')})`;
+      objectParams.push(...accessibleCategoryIds);
     }
 
     const dateFormat = db.getType() === 'sqlite' 
@@ -599,7 +623,7 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
              COALESCE(SUM(m.total), 0) as maintenance_cost,
              COALESCE(SUM(tc.total), 0) as control_cost
       FROM categories c
-      LEFT JOIN objects o ON o.category_id = c.id
+      LEFT JOIN objects o ON o.category_id = c.id${objectCondition}
       LEFT JOIN (
         SELECT object_id, SUM(CAST(total_price AS DECIMAL(10,2))) as total
         FROM fuel_entries
@@ -622,7 +646,7 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
       HAVING (COALESCE(SUM(f.total), 0) + COALESCE(SUM(m.total), 0) + COALESCE(SUM(tc.total), 0)) > 0
       ORDER BY (COALESCE(SUM(f.total), 0) + COALESCE(SUM(m.total), 0) + COALESCE(SUM(tc.total), 0)) DESC
     `;
-    const costByCategoryParams: any[] = [];
+    const costByCategoryParams: any[] = [...objectParams];
     if (startDate) costByCategoryParams.push(startDate);
     if (endDate) costByCategoryParams.push(endDate);
     if (startDate) costByCategoryParams.push(startDate);
@@ -722,25 +746,50 @@ router.get('/charts', authenticateToken, checkTrackingPermission, async (req: Au
 // GET /api/tracking/filters - Récupérer les options de filtrage
 router.get('/filters', authenticateToken, checkTrackingPermission, async (req: AuthRequest, res: Response) => {
   try {
+    // Filtrage par catégories accessibles (sécurité)
+    const accessibleCategoryIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+
+    let categoryCondition = '';
+    const categoryParams: any[] = [];
+    if (accessibleCategoryIds !== null) {
+      if (accessibleCategoryIds.length === 0) {
+        return res.json({ success: true, categories: [], subcategories: [], objects: [], fuelTypes: [], maintenanceTypes: [] });
+      }
+      categoryCondition = ` WHERE id IN (${accessibleCategoryIds.map(() => '?').join(',')})`;
+      categoryParams.push(...accessibleCategoryIds);
+    }
+
     // Catégories
     const categories = await db.query(
-      `SELECT id, name, slug, image FROM categories ORDER BY sort_order, name`
+      `SELECT id, name, slug, image FROM categories${categoryCondition} ORDER BY sort_order, name`,
+      categoryParams
     );
 
-    // Sous-catégories
-    const subcategories = await db.query(
-      `SELECT id, category_id, name, slug, image FROM subcategories ORDER BY sort_order, name`
-    );
+    const catIds = categories.map((c: any) => c.id);
 
-    // Objets
-    const objects = await db.query(
-      `SELECT o.id, o.name, o.reference, o.image, o.category_id, o.subcategory_id,
+    // Sous-catégories (filtrées par catégories accessibles)
+    let subcategoryQuery = `SELECT id, category_id, name, slug, image FROM subcategories`;
+    const subcatParams: any[] = [];
+    if (catIds.length > 0 && accessibleCategoryIds !== null) {
+      subcategoryQuery += ` WHERE category_id IN (${catIds.map(() => '?').join(',')})`;
+      subcatParams.push(...catIds);
+    }
+    subcategoryQuery += ` ORDER BY sort_order, name`;
+    const subcategories = await db.query(subcategoryQuery, subcatParams);
+
+    // Objets (filtrés par catégories accessibles)
+    let objectQuery = `SELECT o.id, o.name, o.reference, o.image, o.category_id, o.subcategory_id,
               c.name as category_name, s.name as subcategory_name
        FROM objects o
        LEFT JOIN categories c ON c.id = o.category_id
-       LEFT JOIN subcategories s ON s.id = o.subcategory_id
-       ORDER BY o.name`
-    );
+       LEFT JOIN subcategories s ON s.id = o.subcategory_id`;
+    const objectParams: any[] = [];
+    if (accessibleCategoryIds !== null) {
+      objectQuery += ` WHERE o.category_id IN (${catIds.map(() => '?').join(',')})`;
+      objectParams.push(...catIds);
+    }
+    objectQuery += ` ORDER BY o.name`;
+    const objects = await db.query(objectQuery, objectParams);
 
     // Types de carburant distincts
     const fuelTypes = await db.query(
@@ -845,6 +894,9 @@ router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, asy
     const types = dataTypes ? (dataTypes as string).split(',') : ['fuel', 'maintenance', 'technical_control'];
     const isMonthlyComparison = m1 !== null && m2 !== null;
 
+    // Filtrage par catégories accessibles (sécurité)
+    const accessibleCategoryIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+
     // Construction des conditions de filtre d'objet
     let objectCondition = '';
     const objectParams: any[] = [];
@@ -861,6 +913,15 @@ router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, asy
       const ids = (categoryIds as string).split(',').map(Number);
       objectCondition = ` AND o.category_id IN (${ids.map(() => '?').join(',')})`;
       objectParams.push(...ids);
+    }
+
+    // Restreindre aux catégories accessibles si l'utilisateur n'est pas admin
+    if (accessibleCategoryIds !== null) {
+      if (accessibleCategoryIds.length === 0) {
+        return res.json({ success: true, year1: y1, year2: y2, mode: isMonthlyComparison ? 'monthly' : 'yearly', monthly: { year1: [], year2: [] }, summary: { year1: { total: 0, fuel: 0, maintenance: 0, control: 0 }, year2: { total: 0, fuel: 0, maintenance: 0, control: 0 } }, difference: { total: 0, fuel: 0, maintenance: 0, control: 0, percentage: 0 } });
+      }
+      objectCondition += ` AND o.category_id IN (${accessibleCategoryIds.map(() => '?').join(',')})`;
+      objectParams.push(...accessibleCategoryIds);
     }
 
     // Données mensuelles pour chaque année
@@ -882,47 +943,27 @@ router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, asy
       }
     };
 
-    // Fonction pour récupérer les données d'un mois spécifique
+    // Fonction pour récupérer les données d'un mois spécifique (utilisé pour la comparaison mensuelle uniquement)
     const getMonthData = async (year: number, month: number) => {
       const startDate = `${year}-${month.toString().padStart(2, '0')}-01`;
       const endDate = new Date(year, month, 0).toISOString().split('T')[0];
       
-      let fuelCost = 0;
-      let maintenanceCost = 0;
-      let controlCost = 0;
+      // Exécuter les 3 requêtes en parallèle
+      const [fuelResult, maintenanceResult, controlResult] = await Promise.all([
+        types.includes('fuel') 
+          ? db.queryOne(`SELECT COALESCE(SUM(CAST(f.total_price AS DECIMAL(10,2))), 0) as total FROM fuel_entries f JOIN objects o ON o.id = f.object_id WHERE f.entry_date >= ? AND f.entry_date <= ?${objectCondition}`, [startDate, endDate, ...objectParams])
+          : Promise.resolve(null),
+        types.includes('maintenance')
+          ? db.queryOne(`SELECT COALESCE(SUM(CAST(m.cost AS DECIMAL(10,2))), 0) as total FROM maintenances m JOIN objects o ON o.id = m.object_id WHERE m.maintenance_date >= ? AND m.maintenance_date <= ?${objectCondition}`, [startDate, endDate, ...objectParams])
+          : Promise.resolve(null),
+        types.includes('technical_control')
+          ? db.queryOne(`SELECT COALESCE(SUM(CAST(tc.cost AS DECIMAL(10,2))), 0) as total FROM technical_controls tc JOIN objects o ON o.id = tc.object_id WHERE tc.control_date >= ? AND tc.control_date <= ?${objectCondition}`, [startDate, endDate, ...objectParams])
+          : Promise.resolve(null),
+      ]);
 
-      if (types.includes('fuel')) {
-        const fuelQuery = `
-          SELECT COALESCE(SUM(CAST(f.total_price AS DECIMAL(10,2))), 0) as total
-          FROM fuel_entries f
-          JOIN objects o ON o.id = f.object_id
-          WHERE f.entry_date >= ? AND f.entry_date <= ?${objectCondition}
-        `;
-        const fuelResult = await db.queryOne(fuelQuery, [startDate, endDate, ...objectParams]);
-        fuelCost = parseFloat(fuelResult?.total) || 0;
-      }
-
-      if (types.includes('maintenance')) {
-        const maintenanceQuery = `
-          SELECT COALESCE(SUM(CAST(m.cost AS DECIMAL(10,2))), 0) as total
-          FROM maintenances m
-          JOIN objects o ON o.id = m.object_id
-          WHERE m.maintenance_date >= ? AND m.maintenance_date <= ?${objectCondition}
-        `;
-        const maintenanceResult = await db.queryOne(maintenanceQuery, [startDate, endDate, ...objectParams]);
-        maintenanceCost = parseFloat(maintenanceResult?.total) || 0;
-      }
-
-      if (types.includes('technical_control')) {
-        const controlQuery = `
-          SELECT COALESCE(SUM(CAST(tc.cost AS DECIMAL(10,2))), 0) as total
-          FROM technical_controls tc
-          JOIN objects o ON o.id = tc.object_id
-          WHERE tc.control_date >= ? AND tc.control_date <= ?${objectCondition}
-        `;
-        const controlResult = await db.queryOne(controlQuery, [startDate, endDate, ...objectParams]);
-        controlCost = parseFloat(controlResult?.total) || 0;
-      }
+      const fuelCost = parseFloat(fuelResult?.total) || 0;
+      const maintenanceCost = parseFloat(maintenanceResult?.total) || 0;
+      const controlCost = parseFloat(controlResult?.total) || 0;
 
       return {
         fuel: fuelCost,
@@ -934,8 +975,10 @@ router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, asy
 
     // Mode comparaison mensuelle
     if (isMonthlyComparison) {
-      const data1 = await getMonthData(y1, m1!);
-      const data2 = await getMonthData(y2, m2!);
+      const [data1, data2] = await Promise.all([
+        getMonthData(y1, m1!),
+        getMonthData(y2, m2!)
+      ]);
 
       result.summary.year1 = data1;
       result.summary.year2 = data2;
@@ -961,43 +1004,69 @@ router.get('/yearly-comparison', authenticateToken, checkTrackingPermission, asy
       });
     }
 
-    // Mode comparaison annuelle - Fonction pour récupérer les données mensuelles d'une année
+    // Mode comparaison annuelle — requêtes groupées par mois (6 requêtes au lieu de 72)
+    const monthFormat = db.getType() === 'sqlite' ? "CAST(strftime('%m', %s) AS INTEGER)" : "MONTH(%s)";
+
     const getYearlyData = async (year: number) => {
+      const startDate = `${year}-01-01`;
+      const endDate = `${year}-12-31`;
+
+      const [fuelData, maintenanceData, controlData] = await Promise.all([
+        types.includes('fuel')
+          ? db.query(
+              `SELECT ${monthFormat.replace('%s', 'f.entry_date')} as month, COALESCE(SUM(CAST(f.total_price AS DECIMAL(10,2))), 0) as total
+               FROM fuel_entries f JOIN objects o ON o.id = f.object_id
+               WHERE f.entry_date >= ? AND f.entry_date <= ?${objectCondition}
+               GROUP BY month ORDER BY month`,
+              [startDate, endDate, ...objectParams]
+            )
+          : Promise.resolve([]),
+        types.includes('maintenance')
+          ? db.query(
+              `SELECT ${monthFormat.replace('%s', 'm.maintenance_date')} as month, COALESCE(SUM(CAST(m.cost AS DECIMAL(10,2))), 0) as total
+               FROM maintenances m JOIN objects o ON o.id = m.object_id
+               WHERE m.maintenance_date >= ? AND m.maintenance_date <= ?${objectCondition}
+               GROUP BY month ORDER BY month`,
+              [startDate, endDate, ...objectParams]
+            )
+          : Promise.resolve([]),
+        types.includes('technical_control')
+          ? db.query(
+              `SELECT ${monthFormat.replace('%s', 'tc.control_date')} as month, COALESCE(SUM(CAST(tc.cost AS DECIMAL(10,2))), 0) as total
+               FROM technical_controls tc JOIN objects o ON o.id = tc.object_id
+               WHERE tc.control_date >= ? AND tc.control_date <= ?${objectCondition}
+               GROUP BY month ORDER BY month`,
+              [startDate, endDate, ...objectParams]
+            )
+          : Promise.resolve([]),
+      ]);
+
+      // Construire une map par mois
+      const fuelMap = new Map(fuelData.map((r: any) => [r.month, parseFloat(r.total) || 0]));
+      const maintenanceMap = new Map(maintenanceData.map((r: any) => [r.month, parseFloat(r.total) || 0]));
+      const controlMap = new Map(controlData.map((r: any) => [r.month, parseFloat(r.total) || 0]));
+
       const monthlyData: any[] = [];
-      let totalFuel = 0;
-      let totalMaintenance = 0;
-      let totalControl = 0;
+      let totalFuel = 0, totalMaintenance = 0, totalControl = 0;
 
       for (let month = 1; month <= 12; month++) {
-        const data = await getMonthData(year, month);
-        
-        totalFuel += data.fuel;
-        totalMaintenance += data.maintenance;
-        totalControl += data.control;
-
-        monthlyData.push({
-          month,
-          fuel: data.fuel,
-          maintenance: data.maintenance,
-          control: data.control,
-          total: data.total
-        });
+        const fuel = fuelMap.get(month) || 0;
+        const maintenance = maintenanceMap.get(month) || 0;
+        const control = controlMap.get(month) || 0;
+        totalFuel += fuel;
+        totalMaintenance += maintenance;
+        totalControl += control;
+        monthlyData.push({ month, fuel, maintenance, control, total: fuel + maintenance + control });
       }
 
       return {
         monthly: monthlyData,
-        totals: {
-          fuel: totalFuel,
-          maintenance: totalMaintenance,
-          control: totalControl,
-          total: totalFuel + totalMaintenance + totalControl
-        }
+        totals: { fuel: totalFuel, maintenance: totalMaintenance, control: totalControl, total: totalFuel + totalMaintenance + totalControl }
       };
     };
 
-    // Récupérer les données pour les deux années
-    const data1 = await getYearlyData(y1);
-    const data2 = await getYearlyData(y2);
+    // Récupérer les données pour les deux années en parallèle
+    const [data1, data2] = await Promise.all([getYearlyData(y1), getYearlyData(y2)]);
 
     result.monthly.year1 = data1.monthly;
     result.monthly.year2 = data2.monthly;
