@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
 
 const router = Router();
@@ -260,7 +260,7 @@ router.post('/:id/test', authenticateToken, requireAdmin, async (req: AuthReques
 });
 
 // POST /api/webhooks/trigger - Déclencher tous les webhooks pour un événement (usage interne)
-router.post('/trigger', authenticateToken, async (req: AuthRequest, res: Response) => {
+router.post('/trigger', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { event, data } = req.body;
     

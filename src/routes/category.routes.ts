@@ -1,32 +1,11 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, checkCategoryAccess } from '../middleware/auth.middleware';
 import { handleUpload } from '../services/upload.service';
 import slugify from '../utils/slugify';
 
 const router = Router();
-
-// Vérifier les permissions d'accès à une catégorie
-async function checkCategoryAccess(userId: number, userRole: string, categoryId: number): Promise<boolean> {
-  if (userRole === 'admin') return true;
-  
-  // Vérifier les permissions du groupe
-  const groupPermission = await db.queryOne(
-    'SELECT can_view FROM group_permissions WHERE role = ? AND category_id = ? AND can_view = 1',
-    [userRole, categoryId]
-  );
-  
-  if (groupPermission) return true;
-  
-  // Vérifier les permissions individuelles
-  const userPermission = await db.queryOne(
-    'SELECT can_view FROM user_permissions WHERE user_id = ? AND category_id = ? AND can_view = 1',
-    [userId, categoryId]
-  );
-  
-  return !!userPermission;
-}
 
 // GET /api/categories/all - Liste de toutes les catégories (admin uniquement, pour les permissions)
 router.get('/all', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
@@ -360,6 +339,12 @@ router.get('/:categoryId/subcategories', authenticateToken, async (req: AuthRequ
   try {
     const { categoryId } = req.params;
 
+    // Vérifier que l'utilisateur a accès à cette catégorie
+    const hasAccess = await checkCategoryAccess(req.user!.userId, req.user!.role, parseInt(categoryId));
+    if (!hasAccess) {
+      return res.status(403).json({ success: false, message: 'Accès refusé à cette catégorie' });
+    }
+
     const subcategories = await db.query(
       'SELECT * FROM subcategories WHERE category_id = ? ORDER BY sort_order, name',
       [categoryId]
@@ -564,6 +549,12 @@ subcategoryRouter.get('/by-slug/:slug', authenticateToken, async (req: AuthReque
       return res.status(404).json({ success: false, message: 'Sous-catégorie non trouvée' });
     }
 
+    // Vérifier l'accès à la catégorie parente
+    const hasAccess = await checkCategoryAccess(req.user!.userId, req.user!.role, subcategory.category_id);
+    if (!hasAccess) {
+      return res.status(403).json({ success: false, message: 'Accès refusé à cette catégorie' });
+    }
+
     // Compter les objets
     const countResult = await db.queryOne(
       'SELECT COUNT(*) as count FROM objects WHERE subcategory_id = ?',
@@ -604,6 +595,12 @@ subcategoryRouter.get('/:id', authenticateToken, async (req: AuthRequest, res: R
 
     if (!subcategory) {
       return res.status(404).json({ success: false, message: 'Sous-catégorie non trouvée' });
+    }
+
+    // Vérifier l'accès à la catégorie parente
+    const hasAccessById = await checkCategoryAccess(req.user!.userId, req.user!.role, subcategory.category_id);
+    if (!hasAccessById) {
+      return res.status(403).json({ success: false, message: 'Accès refusé à cette catégorie' });
     }
 
     res.json({

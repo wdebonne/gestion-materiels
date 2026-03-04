@@ -3,7 +3,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { authenticateToken } from '../middleware/auth.middleware';
+import { authenticateToken, requireSupervisor } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -71,7 +71,7 @@ const uploadFile = multer({
 });
 
 // POST /api/upload/image - Upload une image
-router.post('/image', authenticateToken, uploadImage.single('image'), (req: Request, res: Response) => {
+router.post('/image', authenticateToken, requireSupervisor, uploadImage.single('image'), (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
@@ -95,7 +95,7 @@ router.post('/image', authenticateToken, uploadImage.single('image'), (req: Requ
 });
 
 // POST /api/upload/file - Upload un fichier (image ou PDF)
-router.post('/file', authenticateToken, uploadFile.single('file'), (req: Request, res: Response) => {
+router.post('/file', authenticateToken, requireSupervisor, uploadFile.single('file'), (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
@@ -119,7 +119,7 @@ router.post('/file', authenticateToken, uploadFile.single('file'), (req: Request
 });
 
 // POST /api/upload/images - Upload plusieurs images
-router.post('/images', authenticateToken, uploadImage.array('images', 10), (req: Request, res: Response) => {
+router.post('/images', authenticateToken, requireSupervisor, uploadImage.array('images', 10), (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     
@@ -146,7 +146,7 @@ router.post('/images', authenticateToken, uploadImage.array('images', 10), (req:
 });
 
 // DELETE /api/upload/:filename - Supprimer une image
-router.delete('/:filename', authenticateToken, (req: Request, res: Response) => {
+router.delete('/:filename', authenticateToken, requireSupervisor, (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const filePath = path.join(__dirname, '../../uploads', filename);

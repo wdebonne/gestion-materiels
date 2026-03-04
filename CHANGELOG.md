@@ -7,7 +7,25 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
-<<<<<<< HEAD
+## [1.2.51] - 2026-03-04
+
+### Amélioré
+- **Sécurité - Droits & Permissions renforcés** : Audit et correction des failles de permissions
+  - **[CRITIQUE]** Filtrage des objets par catégorie autorisée dans `GET /api/objects` — un utilisateur ne voit plus que les objets des catégories auxquelles il a accès
+  - **[CRITIQUE]** Vérification de l'accès catégorie dans `GET /api/objects/:id` — un utilisateur ne peut plus consulter le détail d'un objet d'une catégorie interdite
+  - **[HAUTE]** Vérification `can_edit` par catégorie lors de la création (`POST /api/objects`) et modification (`PUT /api/objects/:id`) — un superviseur ne peut plus créer/modifier dans une catégorie sans permission d'édition
+  - **[HAUTE]** Sécurisation de `GET /api/permissions/effective/:userId` — seul un admin ou l'utilisateur lui-même peut consulter ses permissions effectives (fuite d'information corrigée)
+  - **[MOYENNE]** Routes d'upload (`POST /api/upload/*`, `DELETE /api/upload/*`) restreintes aux superviseurs et admins — un simple utilisateur ne peut plus uploader ni supprimer de fichiers
+  - **[MOYENNE]** Route de déclenchement de webhooks (`POST /api/webhooks/trigger`) restreinte aux superviseurs et admins
+  - **[BASSE]** Vérification `checkCategoryAccess` ajoutée sur les routes de sous-catégories (`GET /:categoryId/subcategories`, `GET /by-slug/:slug`, `GET /:id`)
+
+### Ajouté
+- **Helpers de permissions réutilisables** dans le middleware d'authentification :
+  - `checkCategoryAccess()` : vérifie si un utilisateur peut voir une catégorie
+  - `checkCategoryPermission()` : vérifie un droit spécifique (vue/édition/suppression) sur une catégorie
+  - `getAccessibleCategoryIds()` : retourne la liste des catégories accessibles par un utilisateur
+  - Suppression du code dupliqué dans `category.routes.ts` au profit du helper centralisé
+
 ## [1.2.50] - 2026-03-04
 
 ### Amélioré
@@ -24,9 +42,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   - Styles FullCalendar responsive : polices réduites, cellules compactes, heures masquées dans les événements
   - Padding du calendrier principal réduit sur mobile (`p-1 sm:p-2 md:p-4`)
 
-=======
-## [1.2.50] - 2026-03-03
-
 ### Corrigé
 - **SMTP - Noms de champs client/serveur désalignés** : Correction de la sauvegarde SMTP inopérante
   - Le client envoyait des champs `smtpHost`, `smtpPort`, etc. mais le serveur attendait `host`, `port`, etc.
@@ -34,7 +49,6 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   - Le champ `isActive` est maintenant envoyé automatiquement à `true` lors de la sauvegarde
   - Le chargement des paramètres existants fonctionne correctement (lecture de `response.data.smtp`)
 
->>>>>>> b91aada31dfb19494a1d2726822318e9d8e7c8b3
 ## [1.2.49] - 2026-03-03
 
 ### Corrigé

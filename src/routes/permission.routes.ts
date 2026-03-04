@@ -100,6 +100,11 @@ router.get('/effective/:userId', authenticateToken, async (req: AuthRequest, res
   try {
     const { userId } = req.params;
 
+    // Seul un admin ou l'utilisateur lui-même peut consulter ses permissions effectives
+    if (req.user!.role !== 'admin' && req.user!.userId !== parseInt(userId)) {
+      return res.status(403).json({ success: false, message: 'Accès refusé - Vous ne pouvez consulter que vos propres permissions' });
+    }
+
     // Récupérer l'utilisateur et son rôle
     const user = await db.queryOne('SELECT id, role FROM users WHERE id = ?', [userId]);
     if (!user) {

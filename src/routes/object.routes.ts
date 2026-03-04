@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -62,6 +62,22 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     let whereClause = '1=1';
     const params: any[] = [];
+
+    // Filtrer par catégories accessibles selon les permissions
+    const accessibleIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+    if (accessibleIds !== null) {
+      if (accessibleIds.length === 0) {
+        // Aucun accès — retourner une liste vide
+        return res.json({
+          success: true,
+          objects: [],
+          pagination: { page: Number(page), limit: Number(limit), total: 0, totalPages: 0 }
+        });
+      }
+      const placeholders = accessibleIds.map(() => '?').join(',');
+      whereClause += ` AND (o.category_id IN (${placeholders}) OR EXISTS (SELECT 1 FROM subcategories sc WHERE sc.id = o.subcategory_id AND sc.category_id IN (${placeholders})))`;
+      params.push(...accessibleIds, ...accessibleIds);
+    }
 
     if (categoryId) {
       whereClause += ' AND o.category_id = ?';
@@ -167,6 +183,15 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
 
     if (!obj) {
       return res.status(404).json({ success: false, message: 'Objet non trouvé' });
+    }
+
+    // Vérifier la permission d'accès à la catégorie de l'objet
+    const categoryId = obj.resolved_category_id || obj.category_id;
+    if (categoryId) {
+      const hasAccess = await checkCategoryAccess(req.user!.userId, req.user!.role, categoryId);
+      if (!hasAccess) {
+        return res.status(403).json({ success: false, message: 'Accès refusé à cette catégorie' });
+      }
     }
 
     // Récupérer les plugins actifs :
@@ -333,6 +358,15 @@ router.post('/', authenticateToken, requireSupervisor, [
       status = 'active', location, notes, customFields
     } = req.body;
 
+    // Vérifier la permission d'édition sur la catégorie cible
+    const targetCategoryId = categoryId || (subcategoryId ? (await db.queryOne('SELECT category_id FROM subcategories WHERE id = ?', [subcategoryId]))?.category_id : null);
+    if (targetCategoryId) {
+      const canEdit = await checkCategoryPermission(req.user!.userId, req.user!.role, targetCategoryId, 'can_edit');
+      if (!canEdit) {
+        return res.status(403).json({ success: false, message: 'Accès refusé - Vous n\'avez pas la permission de créer dans cette catégorie' });
+      }
+    }
+
     // Récupérer l'image par défaut si non fournie
     let finalImage = image;
     if (!finalImage) {
@@ -380,9 +414,18 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       status, location, notes, customFields
     } = req.body;
 
-    const obj = await db.queryOne('SELECT id FROM objects WHERE id = ?', [id]);
+    const obj = await db.queryOne('SELECT id, category_id, subcategory_id FROM objects WHERE id = ?', [id]);
     if (!obj) {
       return res.status(404).json({ success: false, message: 'Objet non trouvé' });
+    }
+
+    // Vérifier la permission d'édition sur la catégorie de l'objet
+    const objCategoryId = categoryId || obj.category_id || (obj.subcategory_id ? (await db.queryOne('SELECT category_id FROM subcategories WHERE id = ?', [obj.subcategory_id]))?.category_id : null);
+    if (objCategoryId) {
+      const canEdit = await checkCategoryPermission(req.user!.userId, req.user!.role, objCategoryId, 'can_edit');
+      if (!canEdit) {
+        return res.status(403).json({ success: false, message: 'Accès refusé - Vous n\'avez pas la permission de modifier dans cette catégorie' });
+      }
     }
 
     let updateFields = [];
