@@ -221,3 +221,145 @@ body {
 .fc-daygrid-event {
   @apply text-sm;
 }
+
+/* FullCalendar responsive - Mobile */
+@media (max-width: 639px) {
+  .fc {
+    font-size: 0.75rem;
+  }
+
+  .fc .fc-col-header-cell {
+    padding: 4px 0;
+  }
+
+  .fc .fc-col-header-cell-cushion {
+    font-size: 0.7rem;
+    padding: 2px;
+  }
+
+  .fc .fc-daygrid-day-number {
+    font-size: 0.75rem;
+    padding: 2px 4px;
+  }
+
+  .fc .fc-daygrid-day-frame {
+    min-height: 50px;
+  }
+
+  .fc .fc-daygrid-event {
+    font-size: 0.65rem;
+    padding: 1px 3px;
+    margin: 0 1px 1px;
+  }
+
+  .fc .fc-daygrid-event .fc-event-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .fc .fc-daygrid-event .fc-event-time {
+    display: none;
+  }
+
+  .fc .fc-daygrid-more-link {
+    font-size: 0.6rem;
+    margin: 0 2px;
+  }
+
+  .fc .fc-timegrid-slot {
+    height: 2em;
+  }
+
+  .fc .fc-timegrid-slot-label-cushion {
+    font-size: 0.65rem;
+  }
+
+  .fc .fc-timegrid-event {
+    font-size: 0.65rem;
+  }
+
+  .fc .fc-list-event-title,
+  .fc .fc-list-event-time {
+    font-size: 0.75rem;
+  }
+
+  .fc .fc-scrollgrid {
+    border-width: 0;
+  }
+
+  .fc .fc-scrollgrid-section > td {
+    border-width: 0;
+  }
+
+  /* Force proper table layout on mobile */
+  .fc .fc-scrollgrid,
+  .fc .fc-scrollgrid table {
+    width: 100% !important;
+    table-layout: fixed;
+  }
+
+  .fc .fc-scroller {
+    overflow: hidden auto !important;
+  }
+
+  .fc .fc-daygrid-body {
+    width: 100% !important;
+  }
+
+  .fc .fc-daygrid-body table {
+    width: 100% !important;
+  }
+
+  .fc .fc-col-header {
+    width: 100% !important;
+  }
+
+  .fc .fc-col-header table {
+    width: 100% !important;
+  }
+}
+
+/* FullCalendar responsive - Tablet */
+@media (min-width: 640px) and (max-width: 1023px) {
+  .fc {
+    font-size: 0.8rem;
+  }
+
+  .fc .fc-daygrid-day-number {
+    font-size: 0.8rem;
+    padding: 3px 6px;
+  }
+
+  .fc .fc-daygrid-event {
+    font-size: 0.7rem;
+    padding: 1px 4px;
+  }
+
+  .fc .fc-daygrid-day-frame {
+    min-height: 60px;
+  }
+
+  /* Force proper table layout on tablet */
+  .fc .fc-scrollgrid,
+  .fc .fc-scrollgrid table {
+    width: 100% !important;
+    table-layout: fixed;
+  }
+
+  .fc .fc-daygrid-body {
+    width: 100% !important;
+  }
+
+  .fc .fc-daygrid-body table {
+    width: 100% !important;
+  }
+
+  .fc .fc-col-header {
+    width: 100% !important;
+  }
+
+  .fc .fc-col-header table {
+    width: 100% !important;
+  }
+}

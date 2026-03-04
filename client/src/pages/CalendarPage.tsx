@@ -50,7 +50,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date())
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
   const [currentView, setCurrentView] = useState<'dayGridMonth' | 'timeGridWeek' | 'timeGridDay' | 'listWeek'>('dayGridMonth')
-  const [showMiniCalendar, setShowMiniCalendar] = useState(true)
+  const [showMiniCalendar, setShowMiniCalendar] = useState(() => window.innerWidth >= 1024)
   const [showSyncSettings, setShowSyncSettings] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [filterEventType, setFilterEventType] = useState<string>('')
@@ -391,22 +391,31 @@ export default function CalendarPage() {
   return (
     <div className="flex flex-col h-full -m-6">
       {/* Barre d'outils supérieure */}
-      <div className="bg-white border-b border-gray-200 px-6 py-3">
-        <div className="flex items-center justify-between gap-4">
+      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-2 sm:py-3">
+        {/* Ligne 1 : Navigation + titre */}
+        <div className="flex items-center justify-between gap-2 sm:gap-4">
           {/* Navigation du calendrier */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+            {/* Toggle mini-calendrier mobile */}
+            <button
+              onClick={() => setShowMiniCalendar(!showMiniCalendar)}
+              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg text-gray-600"
+              title="Mini-calendrier"
+            >
+              <CalendarIcon className="w-4 h-4" />
+            </button>
             <Button 
               variant="secondary" 
               size="sm" 
               onClick={goToToday}
-              className="font-medium"
+              className="font-medium text-xs sm:text-sm whitespace-nowrap"
             >
               Aujourd'hui
             </Button>
             <div className="flex items-center border rounded-lg overflow-hidden">
               <button
                 onClick={goToPrevYear}
-                className="p-2 hover:bg-gray-100 text-gray-500 border-r"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-500 border-r hidden sm:block"
                 title="Année précédente"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -414,24 +423,24 @@ export default function CalendarPage() {
               </button>
               <button
                 onClick={goToPrevMonth}
-                className="p-2 hover:bg-gray-100 text-gray-600 border-r"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-600 sm:border-r"
                 title="Mois précédent"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="px-4 py-2 font-semibold text-gray-900 min-w-[180px] text-center capitalize">
+              <span className="px-2 sm:px-4 py-1.5 sm:py-2 font-semibold text-gray-900 text-sm sm:text-base text-center capitalize whitespace-nowrap">
                 {format(currentDate, 'MMMM yyyy', { locale: fr })}
               </span>
               <button
                 onClick={goToNextMonth}
-                className="p-2 hover:bg-gray-100 text-gray-600 border-l"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-600 sm:border-l"
                 title="Mois suivant"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
               <button
                 onClick={goToNextYear}
-                className="p-2 hover:bg-gray-100 text-gray-500 border-l"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-500 border-l hidden sm:block"
                 title="Année suivante"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -440,38 +449,78 @@ export default function CalendarPage() {
             </div>
           </div>
 
+          {/* Actions (toujours visibles) */}
+          <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+            {/* Synchronisation */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleSync}
+              loading={isSyncing}
+              title="Synchroniser le calendrier"
+            >
+              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
+            </Button>
+
+            {/* Paramètres sync */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowSyncSettings(true)}
+              title="Paramètres de synchronisation"
+              className="hidden sm:flex"
+            >
+              {syncStatus?.outlook?.connected || syncStatus?.caldav?.connected ? (
+                <Cloud className="w-4 h-4 text-green-600" />
+              ) : (
+                <CloudOff className="w-4 h-4 text-gray-400" />
+              )}
+            </Button>
+
+            {/* Nouveau événement */}
+            <Button 
+              size="sm"
+              icon={<Plus className="w-4 h-4" />} 
+              onClick={() => openModal()}
+            >
+              <span className="hidden sm:inline">Nouvel événement</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Ligne 2 : Vue + Recherche/Filtres */}
+        <div className="flex items-center justify-between gap-2 mt-2">
           {/* Sélecteur de vue */}
-          <div className="flex items-center gap-1 bg-gray-100 p-1 rounded-lg">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-gray-100 p-0.5 sm:p-1 rounded-lg overflow-x-auto">
             {viewOptions.map((view) => {
               const Icon = view.icon
               return (
                 <button
                   key={view.value}
                   onClick={() => changeView(view.value as typeof currentView)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                  className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                     currentView === view.value
                       ? 'bg-white text-gray-900 shadow-sm'
                       : 'text-gray-600 hover:text-gray-900'
                   }`}
                 >
-                  <Icon className="w-4 h-4" />
+                  <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                   <span className="hidden sm:inline">{view.label}</span>
                 </button>
               )
             })}
           </div>
 
-          {/* Actions */}
-          <div className="flex items-center gap-2">
-            {/* Recherche */}
-            <div className="relative">
+          {/* Recherche + Filtres */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            <div className="relative hidden sm:block">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-3 py-2 border rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="pl-9 pr-3 py-1.5 border rounded-lg text-sm w-36 lg:w-48 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
               {searchQuery && (
                 <button
@@ -492,51 +541,36 @@ export default function CalendarPage() {
             >
               <Filter className="w-4 h-4" />
             </Button>
-
-            {/* Synchronisation */}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={handleSync}
-              loading={isSyncing}
-              title="Synchroniser le calendrier"
-            >
-              <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
-            </Button>
-
-            {/* Paramètres sync */}
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setShowSyncSettings(true)}
-              title="Paramètres de synchronisation"
-            >
-              {syncStatus?.outlook?.connected || syncStatus?.caldav?.connected ? (
-                <Cloud className="w-4 h-4 text-green-600" />
-              ) : (
-                <CloudOff className="w-4 h-4 text-gray-400" />
-              )}
-            </Button>
-
-            {/* Nouveau événement */}
-            <Button 
-              size="sm"
-              icon={<Plus className="w-4 h-4" />} 
-              onClick={() => openModal()}
-            >
-              <span className="hidden sm:inline">Nouvel événement</span>
-            </Button>
           </div>
         </div>
 
         {/* Barre de filtres */}
         {showFilters && (
-          <div className="flex items-center gap-4 mt-3 pt-3 border-t">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mt-3 pt-3 border-t">
+            {/* Recherche mobile (visible uniquement sur mobile) */}
+            <div className="relative sm:hidden w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Rechercher..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-3 py-2 border rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                >
+                  <X className="w-3 h-3 text-gray-400" />
+                </button>
+              )}
+            </div>
             <Select
               value={filterEventType}
               onChange={(e) => setFilterEventType(e.target.value)}
               options={eventTypes}
-              className="w-48"
+              className="w-full sm:w-48"
             />
             {filterEventType && (
               <Button
@@ -554,8 +588,19 @@ export default function CalendarPage() {
 
       {/* Contenu principal */}
       <div className="flex flex-1 overflow-hidden relative">
+        {/* Overlay mobile pour fermer le panneau */}
+        {showMiniCalendar && (
+          <div 
+            className="fixed inset-0 bg-black/20 z-20 lg:hidden" 
+            onClick={() => setShowMiniCalendar(false)} 
+          />
+        )}
+
         {/* Panneau latéral */}
-        <div className={`bg-white border-r border-gray-200 transition-all duration-300 ${showMiniCalendar ? 'w-72' : 'w-0'} overflow-hidden flex-shrink-0`}>
+        <div className={`bg-white border-r border-gray-200 transition-all duration-300 flex-shrink-0
+          ${showMiniCalendar ? 'w-72' : 'w-0'}
+          ${showMiniCalendar ? 'fixed inset-y-0 left-0 z-30 lg:relative lg:z-auto shadow-xl lg:shadow-none mt-[var(--toolbar-height,0px)] lg:mt-0' : ''}
+          overflow-hidden`}>
           <div className="p-4 space-y-4 w-72">
             {/* Mini calendrier */}
             <div className="bg-gray-50 rounded-xl p-3">
@@ -603,6 +648,10 @@ export default function CalendarPage() {
                       onClick={() => {
                         setSelectedDate(day)
                         navigateToDate(day)
+                        // Fermer le panneau sur mobile après sélection
+                        if (window.innerWidth < 1024) {
+                          setShowMiniCalendar(false)
+                        }
                       }}
                       className={`
                         relative aspect-square flex items-center justify-center text-sm rounded-lg transition-all
@@ -721,7 +770,9 @@ export default function CalendarPage() {
         {/* Toggle panneau latéral */}
         <button
           onClick={() => setShowMiniCalendar(!showMiniCalendar)}
-          className="absolute top-4 z-10 bg-white border rounded-r-lg p-1 shadow-sm hover:bg-gray-50 transition-all"
+          className={`absolute top-4 z-10 bg-white border rounded-r-lg p-1.5 shadow-sm hover:bg-gray-50 transition-all ${
+            showMiniCalendar ? 'hidden lg:block' : ''
+          }`}
           style={{ left: showMiniCalendar ? '288px' : '0' }}
         >
           {showMiniCalendar ? (
@@ -732,7 +783,7 @@ export default function CalendarPage() {
         </button>
 
         {/* Calendrier principal */}
-        <div className="flex-1 bg-white p-4 overflow-auto">
+        <div className="flex-1 bg-white p-1 sm:p-2 md:p-4 overflow-auto min-w-0">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <LoadingInline message="Chargement du calendrier..." />
@@ -751,7 +802,7 @@ export default function CalendarPage() {
               editable={false}
               selectable={true}
               selectMirror={true}
-              dayMaxEvents={3}
+              dayMaxEvents={window.innerWidth < 640 ? 2 : 3}
               weekends={true}
               height="100%"
               eventDisplay="block"
@@ -762,7 +813,7 @@ export default function CalendarPage() {
                 meridiem: false,
                 hour12: false
               }}
-              dayHeaderFormat={{ weekday: 'short' }}
+              dayHeaderFormat={{ weekday: window.innerWidth < 640 ? 'narrow' : 'short' }}
               moreLinkText={(num) => `+${num} autres`}
               moreLinkClick="popover"
             />

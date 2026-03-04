@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.47-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.50-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
@@ -71,10 +71,10 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🎨 Composants UI : Header, Filtres, DataGrid, Stats, Formulaires
 
 ### Calendrier & Alertes
-- 📅 **Calendrier modernisé** avec interface intuitive
-- 🗓️ Mini-calendrier avec navigation rapide
+- 📅 **Calendrier modernisé** avec interface intuitive et responsive (mobile/tablette)
+- 🗓️ Mini-calendrier avec navigation rapide (overlay sur mobile)
 - 🔍 Recherche et filtres par type d'événement
-- 📆 Vues : Mois, Semaine, Jour, Liste
+- 📆 Vues : Mois, Semaine, Jour, Liste (adaptées aux petits écrans)
 - 🔄 **Synchronisation Outlook** via Azure AD
 - 🔄 **Synchronisation CalDAV** (Nextcloud, Synology, iCloud, Google)
 - ⚠️ Système d'alertes automatiques
