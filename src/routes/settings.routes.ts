@@ -75,8 +75,8 @@ router.put('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
 
       if (existing) {
         await db.execute(
-          "UPDATE settings SET setting_value = ?, updated_at = datetime('now') WHERE setting_key = ?",
-          [stringValue, key]
+          'UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?',
+          [stringValue, new Date().toISOString(), key]
         );
       } else {
         let type = 'string';
@@ -149,8 +149,8 @@ router.put('/smtp', authenticateToken, requireAdmin, async (req: AuthRequest, re
     const existing = await db.queryOne('SELECT * FROM smtp_config ORDER BY id DESC LIMIT 1');
 
     if (existing) {
-      let updateFields = ['host = ?', 'port = ?', 'secure = ?', 'username = ?', 'from_email = ?', 'from_name = ?', 'is_active = ?', "updated_at = datetime('now')"];
-      let values: any[] = [host, port, secure ? 1 : 0, username, fromEmail, fromName, isActive ? 1 : 0];
+      let updateFields = ['host = ?', 'port = ?', 'secure = ?', 'username = ?', 'from_email = ?', 'from_name = ?', 'is_active = ?', 'updated_at = ?'];
+      let values: any[] = [host, port, secure ? 1 : 0, username, fromEmail, fromName, isActive ? 1 : 0, new Date().toISOString()];
 
       // Ne mettre à jour le mot de passe que s'il est fourni
       if (password && password !== '********') {
@@ -247,13 +247,22 @@ router.get('/database', authenticateToken, requireAdmin, async (req: AuthRequest
       dbInfo.database = process.env.MYSQL_DATABASE;
     }
 
-    // Compter les enregistrements
+    // Compter les enregistrements en paralèle
     const tables = ['users', 'categories', 'subcategories', 'objects', 'fuel_entries', 'technical_controls', 'maintenances', 'calendar_events', 'alerts'];
+    const countResults = await Promise.all(
+      tables.map(table => db.queryOne(`SELECT COUNT(*) as count FROM ${table}`))
+    );
     dbInfo.tables = {};
-    
-    for (const table of tables) {
-      const count = await db.queryOne(`SELECT COUNT(*) as count FROM ${table}`);
-      dbInfo.tables[table] = count?.count || 0;
+    tables.forEach((table, i) => {
+      dbInfo.tables[table] = countResults[i]?.count || 0;
+    });
+    dbInfo.tableCount = tables.length;
+    dbInfo.totalRecords = Object.values(dbInfo.tables).reduce((sum: number, count: any) => sum + (count as number), 0);
+
+    // Formater la taille
+    if (dbInfo.size) {
+      const sizeInMB = (dbInfo.size / 1024 / 1024).toFixed(2);
+      dbInfo.sizeFormatted = `${sizeInMB} Mo`;
     }
 
     res.json({ success: true, database: dbInfo });

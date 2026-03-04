@@ -7,6 +7,20 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.56] - 2026-03-04
+
+### Corrigé
+- **[CRITIQUE] Page Base de données entièrement cassée** : Le frontend accédait à `response.data.type`, `response.data.size`, `response.data.tables` alors que le backend renvoyait les données sous `response.data.database.*` — le type affichait toujours "MySQL/MariaDB" même sur SQLite, la taille affichait "N/A", le nombre de tables affichait "[object Object] tables", la note SQLite et la section migration n'apparaissaient jamais
+- **[HAUTE] SQL spécifique SQLite `datetime('now')`** : Remplacé dans 3 endroits supplémentaires — `PUT /api/settings` (mise à jour paramètres), `PUT /api/settings/smtp` (configuration SMTP), `PUT /api/users/:id` (modification utilisateur) — par `new Date().toISOString()` compatible SQLite et MySQL
+- **[HAUTE] Incohérence validation mot de passe** : Le backend validait un minimum de 6 caractères à la création d'utilisateur alors que le frontend affichait "Minimum 8 caractères" — aligné le backend sur 8 caractères minimum
+- **[HAUTE] Pas de validation longueur mot de passe à la modification** : Le `PUT /api/users/:id` acceptait n'importe quelle longueur de mot de passe — ajout d'une validation minimum 8 caractères
+- **[MOYENNE] Section statistiques vide sur la page Base de données** : Le frontend cherchait `dbInfo.stats` qui n'existait pas dans la réponse API — remplacé par l'affichage des compteurs par table (`dbInfo.tables`) déjà fournis par le backend, avec total des enregistrements
+
+### Amélioré
+- **Performance — Parallélisation des comptages de tables** : Les 9 requêtes `COUNT(*)` séquentielles du endpoint `GET /api/settings/database` sont désormais exécutées en parallèle via `Promise.all`
+- **UX — Taille formatée de la base de données** : Ajout d'un champ `sizeFormatted` dans la réponse API (ex: "12.50 Mo") pour un affichage lisible
+- **UX — Total des enregistrements** : Ajout d'un bandeau affichant le nombre total d'enregistrements dans la section statistiques
+
 ## [1.2.55] - 2026-03-04
 
 ### Corrigé

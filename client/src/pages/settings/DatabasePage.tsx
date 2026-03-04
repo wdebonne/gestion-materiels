@@ -29,7 +29,7 @@ export default function DatabasePage() {
     queryKey: ['database-info'],
     queryFn: async () => {
       const response = await api.get('/settings/database')
-      return response.data
+      return response.data.database
     }
   })
 
@@ -111,13 +111,13 @@ export default function DatabasePage() {
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-sm text-gray-500">Taille</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  {dbInfo?.size || 'N/A'}
+                  {dbInfo?.sizeFormatted || dbInfo?.size || 'N/A'}
                 </p>
               </div>
               <div className="p-4 bg-gray-50 rounded-xl">
                 <p className="text-sm text-gray-500">Tables</p>
                 <p className="text-lg font-semibold text-gray-900 mt-1">
-                  {dbInfo?.tables || 0} tables
+                  {dbInfo?.tableCount || 0} tables
                 </p>
               </div>
             </div>
@@ -165,22 +165,29 @@ export default function DatabasePage() {
       {/* Stats de la base */}
       <Card>
         <CardHeader>
-          <CardTitle>Statistiques</CardTitle>
+          <CardTitle>Statistiques par table</CardTitle>
         </CardHeader>
         <CardBody>
           {isLoading ? (
             <LoadingInline />
+          ) : dbInfo?.tables && Object.keys(dbInfo.tables).length > 0 ? (
+            <>
+              <div className="mb-4 p-3 bg-primary-50 rounded-lg text-sm text-primary-700">
+                <strong>{dbInfo.totalRecords?.toLocaleString() || 0}</strong> enregistrements au total
+              </div>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {Object.entries(dbInfo.tables).map(([table, count]) => (
+                  <div key={table} className="text-center p-4 bg-gray-50 rounded-lg">
+                    <p className="text-2xl font-bold text-gray-900">{String(count)}</p>
+                    <p className="text-sm text-gray-500 mt-1 capitalize">
+                      {table.replace(/_/g, ' ')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </>
           ) : (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {dbInfo?.stats && Object.entries(dbInfo.stats).map(([key, value]) => (
-                <div key={key} className="text-center p-4 bg-gray-50 rounded-lg">
-                  <p className="text-2xl font-bold text-gray-900">{String(value)}</p>
-                  <p className="text-sm text-gray-500 mt-1 capitalize">
-                    {key.replace(/([A-Z])/g, ' $1').trim()}
-                  </p>
-                </div>
-              ))}
-            </div>
+            <p className="text-gray-500 text-sm">Aucune statistique disponible</p>
           )}
         </CardBody>
       </Card>

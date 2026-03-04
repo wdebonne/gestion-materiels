@@ -79,7 +79,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
 // POST /api/users - Créer un utilisateur
 router.post('/', authenticateToken, requireAdmin, [
   body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
-  body('password').isLength({ min: 6 }).withMessage('Le mot de passe doit contenir au moins 6 caractères'),
+  body('password').isLength({ min: 8 }).withMessage('Le mot de passe doit contenir au moins 8 caractères'),
   body('role').isIn(['admin', 'supervisor', 'user']).withMessage('Rôle invalide')
 ], async (req: AuthRequest, res: Response) => {
   try {
@@ -161,12 +161,16 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       values.push(isActive ? 1 : 0);
     }
     if (password) {
+      if (password.length < 8) {
+        return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 8 caractères' });
+      }
       const hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS || '12'));
       updateFields.push('password = ?');
       values.push(hashedPassword);
     }
 
-    updateFields.push("updated_at = datetime('now')");
+    updateFields.push('updated_at = ?');
+    values.push(new Date().toISOString());
     values.push(id);
 
     await db.execute(
