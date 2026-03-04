@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { User, Mail, Lock, Eye, EyeOff, Save } from 'lucide-react'
+import { User, Mail, Lock, Eye, EyeOff, Save, Camera, Trash2, Loader2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { Card, CardBody, CardHeader, CardTitle, Input, Button, Alert } from '@/components/ui'
 import api from '@/lib/api'
@@ -29,6 +29,69 @@ export default function ProfilePage() {
     confirm: false
   })
   const [passwordError, setPasswordError] = useState('')
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Mutation pour uploader l'avatar
+  const uploadAvatarMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData()
+      formData.append('avatar', file)
+      return api.post('/auth/avatar', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+    },
+    onSuccess: (response) => {
+      const updatedUser = response.data.user
+      setAuth(updatedUser, useAuthStore.getState().accessToken!, useAuthStore.getState().refreshToken!)
+      toast.success('Avatar mis à jour')
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de l\'upload')
+    }
+  })
+
+  // Mutation pour supprimer l'avatar
+  const deleteAvatarMutation = useMutation({
+    mutationFn: async () => {
+      return api.delete('/auth/avatar')
+    },
+    onSuccess: () => {
+      const currentUser = useAuthStore.getState().user
+      if (currentUser) {
+        setAuth(
+          { ...currentUser, avatar: undefined },
+          useAuthStore.getState().accessToken!,
+          useAuthStore.getState().refreshToken!
+        )
+      }
+      toast.success('Avatar supprimé')
+    },
+    onError: (err: any) => {
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression')
+    }
+  })
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Vérifier le type
+    const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp']
+    if (!allowed.includes(file.type)) {
+      toast.error('Format non supporté. Utilisez : JPG, PNG, GIF ou WebP')
+      return
+    }
+
+    // Vérifier la taille (5 MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Le fichier est trop volumineux (max 5 Mo)')
+      return
+    }
+
+    uploadAvatarMutation.mutate(file)
+    // Reset input pour pouvoir re-sélectionner le même fichier
+    e.target.value = ''
+  }
 
   // Mutation pour mettre à jour le profil
   const updateProfileMutation = useMutation({
@@ -108,11 +171,57 @@ export default function ProfilePage() {
       <Card>
         <CardBody>
           <div className="flex items-center gap-6">
-            <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center flex-shrink-0">
-              <span className="text-2xl font-bold text-primary-600">
-                {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
-              </span>
+            {/* Avatar avec upload */}
+            <div className="relative group flex-shrink-0">
+              <div className="w-20 h-20 rounded-full overflow-hidden bg-primary-100 flex items-center justify-center">
+                {user?.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt="Avatar"
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <span className="text-2xl font-bold text-primary-600">
+                    {user?.firstName?.charAt(0)}{user?.lastName?.charAt(0)}
+                  </span>
+                )}
+
+                {/* Overlay au hover */}
+                {(uploadAvatarMutation.isPending || deleteAvatarMutation.isPending) ? (
+                  <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
+                    <Loader2 className="w-6 h-6 text-white animate-spin" />
+                  </div>
+                ) : (
+                  <div
+                    className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <Camera className="w-6 h-6 text-white" />
+                  </div>
+                )}
+              </div>
+
+              {/* Bouton supprimer avatar */}
+              {user?.avatar && !uploadAvatarMutation.isPending && !deleteAvatarMutation.isPending && (
+                <button
+                  onClick={() => deleteAvatarMutation.mutate()}
+                  className="absolute -bottom-1 -right-1 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
+                  title="Supprimer l'avatar"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {/* Input fichier caché */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/gif,image/webp"
+                onChange={handleAvatarChange}
+                className="hidden"
+              />
             </div>
+
             <div>
               <h2 className="text-xl font-semibold text-gray-900">
                 {user?.firstName} {user?.lastName}

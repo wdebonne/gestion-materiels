@@ -7,6 +7,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.58] - 2026-03-04
+
+### Ajouté
+- **Avatar utilisateur** : Possibilité d'uploader une photo de profil (JPG, PNG, GIF, WebP, max 5 Mo) depuis la page Mon profil — l'image remplace le cercle à initiales partout dans l'application (header, profil)
+- **Route `POST /api/auth/avatar`** : Upload d'avatar avec multer, stockage dans `uploads/avatars/`, suppression automatique de l'ancien fichier
+- **Route `DELETE /api/auth/avatar`** : Suppression de l'avatar avec nettoyage du fichier sur le serveur
+- **UX — Overlay caméra au survol** : Un overlay avec icône caméra apparaît au survol de l'avatar pour indiquer qu'il est cliquable
+- **UX — Bouton supprimer** : Bouton rouge en bas à droite de l'avatar pour supprimer la photo et revenir aux initiales
+- **Fallback initiales** : Si aucune photo n'est définie, le cercle avec les initiales est affiché comme avant
+
 ## [1.2.57] - 2026-03-04
 
 ### Corrigé

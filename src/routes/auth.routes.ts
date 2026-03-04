@@ -2,6 +2,10 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { v4 as uuidv4 } from 'uuid';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, JwtPayload } from '../middleware/auth.middleware';
@@ -9,6 +13,36 @@ import { sendEmail } from '../services/email.service';
 import { logService } from '../services/log.service';
 
 const router = Router();
+
+// Configuration multer pour avatar
+const avatarStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const avatarDir = path.join(__dirname, '../../uploads/avatars');
+    if (!fs.existsSync(avatarDir)) {
+      fs.mkdirSync(avatarDir, { recursive: true });
+    }
+    cb(null, avatarDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `${uuidv4()}${ext}`);
+  }
+});
+
+const avatarFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  if (allowed.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Format non supporté. Utilisez : JPG, PNG, GIF ou WebP'));
+  }
+};
+
+const uploadAvatar = multer({
+  storage: avatarStorage,
+  fileFilter: avatarFilter,
+  limits: { fileSize: 5 * 1024 * 1024 } // 5 MB max
+});
 
 // Validation des entrées
 const loginValidation = [
@@ -474,6 +508,84 @@ router.post('/logout', authenticateToken, async (req: AuthRequest, res: Response
       ipAddress: req.ip
     });
     res.json({ success: true, message: 'Déconnexion réussie' });
+  }
+});
+
+// POST /api/auth/avatar - Upload d'avatar utilisateur
+router.post('/avatar', authenticateToken, uploadAvatar.single('avatar'), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
+    }
+
+    const userId = req.user?.userId;
+
+    // Supprimer l'ancien avatar s'il existe
+    const currentUser = await db.queryOne('SELECT avatar FROM users WHERE id = ?', [userId]);
+    if (currentUser?.avatar) {
+      const oldPath = path.join(__dirname, '../../', currentUser.avatar.replace(/^\//, ''));
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    const avatarUrl = `/uploads/avatars/${req.file.filename}`;
+    const now = new Date().toISOString();
+
+    await db.execute(
+      'UPDATE users SET avatar = ?, updated_at = ? WHERE id = ?',
+      [avatarUrl, now, userId]
+    );
+
+    // Retourner les infos utilisateur mises à jour
+    const user = await db.queryOne(
+      'SELECT id, email, first_name, last_name, role, avatar, created_at, last_login FROM users WHERE id = ?',
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Avatar mis à jour',
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.first_name,
+        lastName: user.last_name,
+        role: user.role,
+        avatar: user.avatar,
+        createdAt: user.created_at,
+        lastLogin: user.last_login
+      }
+    });
+  } catch (error: any) {
+    console.error('Erreur upload avatar:', error);
+    res.status(500).json({ success: false, message: error.message || 'Erreur serveur' });
+  }
+});
+
+// DELETE /api/auth/avatar - Supprimer l'avatar
+router.delete('/avatar', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.userId;
+
+    const currentUser = await db.queryOne('SELECT avatar FROM users WHERE id = ?', [userId]);
+    if (currentUser?.avatar) {
+      const oldPath = path.join(__dirname, '../../', currentUser.avatar.replace(/^\//, ''));
+      if (fs.existsSync(oldPath)) {
+        fs.unlinkSync(oldPath);
+      }
+    }
+
+    const now = new Date().toISOString();
+    await db.execute(
+      'UPDATE users SET avatar = NULL, updated_at = ? WHERE id = ?',
+      [now, userId]
+    );
+
+    res.json({ success: true, message: 'Avatar supprimé' });
+  } catch (error: any) {
+    console.error('Erreur suppression avatar:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
 
