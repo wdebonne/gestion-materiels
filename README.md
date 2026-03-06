@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.60-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
@@ -14,8 +14,10 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔌 **Système de plugins** extensible avec import ZIP
 - 📱 **Design responsive** adapté mobile et desktop
 - 🔒 **Sécurisé** avec authentification JWT
-- � **Documentation API Swagger** interactive intégrée
-- �🐳 **Docker ready** pour un déploiement facile
+- � **Documentation API Swagger** interactive intégrée- 🌙 **Dark Mode** avec persistance des préférences
+- 🌍 **Multilingue** (FR/EN) avec détection automatique
+- 📲 **PWA installable** sur mobile avec cache hors-ligne
+- ⚡ **Temps réel** via WebSocket (Socket.io)- �🐳 **Docker ready** pour un déploiement facile
 
 ## 📋 Fonctionnalités
 
@@ -92,6 +94,44 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 📋 **Journal des logs** avec filtrage, export et paramètres avancés
 - 🔗 **Webhooks** : Notifications HTTP vers des services externes
 - 📖 **API** : Documentation interactive Swagger UI, spécification OpenAPI, statistiques
+
+### 📦 QR Codes & Import/Export
+- 📱 **QR Codes** : Génération par matériel, scan terrain pour accès rapide à la fiche
+- 📥 **Import CSV/Excel** : Import massif avec validation des données
+- 📤 **Export** : Export filtrable par catégorie au format CSV ou XLSX
+- 📋 Template d'import téléchargeable
+
+### 🔄 Réservation / Prêt de matériel
+- 📅 Formulaire de réservation (dates, motif, emprunteur)
+- 🔄 Statuts : réservé, en prêt, retourné, en retard
+- ⏰ Alertes automatiques CRON pour retours en retard
+- 📜 Historique complet des emprunts
+
+### 💰 Amortissement / Dépréciation
+- 📉 Calcul linéaire automatique de la valeur résiduelle
+- 📊 Graphiques interactifs (barres + camembert)
+- 🏷️ Vision financière du patrimoine matériel
+
+### 🗺️ Cartographie & Timeline
+- 🗺️ **Carte interactive** OpenStreetMap (Leaflet) avec marqueurs par matériel
+- 📜 **Timeline** : Frise chronologique consolidée sur la fiche objet (maintenances, contrôles, carburant, alertes)
+
+### 📧 Reporting automatique
+- 📊 Rapport hebdomadaire envoyé par email aux admins/superviseurs
+- 📈 Stats : objets, alertes, réservations, retards
+
+### 🌙 Dark Mode & i18n
+- 🌙 Mode sombre togglable (clair/sombre/système) avec persistance
+- 🌍 Support multilingue FR/EN avec détection automatique du navigateur
+
+### ⚡ Temps réel (WebSocket)
+- 🔔 Alertes instantanées via Socket.io
+- 🔄 Invalidation automatique du cache côté client
+
+### 📲 PWA (Progressive Web App)
+- 📱 Installation sur l'écran d'accueil mobile
+- 💾 Cache intelligent pour consultation hors-ligne
+- ⚙️ Service worker Workbox
 
 ### 🎨 Interface Utilisateur (v1.2)
 - 🌟 Design moderne avec palette Sky Blue
@@ -240,8 +280,14 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
+├── tests/                  # Tests backend (Jest)
+│   ├── slugify.test.ts    # Tests utilitaire slugify
+│   └── api.test.ts        # Tests routes API & WebSocket
 ├── docs/                   # Documentation
+│   ├── ROADMAP_FONCTIONNALITES.md # Roadmap 12 fonctionnalités
 │   ├── PLUGIN_STRUCTURE.md # Structure des plugins
+│   ├── AUDIT_SECURITE_API.md # Audit sécurité
+│   ├── JWT_ROTATION.md    # Rotation JWT
 │   └── DEPLOIEMENT_PORTAINER.md # Déploiement Portainer
 ├── nginx/                  # Configuration Nginx
 ├── docker-compose.yml
@@ -375,6 +421,35 @@ PUT    /api/calendar/:id      # Modifier un événement
 DELETE /api/calendar/:id      # Supprimer un événement
 ```
 
+### QR Codes
+
+```
+GET  /api/qrcode/:id          # Générer le QR code d'un matériel (PNG)
+```
+
+### Import/Export
+
+```
+GET  /api/import-export/export # Exporter les matériels (CSV/XLSX)
+POST /api/import-export/import # Importer des matériels (CSV/XLSX)
+GET  /api/import-export/template # Télécharger le template d'import
+```
+
+### Réservations
+
+```
+GET    /api/reservations       # Liste des réservations
+POST   /api/reservations       # Créer une réservation
+PUT    /api/reservations/:id/status # Changer le statut
+DELETE /api/reservations/:id   # Supprimer une réservation
+```
+
+### Amortissement
+
+```
+GET  /api/dashboard/depreciation # Données de dépréciation des matériels
+```
+
 ### Administration
 
 ```
@@ -407,6 +482,7 @@ POST   /api/backup/migrate    # Migrer vers MySQL
 - Rate limiting sur les endpoints sensibles
 - Validation des entrées
 - Headers de sécurité HTTP
+- Rotation automatique des secrets JWT
 
 ## 🛠️ Développement
 
@@ -427,9 +503,17 @@ npm run preview   # Prévisualiser le build
 ### Tests
 
 ```bash
-npm test          # Lancer les tests
-npm run test:cov  # Avec couverture
+# Backend (Jest)
+npm test              # Lancer les tests backend
+npx jest --coverage   # Avec couverture
+
+# Frontend (Vitest)
+cd client
+npm run test          # Mode watch
+npm run test:run      # Exécution unique
 ```
+
+> 36 tests au total : 15 backend (slugify, routes API, WebSocket) + 21 frontend (Badge, Button, Card)
 
 ## 📝 Licence
 
@@ -445,8 +529,11 @@ Pour toute question ou problème :
 
 ## 📚 Documentation
 
+- [Roadmap fonctionnalités](docs/ROADMAP_FONCTIONNALITES.md) - Suivi des 12 fonctionnalités ajoutées
 - [Structure des plugins](docs/PLUGIN_STRUCTURE.md) - Comment créer des plugins
 - [Déploiement Portainer](docs/DEPLOIEMENT_PORTAINER.md) - Déployer avec Docker/Portainer
+- [Audit sécurité API](docs/AUDIT_SECURITE_API.md) - Rapport d'audit de sécurité
+- [JWT Rotation](docs/JWT_ROTATION.md) - Rotation automatique des tokens JWT
 - [Exemples de plugins](examples/plugins/) - Plugins d'exemple
 
 ---

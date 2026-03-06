@@ -7,6 +7,43 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.3.0] - 2026-03-06
+
+### Ajouté — 12 nouvelles fonctionnalités
+
+#### 🔴 Priorité Haute
+- **QR Codes matériels** : Génération de QR codes par matériel (`/api/qrcode/:id`), composant React `QRCodeDisplay`, affichage et téléchargement depuis la fiche objet — librairies `qrcode` (backend) et `react-qr-code` (frontend)
+- **Import/Export CSV & Excel** : Import massif de matériels depuis fichiers CSV/Excel avec validation, export filtrable par catégorie au format CSV ou XLSX — route `/api/import-export`, page `ImportExportPage` — librairie `exceljs`
+- **Tests automatisés** : 36 tests (15 backend + 21 frontend) — Jest + ts-jest + supertest côté serveur (tests slugify, routes API, WebSocket service), Vitest + @testing-library/react côté client (tests Badge, Button, Card)
+
+#### 🟠 Priorité Moyenne
+- **Réservation / Prêt de matériel** : Module complet avec table `reservations`, routes CRUD (`/api/reservations`), statuts (pending/approved/active/returned/overdue/cancelled), vérification CRON des retours en retard, page `ReservationsPage` avec filtres
+- **Amortissement / Dépréciation** : Endpoint `/api/dashboard/depreciation` avec calcul linéaire de la valeur résiduelle, page `DepreciationPage` avec graphiques Recharts (barres + camembert)
+- **PWA (Progressive Web App)** : Configuration `vite-plugin-pwa` avec manifest, service worker Workbox, cache intelligent, app installable sur mobile
+
+#### 🟡 Priorité Basse
+- **Cartographie GPS (Leaflet)** : Page `MapPage` avec carte interactive OpenStreetMap via `react-leaflet`, affichage des matériels géolocalisés avec filtres par catégorie
+- **Timeline historique matériel** : Composant `ObjectTimeline` affichant la frise chronologique consolidée (créations, maintenances, contrôles, carburant, alertes), intégré comme onglet dans la fiche objet
+- **Reporting périodique automatique** : Tâche CRON hebdomadaire (lundi 7h) envoyant un rapport HTML par email aux admins/superviseurs (stats objets, alertes, réservations)
+
+#### 🟢 Optionnel
+- **Dark Mode** : Hook `useDarkMode` avec persistance localStorage, sélecteur de thème (clair/sombre/système) dans le header, classes `dark:` appliquées à tous les composants UI (Card, Modal, Input, Select, TextArea, Button, Tabs) et au Layout
+- **Internationalisation (i18n)** : Configuration `react-i18next` avec fichiers de traduction FR/EN, détection automatique de la langue navigateur, traduction de la navigation et des menus dans le Layout
+- **WebSocket temps réel** : Service `websocket.service.ts` avec Socket.io, émission d'alertes en temps réel lors de la création, hook `useRealtimeAlerts` invalidant le cache React Query, fonctions `emitToAll`, `emitToRole`, `emitToUser`, `emitAlert`
+
+### Dépendances
+- Ajout backend : `qrcode`, `exceljs`, `socket.io`
+- Ajout frontend : `react-qr-code`, `react-leaflet`, `leaflet`, `react-i18next`, `i18next`, `i18next-browser-languagedetector`, `socket.io-client`, `vite-plugin-pwa`
+- Ajout dev/test : `jest`, `ts-jest`, `supertest`, `@types/supertest`, `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`
+
+### Corrigé
+- `req.user?.id` → `req.user?.userId` dans les routes importExport et reservation (conformité `JwtPayload`)
+- Catégories de log invalides (`'export'`, `'import'`, `'reservation'`) → `'other'`
+- Imports inutilisés nettoyés dans ObjectTimeline, useWebSocket, DepreciationPage, MapPage, ImportExportPage, ReservationsPage
+- Composant `Select` remplacé par `<select>` natif dans ReservationsPage et ImportExportPage (incompatibilité props)
+- Limite Workbox `maximumFileSizeToCacheInBytes` augmentée à 5 Mo pour le service worker PWA
+- Typo `setupFilesAfterSetup` → `setupFilesAfterEnv` dans jest.config.ts
+
 ## [1.2.60] - 2026-03-06
 
 ### Ajouté

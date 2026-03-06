@@ -9,18 +9,18 @@
 
 | # | Priorité | Fonctionnalité | Effort | Impact | Statut |
 |---|----------|---------------|--------|--------|--------|
-| 1 | 🔴 Haute | QR Codes matériels | Faible | Fort | ⬜ À faire |
-| 2 | 🔴 Haute | Import/Export CSV & Excel | Moyen | Fort | ⬜ À faire |
-| 3 | 🔴 Haute | Tests automatisés | Moyen | Fort | ⬜ À faire |
-| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | Élevé | Fort | ⬜ À faire |
-| 5 | 🟠 Moyenne | Amortissement / Dépréciation | Moyen | Moyen | ⬜ À faire |
-| 6 | 🟠 Moyenne | PWA (Progressive Web App) | Faible | Moyen | ⬜ À faire |
-| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | Moyen | Moyen | ⬜ À faire |
-| 8 | 🟡 Basse | Timeline historique matériel | Faible | Moyen | ⬜ À faire |
-| 9 | 🟡 Basse | Reporting périodique automatique | Moyen | Moyen | ⬜ À faire |
-| 10 | 🟢 Optionnel | Dark Mode | Faible | Faible | ⬜ À faire |
-| 11 | 🟢 Optionnel | Internationalisation (i18n) | Moyen | Faible | ⬜ À faire |
-| 12 | 🟢 Optionnel | WebSocket temps réel | Moyen | Moyen | ⬜ À faire |
+| 1 | 🔴 Haute | QR Codes matériels | Faible | Fort | ✅ Fait |
+| 2 | 🔴 Haute | Import/Export CSV & Excel | Moyen | Fort | ✅ Fait |
+| 3 | 🔴 Haute | Tests automatisés | Moyen | Fort | ✅ Fait |
+| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | Élevé | Fort | ✅ Fait |
+| 5 | 🟠 Moyenne | Amortissement / Dépréciation | Moyen | Moyen | ✅ Fait |
+| 6 | 🟠 Moyenne | PWA (Progressive Web App) | Faible | Moyen | ✅ Fait |
+| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | Moyen | Moyen | ✅ Fait |
+| 8 | 🟡 Basse | Timeline historique matériel | Faible | Moyen | ✅ Fait |
+| 9 | 🟡 Basse | Reporting périodique automatique | Moyen | Moyen | ✅ Fait |
+| 10 | 🟢 Optionnel | Dark Mode | Faible | Faible | ✅ Fait |
+| 11 | 🟢 Optionnel | Internationalisation (i18n) | Moyen | Faible | ✅ Fait |
+| 12 | 🟢 Optionnel | WebSocket temps réel | Moyen | Moyen | ✅ Fait |
 
 ---
 
