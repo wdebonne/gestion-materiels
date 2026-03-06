@@ -27,13 +27,7 @@ services:
     volumes:
       # Montage du code source pour le hot-reload
       - ./src:/app/src
-      - ./client/src:/app/client/src
-      - ./client/index.html:/app/client/index.html
-      - ./client/tailwind.config.js:/app/client/tailwind.config.js
-      - ./client/postcss.config.js:/app/client/postcss.config.js
-      - ./client/vite.config.ts:/app/client/vite.config.ts
-      - ./client/tsconfig.json:/app/client/tsconfig.json
-      - ./client/tsconfig.node.json:/app/client/tsconfig.node.json
+      - ./client:/app/client
       - ./plugins:/app/plugins
       # Données persistantes
       - app-data-dev:/app/data
