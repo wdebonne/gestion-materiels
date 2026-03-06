@@ -4,9 +4,11 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X, Trash2, Pencil,
-  Image as ImageIcon, Settings2, Search, ArrowUpDown
+  Image as ImageIcon, Settings2, Search, ArrowUpDown, Clock
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
+import QRCodeDisplay from '@/components/QRCodeDisplay'
+import ObjectTimeline from '@/components/ObjectTimeline'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select,
   LoadingInline, Alert, Card, CardBody, CardHeader, CardTitle, Tabs, Badge,
@@ -729,6 +731,9 @@ export default function ObjectDetailPage() {
       }
     })
     
+    // Onglet Timeline (toujours visible)
+    baseTabs.push({ id: 'timeline', label: 'Historique' } as any)
+    
     return baseTabs
   }
 
@@ -907,6 +912,7 @@ export default function ObjectDetailPage() {
                       <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
                         <ArrowLeft className="w-4 h-4" />
                       </Button>
+                      <QRCodeDisplay objectId={Number(id)} objectName={object?.name || ''} />
                       <Button variant="outline" size="sm" onClick={handleEditStart}>
                         <Edit2 className="w-4 h-4" />
                       </Button>
@@ -2746,6 +2752,21 @@ export default function ObjectDetailPage() {
           </ModalFooter>
         </form>
       </Modal>
+
+      {/* Onglet Timeline / Historique */}
+      {activeTab === 'timeline' && object && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Historique complet
+            </CardTitle>
+          </CardHeader>
+          <CardBody>
+            <ObjectTimeline objectId={Number(id)} />
+          </CardBody>
+        </Card>
+      )}
 
       {/* Modal Confirmation suppression contrôle technique */}
       <Modal

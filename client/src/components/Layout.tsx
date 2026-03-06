@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSettingsStore } from '@/stores/settings.store'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useEffect, useState } from 'react'
 import {
@@ -24,9 +24,19 @@ import {
   Plug,
   Home,
   FolderOpen,
-  BarChart3
+  BarChart3,
+  CalendarClock,
+  TrendingDown,
+  FileSpreadsheet,
+  MapPin,
+  Sun,
+  Moon,
+  Monitor
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
+import { useDarkMode } from '@/lib/useDarkMode'
+import { useTranslation } from 'react-i18next'
+import { useRealtimeAlerts } from '@/lib/useWebSocket'
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
@@ -38,6 +48,14 @@ export default function Layout() {
     return saved ? JSON.parse(saved) : false
   })
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const { theme, setTheme } = useDarkMode()
+  const { t } = useTranslation()
+  const queryClient = useQueryClient()
+
+  // WebSocket: invalider le compteur d'alertes en temps réel
+  useRealtimeAlerts(() => {
+    queryClient.invalidateQueries({ queryKey: ['alertsCount'] })
+  })
 
   useEffect(() => {
     fetchSettings()
@@ -109,15 +127,23 @@ export default function Layout() {
 
   // Navigation de base
   const baseNavigation = [
-    { name: 'Tableau de bord', href: '/', icon: Home },
-    { name: 'Catégories', href: '/categories', icon: FolderOpen },
-    { name: 'Alertes', href: '/alerts', icon: Bell, badge: alertsCount },
+    { name: t('nav.dashboard'), href: '/', icon: Home },
+    { name: t('nav.categories'), href: '/categories', icon: FolderOpen },
+    { name: t('nav.alerts'), href: '/alerts', icon: Bell, badge: alertsCount },
   ]
 
   // Ajouter le menu Suivi si l'utilisateur a les permissions
   if (trackingPermissions?.canView) {
-    baseNavigation.push({ name: 'Suivi', href: '/tracking', icon: BarChart3 })
+    baseNavigation.push({ name: t('nav.tracking'), href: '/tracking', icon: BarChart3 })
   }
+
+  // Nouvelles fonctionnalités
+  baseNavigation.push(
+    { name: t('nav.reservations'), href: '/reservations', icon: CalendarClock },
+    { name: t('nav.depreciation'), href: '/depreciation', icon: TrendingDown },
+    { name: t('nav.map'), href: '/map', icon: MapPin },
+    { name: t('nav.importExport'), href: '/import-export', icon: FileSpreadsheet }
+  )
 
   // Ajouter les plugins de type menu à la navigation
   const pluginNavigation = menuPlugins.map((plugin: any) => {
@@ -133,14 +159,14 @@ export default function Layout() {
   const navigation = [...baseNavigation, ...pluginNavigation]
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Sidebar Mobile */}
       <div className={cn(
         "fixed inset-0 z-40 lg:hidden",
         sidebarOpen ? "block" : "hidden"
       )}>
         <div className="fixed inset-0 bg-black/50" onClick={() => setSidebarOpen(false)} />
-        <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-xl">
+        <div className="fixed inset-y-0 left-0 w-64 bg-white shadow-xl dark:bg-gray-800">
           <SidebarContent 
             navigation={navigation} 
             settings={settings} 
@@ -155,7 +181,7 @@ export default function Layout() {
         "hidden lg:fixed lg:inset-y-0 lg:flex lg:flex-col transition-all duration-300",
         sidebarCollapsed ? "lg:w-20" : "lg:w-64"
       )}>
-        <div className="flex flex-col flex-grow bg-white border-r border-gray-100 shadow-[2px_0_20px_0_rgba(0,0,0,0.02)]">
+        <div className="flex flex-col flex-grow bg-white border-r border-gray-100 shadow-[2px_0_20px_0_rgba(0,0,0,0.02)] dark:bg-gray-800 dark:border-gray-700">
           <SidebarContent 
             navigation={navigation} 
             settings={settings} 
@@ -172,7 +198,7 @@ export default function Layout() {
         sidebarCollapsed ? "lg:pl-20" : "lg:pl-64"
       )}>
         {/* Top bar */}
-        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm">
+        <header className="sticky top-0 z-30 bg-white/80 backdrop-blur-md border-b border-gray-200/50 shadow-sm dark:bg-gray-800/80 dark:border-gray-700/50">
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
             <button
               onClick={() => setSidebarOpen(true)}
@@ -187,7 +213,7 @@ export default function Layout() {
             <div className="relative">
               <button
                 onClick={() => setUserMenuOpen(!userMenuOpen)}
-                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors"
+                className="flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 transition-colors dark:hover:bg-gray-700"
               >
                 <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-medium text-sm">
                   {user?.avatar ? (
@@ -196,7 +222,7 @@ export default function Layout() {
                     getInitials(user?.firstName, user?.lastName)
                   )}
                 </div>
-                <span className="hidden sm:block text-sm font-medium text-gray-700">
+                <span className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300">
                   {user?.firstName} {user?.lastName}
                 </span>
                 <ChevronDown className="w-4 h-4 text-gray-500" />
@@ -205,23 +231,50 @@ export default function Layout() {
               {userMenuOpen && (
                 <>
                   <div className="fixed inset-0 z-40" onClick={() => setUserMenuOpen(false)} />
-                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50">
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 dark:bg-gray-800 dark:border-gray-700">
                     <NavLink
                       to="/profile"
                       onClick={() => setUserMenuOpen(false)}
-                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                      className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
                     >
                       <User className="w-4 h-4" />
-                      Mon profil
+                      {t('nav.profile')}
                     </NavLink>
+                    {/* Sélecteur de thème */}
+                    <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
+                      <span className="text-xs text-gray-400 uppercase font-medium">{t('theme.title')}</span>
+                      <div className="flex items-center gap-1 mt-1">
+                        <button
+                          onClick={() => setTheme('light')}
+                          className={cn("p-1.5 rounded", theme === 'light' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100')}
+                          title={t('theme.light')}
+                        >
+                          <Sun className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setTheme('dark')}
+                          className={cn("p-1.5 rounded", theme === 'dark' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100')}
+                          title={t('theme.dark')}
+                        >
+                          <Moon className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setTheme('system')}
+                          className={cn("p-1.5 rounded", theme === 'system' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100')}
+                          title={t('theme.system')}
+                        >
+                          <Monitor className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
                     {user?.role === 'admin' && (
                       <NavLink
                         to="/settings"
                         onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+                        className="flex items-center gap-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
                       >
                         <Settings className="w-4 h-4" />
-                        Paramètres
+                        {t('nav.settings')}
                       </NavLink>
                     )}
                     <hr className="my-1" />
@@ -230,7 +283,7 @@ export default function Layout() {
                       className="flex items-center gap-2 w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50"
                     >
                       <LogOut className="w-4 h-4" />
-                      Déconnexion
+                      {t('nav.logout')}
                     </button>
                   </div>
                 </>
@@ -258,10 +311,11 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({ navigation, settings, user, onClose, collapsed = false, onToggleCollapse }: SidebarContentProps) {
+  const { t } = useTranslation()
   return (
     <div className="flex flex-col h-full">
       {/* Logo */}
-      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
+      <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200 dark:border-gray-700">
         <div className={cn(
           "flex items-center gap-3 overflow-hidden transition-all duration-300",
           collapsed && !onClose ? "justify-center w-full" : ""
@@ -270,7 +324,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
             <img src={settings.site_logo} alt="" className="w-8 h-8 object-contain flex-shrink-0" />
           )}
           {(!collapsed || onClose) && (
-            <span className="font-semibold text-gray-900 truncate">
+            <span className="font-semibold text-gray-900 truncate dark:text-gray-100">
               {settings.site_name}
             </span>
           )}
@@ -293,8 +347,8 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
             className={({ isActive }) => cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group relative",
               isActive
-                ? "text-primary-900 bg-primary-50 shadow-soft"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                ? "text-primary-900 bg-primary-50 shadow-soft dark:text-primary-300 dark:bg-primary-900/30"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200",
               collapsed && !onClose ? "justify-center px-2" : ""
             )}
           >
@@ -327,16 +381,16 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
 
       {/* Admin settings link */}
       {user?.role === 'admin' && (
-        <div className="px-3 py-4 border-t border-gray-100">
+        <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-700">
           <NavLink
             to="/settings"
             onClick={onClose}
-            title={collapsed && !onClose ? "Paramètres" : undefined}
+            title={collapsed && !onClose ? t('nav.settings') : undefined}
             className={({ isActive }) => cn(
               "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 group",
               isActive
-                ? "text-primary-900 bg-primary-50 shadow-soft"
-                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900",
+                ? "text-primary-900 bg-primary-50 shadow-soft dark:text-primary-300 dark:bg-primary-900/30"
+                : "text-gray-600 hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200",
               collapsed && !onClose ? "justify-center px-2" : ""
             )}
           >
@@ -346,7 +400,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
                   "w-5 h-5 transition-colors flex-shrink-0", 
                   isActive ? "text-primary-600" : "text-gray-400 group-hover:text-gray-600"
                 )} />
-                {(!collapsed || onClose) && <span>Paramètres</span>}
+                {(!collapsed || onClose) && <span>{t('nav.settings')}</span>}
               </>
             )}
           </NavLink>
@@ -355,21 +409,21 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
 
       {/* Toggle collapse button (desktop only) */}
       {onToggleCollapse && (
-        <div className="px-3 py-2 border-t border-gray-100">
+        <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700">
           <button
             onClick={onToggleCollapse}
             className={cn(
-              "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200",
+              "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200",
               collapsed ? "justify-center px-2" : ""
             )}
-            title={collapsed ? "Agrandir le menu" : "Réduire le menu"}
+            title={collapsed ? t('nav.expand') : t('nav.collapse')}
           >
             {collapsed ? (
               <ChevronRight className="w-5 h-5 text-gray-400" />
             ) : (
               <>
                 <ChevronLeft className="w-5 h-5 text-gray-400" />
-                <span>Réduire</span>
+                <span>{t('nav.collapse')}</span>
               </>
             )}
           </button>
@@ -378,7 +432,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
 
       {/* Version */}
       <div className={cn(
-        "px-4 py-3 text-xs text-gray-400 border-t border-gray-200",
+        "px-4 py-3 text-xs text-gray-400 border-t border-gray-200 dark:border-gray-700",
         collapsed && !onClose ? "text-center px-2" : ""
       )}>
         {collapsed && !onClose ? `v${settings.site_version?.split(' ')[0] || ''}` : `Version ${settings.site_version}`}

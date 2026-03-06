@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor, getAccessibleCategoryIds } from '../middleware/auth.middleware';
+import { emitAlert } from '../services/websocket.service';
 
 const router = Router();
 
@@ -293,6 +294,9 @@ router.post('/', authenticateToken, requireSupervisor, async (req: AuthRequest, 
       message: 'Alerte créée',
       alertId: result.lastInsertRowid
     });
+
+    // Notifier les clients connectés en temps réel
+    emitAlert({ id: result.lastInsertRowid, title, message, alertType, severity });
   } catch (error: any) {
     console.error('Erreur create alert:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });

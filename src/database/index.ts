@@ -543,6 +543,24 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
+      // Table des réservations / prêts de matériel
+      `CREATE TABLE IF NOT EXISTS reservations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        object_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        start_date DATETIME NOT NULL,
+        end_date DATETIME NOT NULL,
+        actual_return_date DATETIME,
+        reason ${textType},
+        status VARCHAR(20) DEFAULT 'reserved',
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
       )`
     ];
 

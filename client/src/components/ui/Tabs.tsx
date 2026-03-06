@@ -45,7 +45,7 @@ export default function Tabs({ tabs, activeTab, value, onChange, className, chil
     const currentValue = value || activeTab || ''
 
     return (
-      <div className={cn("border-b border-gray-200 overflow-x-auto scrollbar-hide", className)}>
+      <div className={cn("border-b border-gray-200 overflow-x-auto scrollbar-hide dark:border-gray-700", className)}>
         <nav className="flex gap-3 sm:gap-6 -mb-px min-w-max">
           {tabItems.map((tab) => (
             <button
@@ -55,7 +55,7 @@ export default function Tabs({ tabs, activeTab, value, onChange, className, chil
                 "py-3 px-1 border-b-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 sm:gap-2",
                 currentValue === tab.id
                   ? "border-primary-600 text-primary-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                  : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300"
               )}
             >
               {tab.icon}
@@ -81,7 +81,7 @@ export default function Tabs({ tabs, activeTab, value, onChange, className, chil
   const currentTab = activeTab || value || ''
   
   return (
-    <div className={cn("border-b border-gray-200 overflow-x-auto scrollbar-hide", className)}>
+    <div className={cn("border-b border-gray-200 overflow-x-auto scrollbar-hide dark:border-gray-700", className)}>
       <nav className="flex gap-3 sm:gap-6 -mb-px min-w-max">
         {tabs?.map((tab) => (
           <button
@@ -91,7 +91,7 @@ export default function Tabs({ tabs, activeTab, value, onChange, className, chil
               "py-3 px-1 border-b-2 text-xs sm:text-sm font-medium transition-colors whitespace-nowrap",
               currentTab === tab.id
                 ? "border-primary-600 text-primary-600"
-                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300"
+                : "border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-300"
             )}
           >
             {tab.label}

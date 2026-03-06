@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -37,6 +38,9 @@ import webhookRoutes from './routes/webhook.routes';
 import trackingRoutes from './routes/tracking.routes';
 import securityRoutes from './routes/security.routes';
 import apiTokenRoutes from './routes/apiToken.routes';
+import qrcodeRoutes from './routes/qrcode.routes';
+import importExportRoutes from './routes/importExport.routes';
+import reservationRoutes from './routes/reservation.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -45,6 +49,7 @@ import { initPluginSystem } from './services/plugin.service';
 import { initCronJobs } from './services/cron.service';
 import { logService } from './services/log.service';
 import { jwtRotationService } from './services/jwtRotation.service';
+import { initWebSocket } from './services/websocket.service';
 
 /**
  * Synchronise la version du package.json vers la base de données
@@ -231,6 +236,9 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/security', securityRoutes);
 app.use('/api/api-tokens', apiTokenRoutes);
+app.use('/api/qrcode', qrcodeRoutes);
+app.use('/api/import-export', exportLimiter, importExportRoutes);
+app.use('/api/reservations', reservationRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {
@@ -281,7 +289,13 @@ async function startServer() {
     console.log('✅ Tâches planifiées initialisées');
 
     // Listen on 0.0.0.0 for Docker compatibility
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = http.createServer(app);
+    
+    // Initialiser WebSocket
+    initWebSocket(server);
+    console.log('✅ WebSocket initialisé');
+
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Serveur démarré sur http://0.0.0.0:${PORT}`);
       console.log(`📊 Mode: ${process.env.NODE_ENV || 'development'}`);
       

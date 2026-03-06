@@ -28,6 +28,10 @@ import ProfilePage from '@/pages/ProfilePage'
 import PluginPage from '@/pages/PluginPage'
 import CustomFieldsPage from '@/pages/CustomFieldsPage'
 import TrackingPage from '@/pages/TrackingPage'
+import ReservationsPage from '@/pages/ReservationsPage'
+import DepreciationPage from '@/pages/DepreciationPage'
+import ImportExportPage from '@/pages/ImportExportPage'
+import MapPage from '@/pages/MapPage'
 
 // Route protégée
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -87,6 +91,10 @@ function App() {
         <Route path="calendar" element={<CalendarPage />} />
         <Route path="alerts" element={<AlertsPage />} />
         <Route path="tracking" element={<TrackingPage />} />
+        <Route path="reservations" element={<ReservationsPage />} />
+        <Route path="depreciation" element={<DepreciationPage />} />
+        <Route path="import-export" element={<ImportExportPage />} />
+        <Route path="map" element={<MapPage />} />
         <Route path="profile" element={<ProfilePage />} />
         
         {/* Routes dynamiques pour les plugins de type menu */}

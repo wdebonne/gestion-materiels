@@ -12,7 +12,7 @@ export default function Card({ children, className, onClick, hoverable = false }
   return (
     <div
       className={cn(
-        "bg-white rounded-xl border border-gray-100 shadow-soft overflow-hidden",
+        "bg-white rounded-xl border border-gray-100 shadow-soft overflow-hidden dark:bg-gray-800 dark:border-gray-700",
         hoverable && "transition-all duration-300 hover:shadow-medium hover:-translate-y-1 cursor-pointer",
         onClick && "cursor-pointer",
         className
@@ -26,7 +26,7 @@ export default function Card({ children, className, onClick, hoverable = false }
 
 export function CardHeader({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100", className)}>
+    <div className={cn("px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700", className)}>
       {children}
     </div>
   )
@@ -34,7 +34,7 @@ export function CardHeader({ children, className }: { children: ReactNode; class
 
 export function CardTitle({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <h3 className={cn("text-lg font-semibold text-gray-900", className)}>
+    <h3 className={cn("text-lg font-semibold text-gray-900 dark:text-gray-100", className)}>
       {children}
     </h3>
   )
@@ -42,7 +42,7 @@ export function CardTitle({ children, className }: { children: ReactNode; classN
 
 export function CardDescription({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("text-sm text-gray-500 mt-1", className)}>
+    <p className={cn("text-sm text-gray-500 mt-1 dark:text-gray-400", className)}>
       {children}
     </p>
   )
