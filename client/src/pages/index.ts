@@ -12,6 +12,11 @@ export { default as ObjectDetailPage } from './ObjectDetailPage'
 export { default as CalendarPage } from './CalendarPage'
 export { default as AlertsPage } from './AlertsPage'
 export { default as ProfilePage } from './ProfilePage'
+export { default as TrackingPage } from './TrackingPage'
+export { default as ReservationsPage } from './ReservationsPage'
+export { default as DepreciationPage } from './DepreciationPage'
+export { default as ImportExportPage } from './ImportExportPage'
+export { default as MapPage } from './MapPage'
 
 // Settings pages
 export { default as GeneralSettingsPage } from './settings/GeneralSettingsPage'
