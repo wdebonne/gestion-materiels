@@ -151,6 +151,11 @@ app.use('/plugins', express.static(path.join(__dirname, '../plugins')));
 // Route de vérification HTTPS (utile pour le debugging)
 app.get('/api/https-status', httpsStatus);
 
+// Health check (Docker, Portainer, etc.)
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok' });
+});
+
 // Swagger UI - Documentation API interactive
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
   customCss: '.swagger-ui .topbar { display: none }',
