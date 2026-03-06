@@ -22,6 +22,7 @@ import BackupPage from '@/pages/settings/BackupPage'
 import DatabasePage from '@/pages/settings/DatabasePage'
 import LogsPage from '@/pages/settings/LogsPage'
 import WebhooksPage from '@/pages/settings/WebhooksPage'
+import ApiPage from '@/pages/settings/ApiPage'
 import ProfilePage from '@/pages/ProfilePage'
 import PluginPage from '@/pages/PluginPage'
 import CustomFieldsPage from '@/pages/CustomFieldsPage'
@@ -104,6 +105,7 @@ function App() {
           <Route path="database" element={<DatabasePage />} />
           <Route path="logs" element={<LogsPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
+          <Route path="api" element={<ApiPage />} />
         </Route>
       </Route>
 

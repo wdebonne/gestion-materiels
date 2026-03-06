@@ -7,6 +7,8 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
 
 // Import des middlewares de sécurité avancés
 import { globalLimiter, authLimiter, sensitiveOpsLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter.middleware';
@@ -148,6 +150,59 @@ app.use('/plugins', express.static(path.join(__dirname, '../plugins')));
 
 // Route de vérification HTTPS (utile pour le debugging)
 app.get('/api/https-status', httpsStatus);
+
+// Swagger UI - Documentation API interactive
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Gestion Matériels - API Documentation',
+}));
+
+// Endpoint JSON de la spec OpenAPI
+app.get('/api/swagger.json', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(swaggerSpec);
+});
+
+// Endpoint d'information API (pour la page settings/api)
+app.get('/api/api-info', (req: Request, res: Response) => {
+  const spec = swaggerSpec as any;
+  const paths = spec.paths || {};
+  
+  // Compter les endpoints par méthode
+  const methodCounts: Record<string, number> = {};
+  let totalEndpoints = 0;
+  for (const pathKey of Object.keys(paths)) {
+    for (const method of Object.keys(paths[pathKey])) {
+      methodCounts[method.toUpperCase()] = (methodCounts[method.toUpperCase()] || 0) + 1;
+      totalEndpoints++;
+    }
+  }
+
+  // Compter les endpoints par tag
+  const tagCounts: Record<string, number> = {};
+  for (const pathKey of Object.keys(paths)) {
+    for (const method of Object.keys(paths[pathKey])) {
+      const tags = paths[pathKey][method].tags || ['Uncategorized'];
+      for (const tag of tags) {
+        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+      }
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      version: spec.info?.version || '1.0.0',
+      title: spec.info?.title || 'API',
+      totalEndpoints,
+      methodCounts,
+      tagCounts,
+      tags: spec.tags || [],
+      swaggerUrl: '/api-docs',
+      specUrl: '/api/swagger.json',
+    },
+  });
+});
 
 // Routes API avec rate limiting spécifiques
 app.use('/api/auth', authLimiter, authRoutes);

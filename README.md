@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.59-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.60-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
@@ -14,7 +14,8 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔌 **Système de plugins** extensible avec import ZIP
 - 📱 **Design responsive** adapté mobile et desktop
 - 🔒 **Sécurisé** avec authentification JWT
-- 🐳 **Docker ready** pour un déploiement facile
+- � **Documentation API Swagger** interactive intégrée
+- �🐳 **Docker ready** pour un déploiement facile
 
 ## 📋 Fonctionnalités
 
@@ -90,6 +91,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔐 Gestion des permissions par catégorie
 - 📋 **Journal des logs** avec filtrage, export et paramètres avancés
 - 🔗 **Webhooks** : Notifications HTTP vers des services externes
+- 📖 **API** : Documentation interactive Swagger UI, spécification OpenAPI, statistiques
 
 ### 🎨 Interface Utilisateur (v1.2)
 - 🌟 Design moderne avec palette Sky Blue
@@ -283,6 +285,18 @@ Les templates d'emails utilisent la syntaxe Handlebars :
 - `{{alertMessage}}` - Message de l'alerte
 
 ## 📖 API
+
+### Documentation interactive
+
+L'API dispose d'une documentation Swagger UI interactive :
+
+| Ressource | URL | Description |
+|-----------|-----|-------------|
+| Swagger UI | `/api-docs` | Interface interactive pour explorer et tester les endpoints |
+| OpenAPI Spec | `/api/swagger.json` | Spécification OpenAPI 3.0 (importable dans Postman, Insomnia) |
+| API Info | `/api/api-info` | Métadonnées et statistiques de l'API |
+
+La documentation est également accessible depuis **Paramètres > API** dans l'interface d'administration.
 
 ### Authentification
 

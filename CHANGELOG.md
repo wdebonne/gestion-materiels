@@ -7,6 +7,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.2.60] - 2026-03-06
+
+### Ajouté
+- **Page Paramètres > API** : Nouvelle section dans les paramètres d'administration affichant les informations complètes de l'API REST (nombre d'endpoints, version, format, authentification)
+- **Documentation Swagger UI** : Interface interactive accessible via `/api-docs` permettant d'explorer et tester tous les endpoints de l'API directement depuis le navigateur
+- **Spécification OpenAPI 3.0** : Endpoint `/api/swagger.json` fournissant la spec complète importable dans Postman, Insomnia ou tout client compatible
+- **Endpoint `/api/api-info`** : Retourne les métadonnées de l'API (nombre d'endpoints, répartition par méthode HTTP et par module, tags, URLs)
+- **Configuration Swagger** (`src/config/swagger.ts`) : Documentation centralisée des ~90 endpoints organisés en 18 tags (Auth, Users, Categories, Objects, Calendar, Alerts, Tracking, Dashboard, Upload, Settings, Plugins, Email Templates, Backup, Permissions, Custom Fields, Logs, Webhooks, Security)
+- **Statistiques API** : Cartes affichant le nombre total d'endpoints, la version, le format REST et le type d'authentification JWT
+- **URLs copiables** : Base URL, Swagger UI et OpenAPI Spec avec bouton de copie dans le presse-papiers
+- **Guide d'authentification** : Bloc de code intégré montrant le flux complet (login → token → refresh)
+- **Tableau Rate Limiting** : Récapitulatif des limites de requêtes par route (global, auth, upload, backup)
+- **Modules API** : Grille listant tous les modules avec le nombre d'endpoints par module
+
+### Dépendances
+- Ajout de `swagger-jsdoc` et `swagger-ui-express` (+ types `@types/swagger-jsdoc`, `@types/swagger-ui-express`)
+
 ## [1.2.59] - 2026-03-04
 
 ### Ajouté
