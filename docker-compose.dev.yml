@@ -29,6 +29,9 @@ services:
       - ./src:/app/src
       - ./client:/app/client
       - ./plugins:/app/plugins
+      # Préserver les node_modules installés dans le conteneur
+      - /app/node_modules
+      - /app/client/node_modules
       # Données persistantes
       - app-data-dev:/app/data
       - app-uploads-dev:/app/uploads
