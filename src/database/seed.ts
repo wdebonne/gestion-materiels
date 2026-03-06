@@ -306,6 +306,7 @@ const DEFAULT_PLUGINS = [
     description: 'Calendrier avec agenda pour planifier les événements',
     author: 'Système',
     icon: 'calendar',
+    plugin_type: 'menu',
     is_system: 1,
     is_active: 1,
     config: JSON.stringify({
@@ -317,6 +318,56 @@ const DEFAULT_PLUGINS = [
         fuel: '#22c55e',
         other: '#3b82f6'
       }
+    })
+  },
+  {
+    name: 'Réservations',
+    slug: 'reservations',
+    version: '1.0.0',
+    description: 'Gestion des réservations et prêts de matériel entre services',
+    author: 'Système',
+    icon: 'calendar-clock',
+    plugin_type: 'menu',
+    route: 'reservations',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      statuses: ['pending', 'approved', 'active', 'returned', 'overdue', 'cancelled'],
+      require_approval: true,
+      overdue_check_cron: '0 8 * * *'
+    })
+  },
+  {
+    name: 'Amortissement',
+    slug: 'depreciation',
+    version: '1.0.0',
+    description: 'Calcul de la dépréciation et valeur résiduelle du matériel',
+    author: 'Système',
+    icon: 'trending-down',
+    plugin_type: 'menu',
+    route: 'depreciation',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      default_lifespan_years: 5,
+      depreciation_method: 'linear'
+    })
+  },
+  {
+    name: 'Cartographie',
+    slug: 'map',
+    version: '1.0.0',
+    description: 'Localisation géographique des équipements sur carte interactive',
+    author: 'Système',
+    icon: 'map-pin',
+    plugin_type: 'menu',
+    route: 'map',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      default_center: [49.5833, 0.9500],
+      default_zoom: 13,
+      tile_provider: 'openstreetmap'
     })
   }
 ];
@@ -368,8 +419,8 @@ export async function seedDatabase(): Promise<void> {
     const existing = await db.queryOne('SELECT id FROM plugins WHERE slug = ?', [plugin.slug]);
     if (!existing) {
       await db.execute(
-        `INSERT INTO plugins (name, slug, version, description, author, icon, is_system, is_active, config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [plugin.name, plugin.slug, plugin.version, plugin.description, plugin.author, plugin.icon, plugin.is_system, plugin.is_active || 0, plugin.config]
+        `INSERT INTO plugins (name, slug, version, description, author, icon, plugin_type, route, is_system, is_active, config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [plugin.name, plugin.slug, plugin.version, plugin.description, plugin.author, plugin.icon, (plugin as any).plugin_type || 'object', (plugin as any).route || plugin.slug, plugin.is_system, plugin.is_active || 0, plugin.config]
       );
     }
   }

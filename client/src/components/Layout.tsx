@@ -122,7 +122,13 @@ export default function Layout() {
     fuel: Truck,
     BarChart3,
     barchart3: BarChart3,
-    tracking: BarChart3
+    tracking: BarChart3,
+    CalendarClock,
+    'calendar-clock': CalendarClock,
+    TrendingDown,
+    'trending-down': TrendingDown,
+    MapPin,
+    'map-pin': MapPin
   }
 
   // Navigation de base
@@ -137,18 +143,15 @@ export default function Layout() {
     baseNavigation.push({ name: t('nav.tracking'), href: '/tracking', icon: BarChart3 })
   }
 
-  // Nouvelles fonctionnalités
+  // Import/Export (pas un plugin)
   baseNavigation.push(
-    { name: t('nav.reservations'), href: '/reservations', icon: CalendarClock },
-    { name: t('nav.depreciation'), href: '/depreciation', icon: TrendingDown },
-    { name: t('nav.map'), href: '/map', icon: MapPin },
     { name: t('nav.importExport'), href: '/import-export', icon: FileSpreadsheet }
   )
 
-  // Ajouter les plugins de type menu à la navigation
+  // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie)
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map']
   const pluginNavigation = menuPlugins.map((plugin: any) => {
-    // Le calendrier a une page dédiée, les autres utilisent la page dynamique
-    const isBuiltIn = ['calendar'].includes(plugin.slug)
+    const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
     return {
       name: plugin.name,
       href: isBuiltIn ? `/${plugin.route || plugin.slug}` : `/plugin/${plugin.slug}`,

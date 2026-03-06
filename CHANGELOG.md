@@ -7,6 +7,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.3.1] - 2026-03-06
+
+### Ajouté
+- **PWA complète** : Génération des icônes PNG (`pwa-192x192.png`, `pwa-512x512.png`, `apple-touch-icon.png`, `favicon.ico`, `favicon.svg`) dans `client/public/` via script `scripts/generate-icons.js` (Sharp)
+- **Meta tags PWA** dans `index.html` : `theme-color`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `apple-mobile-web-app-title`, `apple-touch-icon`, `mask-icon`
+- **Plugins système** : Réservations, Amortissement et Cartographie convertis en plugins de type `menu` (`is_system: 1`, `is_active: 1`) — activables/désactivables depuis Paramètres > Plugins
+- **Exports pages** : Ajout de `TrackingPage`, `ReservationsPage`, `DepreciationPage`, `ImportExportPage`, `MapPage` dans `client/src/pages/index.ts`
+
+### Modifié
+- **seed.ts** : 3 nouveaux plugins ajoutés (`reservations`, `depreciation`, `map`) avec config JSON (statuts, durée amortissement, coordonnées par défaut) — INSERT inclut désormais `plugin_type` et `route` pour tous les plugins
+- **Layout.tsx** : Réservations, Amortissement et Cartographie retirés de `baseNavigation` — apparaissent désormais via `pluginNavigation` (visibles uniquement si le plugin est actif) — `builtInPluginSlugs` étendu à `['calendar', 'reservations', 'depreciation', 'map']` — `iconMap` enrichi (`calendar-clock`, `trending-down`, `map-pin`)
+- **vite.config.ts** : Manifest PWA corrigé pour pointer vers les fichiers PNG réels, `includeAssets` mis à jour
+
+### Dépendances
+- Ajout dev : `sharp` (génération icônes PNG)
+
 ## [1.3.0] - 2026-03-06
 
 ### Ajouté — 12 nouvelles fonctionnalités

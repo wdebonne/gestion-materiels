@@ -12,10 +12,10 @@
 | 1 | 🔴 Haute | QR Codes matériels | Faible | Fort | ✅ Fait |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | Moyen | Fort | ✅ Fait |
 | 3 | 🔴 Haute | Tests automatisés | Moyen | Fort | ✅ Fait |
-| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | Élevé | Fort | ✅ Fait |
-| 5 | 🟠 Moyenne | Amortissement / Dépréciation | Moyen | Moyen | ✅ Fait |
+| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | Élevé | Fort | ✅ Plugin système |
+| 5 | 🟠 Moyenne | Amortissement / Dépréciation | Moyen | Moyen | ✅ Plugin système |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | Faible | Moyen | ✅ Fait |
-| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | Moyen | Moyen | ✅ Fait |
+| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | Moyen | Moyen | ✅ Plugin système |
 | 8 | 🟡 Basse | Timeline historique matériel | Faible | Moyen | ✅ Fait |
 | 9 | 🟡 Basse | Reporting périodique automatique | Moyen | Moyen | ✅ Fait |
 | 10 | 🟢 Optionnel | Dark Mode | Faible | Faible | ✅ Fait |

@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.3.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
@@ -65,6 +65,9 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔧 **Maintenance** : Historique des interventions, gestion des types d'entretien et prestataires, synchronisation kilométrage, pièces jointes (PDF/images)
 - 📋 **Contrôle technique** : Suivi des échéances, gestion des centres, calcul automatique expiration (+2 ans), pièces jointes (PDF/images)
 - 📅 **Calendrier** : Planning et événements
+- 🔄 **Réservations** *(plugin système)* : Gestion des prêts de matériel, statuts, alertes retards
+- 📉 **Amortissement** *(plugin système)* : Dépréciation linéaire, graphiques Recharts
+- 🗺️ **Cartographie** *(plugin système)* : Carte interactive Leaflet/OpenStreetMap
 
 ### 🔌 Système de Plugins Avancé (Nouveau!)
 - 📦 Import de plugins via fichiers ZIP
@@ -101,20 +104,23 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 📤 **Export** : Export filtrable par catégorie au format CSV ou XLSX
 - 📋 Template d'import téléchargeable
 
-### 🔄 Réservation / Prêt de matériel
+### 🔄 Réservation / Prêt de matériel *(plugin)*
 - 📅 Formulaire de réservation (dates, motif, emprunteur)
 - 🔄 Statuts : réservé, en prêt, retourné, en retard
 - ⏰ Alertes automatiques CRON pour retours en retard
 - 📜 Historique complet des emprunts
+- 🔌 Activable/désactivable depuis Paramètres > Plugins
 
-### 💰 Amortissement / Dépréciation
+### 💰 Amortissement / Dépréciation *(plugin)*
 - 📉 Calcul linéaire automatique de la valeur résiduelle
 - 📊 Graphiques interactifs (barres + camembert)
 - 🏷️ Vision financière du patrimoine matériel
+- 🔌 Activable/désactivable depuis Paramètres > Plugins
 
-### 🗺️ Cartographie & Timeline
+### 🗺️ Cartographie & Timeline *(plugin)*
 - 🗺️ **Carte interactive** OpenStreetMap (Leaflet) avec marqueurs par matériel
 - 📜 **Timeline** : Frise chronologique consolidée sur la fiche objet (maintenances, contrôles, carburant, alertes)
+- 🔌 Activable/désactivable depuis Paramètres > Plugins
 
 ### 📧 Reporting automatique
 - 📊 Rapport hebdomadaire envoyé par email aux admins/superviseurs
