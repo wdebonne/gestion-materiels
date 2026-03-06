@@ -25,13 +25,6 @@ services:
       - SMTP_PASS=${SMTP_PASS:-}
       - SMTP_FROM=${SMTP_FROM:-}
     volumes:
-      # Montage du code source pour le hot-reload
-      - ./src:/app/src
-      - ./client:/app/client
-      - ./plugins:/app/plugins
-      # Préserver les node_modules installés dans le conteneur
-      - /app/node_modules
-      - /app/client/node_modules
       # Données persistantes
       - app-data-dev:/app/data
       - app-uploads-dev:/app/uploads
