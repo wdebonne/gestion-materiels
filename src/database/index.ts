@@ -527,6 +527,22 @@ class DatabaseManager {
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE(user_id, module_name)
+      )`,
+
+      // Table des tokens API (pour les applications externes)
+      `CREATE TABLE IF NOT EXISTS api_tokens (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        token_hash VARCHAR(64) NOT NULL UNIQUE,
+        token_prefix VARCHAR(8) NOT NULL,
+        permissions ${textType} DEFAULT '["read"]',
+        is_active ${boolType} DEFAULT 1,
+        expires_at DATETIME,
+        last_used_at DATETIME,
+        created_by INTEGER NOT NULL,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
       )`
     ];
 

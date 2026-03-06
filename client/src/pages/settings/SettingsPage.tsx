@@ -10,7 +10,8 @@ import {
   Lock,
   ScrollText,
   Webhook,
-  Code2
+  Code2,
+  Key
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -79,6 +80,12 @@ const settingsNavItems = [
     to: '/settings/api', 
     icon: Code2, 
     label: 'API',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/api-tokens', 
+    icon: Key, 
+    label: 'Tokens API',
     adminOnly: true
   },
 ]

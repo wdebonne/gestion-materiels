@@ -36,6 +36,7 @@ import logRoutes from './routes/log.routes';
 import webhookRoutes from './routes/webhook.routes';
 import trackingRoutes from './routes/tracking.routes';
 import securityRoutes from './routes/security.routes';
+import apiTokenRoutes from './routes/apiToken.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -229,6 +230,7 @@ app.use('/api/logs', logRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/security', securityRoutes);
+app.use('/api/api-tokens', apiTokenRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {

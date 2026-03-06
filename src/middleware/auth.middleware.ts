@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { db } from '../database';
 
 export interface JwtPayload {
@@ -21,6 +22,11 @@ export const authenticateToken = async (
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
+    // Vérifier si un token API est fourni via X-API-Token
+    const apiToken = req.headers['x-api-token'] as string;
+    if (apiToken) {
+      return authenticateApiToken(apiToken, req, res, next);
+    }
     res.status(401).json({ success: false, message: 'Token d\'authentification requis' });
     return;
   }
@@ -45,6 +51,59 @@ export const authenticateToken = async (
     res.status(403).json({ success: false, message: 'Token invalide ou expiré' });
   }
 };
+
+/**
+ * Authentifie une requête via un token API (header X-API-Token)
+ */
+async function authenticateApiToken(
+  rawToken: string,
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const apiToken = await db.queryOne(
+      'SELECT t.*, u.email, u.role, u.is_active FROM api_tokens t JOIN users u ON t.created_by = u.id WHERE t.token_hash = ?',
+      [tokenHash]
+    );
+
+    if (!apiToken || !apiToken.is_active) {
+      res.status(401).json({ success: false, message: 'Token API invalide ou désactivé' });
+      return;
+    }
+
+    if (!apiToken.is_active) {
+      res.status(401).json({ success: false, message: 'Le compte utilisateur associé est désactivé' });
+      return;
+    }
+
+    // Vérifier l'expiration
+    if (apiToken.expires_at && new Date(apiToken.expires_at) < new Date()) {
+      res.status(401).json({ success: false, message: 'Token API expiré' });
+      return;
+    }
+
+    // Mettre à jour last_used_at
+    const now = new Date().toISOString();
+    db.execute('UPDATE api_tokens SET last_used_at = ? WHERE id = ?', [now, apiToken.id]).catch(() => {});
+
+    // Attacher les infos utilisateur (le token hérite du rôle du créateur)
+    req.user = {
+      userId: apiToken.created_by,
+      email: apiToken.email,
+      role: apiToken.role
+    };
+
+    // Stocker les permissions du token pour usage ultérieur
+    (req as any).apiTokenPermissions = JSON.parse(apiToken.permissions || '["read"]');
+
+    next();
+  } catch (error) {
+    res.status(403).json({ success: false, message: 'Erreur de validation du token API' });
+  }
+}
 
 export const requireRole = (...roles: string[]) => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {

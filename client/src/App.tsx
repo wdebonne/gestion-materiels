@@ -23,6 +23,7 @@ import DatabasePage from '@/pages/settings/DatabasePage'
 import LogsPage from '@/pages/settings/LogsPage'
 import WebhooksPage from '@/pages/settings/WebhooksPage'
 import ApiPage from '@/pages/settings/ApiPage'
+import ApiTokensPage from '@/pages/settings/ApiTokensPage'
 import ProfilePage from '@/pages/ProfilePage'
 import PluginPage from '@/pages/PluginPage'
 import CustomFieldsPage from '@/pages/CustomFieldsPage'
@@ -106,6 +107,7 @@ function App() {
           <Route path="logs" element={<LogsPage />} />
           <Route path="webhooks" element={<WebhooksPage />} />
           <Route path="api" element={<ApiPage />} />
+          <Route path="api-tokens" element={<ApiTokensPage />} />
         </Route>
       </Route>
 
