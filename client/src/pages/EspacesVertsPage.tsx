@@ -1504,6 +1504,9 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                 >
                   <span className="text-white text-[8px] font-bold">{el.code ? el.code.substring(0, 2) : ''}</span>
                 </div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200/70 dark:border-gray-600/70 pointer-events-none select-none" style={{ fontSize: '7px', whiteSpace: 'nowrap', lineHeight: '12px', color: '#1e293b' }}>
+                  {el.code || el.label}
+                </div>
                 {isSelected && (
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between gap-3 mb-1">
@@ -1572,6 +1575,9 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                 >
                   <MapPin className="h-3 w-3 text-white" />
                 </div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200/70 dark:border-gray-600/70 pointer-events-none select-none" style={{ fontSize: '7px', whiteSpace: 'nowrap', lineHeight: '12px', color: '#1e293b' }}>
+                  {ann.label}
+                </div>
                 {isSelected && (
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between gap-3 mb-1">
@@ -1618,6 +1624,9 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   onClick={(e) => { e.stopPropagation(); setSelectedMarker(isSelected ? null : { type: 'group', id: g.id }) }}
                 >
                   <Layers className="h-4 w-4 text-white" />
+                </div>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200/70 dark:border-gray-600/70 pointer-events-none select-none" style={{ fontSize: '7px', whiteSpace: 'nowrap', lineHeight: '12px', color: '#1e293b' }}>
+                  {g.name}
                 </div>
                 {isSelected && (
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap min-w-[120px]" onClick={(e) => e.stopPropagation()}>

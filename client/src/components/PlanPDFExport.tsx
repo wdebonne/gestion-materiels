@@ -204,7 +204,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
 
       // === TABLEAU DÉTAIL DES ÉLÉMENTS ===
       if (includeDetails && (placedElements.length > 0 || placedGroups.length > 0 || annotations.length > 0)) {
-        pdf.addPage('a4', 'p') // Nouvelle page portrait pour les détails
+        pdf.addPage('a4', 'l') // Nouvelle page paysage pour recto-verso
         const dPageW = pdf.internal.pageSize.getWidth()
         const dMargin = 12
         let dy = dMargin
@@ -220,7 +220,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
 
         const checkPage = (needed: number) => {
           if (dy + needed > pdf.internal.pageSize.getHeight() - dMargin) {
-            pdf.addPage()
+            pdf.addPage('a4', 'l')
             dy = dMargin
           }
         }
@@ -240,11 +240,11 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
           pdf.setFont('helvetica', 'bold')
           pdf.setTextColor(75, 85, 99)
           pdf.text('Code', dMargin + 2, dy)
-          pdf.text('Libellé', dMargin + 25, dy)
-          pdf.text('Type', dMargin + 80, dy)
-          pdf.text('Espèce', dMargin + 115, dy)
-          pdf.text('État', dMargin + 150, dy)
-          pdf.text('Surface', dMargin + 172, dy)
+          pdf.text('Libellé', dMargin + 35, dy)
+          pdf.text('Type', dMargin + 110, dy)
+          pdf.text('Espèce', dMargin + 160, dy)
+          pdf.text('État', dMargin + 215, dy)
+          pdf.text('Surface', dMargin + 250, dy)
           dy += 6
 
           for (const el of placedElements) {
@@ -254,12 +254,12 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
             pdf.setFontSize(8)
             pdf.setFont('helvetica', 'normal')
             pdf.setTextColor(30, 41, 59)
-            pdf.text((el.code || '-').substring(0, 12), dMargin + 2, dy)
-            pdf.text((el.label || '').substring(0, 30), dMargin + 25, dy)
-            pdf.text((typeInfo?.label || '').substring(0, 18), dMargin + 80, dy)
-            pdf.text((el.species || '-').substring(0, 18), dMargin + 115, dy)
-            pdf.text(condLabel.substring(0, 12), dMargin + 150, dy)
-            pdf.text(el.area_m2 ? `${el.area_m2} m²` : '-', dMargin + 172, dy)
+            pdf.text((el.code || '-').substring(0, 15), dMargin + 2, dy)
+            pdf.text((el.label || '').substring(0, 40), dMargin + 35, dy)
+            pdf.text((typeInfo?.label || '').substring(0, 25), dMargin + 110, dy)
+            pdf.text((el.species || '-').substring(0, 25), dMargin + 160, dy)
+            pdf.text(condLabel.substring(0, 15), dMargin + 215, dy)
+            pdf.text(el.area_m2 ? `${el.area_m2} m²` : '-', dMargin + 250, dy)
 
             pdf.setDrawColor(229, 231, 235)
             pdf.line(dMargin, dy + 2, dPageW - dMargin, dy + 2)
@@ -417,15 +417,15 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
                 crossOrigin="anonymous"
               />
               {/* SVG zones */}
-              <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+              <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
                 {includeElements && elements.filter((el: any) => el.zone_points).map((el: any) => {
                   const pts = parseZonePoints(el.zone_points)
                   if (pts.length < 3) return null
                   const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
                   const color = typeInfo?.color || '#22c55e'
-                  const pointsStr = pts.map((p: any) => `${p.x}%,${p.y}%`).join(' ')
+                  const pointsStr = pts.map((p: any) => `${p.x},${p.y}`).join(' ')
                   return (
-                    <polygon key={`z-el-${el.id}`} points={pointsStr} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={2} strokeOpacity={0.7} strokeLinejoin="round" />
+                    <polygon key={`z-el-${el.id}`} points={pointsStr} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.7} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                   )
                 })}
                 {includeGroups && groups.filter((g: any) => g.zone_points).map((g: any) => {
@@ -433,9 +433,9 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
                   if (pts.length < 3) return null
                   const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
                   const color = g.color || typeInfo?.color || '#8b5cf6'
-                  const pointsStr = pts.map((p: any) => `${p.x}%,${p.y}%`).join(' ')
+                  const pointsStr = pts.map((p: any) => `${p.x},${p.y}`).join(' ')
                   return (
-                    <polygon key={`z-grp-${g.id}`} points={pointsStr} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={2} strokeOpacity={0.8} strokeLinejoin="round" strokeDasharray="6 3" />
+                    <polygon key={`z-grp-${g.id}`} points={pointsStr} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={0.5} strokeOpacity={0.8} strokeLinejoin="round" strokeDasharray="6 3" vectorEffect="non-scaling-stroke" />
                   )
                 })}
               </svg>
