@@ -113,7 +113,9 @@ app.use(helmet({
   contentSecurityPolicy: false // Disable CSP for now to allow assets loading
 }));
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? true : (process.env.CLIENT_URL || 'http://localhost:5173'),
+  origin: process.env.NODE_ENV === 'production'
+    ? (process.env.CLIENT_URL || true)
+    : true,
   credentials: true
 }));
 app.use(morgan('combined'));
