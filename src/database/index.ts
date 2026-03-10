@@ -890,6 +890,30 @@ class DatabaseManager {
         table: 'green_space_elements',
         column: 'group_id',
         type: 'INTEGER'
+      },
+      // Superficie en m² pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'area_m2',
+        type: 'DECIMAL(12,2)'
+      },
+      // Points de zone (polygone) pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'zone_points',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // Superficie en m² pour les groupes de composition
+      {
+        table: 'green_space_groups',
+        column: 'area_m2',
+        type: 'DECIMAL(12,2)'
+      },
+      // Points de zone (polygone) pour les groupes de composition
+      {
+        table: 'green_space_groups',
+        column: 'zone_points',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
       }
     ];
 

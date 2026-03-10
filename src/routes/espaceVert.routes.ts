@@ -283,7 +283,7 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
         object_id, label, code, element_type, description, image,
         pos_x, pos_y, quantity, purchase_price, maintenance_notes,
         species, planting_date, last_maintenance_date, next_maintenance_date,
-        condition_state, custom_fields
+        condition_state, custom_fields, area_m2, zone_points
       } = req.body;
 
       const now = new Date().toISOString();
@@ -292,8 +292,8 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
           element_type, description, image, pos_x, pos_y, quantity,
           purchase_price, maintenance_notes, species, planting_date,
           last_maintenance_date, next_maintenance_date, condition_state,
-          custom_fields, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          custom_fields, area_m2, zone_points, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           req.params.id, object_id || null, label, code || '',
           element_type || 'autre', description || '', image || '',
@@ -303,6 +303,8 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
           last_maintenance_date || null, next_maintenance_date || null,
           condition_state || 'bon',
           custom_fields ? JSON.stringify(custom_fields) : '{}',
+          area_m2 || null,
+          zone_points ? JSON.stringify(zone_points) : null,
           now, now
         ]
       );
@@ -336,7 +338,7 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
       object_id, label, code, element_type, description, image,
       pos_x, pos_y, quantity, purchase_price, maintenance_notes,
       species, planting_date, last_maintenance_date, next_maintenance_date,
-      condition_state, custom_fields
+      condition_state, custom_fields, area_m2, zone_points
     } = req.body;
 
     const now = new Date().toISOString();
@@ -347,7 +349,7 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         purchase_price = ?, maintenance_notes = ?,
         species = ?, planting_date = ?,
         last_maintenance_date = ?, next_maintenance_date = ?,
-        condition_state = ?, custom_fields = ?, updated_at = ?
+        condition_state = ?, custom_fields = ?, area_m2 = ?, zone_points = ?, updated_at = ?
        WHERE id = ?`,
       [
         object_id ?? existing.object_id, label ?? existing.label,
@@ -361,6 +363,8 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         next_maintenance_date ?? existing.next_maintenance_date,
         condition_state ?? existing.condition_state,
         custom_fields ? JSON.stringify(custom_fields) : existing.custom_fields,
+        area_m2 ?? existing.area_m2,
+        zone_points !== undefined ? (zone_points ? JSON.stringify(zone_points) : null) : existing.zone_points,
         now, req.params.elementId
       ]
     );
@@ -575,14 +579,14 @@ router.get('/element-types', authenticateToken, async (_req: AuthRequest, res: R
 // POST /:id/groups - Créer un groupe de composition
 router.post('/:id/groups', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, group_type, description, color, icon } = req.body;
+    const { name, group_type, description, color, icon, area_m2, zone_points } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'Le nom est requis' });
     const now = new Date().toISOString();
 
     const result = await db.execute(
-      `INSERT INTO green_space_groups (green_space_id, name, group_type, description, color, icon, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.params.id, name, group_type || 'massif', description || '', color || '#8b5cf6', icon || 'layers', now, now]
+      `INSERT INTO green_space_groups (green_space_id, name, group_type, description, color, icon, area_m2, zone_points, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.params.id, name, group_type || 'massif', description || '', color || '#8b5cf6', icon || 'layers', area_m2 || null, zone_points ? JSON.stringify(zone_points) : null, now, now]
     );
 
     const created = await db.queryOne('SELECT * FROM green_space_groups WHERE id = ?', [result.lastInsertRowid]);
@@ -595,11 +599,11 @@ router.post('/:id/groups', authenticateToken, requireSupervisor, async (req: Aut
 // PUT /groups/:groupId - Modifier un groupe
 router.put('/groups/:groupId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, group_type, description, color, icon, pos_x, pos_y } = req.body;
+    const { name, group_type, description, color, icon, pos_x, pos_y, area_m2, zone_points } = req.body;
     const now = new Date().toISOString();
     await db.execute(
-      `UPDATE green_space_groups SET name = ?, group_type = ?, description = ?, color = ?, icon = ?, pos_x = ?, pos_y = ?, updated_at = ? WHERE id = ?`,
-      [name, group_type, description || '', color || '#8b5cf6', icon || 'layers', pos_x ?? null, pos_y ?? null, now, req.params.groupId]
+      `UPDATE green_space_groups SET name = ?, group_type = ?, description = ?, color = ?, icon = ?, pos_x = ?, pos_y = ?, area_m2 = ?, zone_points = ?, updated_at = ? WHERE id = ?`,
+      [name, group_type, description || '', color || '#8b5cf6', icon || 'layers', pos_x ?? null, pos_y ?? null, area_m2 ?? null, zone_points !== undefined ? (zone_points ? JSON.stringify(zone_points) : null) : null, now, req.params.groupId]
     );
     const updated = await db.queryOne('SELECT * FROM green_space_groups WHERE id = ?', [req.params.groupId]);
     res.json({ success: true, data: updated });

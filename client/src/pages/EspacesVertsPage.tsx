@@ -4,7 +4,7 @@ import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
   FileText, X,
   Download, Image, Tag, Ruler, CloudSun,
-  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight
+  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -70,6 +70,8 @@ interface GreenSpaceElement {
   subcategory_name?: string
   reference?: string
   group_id?: number | null
+  area_m2?: number | null
+  zone_points?: string | null
 }
 
 interface Annotation {
@@ -113,6 +115,8 @@ interface CompositionGroup {
   icon: string
   pos_x: number | null
   pos_y: number | null
+  area_m2?: number | null
+  zone_points?: string | null
 }
 
 // ======================== CONSTANTES ========================
@@ -715,6 +719,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   const [gType, setGType] = useState('massif')
   const [gDesc, setGDesc] = useState('')
   const [gColor, setGColor] = useState('#ec4899')
+  const [gArea, setGArea] = useState('')
 
   const groups = space.groups || []
   const elements = space.elements || []
@@ -756,6 +761,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
     setGType('massif')
     setGDesc('')
     setGColor('#ec4899')
+    setGArea('')
   }
 
   const openEditForm = (g: CompositionGroup) => {
@@ -764,6 +770,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
     setGType(g.group_type)
     setGDesc(g.description || '')
     setGColor(g.color || '#ec4899')
+    setGArea(g.area_m2?.toString() || '')
     setShowGroupForm(true)
   }
 
@@ -773,7 +780,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   }
 
   const handleSaveGroup = () => {
-    const data = { name: gName, group_type: gType, description: gDesc, color: gColor, icon: GROUP_TYPES.find(t => t.value === gType)?.icon || 'layers' }
+    const data = { name: gName, group_type: gType, description: gDesc, color: gColor, icon: GROUP_TYPES.find(t => t.value === gType)?.icon || 'layers', area_m2: gArea ? parseFloat(gArea) : null }
     if (editingGroup) {
       updateGroupMutation.mutate({ id: editingGroup.id, ...data, pos_x: editingGroup.pos_x, pos_y: editingGroup.pos_y })
     } else {
@@ -843,6 +850,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{g.name}</span>
                 <span className="ml-2 text-xs text-gray-500">
                   {typeInfo?.label} • {groupElements.length} élément{groupElements.length > 1 ? 's' : ''}
+                  {g.area_m2 ? ` • ${g.area_m2} m²` : ''}
                   {g.pos_x != null ? ' • 📍 Placé' : ''}
                 </span>
               </div>
@@ -931,6 +939,18 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   onChange={e => setGDesc(e.target.value)}
                   rows={2}
                   placeholder="Composition, période de floraison..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Superficie (m²)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={gArea}
+                  onChange={e => setGArea(e.target.value)}
+                  placeholder="ex: 150"
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                 />
               </div>
@@ -1028,6 +1048,10 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const [freeLabel, setFreeLabel] = useState('')
   const [dragging, setDragging] = useState<{ type: 'element' | 'annotation' | 'group'; id: number } | null>(null)
 
+  // Zone drawing state
+  const [drawingZone, setDrawingZone] = useState<{ type: 'element' | 'group'; id: number } | null>(null)
+  const [zonePoints, setZonePoints] = useState<{ x: number; y: number }[]>([])
+
   const annotations = space.annotations || []
   const elements = space.elements || []
   const groups = space.groups || []
@@ -1078,6 +1102,31 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     }
   })
 
+  const saveElementZoneMutation = useMutation({
+    mutationFn: ({ elementId, zone_points }: { elementId: number; zone_points: { x: number; y: number }[] }) =>
+      api.put(`/green-spaces/elements/${elementId}`, { zone_points }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setDrawingZone(null)
+      setZonePoints([])
+    }
+  })
+
+  const saveGroupZoneMutation = useMutation({
+    mutationFn: ({ groupId, zone_points }: { groupId: number; zone_points: { x: number; y: number }[] }) => {
+      const g = groups.find(gr => gr.id === groupId)
+      return api.put(`/green-spaces/groups/${groupId}`, {
+        name: g?.name, group_type: g?.group_type, description: g?.description, color: g?.color, icon: g?.icon,
+        pos_x: g?.pos_x, pos_y: g?.pos_y, zone_points
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setDrawingZone(null)
+      setZonePoints([])
+    }
+  })
+
   const deleteAnnotationMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/green-spaces/annotations/${id}`),
     onSuccess: () => {
@@ -1091,6 +1140,12 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     const rect = canvasRef.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width * 100) / zoom
     const y = ((e.clientY - rect.top) / rect.height * 100) / zoom
+
+    // Mode dessin de zone : ajout d'un point au polygone
+    if (drawingZone) {
+      setZonePoints(prev => [...prev, { x, y }])
+      return
+    }
 
     // Si on est en train de déplacer un repère
     if (dragging) {
@@ -1127,6 +1182,49 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     addAnnotationMutation.mutate({ pos_x: clickPos.x, pos_y: clickPos.y, label: freeLabel.trim(), icon: 'circle', color: '#22c55e' })
   }
 
+  const startDrawingZone = (type: 'element' | 'group', id: number) => {
+    setDrawingZone({ type, id })
+    setZonePoints([])
+    setAddingAnnotation(false)
+    setDragging(null)
+    setClickPos(null)
+  }
+
+  const finishDrawingZone = () => {
+    if (!drawingZone || zonePoints.length < 3) return
+    if (drawingZone.type === 'element') {
+      saveElementZoneMutation.mutate({ elementId: drawingZone.id, zone_points: zonePoints })
+    } else {
+      saveGroupZoneMutation.mutate({ groupId: drawingZone.id, zone_points: zonePoints })
+    }
+  }
+
+  const cancelDrawingZone = () => {
+    setDrawingZone(null)
+    setZonePoints([])
+  }
+
+  const removeLastZonePoint = () => {
+    setZonePoints(prev => prev.slice(0, -1))
+  }
+
+  /** Parse zone_points from JSON string */
+  const parseZonePoints = (zp: string | null | undefined): { x: number; y: number }[] => {
+    if (!zp) return []
+    try {
+      const parsed = typeof zp === 'string' ? JSON.parse(zp) : zp
+      return Array.isArray(parsed) ? parsed : []
+    } catch { return [] }
+  }
+
+  const clearZone = (type: 'element' | 'group', id: number) => {
+    if (type === 'element') {
+      saveElementZoneMutation.mutate({ elementId: id, zone_points: [] })
+    } else {
+      saveGroupZoneMutation.mutate({ groupId: id, zone_points: [] })
+    }
+  }
+
   if (!space.plan_image) {
     return (
       <div className="text-center py-12 text-gray-500 dark:text-gray-400">
@@ -1139,6 +1237,39 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
 
   return (
     <div className="space-y-3">
+      {/* Barre de dessin de zone en cours */}
+      {drawingZone && (
+        <div className="flex items-center justify-between p-2 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg">
+          <p className="text-sm text-purple-700 dark:text-purple-300 flex items-center gap-2">
+            <Pentagon className="h-4 w-4" />
+            Dessin de zone : {zonePoints.length} point{zonePoints.length > 1 ? 's' : ''} — Cliquez pour ajouter des points (min. 3)
+          </p>
+          <div className="flex items-center gap-2">
+            {zonePoints.length > 0 && (
+              <button
+                onClick={removeLastZonePoint}
+                className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-200"
+              >
+                Annuler dernier
+              </button>
+            )}
+            <button
+              onClick={finishDrawingZone}
+              disabled={zonePoints.length < 3}
+              className="text-sm px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            >
+              Valider ({zonePoints.length}/3+)
+            </button>
+            <button
+              onClick={cancelDrawingZone}
+              className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-200 flex items-center gap-1"
+            >
+              <X className="h-4 w-4" /> Annuler
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Barre de déplacement en cours */}
       {dragging && (
         <div className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
@@ -1195,11 +1326,101 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       <div className="relative overflow-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-100 dark:bg-gray-900" style={{ maxHeight: '600px' }}>
         <div
           ref={canvasRef}
-          className={`relative ${addingAnnotation || dragging ? 'cursor-crosshair' : 'cursor-default'}`}
+          className={`relative ${addingAnnotation || dragging || drawingZone ? 'cursor-crosshair' : 'cursor-default'}`}
           onClick={handlePlanClick}
           style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', transition: 'transform 0.2s' }}
         >
           <img src={getImageUrl(space.plan_image)} alt="Plan" className="w-full" />
+
+          {/* SVG overlay pour les zones (polygones) */}
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+            {/* Zones des éléments */}
+            {elements.filter(el => el.zone_points).map(el => {
+              const pts = parseZonePoints(el.zone_points)
+              if (pts.length < 3) return null
+              const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
+              const color = typeInfo?.color || '#22c55e'
+              const pointsStr = pts.map(p => `${p.x}%,${p.y}%`).join(' ')
+              return (
+                <polygon
+                  key={`zone-el-${el.id}`}
+                  points={pointsStr}
+                  fill={color}
+                  fillOpacity={0.25}
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeOpacity={0.7}
+                  strokeLinejoin="round"
+                  className="pointer-events-auto cursor-pointer"
+                  onClick={(e) => { e.stopPropagation(); setHoveredElementId(el.id) }}
+                >
+                  <title>{el.label}{el.area_m2 ? ` (${el.area_m2} m²)` : ''}</title>
+                </polygon>
+              )
+            })}
+            {/* Zones des groupes */}
+            {groups.filter(g => g.zone_points).map(g => {
+              const pts = parseZonePoints(g.zone_points)
+              if (pts.length < 3) return null
+              const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+              const color = g.color || typeInfo?.color || '#8b5cf6'
+              const pointsStr = pts.map(p => `${p.x}%,${p.y}%`).join(' ')
+              return (
+                <polygon
+                  key={`zone-grp-${g.id}`}
+                  points={pointsStr}
+                  fill={color}
+                  fillOpacity={0.2}
+                  stroke={color}
+                  strokeWidth={2}
+                  strokeOpacity={0.8}
+                  strokeLinejoin="round"
+                  strokeDasharray="6 3"
+                  className="pointer-events-auto cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <title>{g.name}{g.area_m2 ? ` (${g.area_m2} m²)` : ''}</title>
+                </polygon>
+              )
+            })}
+            {/* Zone en cours de dessin */}
+            {drawingZone && zonePoints.length > 0 && (
+              <>
+                {zonePoints.length >= 3 && (
+                  <polygon
+                    points={zonePoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                    fill="#8b5cf6"
+                    fillOpacity={0.15}
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                    strokeLinejoin="round"
+                  />
+                )}
+                {zonePoints.length >= 2 && zonePoints.length < 3 && (
+                  <polyline
+                    points={zonePoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                    fill="none"
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    strokeDasharray="6 3"
+                    strokeLinejoin="round"
+                  />
+                )}
+                {zonePoints.map((pt, i) => (
+                  <circle
+                    key={i}
+                    cx={`${pt.x}%`}
+                    cy={`${pt.y}%`}
+                    r={4}
+                    fill="#8b5cf6"
+                    stroke="white"
+                    strokeWidth={2}
+                  />
+                ))}
+              </>
+            )}
+          </svg>
 
           {/* Annotations des éléments positionnés */}
           {elements.filter(el => el.pos_x != null && el.pos_y != null).map(el => {
@@ -1228,12 +1449,30 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                     {el.code && <p className="text-xs text-gray-500 font-mono">{el.code}</p>}
                     {el.species && <p className="text-xs text-green-600 italic">{el.species}</p>}
                     <p className="text-xs text-gray-400">{typeInfo?.label} • {CONDITION_STATES.find(c => c.value === el.condition_state)?.label}</p>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setDragging({ type: 'element', id: el.id }) }}
-                      className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                    >
-                      <GripVertical className="h-3 w-3" /> Déplacer
-                    </button>
+                    {el.area_m2 && <p className="text-xs text-gray-400">{el.area_m2} m²</p>}
+                    <div className="mt-1 flex items-center gap-2">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDragging({ type: 'element', id: el.id }) }}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                      >
+                        <GripVertical className="h-3 w-3" /> Déplacer
+                      </button>
+                      {parseZonePoints(el.zone_points).length > 0 ? (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); clearZone('element', el.id) }}
+                          className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                        >
+                          <X className="h-3 w-3" /> Zone
+                        </button>
+                      ) : (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); startDrawingZone('element', el.id) }}
+                          className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400"
+                        >
+                          <Pentagon className="h-3 w-3" /> Zone
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1292,16 +1531,34 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap min-w-[120px]">
                   <p className="text-xs font-semibold text-gray-900 dark:text-white">{g.name}</p>
                   <p className="text-xs text-gray-500">{typeInfo?.label} • {groupElements.length} élém.</p>
+                  {g.area_m2 && <p className="text-xs text-gray-400">{g.area_m2} m²</p>}
                   {groupElements.slice(0, 4).map(el => (
                     <p key={el.id} className="text-xs text-gray-400 truncate">• {el.label}</p>
                   ))}
                   {groupElements.length > 4 && <p className="text-xs text-gray-400">+ {groupElements.length - 4} autres</p>}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDragging({ type: 'group', id: g.id }) }}
-                    className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                  >
-                    <GripVertical className="h-3 w-3" /> Déplacer
-                  </button>
+                  <div className="mt-1 flex items-center gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDragging({ type: 'group', id: g.id }) }}
+                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                    >
+                      <GripVertical className="h-3 w-3" /> Déplacer
+                    </button>
+                    {parseZonePoints(g.zone_points).length > 0 ? (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); clearZone('group', g.id) }}
+                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                      >
+                        <X className="h-3 w-3" /> Zone
+                      </button>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); startDrawingZone('group', g.id) }}
+                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400"
+                      >
+                        <Pentagon className="h-3 w-3" /> Zone
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             )
@@ -2019,6 +2276,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
     next_maintenance_date: element?.next_maintenance_date || '',
     condition_state: element?.condition_state || 'bon',
     object_id: element?.object_id?.toString() || '',
+    area_m2: element?.area_m2?.toString() || '',
   })
   const [objectSearch, setObjectSearch] = useState('')
   const [showObjectResults, setShowObjectResults] = useState(false)
@@ -2046,6 +2304,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
       quantity: parseInt(form.quantity) || 1,
       purchase_price: form.purchase_price ? parseFloat(form.purchase_price) : null,
       object_id: form.object_id ? parseInt(form.object_id) : null,
+      area_m2: form.area_m2 ? parseFloat(form.area_m2) : null,
     })
   }
 
@@ -2187,6 +2446,18 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 min="1"
                 value={form.quantity}
                 onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Superficie (m²)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.area_m2}
+                onChange={(e) => setForm({ ...form, area_m2: e.target.value })}
+                placeholder="ex: 25.5"
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               />
             </div>
