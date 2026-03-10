@@ -43,6 +43,7 @@ import importExportRoutes from './routes/importExport.routes';
 import reservationRoutes from './routes/reservation.routes';
 import authSettingsRoutes from './routes/authSettings.routes';
 import manifestationRoutes from './routes/manifestation.routes';
+import espaceVertRoutes from './routes/espaceVert.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -245,6 +246,7 @@ app.use('/api/import-export', exportLimiter, importExportRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/settings/auth', authSettingsRoutes);
 app.use('/api/manifestations', manifestationRoutes);
+app.use('/api/green-spaces', espaceVertRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {

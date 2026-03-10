@@ -662,6 +662,102 @@ class DatabaseManager {
         config ${textType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault}
+      )`,
+
+      // ======================== ESPACES VERTS ========================
+
+      // Table principale des espaces verts
+      `CREATE TABLE IF NOT EXISTS green_spaces (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        description ${textType},
+        address VARCHAR(500),
+        latitude DECIMAL(10,8),
+        longitude DECIMAL(11,8),
+        area_m2 DECIMAL(12,2) DEFAULT 0,
+        space_type VARCHAR(100) DEFAULT 'parc',
+        soil_type VARCHAR(100) DEFAULT '',
+        status VARCHAR(50) DEFAULT 'actif',
+        image VARCHAR(500),
+        plan_image VARCHAR(500),
+        custom_fields ${textType} DEFAULT '{}',
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Éléments placés dans un espace vert (arbres, bancs, poubelles, etc.)
+      `CREATE TABLE IF NOT EXISTS green_space_elements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        object_id INTEGER,
+        label VARCHAR(255) NOT NULL,
+        code VARCHAR(100) DEFAULT '',
+        element_type VARCHAR(100) DEFAULT 'autre',
+        description ${textType},
+        image VARCHAR(500),
+        pos_x DECIMAL(10,4),
+        pos_y DECIMAL(10,4),
+        quantity INTEGER DEFAULT 1,
+        purchase_price DECIMAL(10,2),
+        maintenance_notes ${textType},
+        species VARCHAR(255) DEFAULT '',
+        planting_date DATE,
+        last_maintenance_date DATE,
+        next_maintenance_date DATE,
+        condition_state VARCHAR(50) DEFAULT 'bon',
+        custom_fields ${textType} DEFAULT '{}',
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE SET NULL
+      )`,
+
+      // Annotations visuelles sur le plan
+      `CREATE TABLE IF NOT EXISTS green_space_annotations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        element_id INTEGER,
+        pos_x DECIMAL(10,4) NOT NULL,
+        pos_y DECIMAL(10,4) NOT NULL,
+        label VARCHAR(255) DEFAULT '',
+        icon VARCHAR(50) DEFAULT 'circle',
+        color VARCHAR(20) DEFAULT '#22c55e',
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (element_id) REFERENCES green_space_elements(id) ON DELETE SET NULL
+      )`,
+
+      // Suivi saisonnier
+      `CREATE TABLE IF NOT EXISTS green_space_seasons (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        season VARCHAR(20) NOT NULL,
+        year INTEGER NOT NULL,
+        notes ${textType},
+        actions_done ${textType},
+        actions_planned ${textType},
+        photos ${textType} DEFAULT '[]',
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Documents légaux et pièces jointes
+      `CREATE TABLE IF NOT EXISTS green_space_documents (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        doc_type VARCHAR(100) DEFAULT 'autre',
+        file_path VARCHAR(500),
+        expiry_date DATE,
+        notes ${textType},
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
       )`
     ];
 

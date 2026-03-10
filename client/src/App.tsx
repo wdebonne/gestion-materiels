@@ -34,6 +34,7 @@ import DepreciationPage from '@/pages/DepreciationPage'
 import ImportExportPage from '@/pages/ImportExportPage'
 import MapPage from '@/pages/MapPage'
 import ManifestationsPage from '@/pages/ManifestationsPage'
+import EspacesVertsPage from '@/pages/EspacesVertsPage'
 
 // Route protégée
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -98,6 +99,7 @@ function App() {
         <Route path="import-export" element={<ImportExportPage />} />
         <Route path="map" element={<MapPage />} />
         <Route path="manifestations" element={<ManifestationsPage />} />
+        <Route path="espaces-verts" element={<EspacesVertsPage />} />
         <Route path="profile" element={<ProfilePage />} />
         
         {/* Routes dynamiques pour les plugins de type menu */}

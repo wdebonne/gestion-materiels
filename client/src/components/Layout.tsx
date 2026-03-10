@@ -33,7 +33,8 @@ import {
   Moon,
   Monitor,
   PartyPopper,
-  CalendarDays
+  CalendarDays,
+  TreePine
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -136,7 +137,10 @@ export default function Layout() {
     'file-spreadsheet': FileSpreadsheet,
     PartyPopper,
     partypopper: PartyPopper,
-    'party-popper': PartyPopper
+    'party-popper': PartyPopper,
+    TreePine,
+    treepine: TreePine,
+    'tree-pine': TreePine
   }
 
   // Navigation de base
@@ -145,6 +149,7 @@ export default function Layout() {
     { name: t('nav.categories'), href: '/categories', icon: FolderOpen },
     { name: t('nav.alerts'), href: '/alerts', icon: Bell, badge: alertsCount },
     { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
+    { name: 'Espaces Verts', href: '/espaces-verts', icon: TreePine },
   ]
 
   // Ajouter le menu Suivi si l'utilisateur a les permissions
@@ -153,7 +158,7 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts']
   const pluginNavigation = menuPlugins.map((plugin: any) => {
     const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
     return {
