@@ -835,6 +835,23 @@ class DatabaseManager {
         document_id INTEGER NOT NULL,
         FOREIGN KEY (maintenance_id) REFERENCES green_space_maintenances(id) ON DELETE CASCADE,
         FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE
+      )`,
+
+      // Types de documents personnalisés pour espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_doc_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Types d'entretien personnalisés pour espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_maintenance_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        icon VARCHAR(10) DEFAULT '🔧',
+        created_at DATETIME ${timestampDefault}
       )`
     ];
 

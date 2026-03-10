@@ -2,9 +2,10 @@ import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
-  FileText, X,
+  FileText, X, Eye,
   Download, Image, Tag, Ruler, CloudSun,
-  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check
+  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
+  Settings, Upload, Loader2
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -578,6 +579,7 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
 function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
   const [showForm, setShowForm] = useState(false)
   const [editingElement, setEditingElement] = useState<GreenSpaceElement | null>(null)
+  const [viewingElement, setViewingElement] = useState<GreenSpaceElement | null>(null)
   const [searchElements, setSearchElements] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
 
@@ -655,7 +657,7 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {items.map(el => (
-                  <div key={el.id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-green-300 dark:hover:border-green-700 transition-colors">
+                  <div key={el.id} onClick={() => setViewingElement(el)} className="p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-green-300 dark:hover:border-green-700 transition-colors cursor-pointer">
                     <div className="flex items-start gap-3">
                       {el.image || el.object_image ? (
                         <img src={getImageUrl(el.image || el.object_image)} alt="" className="w-12 h-12 rounded-lg object-cover" />
@@ -690,11 +692,11 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={() => { setEditingElement(el); setShowForm(true) }} className="p-1 text-gray-400 hover:text-green-600">
+                        <button onClick={(e) => { e.stopPropagation(); setEditingElement(el); setShowForm(true) }} className="p-1 text-gray-400 hover:text-green-600" title="Modifier">
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
                         <button
-                          onClick={() => { if (confirm('Supprimer cet élément ?')) deleteMutation.mutate(el.id) }}
+                          onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer cet élément ?')) deleteMutation.mutate(el.id) }}
                           className="p-1 text-gray-400 hover:text-red-600"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -711,6 +713,26 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
 
       {/* Groupes de composition */}
       <GroupsSection space={space} queryClient={queryClient} />
+
+      {/* Modal de visualisation d'élément */}
+      {viewingElement && (
+        <ElementViewModal
+          element={viewingElement}
+          space={space}
+          onClose={() => setViewingElement(null)}
+          onEdit={() => {
+            setEditingElement(viewingElement)
+            setViewingElement(null)
+            setShowForm(true)
+          }}
+          onDelete={() => {
+            if (confirm('Supprimer cet élément ?')) {
+              deleteMutation.mutate(viewingElement.id)
+              setViewingElement(null)
+            }
+          }}
+        />
+      )}
 
       {/* Modal d'ajout/édition d'élément */}
       {showForm && (
@@ -2052,6 +2074,24 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
 function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', doc_type: 'autre', file_path: '', expiry_date: '', notes: '' })
+  const [searchDoc, setSearchDoc] = useState('')
+  const [uploadingDoc, setUploadingDoc] = useState(false)
+  const [showDocTypeManager, setShowDocTypeManager] = useState(false)
+  const [newDocType, setNewDocType] = useState({ value: '', label: '' })
+  const [editingDocType, setEditingDocType] = useState<{ id: number, label: string } | null>(null)
+  const docFileRef = useRef<HTMLInputElement>(null)
+
+  // Charger les types personnalisés depuis l'API
+  const { data: customDocTypes = [] } = useQuery({
+    queryKey: ['green-space-doc-types'],
+    queryFn: () => api.get('/green-spaces/doc-types').then(r => r.data.data),
+  })
+
+  // Fusionner types par défaut + types personnalisés
+  const allDocTypes = [
+    ...DOC_TYPES,
+    ...(customDocTypes as any[]).filter((ct: any) => !DOC_TYPES.some(d => d.value === ct.value)).map((ct: any) => ({ value: ct.value, label: ct.label }))
+  ]
 
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/documents`, data),
@@ -2067,21 +2107,88 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
 
+  const addDocTypeMutation = useMutation({
+    mutationFn: (data: any) => api.post('/green-spaces/doc-types', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space-doc-types'] })
+      setNewDocType({ value: '', label: '' })
+    }
+  })
+
+  const updateDocTypeMutation = useMutation({
+    mutationFn: ({ id, label }: { id: number, label: string }) => api.put(`/green-spaces/doc-types/${id}`, { label }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space-doc-types'] })
+      setEditingDocType(null)
+    }
+  })
+
+  const deleteDocTypeMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/doc-types/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-doc-types'] })
+  })
+
+  const handleDocFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingDoc(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploadRes = await api.post('/upload/file', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setForm(f => ({ ...f, file_path: uploadRes.data.url, name: f.name || file.name.replace(/\.[^.]+$/, '') }))
+    } catch (error) {
+      console.error('Erreur upload fichier:', error)
+    } finally {
+      setUploadingDoc(false)
+      if (docFileRef.current) docFileRef.current.value = ''
+    }
+  }
+
   const documents = space.documents || []
+  const filteredDocs = documents.filter((doc: GreenSpaceDocument) => {
+    if (!searchDoc) return true
+    const s = searchDoc.toLowerCase()
+    const docType = allDocTypes.find(d => d.value === doc.doc_type)
+    return doc.name.toLowerCase().includes(s) || (docType?.label || doc.doc_type).toLowerCase().includes(s) || (doc.notes || '').toLowerCase().includes(s)
+  })
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center gap-3">
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">
           Documents & obligations légales
         </h4>
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
-        >
-          <Plus className="h-4 w-4" /> Ajouter
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowDocTypeManager(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            title="Gérer les types de documents"
+          >
+            <Settings className="h-4 w-4" /> Types
+          </button>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+          >
+            <Plus className="h-4 w-4" /> Ajouter
+          </button>
+        </div>
       </div>
+
+      {/* Barre de recherche */}
+      {documents.length > 0 && (
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input
+            type="text"
+            value={searchDoc}
+            onChange={(e) => setSearchDoc(e.target.value)}
+            placeholder="Rechercher un document..."
+            className="w-full text-sm pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+          />
+        </div>
+      )}
 
       {showForm && (
         <div className="p-4 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/30 space-y-3">
@@ -2102,7 +2209,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                 onChange={(e) => setForm({ ...form, doc_type: e.target.value })}
                 className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
-                {DOC_TYPES.map(d => (
+                {allDocTypes.map(d => (
                   <option key={d.value} value={d.value}>{d.label}</option>
                 ))}
               </select>
@@ -2110,14 +2217,28 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fichier (chemin)</label>
-              <input
-                type="text"
-                value={form.file_path}
-                onChange={(e) => setForm({ ...form, file_path: e.target.value })}
-                placeholder="ex: document.pdf"
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fichier</label>
+              <div className="flex items-center gap-2">
+                <label className={`flex-1 flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors ${uploadingDoc ? 'opacity-50' : ''}`}>
+                  <Upload className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
+                    {uploadingDoc ? 'Envoi en cours...' : form.file_path ? form.file_path.split('/').pop() : 'Choisir un fichier...'}
+                  </span>
+                  <input
+                    ref={docFileRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.odt,.ods,.zip"
+                    onChange={handleDocFileUpload}
+                    disabled={uploadingDoc}
+                  />
+                </label>
+                {form.file_path && (
+                  <button onClick={() => setForm({ ...form, file_path: '' })} className="p-1 text-gray-400 hover:text-red-500">
+                    <X className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Date d'expiration</label>
@@ -2142,23 +2263,24 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
             <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400">Annuler</button>
             <button
               onClick={() => { if (form.name) addMutation.mutate(form) }}
-              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+              disabled={!form.name || addMutation.isPending}
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
             >
-              Enregistrer
+              {addMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
             </button>
           </div>
         </div>
       )}
 
-      {documents.length === 0 ? (
+      {filteredDocs.length === 0 ? (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
           <FileText className="h-10 w-10 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Aucun document</p>
+          <p className="text-sm">{searchDoc ? 'Aucun document trouvé' : 'Aucun document'}</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {documents.map((doc: GreenSpaceDocument) => {
-            const docType = DOC_TYPES.find(d => d.value === doc.doc_type)
+          {filteredDocs.map((doc: GreenSpaceDocument) => {
+            const docType = allDocTypes.find(d => d.value === doc.doc_type)
             const isExpired = doc.expiry_date && new Date(doc.expiry_date) < new Date()
             const isExpiringSoon = doc.expiry_date && !isExpired && new Date(doc.expiry_date) < new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)
             return (
@@ -2180,6 +2302,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                           </span>
                         )}
                       </p>
+                      {doc.file_path && <p className="text-xs text-blue-500 mt-0.5">{doc.file_path.split('/').pop()}</p>}
                       {doc.notes && <p className="text-xs text-gray-400 mt-1">{doc.notes}</p>}
                     </div>
                   </div>
@@ -2190,6 +2313,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-1 text-gray-400 hover:text-blue-600"
+                        title="Télécharger"
                       >
                         <Download className="h-3.5 w-3.5" />
                       </a>
@@ -2205,6 +2329,92 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               </div>
             )
           })}
+        </div>
+      )}
+
+      {/* Modal gestion des types de documents */}
+      {showDocTypeManager && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowDocTypeManager(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <Settings className="h-4 w-4 text-green-600" /> Gérer les types de documents
+              </h3>
+              <button onClick={() => setShowDocTypeManager(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-4 w-4" /></button>
+            </div>
+            <div className="p-4 space-y-3">
+              {/* Types par défaut (lecture seule) */}
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Types par défaut</p>
+              <div className="space-y-1">
+                {DOC_TYPES.map(dt => (
+                  <div key={dt.value} className="flex items-center justify-between px-3 py-1.5 rounded bg-gray-50 dark:bg-gray-700/50">
+                    <span className="text-sm text-gray-700 dark:text-gray-300">{dt.label}</span>
+                    <span className="text-xs text-gray-400 font-mono">{dt.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Types personnalisés */}
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-4">Types personnalisés</p>
+              {(customDocTypes as any[]).length === 0 ? (
+                <p className="text-xs text-gray-400 italic py-2">Aucun type personnalisé</p>
+              ) : (
+                <div className="space-y-1">
+                  {(customDocTypes as any[]).map((dt: any) => (
+                    <div key={dt.id} className="flex items-center justify-between px-3 py-1.5 rounded bg-gray-50 dark:bg-gray-700/50">
+                      {editingDocType?.id === dt.id ? (
+                        <input
+                          type="text"
+                          value={editingDocType.label}
+                          onChange={(e) => setEditingDocType({ ...editingDocType, label: e.target.value })}
+                          onKeyDown={(e) => { if (e.key === 'Enter' && editingDocType.label) updateDocTypeMutation.mutate(editingDocType) }}
+                          className="flex-1 text-sm px-2 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white mr-2"
+                          autoFocus
+                        />
+                      ) : (
+                        <span className="text-sm text-gray-700 dark:text-gray-300">{dt.label}</span>
+                      )}
+                      <div className="flex items-center gap-1">
+                        {editingDocType?.id === dt.id ? (
+                          <>
+                            <button onClick={() => { if (editingDocType.label) updateDocTypeMutation.mutate(editingDocType) }} className="p-1 text-green-600 hover:text-green-800"><Check className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => setEditingDocType(null)} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-3.5 w-3.5" /></button>
+                          </>
+                        ) : (
+                          <>
+                            <button onClick={() => setEditingDocType({ id: dt.id, label: dt.label })} className="p-1 text-gray-400 hover:text-blue-600"><Edit3 className="h-3.5 w-3.5" /></button>
+                            <button onClick={() => { if (confirm('Supprimer ce type ?')) deleteDocTypeMutation.mutate(dt.id) }} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Ajouter un nouveau type */}
+              <div className="flex items-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex-1">
+                  <label className="block text-xs text-gray-500 mb-1">Nouveau type</label>
+                  <input
+                    type="text"
+                    value={newDocType.label}
+                    onChange={(e) => setNewDocType({ value: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''), label: e.target.value })}
+                    placeholder="Ex: Plan de gestion"
+                    className="w-full text-sm px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    onKeyDown={(e) => { if (e.key === 'Enter' && newDocType.label && newDocType.value) addDocTypeMutation.mutate(newDocType) }}
+                  />
+                </div>
+                <button
+                  onClick={() => { if (newDocType.label && newDocType.value) addDocTypeMutation.mutate(newDocType) }}
+                  disabled={!newDocType.label || addDocTypeMutation.isPending}
+                  className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  <Plus className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -2928,6 +3138,171 @@ function SpaceFormModal({ space, onClose, onSaved }: { space: GreenSpace | null,
           >
             {mutation.isPending ? 'Enregistrement...' : (space ? 'Modifier' : 'Créer')}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ======================== MODAL VISUALISATION ÉLÉMENT ========================
+
+function ElementViewModal({ element, space, onClose, onEdit, onDelete }: {
+  element: GreenSpaceElement, space: GreenSpace, onClose: () => void, onEdit: () => void, onDelete: () => void
+}) {
+  const typeInfo = ELEMENT_TYPES.find(t => t.value === element.element_type)
+  const conditionInfo = CONDITION_STATES.find(c => c.value === element.condition_state)
+  const relatedMaintenances = (space.maintenances || []).filter(m =>
+    m.element_ids?.includes(element.id)
+  ).sort((a, b) => (b.performed_date || '').localeCompare(a.performed_date || ''))
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{typeInfo?.icon || '📌'}</span>
+            <div>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">{element.label}</h3>
+              {element.code && <span className="px-2 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono text-gray-600 dark:text-gray-300">{element.code}</span>}
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={onEdit} className="p-2 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg text-gray-500 hover:text-green-600" title="Modifier">
+              <Edit3 className="h-5 w-5" />
+            </button>
+            <button onClick={onDelete} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-gray-500 hover:text-red-600" title="Supprimer">
+              <Trash2 className="h-5 w-5" />
+            </button>
+            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="p-6 space-y-5">
+          {/* Image */}
+          {(element.image || element.object_image) && (
+            <div className="flex justify-center">
+              <img src={getImageUrl(element.image || element.object_image || '')} alt={element.label} className="max-h-48 rounded-xl object-cover" />
+            </div>
+          )}
+
+          {/* Infos principales */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Type</span>
+              <p className="text-sm text-gray-900 dark:text-white">{typeInfo?.icon} {typeInfo?.label || element.element_type}</p>
+            </div>
+            <div>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">État</span>
+              <p className="mt-0.5">
+                {conditionInfo && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${conditionInfo.color}`}>{conditionInfo.label}</span>
+                )}
+              </p>
+            </div>
+            {element.species && (
+              <div>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Espèce / Variété</span>
+                <p className="text-sm text-gray-900 dark:text-white italic">{element.species}</p>
+              </div>
+            )}
+            {element.quantity > 1 && (
+              <div>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Quantité</span>
+                <p className="text-sm text-gray-900 dark:text-white">{element.quantity}</p>
+              </div>
+            )}
+            {element.area_m2 && (
+              <div>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Superficie</span>
+                <p className="text-sm text-gray-900 dark:text-white">{element.area_m2} m²</p>
+              </div>
+            )}
+            {element.purchase_price && (
+              <div>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Prix d'achat</span>
+                <p className="text-sm text-gray-900 dark:text-white">{element.purchase_price} €</p>
+              </div>
+            )}
+            {element.planting_date && (
+              <div>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Date de plantation</span>
+                <p className="text-sm text-gray-900 dark:text-white">{formatDate(element.planting_date)}</p>
+              </div>
+            )}
+            {element.last_maintenance_date && (
+              <div>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Dernier entretien</span>
+                <p className="text-sm text-gray-900 dark:text-white">{formatDate(element.last_maintenance_date)}</p>
+              </div>
+            )}
+            {element.next_maintenance_date && (
+              <div>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Prochain entretien</span>
+                <p className="text-sm text-gray-900 dark:text-white">{formatDate(element.next_maintenance_date)}</p>
+              </div>
+            )}
+            {element.object_name && (
+              <div className="col-span-2">
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Objet lié</span>
+                <p className="text-sm text-green-600 dark:text-green-400">
+                  ↳ {element.category_name}{element.subcategory_name ? ` > ${element.subcategory_name}` : ''} • {element.object_name}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Position */}
+          {(element.pos_x != null && element.pos_y != null) && (
+            <div>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Position sur le plan</span>
+              <p className="text-sm text-gray-900 dark:text-white flex items-center gap-1">
+                <MapPin className="h-3.5 w-3.5 text-green-500" /> X: {Number(element.pos_x).toFixed(1)}% — Y: {Number(element.pos_y).toFixed(1)}%
+              </p>
+            </div>
+          )}
+
+          {/* Description */}
+          {element.description && (
+            <div>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Description</span>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{element.description}</p>
+            </div>
+          )}
+
+          {/* Notes d'entretien */}
+          {element.maintenance_notes && (
+            <div>
+              <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Notes d'entretien</span>
+              <p className="text-sm text-gray-700 dark:text-gray-300 mt-1 whitespace-pre-wrap">{element.maintenance_notes}</p>
+            </div>
+          )}
+
+          {/* Historique d'entretien lié */}
+          {relatedMaintenances.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2 mb-2">
+                <Wrench className="h-4 w-4" /> Historique d'entretien ({relatedMaintenances.length})
+              </h4>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {relatedMaintenances.map(m => {
+                  const mtLabel = DEFAULT_MAINTENANCE_TYPES.find(t => t.value === m.maintenance_type)
+                  return (
+                    <div key={m.id} className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium text-gray-900 dark:text-white">
+                          {mtLabel?.icon || '🔧'} {m.title || mtLabel?.label || m.maintenance_type}
+                        </span>
+                        {m.performed_date && <span className="text-xs text-gray-500">{formatDate(m.performed_date)}</span>}
+                      </div>
+                      {m.performed_by && <p className="text-xs text-gray-500 mt-0.5">Par {m.performed_by}</p>}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
