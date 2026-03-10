@@ -110,6 +110,124 @@ router.get('/element-types', authenticateToken, async (_req: AuthRequest, res: R
   }
 });
 
+// ======================== TYPES DE DOCUMENTS (CRUD) ========================
+
+// GET /doc-types - Liste des types de documents
+router.get('/doc-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const types = await db.query('SELECT * FROM green_space_doc_types ORDER BY is_default DESC, label ASC');
+    res.json({ success: true, data: types });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /doc-types - Ajouter un type de document
+router.post('/doc-types', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { value, label } = req.body;
+    if (!value || !label) return res.status(400).json({ success: false, message: 'value et label sont requis' });
+    const now = new Date().toISOString();
+    const result = await db.execute(
+      'INSERT INTO green_space_doc_types (value, label, is_default, created_at) VALUES (?, ?, 0, ?)',
+      [value.toLowerCase().replace(/\s+/g, '_'), label, now]
+    );
+    const created = await db.queryOne('SELECT * FROM green_space_doc_types WHERE id = ?', [result.lastInsertRowid]);
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE')) {
+      return res.status(409).json({ success: false, message: 'Ce type existe déjà' });
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /doc-types/:id - Modifier un type de document
+router.put('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { label, disabled } = req.body;
+    if (label !== undefined) {
+      await db.execute('UPDATE green_space_doc_types SET label = ? WHERE id = ?', [label, req.params.id]);
+    }
+    if (disabled !== undefined) {
+      await db.execute('UPDATE green_space_doc_types SET disabled = ? WHERE id = ?', [disabled ? 1 : 0, req.params.id]);
+    }
+    const updated = await db.queryOne('SELECT * FROM green_space_doc_types WHERE id = ?', [req.params.id]);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /doc-types/:id - Supprimer un type de document
+router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.execute('DELETE FROM green_space_doc_types WHERE id = ? AND is_default = 0', [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== TYPES D'ENTRETIEN PERSONNALISÉS (CRUD) ========================
+
+// GET /custom-maintenance-types - Liste des types d'entretien personnalisés
+router.get('/custom-maintenance-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const types = await db.query('SELECT * FROM green_space_maintenance_types ORDER BY is_default DESC, label ASC');
+    res.json({ success: true, data: types });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /custom-maintenance-types - Ajouter un type d'entretien
+router.post('/custom-maintenance-types', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { value, label, icon } = req.body;
+    if (!value || !label) return res.status(400).json({ success: false, message: 'value et label sont requis' });
+    const now = new Date().toISOString();
+    const result = await db.execute(
+      'INSERT INTO green_space_maintenance_types (value, label, icon, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
+      [value.toLowerCase().replace(/\s+/g, '_'), label, icon || '🔧', now]
+    );
+    const created = await db.queryOne('SELECT * FROM green_space_maintenance_types WHERE id = ?', [result.lastInsertRowid]);
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE')) {
+      return res.status(409).json({ success: false, message: 'Ce type existe déjà' });
+    }
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /custom-maintenance-types/:id - Modifier un type d'entretien
+router.put('/custom-maintenance-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { label, icon, disabled } = req.body;
+    if (label !== undefined) {
+      await db.execute('UPDATE green_space_maintenance_types SET label = ?, icon = ? WHERE id = ?', [label, icon || '🔧', req.params.id]);
+    }
+    if (disabled !== undefined) {
+      await db.execute('UPDATE green_space_maintenance_types SET disabled = ? WHERE id = ?', [disabled ? 1 : 0, req.params.id]);
+    }
+    const updated = await db.queryOne('SELECT * FROM green_space_maintenance_types WHERE id = ?', [req.params.id]);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /custom-maintenance-types/:id - Supprimer un type d'entretien
+router.delete('/custom-maintenance-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.execute('DELETE FROM green_space_maintenance_types WHERE id = ? AND is_default = 0', [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // GET /:id - Détail d'un espace vert avec éléments
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -826,124 +944,6 @@ router.delete('/maintenances/:maintenanceId', authenticateToken, requireSupervis
     await db.execute("DELETE FROM calendar_events WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ?", [req.params.maintenanceId]);
     await db.execute("DELETE FROM alerts WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ?", [req.params.maintenanceId]);
     await db.execute('DELETE FROM green_space_maintenances WHERE id = ?', [req.params.maintenanceId]);
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ======================== TYPES DE DOCUMENTS (CRUD) ========================
-
-// GET /doc-types - Liste des types de documents
-router.get('/doc-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
-  try {
-    const types = await db.query('SELECT * FROM green_space_doc_types ORDER BY is_default DESC, label ASC');
-    res.json({ success: true, data: types });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// POST /doc-types - Ajouter un type de document
-router.post('/doc-types', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    const { value, label } = req.body;
-    if (!value || !label) return res.status(400).json({ success: false, message: 'value et label sont requis' });
-    const now = new Date().toISOString();
-    const result = await db.execute(
-      'INSERT INTO green_space_doc_types (value, label, is_default, created_at) VALUES (?, ?, 0, ?)',
-      [value.toLowerCase().replace(/\s+/g, '_'), label, now]
-    );
-    const created = await db.queryOne('SELECT * FROM green_space_doc_types WHERE id = ?', [result.lastInsertRowid]);
-    res.status(201).json({ success: true, data: created });
-  } catch (error: any) {
-    if (error.message?.includes('UNIQUE')) {
-      return res.status(409).json({ success: false, message: 'Ce type existe déjà' });
-    }
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// PUT /doc-types/:id - Modifier un type de document
-router.put('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    const { label, disabled } = req.body;
-    if (label !== undefined) {
-      await db.execute('UPDATE green_space_doc_types SET label = ? WHERE id = ?', [label, req.params.id]);
-    }
-    if (disabled !== undefined) {
-      await db.execute('UPDATE green_space_doc_types SET disabled = ? WHERE id = ?', [disabled ? 1 : 0, req.params.id]);
-    }
-    const updated = await db.queryOne('SELECT * FROM green_space_doc_types WHERE id = ?', [req.params.id]);
-    res.json({ success: true, data: updated });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// DELETE /doc-types/:id - Supprimer un type de document
-router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    await db.execute('DELETE FROM green_space_doc_types WHERE id = ? AND is_default = 0', [req.params.id]);
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ======================== TYPES D'ENTRETIEN PERSONNALISÉS (CRUD) ========================
-
-// GET /custom-maintenance-types - Liste des types d'entretien personnalisés
-router.get('/custom-maintenance-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
-  try {
-    const types = await db.query('SELECT * FROM green_space_maintenance_types ORDER BY is_default DESC, label ASC');
-    res.json({ success: true, data: types });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// POST /custom-maintenance-types - Ajouter un type d'entretien
-router.post('/custom-maintenance-types', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    const { value, label, icon } = req.body;
-    if (!value || !label) return res.status(400).json({ success: false, message: 'value et label sont requis' });
-    const now = new Date().toISOString();
-    const result = await db.execute(
-      'INSERT INTO green_space_maintenance_types (value, label, icon, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
-      [value.toLowerCase().replace(/\s+/g, '_'), label, icon || '🔧', now]
-    );
-    const created = await db.queryOne('SELECT * FROM green_space_maintenance_types WHERE id = ?', [result.lastInsertRowid]);
-    res.status(201).json({ success: true, data: created });
-  } catch (error: any) {
-    if (error.message?.includes('UNIQUE')) {
-      return res.status(409).json({ success: false, message: 'Ce type existe déjà' });
-    }
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// PUT /custom-maintenance-types/:id - Modifier un type d'entretien
-router.put('/custom-maintenance-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    const { label, icon, disabled } = req.body;
-    if (label !== undefined) {
-      await db.execute('UPDATE green_space_maintenance_types SET label = ?, icon = ? WHERE id = ?', [label, icon || '🔧', req.params.id]);
-    }
-    if (disabled !== undefined) {
-      await db.execute('UPDATE green_space_maintenance_types SET disabled = ? WHERE id = ?', [disabled ? 1 : 0, req.params.id]);
-    }
-    const updated = await db.queryOne('SELECT * FROM green_space_maintenance_types WHERE id = ?', [req.params.id]);
-    res.json({ success: true, data: updated });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// DELETE /custom-maintenance-types/:id - Supprimer un type d'entretien
-router.delete('/custom-maintenance-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    await db.execute('DELETE FROM green_space_maintenance_types WHERE id = ? AND is_default = 0', [req.params.id]);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
