@@ -1066,7 +1066,8 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const [zoom, setZoom] = useState(1)
   const [addingAnnotation, setAddingAnnotation] = useState(false)
   const [selectedAnnotation, setSelectedAnnotation] = useState<Annotation | null>(null)
-  const [hoveredElementId, setHoveredElementId] = useState<number | null>(null)
+  const [selectedMarker, setSelectedMarker] = useState<{ type: 'element' | 'group' | 'annotation'; id: number } | null>(null)
+  const [editingPlanElement, setEditingPlanElement] = useState<GreenSpaceElement | null>(null)
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(null)
   const [freeLabel, setFreeLabel] = useState('')
   const [dragging, setDragging] = useState<{ type: 'element' | 'annotation' | 'group'; id: number } | null>(null)
@@ -1155,6 +1156,28 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
       setSelectedAnnotation(null)
+      setSelectedMarker(null)
+    }
+  })
+
+  const unplaceElementMutation = useMutation({
+    mutationFn: (elementId: number) => api.put(`/green-spaces/elements/${elementId}`, { pos_x: null, pos_y: null }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setSelectedMarker(null)
+    }
+  })
+
+  const unplaceGroupMutation = useMutation({
+    mutationFn: (groupId: number) => {
+      const g = groups.find(gr => gr.id === groupId)
+      return api.put(`/green-spaces/groups/${groupId}`, {
+        name: g?.name, group_type: g?.group_type, description: g?.description, color: g?.color, icon: g?.icon, pos_x: null, pos_y: null
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setSelectedMarker(null)
     }
   })
 
@@ -1185,7 +1208,10 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       return
     }
 
-    if (!addingAnnotation) return
+    if (!addingAnnotation) {
+      setSelectedMarker(null)
+      return
+    }
     setClickPos({ x, y })
     setFreeLabel('')
   }
@@ -1375,7 +1401,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   strokeOpacity={0.7}
                   strokeLinejoin="round"
                   className="pointer-events-auto cursor-pointer"
-                  onClick={(e) => { e.stopPropagation(); setHoveredElementId(el.id) }}
+                  onClick={(e) => { e.stopPropagation(); setSelectedMarker({ type: 'element', id: el.id }) }}
                 >
                   <title>{el.label}{el.area_m2 ? ` (${el.area_m2} m²)` : ''}</title>
                 </polygon>
@@ -1448,53 +1474,66 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           {/* Annotations des éléments positionnés */}
           {elements.filter(el => el.pos_x != null && el.pos_y != null).map(el => {
             const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-            const isHovered = hoveredElementId === el.id
+            const isSelected = selectedMarker?.type === 'element' && selectedMarker.id === el.id
             const isDraggingThis = dragging?.type === 'element' && dragging.id === el.id
             return (
               <div
                 key={`el-${el.id}`}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 group ${isDraggingThis ? 'opacity-50' : ''}`}
-                style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%` }}
-                onMouseEnter={() => setHoveredElementId(el.id)}
-                onMouseLeave={() => setHoveredElementId(null)}
+                className={`absolute transform -translate-x-1/2 -translate-y-1/2 ${isDraggingThis ? 'opacity-50' : ''}`}
+                style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%`, zIndex: isSelected ? 50 : 10 }}
               >
                 <div
-                  className={`w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-xs cursor-pointer transition-transform ${isHovered ? 'scale-150' : ''}`}
+                  className={`w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-xs cursor-pointer transition-transform ${isSelected ? 'scale-150 ring-2 ring-blue-400' : 'hover:scale-125'}`}
                   style={{ backgroundColor: typeInfo?.color || '#22c55e' }}
                   title={`${el.code || el.label}`}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setSelectedMarker(isSelected ? null : { type: 'element', id: el.id }) }}
                 >
                   <span className="text-white text-[8px] font-bold">{el.code ? el.code.substring(0, 2) : ''}</span>
                 </div>
-                {isHovered && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap">
-                    <p className="text-xs font-semibold text-gray-900 dark:text-white">{el.label}</p>
+                {isSelected && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <p className="text-xs font-semibold text-gray-900 dark:text-white">{el.label}</p>
+                      <button onClick={() => setSelectedMarker(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
+                    </div>
                     {el.code && <p className="text-xs text-gray-500 font-mono">{el.code}</p>}
                     {el.species && <p className="text-xs text-green-600 italic">{el.species}</p>}
                     <p className="text-xs text-gray-400">{typeInfo?.label} • {CONDITION_STATES.find(c => c.value === el.condition_state)?.label}</p>
                     {el.area_m2 && <p className="text-xs text-gray-400">{el.area_m2} m²</p>}
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-2">
                       <button
-                        onClick={(e) => { e.stopPropagation(); setDragging({ type: 'element', id: el.id }) }}
+                        onClick={() => { setSelectedMarker(null); setDragging({ type: 'element', id: el.id }) }}
                         className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
                       >
                         <GripVertical className="h-3 w-3" /> Déplacer
                       </button>
                       {parseZonePoints(el.zone_points).length > 0 ? (
                         <button
-                          onClick={(e) => { e.stopPropagation(); clearZone('element', el.id) }}
+                          onClick={() => { clearZone('element', el.id); setSelectedMarker(null) }}
                           className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
                         >
                           <X className="h-3 w-3" /> Zone
                         </button>
                       ) : (
                         <button
-                          onClick={(e) => { e.stopPropagation(); startDrawingZone('element', el.id) }}
+                          onClick={() => { startDrawingZone('element', el.id); setSelectedMarker(null) }}
                           className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400"
                         >
                           <Pentagon className="h-3 w-3" /> Zone
                         </button>
                       )}
+                      <button
+                        onClick={() => { setEditingPlanElement(el); setSelectedMarker(null) }}
+                        className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800 dark:text-green-400"
+                      >
+                        <Edit3 className="h-3 w-3" /> Modifier
+                      </button>
+                      <button
+                        onClick={() => { unplaceElementMutation.mutate(el.id) }}
+                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="h-3 w-3" /> Retirer
+                      </button>
                     </div>
                   </div>
                 )}
@@ -1505,29 +1544,43 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           {/* Annotations manuelles */}
           {annotations.map(ann => {
             const isDraggingThis = dragging?.type === 'annotation' && dragging.id === ann.id
+            const isSelected = selectedMarker?.type === 'annotation' && selectedMarker.id === ann.id
             return (
               <div
                 key={`ann-${ann.id}`}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group ${isDraggingThis ? 'opacity-50' : ''}`}
-                style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%` }}
-                onClick={(e) => { e.stopPropagation(); setSelectedAnnotation(ann) }}
+                className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer ${isDraggingThis ? 'opacity-50' : ''}`}
+                style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%`, zIndex: isSelected ? 50 : 10 }}
               >
                 <div
-                  className="w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center"
+                  className={`w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center transition-transform ${isSelected ? 'scale-150 ring-2 ring-blue-400' : 'hover:scale-125'}`}
                   style={{ backgroundColor: ann.color }}
+                  onClick={(e) => { e.stopPropagation(); setSelectedMarker(isSelected ? null : { type: 'annotation', id: ann.id }); setSelectedAnnotation(ann) }}
                 >
                   <MapPin className="h-3 w-3 text-white" />
                 </div>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-gray-900 text-white rounded px-2 py-0.5 text-xs whitespace-nowrap">
-                  {ann.label}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setDragging({ type: 'annotation', id: ann.id }) }}
-                    className="ml-2 inline-flex items-center text-blue-300 hover:text-blue-100"
-                    title="Déplacer"
-                  >
-                    <GripVertical className="h-3 w-3" />
-                  </button>
-                </div>
+                {isSelected && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <p className="text-xs font-semibold text-gray-900 dark:text-white">{ann.label}</p>
+                      <button onClick={() => setSelectedMarker(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
+                    </div>
+                    <p className="text-xs text-gray-400">Position : {ann.pos_x.toFixed(1)}%, {ann.pos_y.toFixed(1)}%</p>
+                    <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex items-center gap-2">
+                      <button
+                        onClick={() => { setSelectedMarker(null); setDragging({ type: 'annotation', id: ann.id }) }}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                      >
+                        <GripVertical className="h-3 w-3" /> Déplacer
+                      </button>
+                      <button
+                        onClick={() => { deleteAnnotationMutation.mutate(ann.id) }}
+                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                      >
+                        <Trash2 className="h-3 w-3" /> Supprimer
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}
@@ -1537,52 +1590,64 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
             const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
             const groupElements = elements.filter(el => el.group_id === g.id)
             const isDraggingThis = dragging?.type === 'group' && dragging.id === g.id
+            const isSelected = selectedMarker?.type === 'group' && selectedMarker.id === g.id
             return (
               <div
                 key={`grp-${g.id}`}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 group ${isDraggingThis ? 'opacity-50' : ''}`}
-                style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%` }}
+                className={`absolute transform -translate-x-1/2 -translate-y-1/2 ${isDraggingThis ? 'opacity-50' : ''}`}
+                style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%`, zIndex: isSelected ? 50 : 10 }}
               >
                 <div
-                  className="w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center text-sm cursor-pointer hover:scale-125 transition-transform"
+                  className={`w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center text-sm cursor-pointer transition-transform ${isSelected ? 'scale-125 ring-2 ring-blue-400' : 'hover:scale-125'}`}
                   style={{ backgroundColor: g.color || typeInfo?.color || '#8b5cf6' }}
                   title={g.name}
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => { e.stopPropagation(); setSelectedMarker(isSelected ? null : { type: 'group', id: g.id }) }}
                 >
                   <Layers className="h-4 w-4 text-white" />
                 </div>
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap min-w-[120px]">
-                  <p className="text-xs font-semibold text-gray-900 dark:text-white">{g.name}</p>
-                  <p className="text-xs text-gray-500">{typeInfo?.label} • {groupElements.length} élém.</p>
-                  {g.area_m2 && <p className="text-xs text-gray-400">{g.area_m2} m²</p>}
-                  {groupElements.slice(0, 4).map(el => (
-                    <p key={el.id} className="text-xs text-gray-400 truncate">• {el.label}</p>
-                  ))}
-                  {groupElements.length > 4 && <p className="text-xs text-gray-400">+ {groupElements.length - 4} autres</p>}
-                  <div className="mt-1 flex items-center gap-2">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setDragging({ type: 'group', id: g.id }) }}
-                      className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                    >
-                      <GripVertical className="h-3 w-3" /> Déplacer
-                    </button>
-                    {parseZonePoints(g.zone_points).length > 0 ? (
+                {isSelected && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap min-w-[120px]" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center justify-between gap-3 mb-1">
+                      <p className="text-xs font-semibold text-gray-900 dark:text-white">{g.name}</p>
+                      <button onClick={() => setSelectedMarker(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
+                    </div>
+                    <p className="text-xs text-gray-500">{typeInfo?.label} • {groupElements.length} élém.</p>
+                    {g.area_m2 && <p className="text-xs text-gray-400">{g.area_m2} m²</p>}
+                    {groupElements.slice(0, 4).map(el => (
+                      <p key={el.id} className="text-xs text-gray-400 truncate">• {el.label}</p>
+                    ))}
+                    {groupElements.length > 4 && <p className="text-xs text-gray-400">+ {groupElements.length - 4} autres</p>}
+                    <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-2">
                       <button
-                        onClick={(e) => { e.stopPropagation(); clearZone('group', g.id) }}
+                        onClick={() => { setSelectedMarker(null); setDragging({ type: 'group', id: g.id }) }}
+                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                      >
+                        <GripVertical className="h-3 w-3" /> Déplacer
+                      </button>
+                      {parseZonePoints(g.zone_points).length > 0 ? (
+                        <button
+                          onClick={() => { clearZone('group', g.id); setSelectedMarker(null) }}
+                          className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
+                        >
+                          <X className="h-3 w-3" /> Zone
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => { startDrawingZone('group', g.id); setSelectedMarker(null) }}
+                          className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400"
+                        >
+                          <Pentagon className="h-3 w-3" /> Zone
+                        </button>
+                      )}
+                      <button
+                        onClick={() => { unplaceGroupMutation.mutate(g.id) }}
                         className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
                       >
-                        <X className="h-3 w-3" /> Zone
+                        <Trash2 className="h-3 w-3" /> Retirer
                       </button>
-                    ) : (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); startDrawingZone('group', g.id) }}
-                        className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400"
-                      >
-                        <Pentagon className="h-3 w-3" /> Zone
-                      </button>
-                    )}
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )
           })}
@@ -1725,6 +1790,19 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           )
         })}
       </div>
+
+      {/* Modal d'édition d'élément depuis le plan */}
+      {editingPlanElement && (
+        <ElementFormModal
+          spaceId={space.id}
+          element={editingPlanElement}
+          onClose={() => setEditingPlanElement(null)}
+          onSaved={() => {
+            setEditingPlanElement(null)
+            queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+          }}
+        />
+      )}
     </div>
   )
 }
