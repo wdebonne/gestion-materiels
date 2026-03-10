@@ -837,6 +837,15 @@ class DatabaseManager {
         FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE
       )`,
 
+      // Liaison documents <-> éléments
+      `CREATE TABLE IF NOT EXISTS green_space_document_elements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        document_id INTEGER NOT NULL,
+        element_id INTEGER NOT NULL,
+        FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (element_id) REFERENCES green_space_elements(id) ON DELETE CASCADE
+      )`,
+
       // Types d'espaces verts
       `CREATE TABLE IF NOT EXISTS green_space_types (
         id INTEGER PRIMARY KEY ${autoIncrement},

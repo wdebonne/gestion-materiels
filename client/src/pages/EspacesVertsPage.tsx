@@ -5,7 +5,7 @@ import {
   FileText, X, Eye,
   Download, Image, Tag, Ruler, CloudSun,
   Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
-  Settings, Upload, Loader2
+  Settings, Upload, Loader2, Paperclip, Link2
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -105,6 +105,7 @@ interface GreenSpaceDocument {
   file_path: string
   expiry_date: string | null
   notes: string
+  element_ids: number[]
   created_at: string
 }
 
@@ -2127,13 +2128,15 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
 
 function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState({ name: '', doc_type: 'autre', file_path: '', expiry_date: '', notes: '' })
+  const [form, setForm] = useState({ name: '', doc_type: 'autre', file_path: '', expiry_date: '', notes: '', element_ids: [] as number[] })
   const [searchDoc, setSearchDoc] = useState('')
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [showDocTypeManager, setShowDocTypeManager] = useState(false)
   const [newDocType, setNewDocType] = useState({ value: '', label: '' })
   const [editingDocType, setEditingDocType] = useState<{ id: number, label: string } | null>(null)
   const docFileRef = useRef<HTMLInputElement>(null)
+
+  const elements = space.elements || []
 
   // Charger les types depuis l'API (tous les types sont en base)
   const { data: allDocTypesRaw = [] } = useQuery({
@@ -2149,8 +2152,13 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
       setShowForm(false)
-      setForm({ name: '', doc_type: 'autre', file_path: '', expiry_date: '', notes: '' })
+      setForm({ name: '', doc_type: 'autre', file_path: '', expiry_date: '', notes: '', element_ids: [] })
     }
+  })
+
+  const updateDocMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/documents/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
 
   const deleteMutation = useMutation({
@@ -2308,6 +2316,38 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
             />
           </div>
+          {elements.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1">
+                <Link2 className="h-3.5 w-3.5" /> Lier à des éléments
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {elements.map((el: GreenSpaceElement) => {
+                  const isLinked = form.element_ids.includes(el.id)
+                  return (
+                    <button
+                      key={el.id}
+                      type="button"
+                      onClick={() => setForm(f => ({
+                        ...f,
+                        element_ids: isLinked
+                          ? f.element_ids.filter(id => id !== el.id)
+                          : [...f.element_ids, el.id]
+                      }))}
+                      className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                        isLinked
+                          ? 'bg-green-100 dark:bg-green-900/40 border-green-300 dark:border-green-700 text-green-800 dark:text-green-300'
+                          : 'bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-400 hover:border-green-300'
+                      }`}
+                    >
+                      {isLinked && <span className="mr-0.5">✓</span>}
+                      {el.label}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-2">
             <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400">Annuler</button>
             <button
@@ -2353,6 +2393,18 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                       </p>
                       {doc.file_path && <p className="text-xs text-blue-500 mt-0.5">{doc.file_path.split('/').pop()}</p>}
                       {doc.notes && <p className="text-xs text-gray-400 mt-1">{doc.notes}</p>}
+                      {doc.element_ids && doc.element_ids.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {doc.element_ids.map((elId: number) => {
+                            const el = elements.find((e: GreenSpaceElement) => e.id === elId)
+                            return el ? (
+                              <span key={elId} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 text-[10px] bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded-full border border-green-200 dark:border-green-800">
+                                <Link2 className="h-2.5 w-2.5" /> {el.label}
+                              </span>
+                            ) : null
+                          })}
+                        </div>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
@@ -3520,6 +3572,7 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete }: {
 function ElementFormModal({ spaceId, element, onClose, onSaved }: {
   spaceId: number, element: GreenSpaceElement | null, onClose: () => void, onSaved: () => void
 }) {
+  const queryClient = useQueryClient()
   const [form, setForm] = useState({
     label: element?.label || '',
     code: element?.code || '',
@@ -3542,6 +3595,45 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
   const [objectSearch, setObjectSearch] = useState('')
   const [showObjectResults, setShowObjectResults] = useState(false)
 
+  // Documents à joindre
+  const [attachments, setAttachments] = useState<{ name: string, file_path: string, doc_type: string }[]>([])
+  const [uploadingAttachment, setUploadingAttachment] = useState(false)
+  const attachFileRef = useRef<HTMLInputElement>(null)
+
+  // Documents existants liés à cet élément
+  const { data: existingDocs = [] } = useQuery({
+    queryKey: ['green-space', spaceId],
+    queryFn: () => api.get(`/green-spaces/${spaceId}`).then(r => r.data.data),
+    select: (data: any) => {
+      if (!element) return []
+      return (data.documents || []).filter((doc: any) =>
+        doc.element_ids && doc.element_ids.includes(element.id)
+      )
+    },
+    enabled: !!element
+  })
+
+  const handleAttachFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingAttachment(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploadRes = await api.post('/upload/file', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      setAttachments(prev => [...prev, {
+        name: file.name.replace(/\.[^.]+$/, ''),
+        file_path: uploadRes.data.url,
+        doc_type: 'facture'
+      }])
+    } catch (error) {
+      console.error('Erreur upload:', error)
+    } finally {
+      setUploadingAttachment(false)
+      if (attachFileRef.current) attachFileRef.current.value = ''
+    }
+  }
+
   const { data: objectResults = [] } = useQuery({
     queryKey: ['green-space-search-objects', objectSearch],
     queryFn: () => api.get('/green-spaces/search/objects', { params: { q: objectSearch } }).then(r => r.data.data),
@@ -3549,11 +3641,27 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
   })
 
   const mutation = useMutation({
-    mutationFn: (data: any) =>
-      element
-        ? api.put(`/green-spaces/elements/${element.id}`, data)
-        : api.post(`/green-spaces/${spaceId}/elements`, data),
-    onSuccess: () => onSaved()
+    mutationFn: async (data: any) => {
+      const res = element
+        ? await api.put(`/green-spaces/elements/${element.id}`, data)
+        : await api.post(`/green-spaces/${spaceId}/elements`, data)
+      const elementId = element ? element.id : res.data.data.id
+
+      // Créer les documents joints et les lier à l'élément
+      for (const att of attachments) {
+        await api.post(`/green-spaces/${spaceId}/documents`, {
+          name: att.name,
+          doc_type: att.doc_type,
+          file_path: att.file_path,
+          element_ids: [elementId]
+        })
+      }
+      return res
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', spaceId] })
+      onSaved()
+    }
   })
 
   const handleSubmit = () => {
@@ -3767,25 +3875,79 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
               />
             </div>
             <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Position sur le plan (X%, Y%)</label>
-              <div className="grid grid-cols-2 gap-2">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
+                <Paperclip className="h-4 w-4" /> Documents joints (factures, etc.)
+              </label>
+
+              {/* Documents existants liés */}
+              {(existingDocs as any[]).length > 0 && (
+                <div className="mb-2 space-y-1">
+                  {(existingDocs as any[]).map((doc: any) => (
+                    <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
+                      <FileText className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                      <span className="flex-1 text-gray-700 dark:text-gray-300 truncate">{doc.name}</span>
+                      {doc.file_path && (
+                        <a href={`${api.defaults.baseURL?.replace('/api', '')}${doc.file_path}`} target="_blank" rel="noopener noreferrer" className="p-0.5 text-blue-500 hover:text-blue-700">
+                          <Download className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Nouveaux documents à joindre */}
+              {attachments.map((att, idx) => (
+                <div key={idx} className="flex items-center gap-2 mb-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm">
+                  <FileText className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                  <input
+                    value={att.name}
+                    onChange={e => {
+                      const updated = [...attachments]
+                      updated[idx] = { ...att, name: e.target.value }
+                      setAttachments(updated)
+                    }}
+                    className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 dark:text-gray-300"
+                    placeholder="Nom du document"
+                  />
+                  <select
+                    value={att.doc_type}
+                    onChange={e => {
+                      const updated = [...attachments]
+                      updated[idx] = { ...att, doc_type: e.target.value }
+                      setAttachments(updated)
+                    }}
+                    className="text-xs px-1.5 py-0.5 border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  >
+                    <option value="facture">Facture</option>
+                    <option value="bon_commande">Bon de commande</option>
+                    <option value="garantie">Garantie</option>
+                    <option value="fiche_technique">Fiche technique</option>
+                    <option value="autre">Autre</option>
+                  </select>
+                  <button
+                    onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                    className="p-0.5 text-gray-400 hover:text-red-500"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+
+              <label className={`flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${uploadingAttachment ? 'opacity-50 pointer-events-none' : ''}`}>
+                {uploadingAttachment ? <Loader2 className="h-4 w-4 text-gray-400 animate-spin" /> : <Upload className="h-4 w-4 text-gray-400" />}
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {uploadingAttachment ? 'Envoi en cours...' : 'Joindre un document (facture, bon de commande...)'}
+                </span>
                 <input
-                  type="number"
-                  step="0.1"
-                  value={form.pos_x}
-                  onChange={(e) => setForm({ ...form, pos_x: e.target.value })}
-                  placeholder="X (%)"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  ref={attachFileRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.odt,.ods,.zip"
+                  onChange={handleAttachFile}
+                  disabled={uploadingAttachment}
                 />
-                <input
-                  type="number"
-                  step="0.1"
-                  value={form.pos_y}
-                  onChange={(e) => setForm({ ...form, pos_y: e.target.value })}
-                  placeholder="Y (%)"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                />
-              </div>
+              </label>
             </div>
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>

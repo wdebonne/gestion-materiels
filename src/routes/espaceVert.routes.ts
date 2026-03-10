@@ -367,11 +367,16 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [req.params.id]
     );
 
-    // Récupérer les documents
+    // Récupérer les documents avec éléments liés
     const documents = await db.query(
       'SELECT * FROM green_space_documents WHERE green_space_id = ? ORDER BY created_at DESC',
       [req.params.id]
     );
+    for (const doc of documents as any[]) {
+      doc.element_ids = (await db.query(
+        'SELECT element_id FROM green_space_document_elements WHERE document_id = ?', [doc.id]
+      )).map((r: any) => r.element_id);
+    }
 
     // Récupérer les groupes de composition
     const groups = await db.query(
@@ -775,7 +780,7 @@ router.delete('/seasons/:seasonId', authenticateToken, requireSupervisor, async 
 // POST /:id/documents - Ajouter un document
 router.post('/:id/documents', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, doc_type, file_path, expiry_date, notes } = req.body;
+    const { name, doc_type, file_path, expiry_date, notes, element_ids } = req.body;
     const now = new Date().toISOString();
 
     const result = await db.execute(
@@ -784,8 +789,57 @@ router.post('/:id/documents', authenticateToken, requireSupervisor, async (req: 
       [req.params.id, name, doc_type || 'autre', file_path || '', expiry_date || null, notes || '', req.user!.userId, now]
     );
 
-    const created = await db.queryOne('SELECT * FROM green_space_documents WHERE id = ?', [result.lastInsertRowid]);
+    const docId = result.lastInsertRowid;
+
+    // Lier les éléments au document
+    if (element_ids && Array.isArray(element_ids)) {
+      for (const elId of element_ids) {
+        await db.execute(
+          'INSERT INTO green_space_document_elements (document_id, element_id) VALUES (?, ?)',
+          [docId, elId]
+        );
+      }
+    }
+
+    const created = await db.queryOne('SELECT * FROM green_space_documents WHERE id = ?', [docId]);
     res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /documents/:docId - Modifier un document (éléments liés)
+router.put('/documents/:docId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const existing = await db.queryOne('SELECT * FROM green_space_documents WHERE id = ?', [req.params.docId]);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Document non trouvé' });
+    }
+
+    const { name, doc_type, file_path, expiry_date, notes, element_ids } = req.body;
+
+    await db.execute(
+      `UPDATE green_space_documents SET name = ?, doc_type = ?, file_path = ?, expiry_date = ?, notes = ? WHERE id = ?`,
+      [
+        name ?? existing.name, doc_type ?? existing.doc_type,
+        file_path ?? existing.file_path, expiry_date !== undefined ? (expiry_date || null) : existing.expiry_date,
+        notes ?? existing.notes, req.params.docId
+      ]
+    );
+
+    // Mettre à jour les éléments liés
+    if (element_ids && Array.isArray(element_ids)) {
+      await db.execute('DELETE FROM green_space_document_elements WHERE document_id = ?', [req.params.docId]);
+      for (const elId of element_ids) {
+        await db.execute(
+          'INSERT INTO green_space_document_elements (document_id, element_id) VALUES (?, ?)',
+          [req.params.docId, elId]
+        );
+      }
+    }
+
+    const updated = await db.queryOne('SELECT * FROM green_space_documents WHERE id = ?', [req.params.docId]);
+    res.json({ success: true, data: updated });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
