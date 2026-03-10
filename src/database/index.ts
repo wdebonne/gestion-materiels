@@ -837,20 +837,24 @@ class DatabaseManager {
         FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE
       )`,
 
-      // Types de documents personnalisés pour espaces verts
+      // Types de documents pour espaces verts
       `CREATE TABLE IF NOT EXISTS green_space_doc_types (
         id INTEGER PRIMARY KEY ${autoIncrement},
         value VARCHAR(100) NOT NULL UNIQUE,
         label VARCHAR(255) NOT NULL,
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
         created_at DATETIME ${timestampDefault}
       )`,
 
-      // Types d'entretien personnalisés pour espaces verts
+      // Types d'entretien pour espaces verts
       `CREATE TABLE IF NOT EXISTS green_space_maintenance_types (
         id INTEGER PRIMARY KEY ${autoIncrement},
         value VARCHAR(100) NOT NULL UNIQUE,
         label VARCHAR(255) NOT NULL,
         icon VARCHAR(10) DEFAULT '🔧',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
         created_at DATETIME ${timestampDefault}
       )`
     ];
@@ -967,6 +971,30 @@ class DatabaseManager {
         table: 'green_space_groups',
         column: 'zone_points',
         type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // is_default pour types de documents
+      {
+        table: 'green_space_doc_types',
+        column: 'is_default',
+        type: 'INTEGER DEFAULT 0'
+      },
+      // disabled pour types de documents
+      {
+        table: 'green_space_doc_types',
+        column: 'disabled',
+        type: 'INTEGER DEFAULT 0'
+      },
+      // is_default pour types d'entretien
+      {
+        table: 'green_space_maintenance_types',
+        column: 'is_default',
+        type: 'INTEGER DEFAULT 0'
+      },
+      // disabled pour types d'entretien
+      {
+        table: 'green_space_maintenance_types',
+        column: 'disabled',
+        type: 'INTEGER DEFAULT 0'
       }
     ];
 
@@ -999,6 +1027,58 @@ class DatabaseManager {
           console.error(`Erreur migration ${migration.table}.${migration.column}:`, error.message);
         }
       }
+    }
+
+    // Seed types par défaut si la table est vide
+    await this.seedDefaultTypes();
+  }
+
+  private async seedDefaultTypes(): Promise<void> {
+    const defaultDocTypes = [
+      { value: 'plan', label: 'Plan / Cadastre' },
+      { value: 'permis', label: 'Permis / Autorisation' },
+      { value: 'diagnostic', label: 'Diagnostic phytosanitaire' },
+      { value: 'conformite', label: 'Certificat de conformité' },
+      { value: 'securite', label: 'Rapport de sécurité' },
+      { value: 'accessibilite', label: 'Accessibilité PMR' },
+      { value: 'contrat', label: "Contrat d'entretien" },
+      { value: 'facture', label: 'Facture' },
+      { value: 'photo', label: 'Photo / Relevé' },
+      { value: 'autre', label: 'Autre' },
+    ];
+
+    const defaultMaintenanceTypes = [
+      { value: 'tonte', label: 'Tonte', icon: '🌿' },
+      { value: 'elagage', label: 'Élagage', icon: '✂️' },
+      { value: 'taille', label: 'Taille', icon: '🌳' },
+      { value: 'arrosage', label: 'Arrosage', icon: '💧' },
+      { value: 'desherbage', label: 'Désherbage', icon: '🌱' },
+      { value: 'fertilisation', label: 'Fertilisation', icon: '🧪' },
+      { value: 'traitement_phytosanitaire', label: 'Traitement phytosanitaire', icon: '🧴' },
+      { value: 'plantation', label: 'Plantation', icon: '🌺' },
+      { value: 'ramassage_feuilles', label: 'Ramassage de feuilles', icon: '🍂' },
+      { value: 'nettoyage', label: 'Nettoyage', icon: '🧹' },
+      { value: 'reparation', label: 'Réparation', icon: '🔧' },
+      { value: 'inspection', label: 'Inspection', icon: '🔍' },
+      { value: 'autre', label: 'Autre', icon: '📋' },
+    ];
+
+    for (const dt of defaultDocTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_doc_types (value, label, is_default) VALUES (?, ?, 1)',
+          [dt.value, dt.label]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    for (const mt of defaultMaintenanceTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_maintenance_types (value, label, icon, is_default) VALUES (?, ?, ?, 1)',
+          [mt.value, mt.label, mt.icon]
+        );
+      } catch { /* ignore duplicates */ }
     }
   }
 

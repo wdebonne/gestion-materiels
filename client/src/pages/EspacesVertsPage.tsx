@@ -2081,17 +2081,14 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
   const [editingDocType, setEditingDocType] = useState<{ id: number, label: string } | null>(null)
   const docFileRef = useRef<HTMLInputElement>(null)
 
-  // Charger les types personnalisés depuis l'API
-  const { data: customDocTypes = [] } = useQuery({
+  // Charger les types depuis l'API (tous les types sont en base)
+  const { data: allDocTypesRaw = [] } = useQuery({
     queryKey: ['green-space-doc-types'],
     queryFn: () => api.get('/green-spaces/doc-types').then(r => r.data.data),
   })
 
-  // Fusionner types par défaut + types personnalisés
-  const allDocTypes = [
-    ...DOC_TYPES,
-    ...(customDocTypes as any[]).filter((ct: any) => !DOC_TYPES.some(d => d.value === ct.value)).map((ct: any) => ({ value: ct.value, label: ct.label }))
-  ]
+  // Types actifs (non désactivés) pour le select du formulaire
+  const allDocTypes = (allDocTypesRaw as any[]).filter((t: any) => !t.disabled).map((t: any) => ({ value: t.value, label: t.label }))
 
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/documents`, data),
@@ -2116,7 +2113,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
   })
 
   const updateDocTypeMutation = useMutation({
-    mutationFn: ({ id, label }: { id: number, label: string }) => api.put(`/green-spaces/doc-types/${id}`, { label }),
+    mutationFn: ({ id, ...data }: { id: number, label?: string, disabled?: boolean }) => api.put(`/green-spaces/doc-types/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space-doc-types'] })
       setEditingDocType(null)
@@ -2177,18 +2174,16 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
       </div>
 
       {/* Barre de recherche */}
-      {documents.length > 0 && (
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchDoc}
-            onChange={(e) => setSearchDoc(e.target.value)}
-            placeholder="Rechercher un document..."
-            className="w-full text-sm pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-          />
-        </div>
-      )}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchDoc}
+          onChange={(e) => setSearchDoc(e.target.value)}
+          placeholder="Rechercher un document..."
+          className="w-full text-sm pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+        />
+      </div>
 
       {showForm && (
         <div className="p-4 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/30 space-y-3">
@@ -2343,54 +2338,46 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               <button onClick={() => setShowDocTypeManager(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-4 w-4" /></button>
             </div>
             <div className="p-4 space-y-3">
-              {/* Types par défaut (lecture seule) */}
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Types par défaut</p>
               <div className="space-y-1">
-                {DOC_TYPES.map(dt => (
-                  <div key={dt.value} className="flex items-center justify-between px-3 py-1.5 rounded bg-gray-50 dark:bg-gray-700/50">
-                    <span className="text-sm text-gray-700 dark:text-gray-300">{dt.label}</span>
-                    <span className="text-xs text-gray-400 font-mono">{dt.value}</span>
+                {(allDocTypesRaw as any[]).map((dt: any) => (
+                  <div key={dt.id} className={`flex items-center justify-between px-3 py-1.5 rounded ${dt.disabled ? 'bg-gray-100 dark:bg-gray-800 opacity-50' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
+                    {editingDocType?.id === dt.id ? (
+                      <input
+                        type="text"
+                        value={editingDocType.label}
+                        onChange={(e) => setEditingDocType({ ...editingDocType, label: e.target.value })}
+                        onKeyDown={(e) => { if (e.key === 'Enter' && editingDocType.label) updateDocTypeMutation.mutate({ id: editingDocType.id, label: editingDocType.label }) }}
+                        className="flex-1 text-sm px-2 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white mr-2"
+                        autoFocus
+                      />
+                    ) : (
+                      <span className={`text-sm ${dt.disabled ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{dt.label}</span>
+                    )}
+                    <div className="flex items-center gap-1">
+                      {editingDocType?.id === dt.id ? (
+                        <>
+                          <button onClick={() => { if (editingDocType.label) updateDocTypeMutation.mutate({ id: editingDocType.id, label: editingDocType.label }) }} className="p-1 text-green-600 hover:text-green-800"><Check className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => setEditingDocType(null)} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-3.5 w-3.5" /></button>
+                        </>
+                      ) : (
+                        <>
+                          <button onClick={() => setEditingDocType({ id: dt.id, label: dt.label })} className="p-1 text-gray-400 hover:text-blue-600" title="Modifier"><Edit3 className="h-3.5 w-3.5" /></button>
+                          <button
+                            onClick={() => updateDocTypeMutation.mutate({ id: dt.id, disabled: !dt.disabled })}
+                            className={`p-1 ${dt.disabled ? 'text-green-500 hover:text-green-700' : 'text-yellow-500 hover:text-yellow-700'}`}
+                            title={dt.disabled ? 'Réactiver' : 'Désactiver'}
+                          >
+                            {dt.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                          </button>
+                          {!dt.is_default && (
+                            <button onClick={() => { if (confirm('Supprimer ce type ?')) deleteDocTypeMutation.mutate(dt.id) }} className="p-1 text-gray-400 hover:text-red-600" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
+                          )}
+                        </>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
-
-              {/* Types personnalisés */}
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mt-4">Types personnalisés</p>
-              {(customDocTypes as any[]).length === 0 ? (
-                <p className="text-xs text-gray-400 italic py-2">Aucun type personnalisé</p>
-              ) : (
-                <div className="space-y-1">
-                  {(customDocTypes as any[]).map((dt: any) => (
-                    <div key={dt.id} className="flex items-center justify-between px-3 py-1.5 rounded bg-gray-50 dark:bg-gray-700/50">
-                      {editingDocType?.id === dt.id ? (
-                        <input
-                          type="text"
-                          value={editingDocType.label}
-                          onChange={(e) => setEditingDocType({ ...editingDocType, label: e.target.value })}
-                          onKeyDown={(e) => { if (e.key === 'Enter' && editingDocType.label) updateDocTypeMutation.mutate(editingDocType) }}
-                          className="flex-1 text-sm px-2 py-0.5 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white mr-2"
-                          autoFocus
-                        />
-                      ) : (
-                        <span className="text-sm text-gray-700 dark:text-gray-300">{dt.label}</span>
-                      )}
-                      <div className="flex items-center gap-1">
-                        {editingDocType?.id === dt.id ? (
-                          <>
-                            <button onClick={() => { if (editingDocType.label) updateDocTypeMutation.mutate(editingDocType) }} className="p-1 text-green-600 hover:text-green-800"><Check className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => setEditingDocType(null)} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-3.5 w-3.5" /></button>
-                          </>
-                        ) : (
-                          <>
-                            <button onClick={() => setEditingDocType({ id: dt.id, label: dt.label })} className="p-1 text-gray-400 hover:text-blue-600"><Edit3 className="h-3.5 w-3.5" /></button>
-                            <button onClick={() => { if (confirm('Supprimer ce type ?')) deleteDocTypeMutation.mutate(dt.id) }} className="p-1 text-gray-400 hover:text-red-600"><Trash2 className="h-3.5 w-3.5" /></button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
 
               {/* Ajouter un nouveau type */}
               <div className="flex items-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-700">
@@ -2460,24 +2447,33 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   const [customTypes, setCustomTypes] = useState<string[]>([])
   const [uploadingFile, setUploadingFile] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  // Récupérer les types existants depuis l'API
-  const { data: apiTypes = [] } = useQuery({
-    queryKey: ['maintenance-types'],
-    queryFn: () => api.get('/green-spaces/maintenance-types').then(r => r.data.data),
+  const [searchMaintenance, setSearchMaintenance] = useState('')
+  const [showMaintenanceTypeManager, setShowMaintenanceTypeManager] = useState(false)
+  const [newMaintType, setNewMaintType] = useState('')
+  const [editingMaintType, setEditingMaintType] = useState<{ id: number, label: string } | null>(null)
+
+  // Charger tous les types d'entretien depuis l'API
+  const { data: allMaintTypesRaw = [] } = useQuery({
+    queryKey: ['green-space-maintenance-types'],
+    queryFn: () => api.get('/green-spaces/custom-maintenance-types').then(r => r.data.data),
   })
+
+  // Types actifs (non désactivés)
+  const activeMaintTypes = (allMaintTypesRaw as any[]).filter((t: any) => !t.disabled)
 
   const maintenances = space.maintenances || []
   const elements = space.elements || []
   const documents = space.documents || []
 
-  // Fusionner les types par défaut + API + custom
+  // Fusionner les types pour l'autocomplete
   const allTypeValues = [...new Set([
-    ...DEFAULT_MAINTENANCE_TYPES.map(t => t.value),
-    ...(apiTypes as string[]),
+    ...activeMaintTypes.map((t: any) => t.value),
     ...customTypes
-  ])].sort()
+  ])]
 
   const getTypeLabel = (value: string) => {
+    const fromApi = (allMaintTypesRaw as any[]).find((t: any) => t.value === value)
+    if (fromApi) return { value: fromApi.value, label: fromApi.label, icon: fromApi.icon || '🔧' }
     const def = DEFAULT_MAINTENANCE_TYPES.find(t => t.value === value)
     if (def) return def
     return { value, label: value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, ' '), icon: '🔧' }
@@ -2488,11 +2484,32 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
     return info.label.toLowerCase().includes(typeSearch.toLowerCase()) || t.includes(typeSearch.toLowerCase())
   })
 
+  const addMaintTypeMutation = useMutation({
+    mutationFn: (data: any) => api.post('/green-spaces/custom-maintenance-types', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
+      setNewMaintType('')
+    }
+  })
+
+  const updateMaintTypeMutation = useMutation({
+    mutationFn: ({ id, ...data }: { id: number, label?: string, icon?: string, disabled?: boolean }) => api.put(`/green-spaces/custom-maintenance-types/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
+      setEditingMaintType(null)
+    }
+  })
+
+  const deleteMaintTypeMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/custom-maintenance-types/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
+  })
+
   const addMutation = useMutation({
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/maintenances`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      queryClient.invalidateQueries({ queryKey: ['maintenance-types'] })
+      queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
       resetForm()
     }
   })
@@ -2501,7 +2518,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
     mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/maintenances/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      queryClient.invalidateQueries({ queryKey: ['maintenance-types'] })
+      queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
       resetForm()
     }
   })
@@ -2621,12 +2638,33 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
           <Wrench className="h-4 w-4" /> Historique d'entretien
         </h4>
-        <button
-          onClick={() => { resetForm(); setShowForm(true) }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
-        >
-          <Plus className="h-4 w-4" /> Nouvel entretien
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowMaintenanceTypeManager(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
+            title="Gérer les types d'entretien"
+          >
+            <Settings className="h-4 w-4" /> Types
+          </button>
+          <button
+            onClick={() => { resetForm(); setShowForm(true) }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+          >
+            <Plus className="h-4 w-4" /> Nouvel entretien
+          </button>
+        </div>
+      </div>
+
+      {/* Barre de recherche */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+        <input
+          type="text"
+          value={searchMaintenance}
+          onChange={(e) => setSearchMaintenance(e.target.value)}
+          placeholder="Rechercher un entretien..."
+          className="w-full text-sm pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+        />
       </div>
 
       {/* Formulaire */}
@@ -2867,15 +2905,26 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
       )}
 
       {/* Liste des entretiens */}
-      {maintenances.length === 0 ? (
+      {(() => {
+        const filteredMaintenances = maintenances.filter((m: Maintenance) => {
+          if (!searchMaintenance) return true
+          const s = searchMaintenance.toLowerCase()
+          const typeInfo = getTypeLabel(m.maintenance_type)
+          return (m.title || '').toLowerCase().includes(s) ||
+            typeInfo.label.toLowerCase().includes(s) ||
+            (m.description || '').toLowerCase().includes(s) ||
+            (m.performed_by || '').toLowerCase().includes(s) ||
+            (m.notes || '').toLowerCase().includes(s)
+        })
+        return filteredMaintenances.length === 0 ? (
         <div className="text-center py-8 text-gray-500 dark:text-gray-400">
           <Wrench className="h-10 w-10 mx-auto mb-2 opacity-50" />
-          <p className="text-sm">Aucun entretien enregistré</p>
-          <p className="text-xs mt-1">Ajoutez un entretien pour suivre l'historique des interventions.</p>
+          <p className="text-sm">{searchMaintenance ? 'Aucun entretien trouvé' : 'Aucun entretien enregistré'}</p>
+          {!searchMaintenance && <p className="text-xs mt-1">Ajoutez un entretien pour suivre l'historique des interventions.</p>}
         </div>
       ) : (
         <div className="space-y-2">
-          {maintenances.map((m: Maintenance) => {
+          {filteredMaintenances.map((m: Maintenance) => {
             const typeInfo = getTypeLabel(m.maintenance_type)
             const linkedElements = elements.filter(el => m.element_ids?.includes(el.id))
             const linkedDocs = documents.filter((d: GreenSpaceDocument) => m.document_ids?.includes(d.id))
@@ -2966,6 +3015,103 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               </div>
             )
           })}
+        </div>
+      )
+      })()}
+
+      {/* Modal gestion des types d'entretien */}
+      {showMaintenanceTypeManager && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowMaintenanceTypeManager(false)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Gérer les types d'entretien</h3>
+              <button onClick={() => setShowMaintenanceTypeManager(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Ajouter un nouveau type */}
+            <div className="flex gap-2 mb-4">
+              <input
+                value={newMaintType}
+                onChange={e => setNewMaintType(e.target.value)}
+                placeholder="Nouveau type..."
+                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
+              <button
+                onClick={() => {
+                  if (newMaintType.trim()) {
+                    const val = newMaintType.trim().toLowerCase().replace(/\s+/g, '_')
+                    addMaintTypeMutation.mutate({ value: val, label: newMaintType.trim(), icon: '🔧' })
+                  }
+                }}
+                disabled={!newMaintType.trim() || addMaintTypeMutation.isPending}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+
+            {/* Liste des types */}
+            <div className="space-y-1">
+              {(allMaintTypesRaw || []).map((t: any) => (
+                <div key={t.id} className={`flex items-center gap-2 p-2 rounded-lg border ${t.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
+                  {editingMaintType?.id === t.id ? (
+                    <>
+                      <input
+                        value={editingMaintType.label}
+                        onChange={e => setEditingMaintType({ ...editingMaintType, label: e.target.value })}
+                        className="flex-1 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      />
+                      <button
+                        onClick={() => {
+                          if (editingMaintType.label.trim()) {
+                            updateMaintTypeMutation.mutate({ id: t.id, label: editingMaintType.label.trim() })
+                          }
+                        }}
+                        className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setEditingMaintType(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                        {t.label}
+                        {t.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                      </span>
+                      <button
+                        onClick={() => setEditingMaintType({ id: t.id, label: t.label })}
+                        className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                        title="Modifier"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => updateMaintTypeMutation.mutate({ id: t.id, disabled: t.disabled ? 0 : 1 })}
+                        className={`p-1 rounded ${t.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
+                        title={t.disabled ? 'Réactiver' : 'Désactiver'}
+                      >
+                        {t.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                      </button>
+                      {!t.is_default && (
+                        <button
+                          onClick={() => { if (confirm('Supprimer ce type ?')) deleteMaintTypeMutation.mutate(t.id) }}
+                          className="p-1 text-gray-400 hover:text-red-600 rounded"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       )}
     </div>

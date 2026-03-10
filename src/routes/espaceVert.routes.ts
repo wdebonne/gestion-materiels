@@ -837,7 +837,7 @@ router.delete('/maintenances/:maintenanceId', authenticateToken, requireSupervis
 // GET /doc-types - Liste des types de documents
 router.get('/doc-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
-    const types = await db.query('SELECT * FROM green_space_doc_types ORDER BY label ASC');
+    const types = await db.query('SELECT * FROM green_space_doc_types ORDER BY is_default DESC, label ASC');
     res.json({ success: true, data: types });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -851,7 +851,7 @@ router.post('/doc-types', authenticateToken, requireSupervisor, async (req: Auth
     if (!value || !label) return res.status(400).json({ success: false, message: 'value et label sont requis' });
     const now = new Date().toISOString();
     const result = await db.execute(
-      'INSERT INTO green_space_doc_types (value, label, created_at) VALUES (?, ?, ?)',
+      'INSERT INTO green_space_doc_types (value, label, is_default, created_at) VALUES (?, ?, 0, ?)',
       [value.toLowerCase().replace(/\s+/g, '_'), label, now]
     );
     const created = await db.queryOne('SELECT * FROM green_space_doc_types WHERE id = ?', [result.lastInsertRowid]);
@@ -867,9 +867,13 @@ router.post('/doc-types', authenticateToken, requireSupervisor, async (req: Auth
 // PUT /doc-types/:id - Modifier un type de document
 router.put('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { label } = req.body;
-    if (!label) return res.status(400).json({ success: false, message: 'label est requis' });
-    await db.execute('UPDATE green_space_doc_types SET label = ? WHERE id = ?', [label, req.params.id]);
+    const { label, disabled } = req.body;
+    if (label !== undefined) {
+      await db.execute('UPDATE green_space_doc_types SET label = ? WHERE id = ?', [label, req.params.id]);
+    }
+    if (disabled !== undefined) {
+      await db.execute('UPDATE green_space_doc_types SET disabled = ? WHERE id = ?', [disabled ? 1 : 0, req.params.id]);
+    }
     const updated = await db.queryOne('SELECT * FROM green_space_doc_types WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: updated });
   } catch (error: any) {
@@ -880,7 +884,7 @@ router.put('/doc-types/:id', authenticateToken, requireSupervisor, async (req: A
 // DELETE /doc-types/:id - Supprimer un type de document
 router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    await db.execute('DELETE FROM green_space_doc_types WHERE id = ?', [req.params.id]);
+    await db.execute('DELETE FROM green_space_doc_types WHERE id = ? AND is_default = 0', [req.params.id]);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -892,7 +896,7 @@ router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req
 // GET /custom-maintenance-types - Liste des types d'entretien personnalisés
 router.get('/custom-maintenance-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
-    const types = await db.query('SELECT * FROM green_space_maintenance_types ORDER BY label ASC');
+    const types = await db.query('SELECT * FROM green_space_maintenance_types ORDER BY is_default DESC, label ASC');
     res.json({ success: true, data: types });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -906,7 +910,7 @@ router.post('/custom-maintenance-types', authenticateToken, requireSupervisor, a
     if (!value || !label) return res.status(400).json({ success: false, message: 'value et label sont requis' });
     const now = new Date().toISOString();
     const result = await db.execute(
-      'INSERT INTO green_space_maintenance_types (value, label, icon, created_at) VALUES (?, ?, ?, ?)',
+      'INSERT INTO green_space_maintenance_types (value, label, icon, is_default, created_at) VALUES (?, ?, ?, 0, ?)',
       [value.toLowerCase().replace(/\s+/g, '_'), label, icon || '🔧', now]
     );
     const created = await db.queryOne('SELECT * FROM green_space_maintenance_types WHERE id = ?', [result.lastInsertRowid]);
@@ -922,9 +926,13 @@ router.post('/custom-maintenance-types', authenticateToken, requireSupervisor, a
 // PUT /custom-maintenance-types/:id - Modifier un type d'entretien
 router.put('/custom-maintenance-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { label, icon } = req.body;
-    if (!label) return res.status(400).json({ success: false, message: 'label est requis' });
-    await db.execute('UPDATE green_space_maintenance_types SET label = ?, icon = ? WHERE id = ?', [label, icon || '🔧', req.params.id]);
+    const { label, icon, disabled } = req.body;
+    if (label !== undefined) {
+      await db.execute('UPDATE green_space_maintenance_types SET label = ?, icon = ? WHERE id = ?', [label, icon || '🔧', req.params.id]);
+    }
+    if (disabled !== undefined) {
+      await db.execute('UPDATE green_space_maintenance_types SET disabled = ? WHERE id = ?', [disabled ? 1 : 0, req.params.id]);
+    }
     const updated = await db.queryOne('SELECT * FROM green_space_maintenance_types WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: updated });
   } catch (error: any) {
@@ -935,7 +943,7 @@ router.put('/custom-maintenance-types/:id', authenticateToken, requireSupervisor
 // DELETE /custom-maintenance-types/:id - Supprimer un type d'entretien
 router.delete('/custom-maintenance-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    await db.execute('DELETE FROM green_space_maintenance_types WHERE id = ?', [req.params.id]);
+    await db.execute('DELETE FROM green_space_maintenance_types WHERE id = ? AND is_default = 0', [req.params.id]);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

@@ -188,17 +188,22 @@
 ### 15. Espaces Verts (gestion espaces verts municipaux)
 - **Description :** Plugin système complet pour la gestion des espaces verts avec plan interactif annoté, composition botanique, entretiens et intégrations transversales.
 - **Fonctionnalités :**
-  - **Plan interactif** : Upload d'image du plan, placement de repères par clic avec drag & drop, popup persistant au clic
+  - **Plan interactif** : Upload d'image du plan, placement de repères par clic avec drag & drop, popup persistant au clic, labels visibles sous les repères
   - **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec état de santé, dimensions, espèce, photo
+  - **Modale visualisation élément** : Clic sur un élément ouvre une fiche détaillée (image, type, état, espèce, quantité, superficie, prix, dates, position, description, historique d'entretiens liés) avec boutons édition/suppression
   - **Groupes de composition** : Regroupement logique d'éléments (massif, zone, alignement, haie, autre) avec couleur
   - **Zones polygonales** : Dessin de zones par clics successifs sur le plan
   - **Légende interactive** : Filtrage par type et groupe, codes couleur des états
-  - **Entretiens** : Historique avec type, date, intervenant, durée, coût, éléments concernés, documents joints (upload direct)
+  - **Entretiens** : Historique avec type, date, intervenant, durée, coût, éléments concernés, documents joints (upload direct), recherche/filtre textuel
+  - **Gestion des types d'entretien** : Types par défaut en BDD (modifiables, désactivables), ajout de types personnalisés, modale de gestion complète
+  - **Gestion des types de documents** : Types par défaut en BDD (modifiables, désactivables), ajout de types personnalisés, modale de gestion complète
+  - **Documents** : Upload, catégorisation par type, recherche/filtre textuel
+  - **Mise à jour automatique des dates** : La création ou modification d'un entretien met à jour automatiquement `last_maintenance_date` et `next_maintenance_date` sur les éléments concernés
   - **Export PDF du plan** : Plan annoté en paysage + légende + tableaux détaillés via jsPDF + html2canvas
   - **Intégration Alertes** : Les entretiens avec date d'échéance prochaine génèrent automatiquement des alertes via cron
   - **Intégration Calendrier** : Les entretiens programmés créent automatiquement un événement calendrier
   - **Intégration Suivi** : Les coûts d'entretien apparaissent dans le module Suivi avec filtre et tableau dédiés
-- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`
-- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types, stats
+- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`, `green_space_doc_types`, `green_space_maintenance_types`
+- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, stats
 - **Frontend :** 5 onglets (Informations, Plan & Annotations, Composition, Entretiens, Documents), export PDF
 - **Impact :** Gestion complète des espaces verts communaux avec vision cartographique et suivi des interventions
