@@ -254,7 +254,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { status, search, archived, date_from, date_to } = req.query;
     let sql = `
-      SELECT m.*, u.username as created_by_name
+      SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
       FROM manifestations m
       LEFT JOIN users u ON u.id = m.created_by
       WHERE 1=1
@@ -309,7 +309,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const m = await db.queryOne(`
-      SELECT m.*, u.username as created_by_name
+      SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
       FROM manifestations m
       LEFT JOIN users u ON u.id = m.created_by
       WHERE m.id = ?
