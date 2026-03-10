@@ -11,19 +11,46 @@ const router = Router();
 // GET /stock - Liste du stock avec quantités réelles et prévisionnelles
 router.get('/stock', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { search, category } = req.query;
-    let sql = 'SELECT * FROM manifestation_stock WHERE 1=1';
+    const { search, category, etat, lieu, stock_type, category_id, subcategory_id } = req.query;
+    let sql = `
+      SELECT ms.*, c.name as category_name, c.slug as category_slug,
+        sc.name as subcategory_name
+      FROM manifestation_stock ms
+      LEFT JOIN categories c ON c.id = ms.category_id
+      LEFT JOIN subcategories sc ON sc.id = ms.subcategory_id
+      WHERE 1=1
+    `;
     const params: any[] = [];
 
     if (search) {
-      sql += ' AND (name LIKE ? OR description LIKE ?)';
+      sql += ' AND (ms.name LIKE ? OR ms.description LIKE ?)';
       params.push(`%${search}%`, `%${search}%`);
     }
     if (category) {
-      sql += ' AND category = ?';
+      sql += ' AND ms.category = ?';
       params.push(category);
     }
-    sql += ' ORDER BY category, name';
+    if (etat) {
+      sql += ' AND ms.etat = ?';
+      params.push(etat);
+    }
+    if (lieu) {
+      sql += ' AND ms.lieu = ?';
+      params.push(lieu);
+    }
+    if (stock_type) {
+      sql += ' AND ms.stock_type = ?';
+      params.push(stock_type);
+    }
+    if (category_id) {
+      sql += ' AND ms.category_id = ?';
+      params.push(category_id);
+    }
+    if (subcategory_id) {
+      sql += ' AND ms.subcategory_id = ?';
+      params.push(subcategory_id);
+    }
+    sql += ' ORDER BY ms.category, ms.name';
 
     const stock = await db.query(sql, params);
 
@@ -71,6 +98,42 @@ router.get('/stock/categories', authenticateToken, async (_req: AuthRequest, res
   }
 });
 
+// GET /stock/etats - Liste des états distincts
+router.get('/stock/etats', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const etats = await db.query(
+      "SELECT DISTINCT etat FROM manifestation_stock WHERE etat != '' ORDER BY etat"
+    );
+    res.json({ success: true, data: etats.map((e: any) => e.etat) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /stock/lieux - Liste des lieux distincts
+router.get('/stock/lieux', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const lieux = await db.query(
+      "SELECT DISTINCT lieu FROM manifestation_stock WHERE lieu != '' ORDER BY lieu"
+    );
+    res.json({ success: true, data: lieux.map((l: any) => l.lieu) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /stock/types - Liste des types distincts
+router.get('/stock/types', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const types = await db.query(
+      "SELECT DISTINCT stock_type FROM manifestation_stock WHERE stock_type != '' ORDER BY stock_type"
+    );
+    res.json({ success: true, data: types.map((t: any) => t.stock_type) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // POST /stock - Créer un article de stock
 router.post('/stock', authenticateToken, requireSupervisor,
   body('name').notEmpty().withMessage('Le nom est requis'),
@@ -81,10 +144,10 @@ router.post('/stock', authenticateToken, requireSupervisor,
       return res.status(400).json({ success: false, errors: errors.array() });
     }
     try {
-      const { name, description, category, quantity_total, unit } = req.body;
+      const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id } = req.body;
       const result = await db.execute(
-        'INSERT INTO manifestation_stock (name, description, category, quantity_total, unit) VALUES (?, ?, ?, ?, ?)',
-        [name, description || '', category || '', quantity_total, unit || 'unité']
+        'INSERT INTO manifestation_stock (name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null]
       );
       await logService.info('other', `Stock manifestation créé: ${name}`, { userId: req.user!.userId });
       const created = await db.queryOne('SELECT * FROM manifestation_stock WHERE id = ?', [result.lastInsertRowid]);
@@ -98,10 +161,10 @@ router.post('/stock', authenticateToken, requireSupervisor,
 // PUT /stock/:id - Modifier un article de stock
 router.put('/stock/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, description, category, quantity_total, unit } = req.body;
+    const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id } = req.body;
     await db.execute(
-      `UPDATE manifestation_stock SET name = ?, description = ?, category = ?, quantity_total = ?, unit = ?, updated_at = datetime('now') WHERE id = ?`,
-      [name, description || '', category || '', quantity_total, unit || 'unité', req.params.id]
+      `UPDATE manifestation_stock SET name = ?, description = ?, category = ?, quantity_total = ?, unit = ?, etat = ?, lieu = ?, stock_type = ?, category_id = ?, subcategory_id = ?, updated_at = datetime('now') WHERE id = ?`,
+      [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, req.params.id]
     );
     const updated = await db.queryOne('SELECT * FROM manifestation_stock WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: updated });

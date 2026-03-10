@@ -2,13 +2,14 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   PartyPopper, Plus, Search, Package, Archive, FileDown, Truck, RotateCcw,
-  Check, X, Edit, Trash2, Eye, ChevronDown, ChevronUp, Filter, Calendar
+  Check, X, Edit, Trash2, Eye, ChevronDown, ChevronUp, Filter, Calendar, MapPin, Tag
 } from 'lucide-react'
 import {
   Button, Input, Select, Modal, ModalBody, ModalFooter,
   Card, CardBody, CardHeader, CardTitle, Badge, Alert, Tabs, Tab, TextArea
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
+import api from '@/lib/api'
 import {
   manifestationApi,
   type Manifestation,
@@ -66,7 +67,23 @@ const emptyForm = {
   notes_interior: '', notes_exterior: '', materials: [] as ManifMaterial[]
 }
 
-const emptyStockForm = { name: '', description: '', category: '', quantity_total: 0, unit: 'unité' }
+const emptyStockForm = { name: '', description: '', category: '', quantity_total: 0, unit: 'unité', etat: 'bon', lieu: '', stock_type: '', category_id: null as number | null, subcategory_id: null as number | null }
+
+const etatOptions = [
+  { value: 'neuf', label: 'Neuf' },
+  { value: 'bon', label: 'Bon état' },
+  { value: 'usage', label: 'Usé' },
+  { value: 'a_reparer', label: 'À réparer' },
+  { value: 'hors_service', label: 'Hors service' }
+]
+
+const etatColors: Record<string, string> = {
+  neuf: 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400',
+  bon: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
+  usage: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
+  a_reparer: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
+  hors_service: 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+}
 
 // ==================== COMPOSANT PRINCIPAL ====================
 
@@ -125,6 +142,50 @@ export default function ManifestationsPage() {
       const res = await manifestationApi.getStockCategories()
       return res.data.data
     }
+  })
+
+  const { data: stockEtats = [] } = useQuery({
+    queryKey: ['manifestation-stock-etats'],
+    queryFn: async () => {
+      const res = await manifestationApi.getStockEtats()
+      return res.data.data
+    }
+  })
+
+  const { data: stockLieux = [] } = useQuery({
+    queryKey: ['manifestation-stock-lieux'],
+    queryFn: async () => {
+      const res = await manifestationApi.getStockLieux()
+      return res.data.data
+    }
+  })
+
+  const { data: stockTypes = [] } = useQuery({
+    queryKey: ['manifestation-stock-types'],
+    queryFn: async () => {
+      const res = await manifestationApi.getStockTypes()
+      return res.data.data
+    }
+  })
+
+  const { data: objectCategories = [] } = useQuery({
+    queryKey: ['categories-list'],
+    queryFn: async () => {
+      const res = await api.get('/categories')
+      return res.data.data || res.data
+    }
+  })
+
+  const [selectedCatForSub, setSelectedCatForSub] = useState<number | null>(null)
+
+  const { data: objectSubcategories = [] } = useQuery({
+    queryKey: ['subcategories-list', selectedCatForSub],
+    queryFn: async () => {
+      if (!selectedCatForSub) return []
+      const res = await api.get(`/categories/${selectedCatForSub}/subcategories`)
+      return res.data.data || res.data
+    },
+    enabled: !!selectedCatForSub
   })
 
   const { data: stats } = useQuery({
@@ -195,6 +256,9 @@ export default function ManifestationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock-categories'] })
+      queryClient.invalidateQueries({ queryKey: ['manifestation-stock-etats'] })
+      queryClient.invalidateQueries({ queryKey: ['manifestation-stock-lieux'] })
+      queryClient.invalidateQueries({ queryKey: ['manifestation-stock-types'] })
       setShowStockModal(false)
       setEditingStock(null)
       setStockForm(emptyStockForm)
@@ -237,7 +301,13 @@ export default function ManifestationsPage() {
 
   const openEditStock = (s: StockItem) => {
     setEditingStock(s)
-    setStockForm({ name: s.name, description: s.description || '', category: s.category || '', quantity_total: s.quantity_total, unit: s.unit || 'unité' })
+    setStockForm({
+      name: s.name, description: s.description || '', category: s.category || '',
+      quantity_total: s.quantity_total, unit: s.unit || 'unité',
+      etat: s.etat || 'bon', lieu: s.lieu || '', stock_type: s.stock_type || '',
+      category_id: s.category_id || null, subcategory_id: s.subcategory_id || null
+    })
+    if (s.category_id) setSelectedCatForSub(s.category_id)
     setShowStockModal(true)
   }
 
@@ -361,7 +431,7 @@ export default function ManifestationsPage() {
       {activeTab === 'stock' && (
         <StockTab
           stock={stock} isLoading={stockLoading} isSupervisor={isSupervisor}
-          categories={stockCategories}
+          categories={stockCategories} etats={stockEtats} lieux={stockLieux} types={stockTypes}
           onEdit={openEditStock}
           onDelete={(id: number, name: string) => setDeleteConfirm({ type: 'stock', id, name })}
         />
@@ -441,16 +511,39 @@ export default function ManifestationsPage() {
                 </div>
               </CardHeader>
               <CardBody>
+                {/* Filtres de sélection de matériel */}
+                <MaterialFilter stock={stock} stockCategories={stockCategories} stockTypes={stockTypes}
+                  materials={manifForm.materials}
+                  onAdd={(stockId: number) => {
+                    setManifForm({
+                      ...manifForm,
+                      materials: [...manifForm.materials, {
+                        stock_id: stockId, quantity_requested: 1, quantity_delivered: 0,
+                        quantity_recovered: 0, unit_value: 0, notes: ''
+                      }]
+                    })
+                  }}
+                />
+
                 {manifForm.materials.length === 0 ? (
                   <p className="text-sm text-gray-500 text-center py-4">Aucun matériel ajouté</p>
                 ) : (
-                  <div className="space-y-3">
-                    {manifForm.materials.map((mat, idx) => (
+                  <div className="space-y-3 mt-3">
+                    {manifForm.materials.map((mat, idx) => {
+                      const stockItem = stock.find((s: StockItem) => s.id === mat.stock_id)
+                      return (
                       <div key={idx} className="flex items-end gap-2 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                         <div className="flex-1">
                           <Select label="Article" value={String(mat.stock_id)}
                             onChange={e => updateMaterial(idx, 'stock_id', parseInt(e.target.value))}
                             options={stock.map((s: StockItem) => ({ value: s.id, label: `${s.name} (dispo: ${s.quantity_available} ${s.unit})` }))} />
+                          {stockItem && (
+                            <div className="flex gap-2 mt-1 flex-wrap">
+                              {stockItem.etat && <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${etatColors[stockItem.etat] || 'bg-gray-100 text-gray-600'}`}>{etatOptions.find(e => e.value === stockItem.etat)?.label || stockItem.etat}</span>}
+                              {stockItem.lieu && <span className="text-[10px] text-gray-500"><MapPin className="w-2.5 h-2.5 inline mr-0.5" />{stockItem.lieu}</span>}
+                              {stockItem.stock_type && <span className="text-[10px] text-gray-500"><Tag className="w-2.5 h-2.5 inline mr-0.5" />{stockItem.stock_type}</span>}
+                            </div>
+                          )}
                         </div>
                         <div className="w-24">
                           <Input label="Qté" type="number" value={String(mat.quantity_requested)}
@@ -464,7 +557,7 @@ export default function ManifestationsPage() {
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </Button>
                       </div>
-                    ))}
+                    )})}
                   </div>
                 )}
               </CardBody>
@@ -482,15 +575,16 @@ export default function ManifestationsPage() {
 
       {/* Modale création/édition stock */}
       <Modal isOpen={showStockModal} onClose={() => { setShowStockModal(false); setEditingStock(null) }}
-        title={editingStock ? 'Modifier l\'article' : 'Nouvel article de stock'}>
+        title={editingStock ? 'Modifier l\'article' : 'Nouvel article de stock'} size="xl">
         <ModalBody>
           <div className="space-y-4">
             <Input label="Nom *" value={stockForm.name}
               onChange={e => setStockForm({ ...stockForm, name: e.target.value })} placeholder="Ex: Tables pliantes" />
             <Input label="Description" value={stockForm.description}
               onChange={e => setStockForm({ ...stockForm, description: e.target.value })} />
+
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Catégorie" value={stockForm.category}
+              <Input label="Catégorie (stock)" value={stockForm.category}
                 onChange={e => setStockForm({ ...stockForm, category: e.target.value })} placeholder="Ex: Mobilier"
                 list="stock-categories" />
               <Input label="Unité" value={stockForm.unit}
@@ -499,8 +593,59 @@ export default function ManifestationsPage() {
             <datalist id="stock-categories">
               {stockCategories.map((c: string) => <option key={c} value={c} />)}
             </datalist>
+
             <Input label="Quantité totale *" type="number" value={String(stockForm.quantity_total)}
               onChange={e => setStockForm({ ...stockForm, quantity_total: parseInt(e.target.value) || 0 })} />
+
+            {/* Champs personnalisés */}
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Propriétés de l'article</CardTitle></CardHeader>
+              <CardBody className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Select label="État" value={stockForm.etat || 'bon'}
+                    onChange={e => setStockForm({ ...stockForm, etat: e.target.value })}
+                    options={etatOptions} />
+                  <Input label="Lieu de stockage" value={stockForm.lieu || ''}
+                    onChange={e => setStockForm({ ...stockForm, lieu: e.target.value })}
+                    placeholder="Ex: Entrepôt A, Salle 12" list="stock-lieux" />
+                </div>
+                <datalist id="stock-lieux">
+                  {stockLieux.map((l: string) => <option key={l} value={l} />)}
+                </datalist>
+                <div className="grid grid-cols-1 gap-4">
+                  <Input label="Type" value={stockForm.stock_type || ''}
+                    onChange={e => setStockForm({ ...stockForm, stock_type: e.target.value })}
+                    placeholder="Ex: Sonorisation, Éclairage, Décoration" list="stock-types" />
+                </div>
+                <datalist id="stock-types">
+                  {stockTypes.map((t: string) => <option key={t} value={t} />)}
+                </datalist>
+              </CardBody>
+            </Card>
+
+            {/* Filtrer par catégorie/sous-catégorie du matériel principal */}
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Lier à une catégorie de matériel</CardTitle></CardHeader>
+              <CardBody className="space-y-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Associer cet article à une catégorie ou sous-catégorie existante pour filtrer le matériel disponible.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <Select label="Catégorie" value={String(stockForm.category_id || '')}
+                    onChange={e => {
+                      const val = e.target.value ? parseInt(e.target.value) : null
+                      setStockForm({ ...stockForm, category_id: val, subcategory_id: null })
+                      setSelectedCatForSub(val)
+                    }}
+                    options={[{ value: '', label: '— Aucune —' }, ...objectCategories.map((c: any) => ({ value: c.id, label: c.name }))]} />
+                  {selectedCatForSub && objectSubcategories.length > 0 && (
+                    <Select label="Sous-catégorie" value={String(stockForm.subcategory_id || '')}
+                      onChange={e => setStockForm({ ...stockForm, subcategory_id: e.target.value ? parseInt(e.target.value) : null })}
+                      options={[{ value: '', label: '— Aucune —' }, ...objectSubcategories.map((sc: any) => ({ value: sc.id, label: sc.name }))]} />
+                  )}
+                </div>
+              </CardBody>
+            </Card>
           </div>
         </ModalBody>
         <ModalFooter>
@@ -546,6 +691,51 @@ export default function ManifestationsPage() {
           </Button>
         </ModalFooter>
       </Modal>
+    </div>
+  )
+}
+
+// ==================== FILTRE MATÉRIEL ====================
+
+function MaterialFilter({ stock, stockCategories, stockTypes, materials, onAdd }: {
+  stock: StockItem[]; stockCategories: string[]; stockTypes: string[]
+  materials: ManifMaterial[]; onAdd: (stockId: number) => void
+}) {
+  const [filterCat, setFilterCat] = useState('')
+  const [filterType, setFilterType] = useState('')
+
+  const alreadySelected = new Set(materials.map(m => m.stock_id))
+  const filtered = stock.filter((s: StockItem) => {
+    if (alreadySelected.has(s.id)) return false
+    if (filterCat && s.category !== filterCat) return false
+    if (filterType && s.stock_type !== filterType) return false
+    return true
+  })
+
+  return (
+    <div className="border border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-3 space-y-2">
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">Filtrer le matériel disponible</p>
+      <div className="flex flex-wrap gap-2">
+        {stockCategories.length > 0 && (
+          <Select value={filterCat} onChange={(e: any) => setFilterCat(e.target.value)}
+            options={[{ value: '', label: 'Toutes catégories' }, ...stockCategories.map(c => ({ value: c, label: c }))]} />
+        )}
+        {stockTypes.length > 0 && (
+          <Select value={filterType} onChange={(e: any) => setFilterType(e.target.value)}
+            options={[{ value: '', label: 'Tous types' }, ...stockTypes.map(t => ({ value: t, label: t }))]} />
+        )}
+      </div>
+      {(filterCat || filterType) && filtered.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1">
+          {filtered.slice(0, 20).map(s => (
+            <button key={s.id} onClick={() => onAdd(s.id)}
+              className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border border-gray-300 dark:border-gray-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-300 transition-colors">
+              <Plus className="w-3 h-3" />
+              {s.name} <span className="text-gray-400">({s.quantity_available} {s.unit})</span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
@@ -718,12 +908,18 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
 
 // ==================== ONGLET STOCK ====================
 
-function StockTab({ stock, isLoading, isSupervisor, categories, onEdit, onDelete }: any) {
+function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, types, onEdit, onDelete }: any) {
   const [catFilter, setCatFilter] = useState('')
+  const [etatFilter, setEtatFilter] = useState('')
+  const [lieuFilter, setLieuFilter] = useState('')
+  const [typeFilter, setTypeFilter] = useState('')
   const [searchStock, setSearchStock] = useState('')
 
   const filtered = stock.filter((s: StockItem) => {
     if (catFilter && s.category !== catFilter) return false
+    if (etatFilter && s.etat !== etatFilter) return false
+    if (lieuFilter && s.lieu !== lieuFilter) return false
+    if (typeFilter && s.stock_type !== typeFilter) return false
     if (searchStock && !s.name.toLowerCase().includes(searchStock.toLowerCase())) return false
     return true
   })
@@ -742,6 +938,27 @@ function StockTab({ stock, isLoading, isSupervisor, categories, onEdit, onDelete
         )}
       </div>
 
+      {/* Filtres avancés */}
+      <div className="flex flex-wrap gap-2">
+        {etats.length > 0 && (
+          <Select value={etatFilter} onChange={(e: any) => setEtatFilter(e.target.value)}
+            options={[{ value: '', label: 'Tous états' }, ...etatOptions.map(e => ({ value: e.value, label: e.label }))]} />
+        )}
+        {lieux.length > 0 && (
+          <Select value={lieuFilter} onChange={(e: any) => setLieuFilter(e.target.value)}
+            options={[{ value: '', label: 'Tous lieux' }, ...lieux.map((l: string) => ({ value: l, label: l }))]} />
+        )}
+        {types.length > 0 && (
+          <Select value={typeFilter} onChange={(e: any) => setTypeFilter(e.target.value)}
+            options={[{ value: '', label: 'Tous types' }, ...types.map((t: string) => ({ value: t, label: t }))]} />
+        )}
+        {(etatFilter || lieuFilter || typeFilter) && (
+          <Button size="sm" variant="ghost" onClick={() => { setEtatFilter(''); setLieuFilter(''); setTypeFilter('') }}>
+            <X className="w-3 h-3 mr-1" /> Réinitialiser
+          </Button>
+        )}
+      </div>
+
       {isLoading ? (
         <div className="text-center py-12 text-gray-500">Chargement...</div>
       ) : filtered.length === 0 ? (
@@ -755,6 +972,9 @@ function StockTab({ stock, isLoading, isSupervisor, categories, onEdit, onDelete
               <tr className="border-b dark:border-gray-700 text-left">
                 <th className="pb-2 font-medium text-gray-500">Article</th>
                 <th className="pb-2 font-medium text-gray-500">Catégorie</th>
+                <th className="pb-2 font-medium text-gray-500">État</th>
+                <th className="pb-2 font-medium text-gray-500">Lieu</th>
+                <th className="pb-2 font-medium text-gray-500">Type</th>
                 <th className="pb-2 font-medium text-gray-500 text-center">Total</th>
                 <th className="pb-2 font-medium text-gray-500 text-center">Disponible</th>
                 <th className="pb-2 font-medium text-gray-500 text-center">En prêt</th>
@@ -763,14 +983,28 @@ function StockTab({ stock, isLoading, isSupervisor, categories, onEdit, onDelete
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s: StockItem) => (
+              {filtered.map((s: StockItem) => {
+                const etatLabel = etatOptions.find(e => e.value === s.etat)?.label || s.etat
+                return (
                 <tr key={s.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="py-2">
                     <div className="font-medium text-gray-900 dark:text-gray-100">{s.name}</div>
                     {s.description && <div className="text-xs text-gray-500">{s.description}</div>}
+                    {s.category_name && <div className="text-xs text-gray-400">📁 {s.category_name}{s.subcategory_name ? ` / ${s.subcategory_name}` : ''}</div>}
                   </td>
                   <td className="py-2">
                     {s.category && <Badge variant="default">{s.category}</Badge>}
+                  </td>
+                  <td className="py-2">
+                    {s.etat && <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${etatColors[s.etat] || 'bg-gray-100 text-gray-800'}`}>
+                      {etatLabel}
+                    </span>}
+                  </td>
+                  <td className="py-2">
+                    {s.lieu && <span className="inline-flex items-center text-xs text-gray-600 dark:text-gray-400"><MapPin className="w-3 h-3 mr-1" />{s.lieu}</span>}
+                  </td>
+                  <td className="py-2">
+                    {s.stock_type && <Badge variant="default">{s.stock_type}</Badge>}
                   </td>
                   <td className="py-2 text-center">{s.quantity_total} {s.unit}</td>
                   <td className="py-2 text-center">
@@ -793,7 +1027,7 @@ function StockTab({ stock, isLoading, isSupervisor, categories, onEdit, onDelete
                     </td>
                   )}
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>

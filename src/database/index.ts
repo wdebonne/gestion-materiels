@@ -571,8 +571,15 @@ class DatabaseManager {
         category VARCHAR(100) DEFAULT '',
         quantity_total INTEGER NOT NULL DEFAULT 0,
         unit VARCHAR(50) DEFAULT 'unité',
+        etat VARCHAR(50) DEFAULT 'bon',
+        lieu VARCHAR(255) DEFAULT '',
+        stock_type VARCHAR(100) DEFAULT '',
+        category_id INTEGER,
+        subcategory_id INTEGER,
         created_at DATETIME ${timestampDefault},
-        updated_at DATETIME ${timestampDefault}
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+        FOREIGN KEY (subcategory_id) REFERENCES subcategories(id) ON DELETE SET NULL
       )`,
 
       // Table des manifestations

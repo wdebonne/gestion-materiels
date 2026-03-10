@@ -265,6 +265,14 @@ export interface ManifestationStockItem {
   category: string
   quantity_total: number
   unit: string
+  etat: string
+  lieu: string
+  stock_type: string
+  category_id: number | null
+  subcategory_id: number | null
+  category_name?: string
+  category_slug?: string
+  subcategory_name?: string
   quantity_available: number
   quantity_lent: number
   quantity_reserved_future: number
@@ -349,6 +357,11 @@ export interface StockFormData {
   category?: string
   quantity_total: number
   unit?: string
+  etat?: string
+  lieu?: string
+  stock_type?: string
+  category_id?: number | null
+  subcategory_id?: number | null
 }
 
 // --- API Manifestations ---
@@ -386,6 +399,12 @@ export const manifestationApi = {
     api.get<{ success: boolean; data: ManifestationStockItem[] }>('/manifestations/stock'),
   getStockCategories: () =>
     api.get<{ success: boolean; data: string[] }>('/manifestations/stock/categories'),
+  getStockEtats: () =>
+    api.get<{ success: boolean; data: string[] }>('/manifestations/stock/etats'),
+  getStockLieux: () =>
+    api.get<{ success: boolean; data: string[] }>('/manifestations/stock/lieux'),
+  getStockTypes: () =>
+    api.get<{ success: boolean; data: string[] }>('/manifestations/stock/types'),
   getStockAvailability: (date?: string) => {
     const p = date ? `?date=${date}` : ''
     return api.get<{ success: boolean; data: ManifestationStockItem[] }>(`/manifestations/stock/availability${p}`)
