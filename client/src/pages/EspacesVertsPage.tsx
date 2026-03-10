@@ -4,7 +4,7 @@ import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
   FileText, X,
   Download, Image, Tag, Ruler, CloudSun,
-  Landmark, Move, ZoomIn, ZoomOut
+  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -41,6 +41,7 @@ interface GreenSpace {
   annotations?: Annotation[]
   seasons?: Season[]
   documents?: GreenSpaceDocument[]
+  groups?: CompositionGroup[]
 }
 
 interface GreenSpaceElement {
@@ -68,6 +69,7 @@ interface GreenSpaceElement {
   category_name?: string
   subcategory_name?: string
   reference?: string
+  group_id?: number | null
 }
 
 interface Annotation {
@@ -99,6 +101,18 @@ interface GreenSpaceDocument {
   expiry_date: string | null
   notes: string
   created_at: string
+}
+
+interface CompositionGroup {
+  id: number
+  green_space_id: number
+  name: string
+  group_type: string
+  description: string
+  color: string
+  icon: string
+  pos_x: number | null
+  pos_y: number | null
 }
 
 // ======================== CONSTANTES ========================
@@ -166,6 +180,17 @@ const DOC_TYPES = [
   { value: 'autre', label: 'Autre' },
 ]
 
+const GROUP_TYPES = [
+  { value: 'massif', label: 'Massif floral', icon: '🌺', color: '#ec4899' },
+  { value: 'haie', label: 'Haie composée', icon: '🌲', color: '#15803d' },
+  { value: 'bosquet', label: 'Bosquet', icon: '🌳', color: '#16a34a' },
+  { value: 'rocaille', label: 'Rocaille', icon: '🪨', color: '#78716c' },
+  { value: 'jardiniere', label: 'Jardinière', icon: '🌷', color: '#f472b6' },
+  { value: 'plate_bande', label: 'Plate-bande', icon: '🌸', color: '#a855f7' },
+  { value: 'mixed_border', label: 'Mixed-border', icon: '🌼', color: '#f59e0b' },
+  { value: 'autre', label: 'Autre', icon: '📍', color: '#6b7280' },
+]
+
 // ======================== COMPOSANT PRINCIPAL ========================
 
 export default function EspacesVertsPage() {
@@ -176,6 +201,7 @@ export default function EspacesVertsPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingSpace, setEditingSpace] = useState<GreenSpace | null>(null)
   const [activeTab, setActiveTab] = useState<'elements' | 'plan' | 'saisons' | 'documents' | 'carte'>('elements')
+  const [expanded, setExpanded] = useState(false)
 
   // Stats
   const { data: stats } = useQuery({
@@ -295,8 +321,9 @@ export default function EspacesVertsPage() {
       </div>
 
       {/* Contenu principal */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className={`grid gap-6 ${expanded ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-3'}`}>
         {/* Liste (gauche) */}
+        {!expanded && (
         <div className="lg:col-span-1 space-y-3 max-h-[calc(100vh-300px)] overflow-y-auto pr-1">
           {isLoading ? (
             <div className="flex justify-center py-12">
@@ -353,9 +380,10 @@ export default function EspacesVertsPage() {
             })
           )}
         </div>
+        )}
 
         {/* Détail (droite) */}
-        <div className="lg:col-span-2">
+        <div className={expanded ? '' : 'lg:col-span-2'}>
           {!selectedSpace ? (
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-12 text-center">
               <TreePine className="h-16 w-16 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
@@ -373,6 +401,8 @@ export default function EspacesVertsPage() {
                 }
               }}
               queryClient={queryClient}
+              expanded={expanded}
+              onToggleExpand={() => setExpanded(e => !e)}
             />
           ) : (
             <div className="flex justify-center py-12">
@@ -403,13 +433,15 @@ export default function EspacesVertsPage() {
 
 // ======================== VUE DÉTAIL ========================
 
-function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, queryClient }: {
+function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, queryClient, expanded, onToggleExpand }: {
   space: GreenSpace
   activeTab: string
   setActiveTab: (tab: any) => void
   onEdit: () => void
   onDelete: () => void
   queryClient: any
+  expanded?: boolean
+  onToggleExpand?: () => void
 }) {
   const typeInfo = SPACE_TYPES.find(t => t.value === space.space_type)
 
@@ -425,6 +457,11 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
           </div>
         )}
         <div className="absolute top-3 right-3 flex gap-2">
+          {onToggleExpand && (
+            <button onClick={onToggleExpand} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title={expanded ? 'Réduire' : 'Agrandir'}>
+              {expanded ? <Minimize2 className="h-4 w-4 text-gray-600 dark:text-gray-300" /> : <Maximize2 className="h-4 w-4 text-gray-600 dark:text-gray-300" />}
+            </button>
+          )}
           <button onClick={onEdit} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors">
             <Edit3 className="h-4 w-4 text-gray-600 dark:text-gray-300" />
           </button>
@@ -644,6 +681,9 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
         })
       )}
 
+      {/* Groupes de composition */}
+      <GroupsSection space={space} queryClient={queryClient} />
+
       {/* Modal d'ajout/édition d'élément */}
       {showForm && (
         <ElementFormModal
@@ -661,6 +701,321 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
   )
 }
 
+// ======================== GROUPES DE COMPOSITION ========================
+
+function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const [showGroupForm, setShowGroupForm] = useState(false)
+  const [editingGroup, setEditingGroup] = useState<CompositionGroup | null>(null)
+  const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
+  const [assigningGroup, setAssigningGroup] = useState<CompositionGroup | null>(null)
+  const [selectedElementIds, setSelectedElementIds] = useState<number[]>([])
+
+  // Form state
+  const [gName, setGName] = useState('')
+  const [gType, setGType] = useState('massif')
+  const [gDesc, setGDesc] = useState('')
+  const [gColor, setGColor] = useState('#ec4899')
+
+  const groups = space.groups || []
+  const elements = space.elements || []
+
+  const createGroupMutation = useMutation({
+    mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/groups`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      resetForm()
+    }
+  })
+
+  const updateGroupMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/groups/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      resetForm()
+    }
+  })
+
+  const deleteGroupMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/groups/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+  })
+
+  const assignElementsMutation = useMutation({
+    mutationFn: ({ groupId, element_ids }: { groupId: number; element_ids: number[] }) =>
+      api.put(`/green-spaces/groups/${groupId}/elements`, { element_ids }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setAssigningGroup(null)
+    }
+  })
+
+  const resetForm = () => {
+    setShowGroupForm(false)
+    setEditingGroup(null)
+    setGName('')
+    setGType('massif')
+    setGDesc('')
+    setGColor('#ec4899')
+  }
+
+  const openEditForm = (g: CompositionGroup) => {
+    setEditingGroup(g)
+    setGName(g.name)
+    setGType(g.group_type)
+    setGDesc(g.description || '')
+    setGColor(g.color || '#ec4899')
+    setShowGroupForm(true)
+  }
+
+  const openAssign = (g: CompositionGroup) => {
+    setAssigningGroup(g)
+    setSelectedElementIds(elements.filter(el => el.group_id === g.id).map(el => el.id))
+  }
+
+  const handleSaveGroup = () => {
+    const data = { name: gName, group_type: gType, description: gDesc, color: gColor, icon: GROUP_TYPES.find(t => t.value === gType)?.icon || 'layers' }
+    if (editingGroup) {
+      updateGroupMutation.mutate({ id: editingGroup.id, ...data, pos_x: editingGroup.pos_x, pos_y: editingGroup.pos_y })
+    } else {
+      createGroupMutation.mutate(data)
+    }
+  }
+
+  const toggleExpanded = (id: number) => {
+    setExpandedGroups(prev => {
+      const next = new Set(prev)
+      next.has(id) ? next.delete(id) : next.add(id)
+      return next
+    })
+  }
+
+  const toggleElement = (eid: number) => {
+    setSelectedElementIds(prev => prev.includes(eid) ? prev.filter(x => x !== eid) : [...prev, eid])
+  }
+
+  if (groups.length === 0 && !showGroupForm) {
+    return (
+      <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+            <Layers className="h-4 w-4" /> Groupes de composition
+          </h4>
+          <button
+            onClick={() => { resetForm(); setShowGroupForm(true) }}
+            className="flex items-center gap-1 text-xs px-2 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            <Plus className="h-3 w-3" /> Nouveau groupe
+          </button>
+        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">Créez des groupes pour composer vos massifs, haies, bosquets... et les placer sur le plan.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+          <Layers className="h-4 w-4" /> Groupes de composition ({groups.length})
+        </h4>
+        <button
+          onClick={() => { resetForm(); setShowGroupForm(true) }}
+          className="flex items-center gap-1 text-xs px-2 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+        >
+          <Plus className="h-3 w-3" /> Nouveau groupe
+        </button>
+      </div>
+
+      {groups.map(g => {
+        const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+        const groupElements = elements.filter(el => el.group_id === g.id)
+        const isExpanded = expandedGroups.has(g.id)
+        return (
+          <div key={g.id} className="rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
+            <div
+              className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
+              onClick={() => toggleExpanded(g.id)}
+            >
+              {isExpanded ? <ChevronDown className="h-4 w-4 text-gray-400" /> : <ChevronRight className="h-4 w-4 text-gray-400" />}
+              <span className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: g.color || typeInfo?.color }} />
+              <span className="text-sm">{typeInfo?.icon}</span>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-medium text-gray-900 dark:text-white">{g.name}</span>
+                <span className="ml-2 text-xs text-gray-500">
+                  {typeInfo?.label} • {groupElements.length} élément{groupElements.length > 1 ? 's' : ''}
+                  {g.pos_x != null ? ' • 📍 Placé' : ''}
+                </span>
+              </div>
+              <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                <button onClick={() => openAssign(g)} className="p-1 text-gray-400 hover:text-purple-600" title="Gérer les éléments">
+                  <Tag className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => openEditForm(g)} className="p-1 text-gray-400 hover:text-green-600" title="Modifier">
+                  <Edit3 className="h-3.5 w-3.5" />
+                </button>
+                <button onClick={() => { if (confirm('Supprimer ce groupe ?')) deleteGroupMutation.mutate(g.id) }} className="p-1 text-gray-400 hover:text-red-600" title="Supprimer">
+                  <Trash2 className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            </div>
+            {isExpanded && (
+              <div className="p-3 space-y-1 border-t border-gray-200 dark:border-gray-600">
+                {g.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{g.description}</p>}
+                {groupElements.length === 0 ? (
+                  <p className="text-xs text-gray-400 italic">Aucun élément dans ce groupe. Cliquez sur <Tag className="h-3 w-3 inline" /> pour en assigner.</p>
+                ) : (
+                  groupElements.map(el => {
+                    const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                    return (
+                      <div key={el.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-800 text-sm">
+                        <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: elType?.color }} />
+                        <span className="text-gray-900 dark:text-white truncate">{el.label}</span>
+                        {el.species && <span className="text-xs text-gray-400 italic truncate">{el.species}</span>}
+                        {el.code && <span className="text-xs font-mono text-gray-400">{el.code}</span>}
+                      </div>
+                    )
+                  })
+                )}
+              </div>
+            )}
+          </div>
+        )
+      })}
+
+      {/* Modal formulaire groupe */}
+      {showGroupForm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => resetForm()}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-96 p-5" onClick={e => e.stopPropagation()}>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+              <Layers className="h-5 w-5 text-purple-600" />
+              {editingGroup ? 'Modifier le groupe' : 'Nouveau groupe'}
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom *</label>
+                <input
+                  type="text"
+                  value={gName}
+                  onChange={e => setGName(e.target.value)}
+                  placeholder="Ex: Massif central, Haie nord..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
+                  <select
+                    value={gType}
+                    onChange={e => { setGType(e.target.value); setGColor(GROUP_TYPES.find(t => t.value === e.target.value)?.color || '#8b5cf6') }}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    {GROUP_TYPES.map(t => (
+                      <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Couleur</label>
+                  <input
+                    type="color"
+                    value={gColor}
+                    onChange={e => setGColor(e.target.value)}
+                    className="w-full h-9 rounded-lg border border-gray-300 dark:border-gray-600 cursor-pointer"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+                <textarea
+                  value={gDesc}
+                  onChange={e => setGDesc(e.target.value)}
+                  rows={2}
+                  placeholder="Composition, période de floraison..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 mt-4">
+              <button onClick={resetForm} className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                Annuler
+              </button>
+              <button
+                onClick={handleSaveGroup}
+                disabled={!gName.trim()}
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                {editingGroup ? 'Enregistrer' : 'Créer'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal assignation éléments */}
+      {assigningGroup && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAssigningGroup(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-96 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: assigningGroup.color }} />
+                Éléments de « {assigningGroup.name} »
+              </h3>
+              <p className="text-xs text-gray-500 mt-1">Cochez les éléments à inclure dans ce groupe.</p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-1">
+              {elements.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-4">Aucun élément dans cet espace vert.</p>
+              ) : (
+                elements.map(el => {
+                  const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                  const isChecked = selectedElementIds.includes(el.id)
+                  const inOtherGroup = el.group_id && el.group_id !== assigningGroup.id
+                  const otherGroupName = inOtherGroup ? groups.find(g => g.id === el.group_id)?.name : null
+                  return (
+                    <label
+                      key={el.id}
+                      className={`flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-colors ${
+                        isChecked ? 'bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleElement(el.id)}
+                        className="rounded text-purple-600"
+                      />
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: elType?.color }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm text-gray-900 dark:text-white truncate">{el.label}</p>
+                        <p className="text-xs text-gray-500 truncate">
+                          {elType?.label}{el.species ? ` • ${el.species}` : ''}
+                          {otherGroupName ? ` (dans: ${otherGroupName})` : ''}
+                        </p>
+                      </div>
+                    </label>
+                  )
+                })
+              )}
+            </div>
+            <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+              <button onClick={() => setAssigningGroup(null)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                Annuler
+              </button>
+              <button
+                onClick={() => assignElementsMutation.mutate({ groupId: assigningGroup.id, element_ids: selectedElementIds })}
+                disabled={assignElementsMutation.isPending}
+                className="px-4 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+              >
+                Enregistrer ({selectedElementIds.length})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ======================== ONGLET PLAN ANNOTÉ ========================
 
 function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
@@ -671,10 +1026,13 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const [hoveredElementId, setHoveredElementId] = useState<number | null>(null)
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(null)
   const [freeLabel, setFreeLabel] = useState('')
+  const [dragging, setDragging] = useState<{ type: 'element' | 'annotation' | 'group'; id: number } | null>(null)
 
   const annotations = space.annotations || []
   const elements = space.elements || []
+  const groups = space.groups || []
   const unplacedElements = elements.filter(el => el.pos_x == null || el.pos_y == null)
+  const unplacedGroups = groups.filter(g => g.pos_x == null || g.pos_y == null)
 
   const addAnnotationMutation = useMutation({
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/annotations`, data),
@@ -696,6 +1054,30 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     }
   })
 
+  const updateAnnotationPosMutation = useMutation({
+    mutationFn: ({ annotationId, pos_x, pos_y, label, icon, color }: { annotationId: number; pos_x: number; pos_y: number; label: string; icon: string; color: string }) =>
+      api.put(`/green-spaces/annotations/${annotationId}`, { pos_x, pos_y, label, icon, color }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setDragging(null)
+    }
+  })
+
+  const updateGroupPosMutation = useMutation({
+    mutationFn: ({ groupId, pos_x, pos_y }: { groupId: number; pos_x: number; pos_y: number }) => {
+      const g = groups.find(gr => gr.id === groupId)
+      return api.put(`/green-spaces/groups/${groupId}`, {
+        name: g?.name, group_type: g?.group_type, description: g?.description, color: g?.color, icon: g?.icon, pos_x, pos_y
+      })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setAddingAnnotation(false)
+      setClickPos(null)
+      setDragging(null)
+    }
+  })
+
   const deleteAnnotationMutation = useMutation({
     mutationFn: (id: number) => api.delete(`/green-spaces/annotations/${id}`),
     onSuccess: () => {
@@ -705,10 +1087,27 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   })
 
   const handlePlanClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!addingAnnotation || !canvasRef.current) return
+    if (!canvasRef.current) return
     const rect = canvasRef.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width * 100) / zoom
     const y = ((e.clientY - rect.top) / rect.height * 100) / zoom
+
+    // Si on est en train de déplacer un repère
+    if (dragging) {
+      if (dragging.type === 'element') {
+        updateElementPosMutation.mutate({ elementId: dragging.id, pos_x: x, pos_y: y })
+      } else if (dragging.type === 'group') {
+        updateGroupPosMutation.mutate({ groupId: dragging.id, pos_x: x, pos_y: y })
+      } else {
+        const ann = annotations.find(a => a.id === dragging.id)
+        if (ann) {
+          updateAnnotationPosMutation.mutate({ annotationId: ann.id, pos_x: x, pos_y: y, label: ann.label, icon: ann.icon, color: ann.color })
+        }
+      }
+      return
+    }
+
+    if (!addingAnnotation) return
     setClickPos({ x, y })
     setFreeLabel('')
   }
@@ -716,6 +1115,11 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const handlePlaceElement = (el: GreenSpaceElement) => {
     if (!clickPos) return
     updateElementPosMutation.mutate({ elementId: el.id, pos_x: clickPos.x, pos_y: clickPos.y })
+  }
+
+  const handlePlaceGroup = (g: CompositionGroup) => {
+    if (!clickPos) return
+    updateGroupPosMutation.mutate({ groupId: g.id, pos_x: clickPos.x, pos_y: clickPos.y })
   }
 
   const handleAddFreeAnnotation = () => {
@@ -735,6 +1139,22 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
 
   return (
     <div className="space-y-3">
+      {/* Barre de déplacement en cours */}
+      {dragging && (
+        <div className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+          <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+            <Move className="h-4 w-4" />
+            Cliquez sur le plan pour déplacer le repère
+          </p>
+          <button
+            onClick={() => setDragging(null)}
+            className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 flex items-center gap-1"
+          >
+            <X className="h-4 w-4" /> Annuler
+          </button>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -759,7 +1179,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           </button>
         </div>
         <button
-          onClick={() => setAddingAnnotation(!addingAnnotation)}
+          onClick={() => { setAddingAnnotation(!addingAnnotation); setDragging(null) }}
           className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
             addingAnnotation
               ? 'bg-green-600 text-white'
@@ -775,7 +1195,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       <div className="relative overflow-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-100 dark:bg-gray-900" style={{ maxHeight: '600px' }}>
         <div
           ref={canvasRef}
-          className={`relative ${addingAnnotation ? 'cursor-crosshair' : 'cursor-default'}`}
+          className={`relative ${addingAnnotation || dragging ? 'cursor-crosshair' : 'cursor-default'}`}
           onClick={handlePlanClick}
           style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', transition: 'transform 0.2s' }}
         >
@@ -785,10 +1205,11 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           {elements.filter(el => el.pos_x != null && el.pos_y != null).map(el => {
             const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
             const isHovered = hoveredElementId === el.id
+            const isDraggingThis = dragging?.type === 'element' && dragging.id === el.id
             return (
               <div
                 key={`el-${el.id}`}
-                className="absolute transform -translate-x-1/2 -translate-y-1/2 group"
+                className={`absolute transform -translate-x-1/2 -translate-y-1/2 group ${isDraggingThis ? 'opacity-50' : ''}`}
                 style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%` }}
                 onMouseEnter={() => setHoveredElementId(el.id)}
                 onMouseLeave={() => setHoveredElementId(null)}
@@ -797,6 +1218,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   className={`w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-xs cursor-pointer transition-transform ${isHovered ? 'scale-150' : ''}`}
                   style={{ backgroundColor: typeInfo?.color || '#22c55e' }}
                   title={`${el.code || el.label}`}
+                  onClick={(e) => e.stopPropagation()}
                 >
                   <span className="text-white text-[8px] font-bold">{el.code ? el.code.substring(0, 2) : ''}</span>
                 </div>
@@ -806,6 +1228,12 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                     {el.code && <p className="text-xs text-gray-500 font-mono">{el.code}</p>}
                     {el.species && <p className="text-xs text-green-600 italic">{el.species}</p>}
                     <p className="text-xs text-gray-400">{typeInfo?.label} • {CONDITION_STATES.find(c => c.value === el.condition_state)?.label}</p>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setDragging({ type: 'element', id: el.id }) }}
+                      className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                    >
+                      <GripVertical className="h-3 w-3" /> Déplacer
+                    </button>
                   </div>
                 )}
               </div>
@@ -813,31 +1241,78 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           })}
 
           {/* Annotations manuelles */}
-          {annotations.map(ann => (
-            <div
-              key={`ann-${ann.id}`}
-              className="absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group"
-              style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%` }}
-              onClick={(e) => { e.stopPropagation(); setSelectedAnnotation(ann) }}
-            >
+          {annotations.map(ann => {
+            const isDraggingThis = dragging?.type === 'annotation' && dragging.id === ann.id
+            return (
               <div
-                className="w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center"
-                style={{ backgroundColor: ann.color }}
+                key={`ann-${ann.id}`}
+                className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer group ${isDraggingThis ? 'opacity-50' : ''}`}
+                style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%` }}
+                onClick={(e) => { e.stopPropagation(); setSelectedAnnotation(ann) }}
               >
-                <MapPin className="h-3 w-3 text-white" />
+                <div
+                  className="w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center"
+                  style={{ backgroundColor: ann.color }}
+                >
+                  <MapPin className="h-3 w-3 text-white" />
+                </div>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-gray-900 text-white rounded px-2 py-0.5 text-xs whitespace-nowrap">
+                  {ann.label}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDragging({ type: 'annotation', id: ann.id }) }}
+                    className="ml-2 inline-flex items-center text-blue-300 hover:text-blue-100"
+                    title="Déplacer"
+                  >
+                    <GripVertical className="h-3 w-3" />
+                  </button>
+                </div>
               </div>
-              <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 hidden group-hover:block bg-gray-900 text-white rounded px-2 py-0.5 text-xs whitespace-nowrap">
-                {ann.label}
+            )
+          })}
+            ))
+          })}
+
+          {/* Groupes de composition positionnés */}
+          {groups.filter(g => g.pos_x != null && g.pos_y != null).map(g => {
+            const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+            const groupElements = elements.filter(el => el.group_id === g.id)
+            const isDraggingThis = dragging?.type === 'group' && dragging.id === g.id
+            return (
+              <div
+                key={`grp-${g.id}`}
+                className={`absolute transform -translate-x-1/2 -translate-y-1/2 group ${isDraggingThis ? 'opacity-50' : ''}`}
+                style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%` }}
+              >
+                <div
+                  className="w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center text-sm cursor-pointer hover:scale-125 transition-transform"
+                  style={{ backgroundColor: g.color || typeInfo?.color || '#8b5cf6' }}
+                  title={g.name}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <Layers className="h-4 w-4 text-white" />
+                </div>
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap min-w-[120px]">
+                  <p className="text-xs font-semibold text-gray-900 dark:text-white">{g.name}</p>
+                  <p className="text-xs text-gray-500">{typeInfo?.label} • {groupElements.length} élém.</p>
+                  {groupElements.slice(0, 4).map(el => (
+                    <p key={el.id} className="text-xs text-gray-400 truncate">• {el.label}</p>
+                  ))}
+                  {groupElements.length > 4 && <p className="text-xs text-gray-400">+ {groupElements.length - 4} autres</p>}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); setDragging({ type: 'group', id: g.id }) }}
+                    className="mt-1 flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
+                  >
+                    <GripVertical className="h-3 w-3" /> Déplacer
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
-
-      {/* Popup choix élément / annotation libre */}
       {clickPos && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setClickPos(null)}>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-80 max-h-96 overflow-hidden" onClick={e => e.stopPropagation()}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-80 max-h-[28rem] overflow-hidden" onClick={e => e.stopPropagation()}>
             <div className="p-3 border-b border-gray-200 dark:border-gray-700">
               <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <MapPin className="h-4 w-4 text-green-600" />
@@ -847,6 +1322,34 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                 Position : {clickPos.x.toFixed(1)}%, {clickPos.y.toFixed(1)}%
               </p>
             </div>
+
+            {unplacedGroups.length > 0 && (
+              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1 flex items-center gap-1"><Layers className="h-3 w-3" /> Groupes</p>
+                <div className="max-h-28 overflow-y-auto space-y-1">
+                  {unplacedGroups.map(g => {
+                    const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+                    const cnt = elements.filter(el => el.group_id === g.id).length
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => handlePlaceGroup(g)}
+                        disabled={updateGroupPosMutation.isPending}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-left transition-colors"
+                      >
+                        <span className="w-3 h-3 rounded flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: g.color || typeInfo?.color }}>
+                          <Layers className="h-2 w-2 text-white" />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900 dark:text-white truncate">{g.name}</p>
+                          <p className="text-xs text-gray-500 truncate">{typeInfo?.label} • {cnt} élém.</p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             {unplacedElements.length > 0 && (
               <div className="p-2 border-b border-gray-200 dark:border-gray-700">
@@ -934,6 +1437,15 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
             {t.label}
           </span>
         ))}
+        {groups.filter(g => g.pos_x != null).map(g => {
+          const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+          return (
+            <span key={`grp-${g.id}`} className="flex items-center gap-1 px-2 py-1 rounded bg-gray-100 dark:bg-gray-700">
+              <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: g.color || typeInfo?.color }} />
+              {g.name}
+            </span>
+          )
+        })}
       </div>
     </div>
   )

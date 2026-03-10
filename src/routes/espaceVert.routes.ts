@@ -118,9 +118,15 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [req.params.id]
     );
 
+    // Récupérer les groupes de composition
+    const groups = await db.query(
+      'SELECT * FROM green_space_groups WHERE green_space_id = ? ORDER BY name ASC',
+      [req.params.id]
+    );
+
     res.json({
       success: true,
-      data: { ...space, elements, annotations, seasons, documents }
+      data: { ...space, elements, annotations, seasons, documents, groups }
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -559,6 +565,73 @@ router.get('/element-types', authenticateToken, async (_req: AuthRequest, res: R
     const existingTypes = types.map((t: any) => t.element_type);
     const allTypes = [...new Set([...existingTypes, ...defaultTypes])].sort();
     res.json({ success: true, data: allTypes });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== GROUPES DE COMPOSITION ========================
+
+// POST /:id/groups - Créer un groupe de composition
+router.post('/:id/groups', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, group_type, description, color, icon } = req.body;
+    if (!name) return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    const now = new Date().toISOString();
+
+    const result = await db.execute(
+      `INSERT INTO green_space_groups (green_space_id, name, group_type, description, color, icon, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.params.id, name, group_type || 'massif', description || '', color || '#8b5cf6', icon || 'layers', now, now]
+    );
+
+    const created = await db.queryOne('SELECT * FROM green_space_groups WHERE id = ?', [result.lastInsertRowid]);
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /groups/:groupId - Modifier un groupe
+router.put('/groups/:groupId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, group_type, description, color, icon, pos_x, pos_y } = req.body;
+    const now = new Date().toISOString();
+    await db.execute(
+      `UPDATE green_space_groups SET name = ?, group_type = ?, description = ?, color = ?, icon = ?, pos_x = ?, pos_y = ?, updated_at = ? WHERE id = ?`,
+      [name, group_type, description || '', color || '#8b5cf6', icon || 'layers', pos_x ?? null, pos_y ?? null, now, req.params.groupId]
+    );
+    const updated = await db.queryOne('SELECT * FROM green_space_groups WHERE id = ?', [req.params.groupId]);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /groups/:groupId - Supprimer un groupe (les éléments sont détachés, pas supprimés)
+router.delete('/groups/:groupId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    // Détacher les éléments du groupe
+    await db.execute('UPDATE green_space_elements SET group_id = NULL WHERE group_id = ?', [req.params.groupId]);
+    await db.execute('DELETE FROM green_space_groups WHERE id = ?', [req.params.groupId]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /groups/:groupId/elements - Assigner des éléments à un groupe
+router.put('/groups/:groupId/elements', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { element_ids } = req.body;
+    if (!Array.isArray(element_ids)) return res.status(400).json({ success: false, message: 'element_ids doit être un tableau' });
+    // Détacher les éléments du groupe existant
+    await db.execute('UPDATE green_space_elements SET group_id = NULL WHERE group_id = ?', [req.params.groupId]);
+    // Assigner les nouveaux
+    for (const eid of element_ids) {
+      await db.execute('UPDATE green_space_elements SET group_id = ? WHERE id = ?', [req.params.groupId, eid]);
+    }
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -783,6 +783,22 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Groupes de composition (massif, haie composée, etc.)
+      `CREATE TABLE IF NOT EXISTS green_space_groups (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        group_type VARCHAR(100) DEFAULT 'massif',
+        description ${textType},
+        color VARCHAR(20) DEFAULT '#8b5cf6',
+        icon VARCHAR(50) DEFAULT 'layers',
+        pos_x DECIMAL(10,4),
+        pos_y DECIMAL(10,4),
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
       )`
     ];
 
@@ -868,6 +884,12 @@ class DatabaseManager {
         table: 'manifestation_stock',
         column: 'price',
         type: 'REAL DEFAULT 0'
+      },
+      // Groupe de composition pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'group_id',
+        type: 'INTEGER'
       }
     ];
 
