@@ -403,6 +403,23 @@ const DEFAULT_PLUGINS = [
       enable_pdf_export: true,
       enable_stock_management: true
     })
+  },
+  {
+    name: 'Espaces Verts',
+    slug: 'espaces-verts',
+    version: '1.0.0',
+    description: 'Gestion des espaces verts, arbres, mobilier urbain et interventions',
+    author: 'Système',
+    icon: 'tree-pine',
+    plugin_type: 'menu',
+    route: 'espaces-verts',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      space_types: ['parc', 'jardin', 'square', 'rond_point', 'allee', 'autre'],
+      element_types: ['arbre', 'haie', 'massif', 'pelouse', 'mobilier', 'eclairage', 'arrosage', 'cloture', 'autre'],
+      condition_states: ['bon', 'moyen', 'mauvais', 'danger', 'remplace']
+    })
   }
 ];
 
