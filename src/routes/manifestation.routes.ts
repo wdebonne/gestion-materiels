@@ -300,6 +300,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     res.json({ success: true, data: enriched });
   } catch (error: any) {
+    console.error('[GET /manifestations] ERROR:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
