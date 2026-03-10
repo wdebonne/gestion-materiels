@@ -9,6 +9,7 @@ import {
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import ImageUpload from '@/components/ui/ImageUpload'
+import PlanPDFExport from '@/components/PlanPDFExport'
 
 /** Normalise un chemin d'image : évite le doublon /uploads//uploads/... */
 function getImageUrl(path: string): string {
@@ -1068,6 +1069,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const [selectedAnnotation, setSelectedAnnotation] = useState<Annotation | null>(null)
   const [selectedMarker, setSelectedMarker] = useState<{ type: 'element' | 'group' | 'annotation'; id: number } | null>(null)
   const [editingPlanElement, setEditingPlanElement] = useState<GreenSpaceElement | null>(null)
+  const [showPDFExport, setShowPDFExport] = useState(false)
   const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(null)
   const [freeLabel, setFreeLabel] = useState('')
   const [dragging, setDragging] = useState<{ type: 'element' | 'annotation' | 'group'; id: number } | null>(null)
@@ -1368,6 +1370,13 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
         >
           <MapPin className="h-4 w-4" />
           {addingAnnotation ? 'Cliquez sur le plan...' : 'Ajouter un repère'}
+        </button>
+        <button
+          onClick={() => setShowPDFExport(true)}
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+        >
+          <Download className="h-4 w-4" />
+          PDF
         </button>
       </div>
 
@@ -1803,6 +1812,11 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           }}
         />
       )}
+
+      {/* Export PDF du plan */}
+      {showPDFExport && (
+        <PlanPDFExport space={space} onClose={() => setShowPDFExport(false)} />
+      )}
     </div>
   )
 }
@@ -2220,7 +2234,8 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   const [typeSearch, setTypeSearch] = useState('')
   const [showTypeDropdown, setShowTypeDropdown] = useState(false)
   const [customTypes, setCustomTypes] = useState<string[]>([])
-
+  const [uploadingFile, setUploadingFile] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   // Récupérer les types existants depuis l'API
   const { data: apiTypes = [] } = useQuery({
     queryKey: ['maintenance-types'],
@@ -2339,6 +2354,41 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
     setForm({ ...form, maintenance_type: normalized })
     setTypeSearch('')
     setShowTypeDropdown(false)
+  }
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploadingFile(true)
+    try {
+      // 1) Upload le fichier
+      const formData = new FormData()
+      formData.append('file', file)
+      const uploadRes = await api.post('/upload/file', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+      const filePath = uploadRes.data.url
+
+      // 2) Créer le document dans green_space_documents
+      const docRes = await api.post(`/green-spaces/${space.id}/documents`, {
+        name: file.name,
+        doc_type: 'autre',
+        file_path: filePath,
+        notes: `Joint à l'entretien du ${form.performed_date}`,
+      })
+      const newDoc = docRes.data.data
+
+      // 3) Ajouter l'ID du document au formulaire
+      if (newDoc?.id) {
+        setForm(f => ({ ...f, document_ids: [...f.document_ids, newDoc.id] }))
+      }
+
+      // 4) Rafraîchir les données de l'espace (pour avoir le nouveau document dans la liste)
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+    } catch (error) {
+      console.error('Erreur upload document:', error)
+    } finally {
+      setUploadingFile(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
   }
 
   return (
@@ -2510,12 +2560,26 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
             </div>
           )}
 
-          {/* Documents liés */}
-          {documents.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+          {/* Documents liés + upload */}
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
                 Documents liés ({form.document_ids.length} sélectionné{form.document_ids.length > 1 ? 's' : ''})
               </label>
+              <label className={`flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded-lg transition-colors ${uploadingFile ? 'text-gray-400' : 'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30'}`}>
+                <Plus className="h-3 w-3" />
+                {uploadingFile ? 'Envoi...' : 'Joindre un fichier'}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  className="hidden"
+                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx"
+                  onChange={handleFileUpload}
+                  disabled={uploadingFile}
+                />
+              </label>
+            </div>
+            {documents.length > 0 ? (
               <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-1 space-y-0.5">
                 {documents.map((doc: GreenSpaceDocument) => {
                   const isChecked = form.document_ids.includes(doc.id)
@@ -2538,8 +2602,10 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                   )
                 })}
               </div>
-            </div>
-          )}
+            ) : (
+              <p className="text-xs text-gray-400 dark:text-gray-500 italic py-2">Aucun document existant. Utilisez "Joindre un fichier" pour en ajouter.</p>
+            )}
+          </div>
 
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>

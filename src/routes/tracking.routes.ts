@@ -48,7 +48,7 @@ interface TrackingFilters {
   categoryIds?: number[];
   subcategoryIds?: number[];
   objectIds?: number[];
-  dataTypes?: ('fuel' | 'maintenance' | 'technical_control')[];
+  dataTypes?: ('fuel' | 'maintenance' | 'technical_control' | 'green_space')[];
   maintenanceTypes?: string[];
   fuelTypes?: string[];
   compareStartDate?: string;
@@ -80,10 +80,12 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
         totalFuelQuantity: 0,
         totalMaintenanceCost: 0,
         totalControlCost: 0,
+        totalGreenSpaceCost: 0,
         totalCost: 0,
         fuelEntryCount: 0,
         maintenanceCount: 0,
         controlCount: 0,
+        greenSpaceCount: 0,
       },
       comparison: null,
     };
@@ -287,8 +289,48 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
       result.summary.controlCount = result.technicalControl.length;
     }
 
+    // Récupérer les données d'entretien d'espaces verts
+    if (filters.dataTypes?.includes('green_space')) {
+      let gsQuery = `
+        SELECT gsm.*, gs.name as space_name, gs.type as space_type
+        FROM green_space_maintenances gsm
+        JOIN green_spaces gs ON gs.id = gsm.green_space_id
+        WHERE 1=1
+      `;
+      const gsParams: any[] = [];
+
+      if (filters.startDate) {
+        gsQuery += ` AND gsm.performed_date >= ?`;
+        gsParams.push(filters.startDate);
+      }
+      if (filters.endDate) {
+        gsQuery += ` AND gsm.performed_date <= ?`;
+        gsParams.push(filters.endDate);
+      }
+
+      gsQuery += ' ORDER BY gsm.performed_date DESC';
+
+      const gsData = await db.query(gsQuery, gsParams);
+      result.greenSpace = gsData.map((g: any) => ({
+        id: g.id,
+        spaceName: g.space_name,
+        spaceType: g.space_type,
+        date: g.performed_date,
+        type: g.maintenance_type,
+        title: g.title,
+        cost: parseFloat(g.cost) || 0,
+        duration: g.duration_minutes,
+        performer: g.performed_by,
+        nextDate: g.next_maintenance_date,
+        notes: g.notes,
+      }));
+
+      result.summary.totalGreenSpaceCost = result.greenSpace.reduce((sum: number, g: any) => sum + g.cost, 0);
+      result.summary.greenSpaceCount = result.greenSpace.length;
+    }
+
     // Calculer le coût total
-    result.summary.totalCost = result.summary.totalFuelCost + result.summary.totalMaintenanceCost + result.summary.totalControlCost;
+    result.summary.totalCost = result.summary.totalFuelCost + result.summary.totalMaintenanceCost + result.summary.totalControlCost + (result.summary.totalGreenSpaceCost || 0);
 
     // Comparaison de périodes si demandée
     if (filters.compareStartDate && filters.compareEndDate) {
@@ -366,6 +408,18 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
 
         const compareControl = await db.queryOne(compareControlQuery, compareControlParams);
         compareResult.summary.totalControlCost = parseFloat(compareControl?.total_cost) || 0;
+      }
+
+      // Comparaison espaces verts
+      if (filters.dataTypes?.includes('green_space')) {
+        const compareGsQuery = `
+          SELECT SUM(CAST(cost AS DECIMAL(10,2))) as total_cost,
+                 COUNT(*) as entry_count
+          FROM green_space_maintenances
+          WHERE performed_date >= ? AND performed_date <= ?
+        `;
+        const compareGs = await db.queryOne(compareGsQuery, [filters.compareStartDate, filters.compareEndDate]);
+        compareResult.summary.totalGreenSpaceCost = parseFloat(compareGs?.total_cost) || 0;
       }
 
       compareResult.summary.totalCost = 

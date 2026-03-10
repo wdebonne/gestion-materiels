@@ -4,7 +4,7 @@ import {
   BarChart3, TrendingUp, TrendingDown, Calendar, 
   Download, Fuel, Wrench, ClipboardCheck, ChevronDown, ChevronUp,
   X, Search, RefreshCw, ArrowRightLeft, FileText, Paperclip,
-  Building, Car, FolderOpen, Settings2, Eye, EyeOff, Layers
+  Building, Car, FolderOpen, Settings2, Eye, EyeOff, Layers, TreePine
 } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, Button, Badge, 
@@ -35,7 +35,7 @@ interface TrackingFilters {
   categoryIds: number[]
   subcategoryIds: number[]
   objectIds: number[]
-  dataTypes: ('fuel' | 'maintenance' | 'technical_control')[]
+  dataTypes: ('fuel' | 'maintenance' | 'technical_control' | 'green_space')[]
   maintenanceTypes: string[]
   fuelTypes: string[]
   compareEnabled: boolean
@@ -107,6 +107,7 @@ function StatCard({
     amber: 'bg-amber-50 text-amber-600',
     purple: 'bg-purple-50 text-purple-600',
     red: 'bg-red-50 text-red-600',
+    emerald: 'bg-emerald-50 text-emerald-600',
   }
 
   return (
@@ -310,19 +311,21 @@ function DataTypeFilter({
   selected,
   onChange
 }: {
-  selected: ('fuel' | 'maintenance' | 'technical_control')[]
-  onChange: (types: ('fuel' | 'maintenance' | 'technical_control')[]) => void
+  selected: ('fuel' | 'maintenance' | 'technical_control' | 'green_space')[]
+  onChange: (types: ('fuel' | 'maintenance' | 'technical_control' | 'green_space')[]) => void
 }) {
   const types = [
     { id: 'fuel' as const, label: 'Carburant', icon: Fuel, color: 'amber' },
     { id: 'maintenance' as const, label: 'Entretiens', icon: Wrench, color: 'blue' },
     { id: 'technical_control' as const, label: 'Contrôle technique', icon: ClipboardCheck, color: 'green' },
+    { id: 'green_space' as const, label: 'Espaces verts', icon: TreePine, color: 'emerald' },
   ]
 
   const colorClasses: Record<string, string> = {
     amber: 'border-amber-300 bg-amber-50 text-amber-700',
     blue: 'border-blue-300 bg-blue-50 text-blue-700',
     green: 'border-green-300 bg-green-50 text-green-700',
+    emerald: 'border-emerald-300 bg-emerald-50 text-emerald-700',
   }
 
   return (
@@ -685,7 +688,7 @@ export default function TrackingPage() {
     categoryIds: [],
     subcategoryIds: [],
     objectIds: [],
-    dataTypes: ['fuel', 'maintenance', 'technical_control'],
+    dataTypes: ['fuel', 'maintenance', 'technical_control', 'green_space'],
     maintenanceTypes: [],
     fuelTypes: [],
     compareEnabled: false,
@@ -1263,6 +1266,14 @@ export default function TrackingPage() {
                 trend={comparison?.difference?.totalControlCost > 0 ? 'up' : comparison?.difference?.totalControlCost < 0 ? 'down' : 'neutral'}
               />
             )}
+            {filters.dataTypes.includes('green_space') && (
+              <StatCard
+                title="Espaces verts"
+                value={formatCurrency(summary.totalGreenSpaceCost || 0)}
+                icon={TreePine}
+                color="emerald"
+              />
+            )}
           </div>
 
           {/* Cartes secondaires carburant */}
@@ -1324,6 +1335,13 @@ export default function TrackingPage() {
                     value="control"
                     label={`Contrôles (${trackingData?.technicalControl?.length || 0})`}
                     icon={<ClipboardCheck className="w-4 h-4" />}
+                  />
+                )}
+                {filters.dataTypes.includes('green_space') && (
+                  <Tab 
+                    value="green_space"
+                    label={`Espaces verts (${trackingData?.greenSpace?.length || 0})`}
+                    icon={<TreePine className="w-4 h-4" />}
                   />
                 )}
               </Tabs>
@@ -1719,6 +1737,37 @@ export default function TrackingPage() {
                   type="technical_control"
                   onViewAttachments={setViewingAttachments}
                 />
+              )}
+
+              {activeTab === 'green_space' && trackingData?.greenSpace && (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Espace vert</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Intervenant</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durée</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Coût</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prochain</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {trackingData.greenSpace.map((g: any) => (
+                        <tr key={g.id} className="hover:bg-gray-50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{g.spaceName}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{g.type}{g.title ? ` - ${g.title}` : ''}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{g.date ? new Date(g.date).toLocaleDateString('fr-FR') : '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{g.performer || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{g.duration ? `${g.duration} min` : '-'}</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">{formatCurrency(g.cost)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500">{g.nextDate ? new Date(g.nextDate).toLocaleDateString('fr-FR') : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               )}
             </CardBody>
           </Card>

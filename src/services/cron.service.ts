@@ -172,6 +172,57 @@ export async function checkAlerts(): Promise<void> {
 
     // Vérifier les événements du calendrier avec rappel
     const now = new Date().toISOString();
+
+    // ======= Vérifier les entretiens espaces verts programmés =======
+    const greenSpaceMaintenances = await db.query(
+      `SELECT gsm.*, gs.name as space_name FROM green_space_maintenances gsm
+       INNER JOIN green_spaces gs ON gs.id = gsm.green_space_id
+       WHERE gsm.next_maintenance_date IS NOT NULL
+       AND (
+         (date(gsm.next_maintenance_date) <= date('now', '+${alertSettings.maintenance.days} days') AND date(gsm.next_maintenance_date) >= date('now'))
+         OR date(gsm.next_maintenance_date) < date('now')
+       )`
+    );
+
+    for (const gsm of greenSpaceMaintenances) {
+      const existingAlert = await db.queryOne(
+        "SELECT id FROM alerts WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ? AND is_dismissed = 0",
+        [gsm.id]
+      );
+
+      const daysUntilDue = Math.ceil(
+        (new Date(gsm.next_maintenance_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      );
+
+      const isOverdue = daysUntilDue < 0;
+      const severity = isOverdue ? 'critical' : priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
+      const message = isOverdue
+        ? `Entretien "${gsm.maintenance_type}" en retard depuis le ${gsm.next_maintenance_date}`
+        : `Entretien "${gsm.maintenance_type}" prévu le ${gsm.next_maintenance_date}`;
+
+      if (!existingAlert) {
+        await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            `Espace vert - ${gsm.space_name}: ${gsm.maintenance_type}`,
+            message,
+            'maintenance',
+            severity,
+            'green-space-maintenance',
+            gsm.id,
+            gsm.next_maintenance_date
+          ]
+        );
+      } else if (isOverdue) {
+        await db.execute(
+          'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
+          [severity, message, existingAlert.id]
+        );
+      }
+    }
+
+    // Vérifier les événements du calendrier avec rappel
     const isSQLite = db.getType() === 'sqlite';
     const dateSubExpr = isSQLite
       ? "datetime(ce.start_date, '-' || ce.reminder_before || ' minutes')"
@@ -203,7 +254,7 @@ export async function checkAlerts(): Promise<void> {
       await db.execute('UPDATE calendar_events SET reminder_sent = 1 WHERE id = ?', [event.id]);
     }
 
-    console.log(`✅ Vérification des alertes terminée: ${technicalControls.length} CT, ${maintenances.length} maintenances, ${events.length} événements`);
+    console.log(`✅ Vérification des alertes terminée: ${technicalControls.length} CT, ${maintenances.length} maintenances, ${greenSpaceMaintenances.length} espaces verts, ${events.length} événements`);
   } catch (error) {
     console.error('❌ Erreur lors de la vérification des alertes:', error);
   }

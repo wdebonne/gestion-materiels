@@ -711,6 +711,28 @@ router.post('/:id/maintenances', authenticateToken, requireSupervisor, async (re
       }
     }
 
+    // Créer un événement calendrier si prochaine date d'entretien
+    if (next_maintenance_date) {
+      const space = await db.queryOne('SELECT name FROM green_spaces WHERE id = ?', [req.params.id]);
+      const spaceName = space?.name || 'Espace vert';
+      await db.execute(
+        `INSERT INTO calendar_events (title, description, event_type, start_date, end_date, all_day, color, plugin_reference, plugin_reference_id, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `🌿 ${spaceName}: ${maintenance_type}`,
+          `Entretien prévu - ${title || maintenance_type}${performed_by ? `\nIntervenant: ${performed_by}` : ''}`,
+          'maintenance',
+          next_maintenance_date,
+          next_maintenance_date,
+          1,
+          '#16a34a',
+          'green-space-maintenance',
+          maintenanceId,
+          req.user?.userId
+        ]
+      );
+    }
+
     const created = await db.queryOne('SELECT * FROM green_space_maintenances WHERE id = ?', [maintenanceId]);
     res.status(201).json({ success: true, data: created });
   } catch (error: any) {
@@ -745,6 +767,39 @@ router.put('/maintenances/:maintenanceId', authenticateToken, requireSupervisor,
       }
     }
 
+    // Mettre à jour / créer l'événement calendrier
+    await db.execute(
+      "DELETE FROM calendar_events WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ?",
+      [req.params.maintenanceId]
+    );
+    if (next_maintenance_date) {
+      const maintenance = await db.queryOne('SELECT green_space_id FROM green_space_maintenances WHERE id = ?', [req.params.maintenanceId]);
+      const space = maintenance ? await db.queryOne('SELECT name FROM green_spaces WHERE id = ?', [maintenance.green_space_id]) : null;
+      const spaceName = space?.name || 'Espace vert';
+      await db.execute(
+        `INSERT INTO calendar_events (title, description, event_type, start_date, end_date, all_day, color, plugin_reference, plugin_reference_id, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          `🌿 ${spaceName}: ${maintenance_type}`,
+          `Entretien prévu - ${title || maintenance_type}${performed_by ? `\nIntervenant: ${performed_by}` : ''}`,
+          'maintenance',
+          next_maintenance_date,
+          next_maintenance_date,
+          1,
+          '#16a34a',
+          'green-space-maintenance',
+          req.params.maintenanceId,
+          req.user?.userId
+        ]
+      );
+    }
+
+    // Mettre à jour / supprimer l'alerte existante
+    await db.execute(
+      "DELETE FROM alerts WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ? AND is_dismissed = 0",
+      [req.params.maintenanceId]
+    );
+
     const updated = await db.queryOne('SELECT * FROM green_space_maintenances WHERE id = ?', [req.params.maintenanceId]);
     res.json({ success: true, data: updated });
   } catch (error: any) {
@@ -757,6 +812,8 @@ router.delete('/maintenances/:maintenanceId', authenticateToken, requireSupervis
   try {
     await db.execute('DELETE FROM green_space_maintenance_elements WHERE maintenance_id = ?', [req.params.maintenanceId]);
     await db.execute('DELETE FROM green_space_maintenance_documents WHERE maintenance_id = ?', [req.params.maintenanceId]);
+    await db.execute("DELETE FROM calendar_events WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ?", [req.params.maintenanceId]);
+    await db.execute("DELETE FROM alerts WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ?", [req.params.maintenanceId]);
     await db.execute('DELETE FROM green_space_maintenances WHERE id = ?', [req.params.maintenanceId]);
     res.json({ success: true });
   } catch (error: any) {

@@ -24,6 +24,8 @@ interface Alert {
   dueDate?: string
   objectId?: number
   objectName?: string
+  pluginReference?: string
+  pluginReferenceId?: number
   createdAt: string
 }
 
@@ -345,15 +347,22 @@ export default function AlertsPage() {
                           )}
                         </div>
 
-                        {/* Lien vers l'objet */}
-                        {alert.objectId && (
+                        {/* Lien vers l'objet ou l'espace vert */}
+                        {alert.pluginReference === 'green-space-maintenance' ? (
+                          <button
+                            onClick={() => navigate('/espaces-verts')}
+                            className="text-sm text-green-600 hover:text-green-700 mt-2"
+                          >
+                            🌿 Voir l'espace vert →
+                          </button>
+                        ) : alert.objectId ? (
                           <button
                             onClick={() => navigate(`/objects/${alert.objectId}`)}
                             className="text-sm text-primary-600 hover:text-primary-700 mt-2"
                           >
                             Voir {alert.objectName || 'le matériel'} →
                           </button>
-                        )}
+                        ) : null}
                       </div>
 
                       {/* Actions */}
