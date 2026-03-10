@@ -706,10 +706,12 @@ class DatabaseManager {
         image VARCHAR(500),
         plan_image VARCHAR(500),
         custom_fields ${textType} DEFAULT '{}',
+        cloned_from_id INTEGER,
         created_by INTEGER,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
-        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (cloned_from_id) REFERENCES green_spaces(id) ON DELETE SET NULL
       )`,
 
       // Éléments placés dans un espace vert (arbres, bancs, poubelles, etc.)
@@ -844,6 +846,21 @@ class DatabaseManager {
         element_id INTEGER NOT NULL,
         FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE,
         FOREIGN KEY (element_id) REFERENCES green_space_elements(id) ON DELETE CASCADE
+      )`,
+
+      // Snapshots / Archives d'un espace vert
+      `CREATE TABLE IF NOT EXISTS green_space_snapshots (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        snapshot_date DATETIME NOT NULL,
+        plan_image VARCHAR(500),
+        elements_data ${textType} DEFAULT '[]',
+        annotations_data ${textType} DEFAULT '[]',
+        groups_data ${textType} DEFAULT '[]',
+        notes ${textType},
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
       )`,
 
       // Types d'espaces verts

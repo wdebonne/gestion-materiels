@@ -5,7 +5,7 @@ import {
   FileText, X, Eye,
   Download, Image, Tag, Ruler, CloudSun,
   Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
-  Settings, Upload, Loader2, Paperclip, Link2
+  Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -37,6 +37,7 @@ interface GreenSpace {
   image: string
   plan_image: string
   custom_fields: string
+  cloned_from_id?: number | null
   element_count?: number
   created_at: string
   elements?: GreenSpaceElement[]
@@ -45,6 +46,7 @@ interface GreenSpace {
   documents?: GreenSpaceDocument[]
   groups?: CompositionGroup[]
   maintenances?: Maintenance[]
+  snapshots?: Snapshot[]
 }
 
 interface GreenSpaceElement {
@@ -139,6 +141,19 @@ interface Maintenance {
   document_ids: number[]
   created_at: string
   updated_at: string
+}
+
+interface Snapshot {
+  id: number
+  green_space_id: number
+  label: string
+  snapshot_date: string
+  plan_image?: string
+  elements_data?: any[]
+  annotations_data?: any[]
+  groups_data?: any[]
+  notes: string
+  created_at: string
 }
 
 // ======================== CONSTANTES ========================
@@ -524,6 +539,7 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
   onToggleExpand?: () => void
 }) {
   const typeInfo = SPACE_TYPES.find(t => t.value === space.space_type)
+  const [showCloneModal, setShowCloneModal] = useState(false)
 
   return (
     <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
@@ -542,10 +558,13 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
               {expanded ? <Minimize2 className="h-4 w-4 text-gray-600 dark:text-gray-300" /> : <Maximize2 className="h-4 w-4 text-gray-600 dark:text-gray-300" />}
             </button>
           )}
-          <button onClick={onEdit} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors">
+          <button onClick={() => setShowCloneModal(true)} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title="Cloner / Copier">
+            <Copy className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+          </button>
+          <button onClick={onEdit} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title="Modifier">
             <Edit3 className="h-4 w-4 text-gray-600 dark:text-gray-300" />
           </button>
-          <button onClick={onDelete} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/50 transition-colors">
+          <button onClick={onDelete} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/50 transition-colors" title="Supprimer">
             <Trash2 className="h-4 w-4 text-red-500" />
           </button>
         </div>
@@ -582,6 +601,7 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
             { key: 'saisons', label: 'Saisons', icon: CloudSun, count: space.seasons?.length },
             { key: 'documents', label: 'Documents', icon: FileText, count: space.documents?.length },
             { key: 'entretien', label: 'Entretien', icon: Wrench, count: space.maintenances?.length },
+            { key: 'archives', label: 'Archives', icon: Archive, count: space.snapshots?.length },
           ].map(tab => (
             <button
               key={tab.key}
@@ -624,7 +644,15 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
         {activeTab === 'entretien' && (
           <MaintenanceTab space={space} queryClient={queryClient} />
         )}
+        {activeTab === 'archives' && (
+          <ArchivesTab space={space} queryClient={queryClient} />
+        )}
       </div>
+
+      {/* Modal Cloner */}
+      {showCloneModal && (
+        <CloneSpaceModal space={space} onClose={() => setShowCloneModal(false)} queryClient={queryClient} />
+      )}
     </div>
   )
 }
@@ -3218,6 +3246,614 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               ))}
             </div>
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ======================== MODAL CLONER ESPACE VERT ========================
+
+function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, onClose: () => void, queryClient: any }) {
+  const [name, setName] = useState(`${space.name} (copie)`)
+  const [status, setStatus] = useState('projet')
+  const [copyElements, setCopyElements] = useState(true)
+  const [selectedElementIds, setSelectedElementIds] = useState<number[]>(
+    space.elements?.map(e => e.id) || []
+  )
+
+  const cloneMutation = useMutation({
+    mutationFn: () => api.post(`/green-spaces/${space.id}/clone`, {
+      name,
+      status,
+      copy_elements: copyElements,
+      element_ids: copyElements ? selectedElementIds : []
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-spaces'] })
+      onClose()
+    }
+  })
+
+  const toggleElement = (id: number) => {
+    setSelectedElementIds(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
+  }
+
+  const toggleAll = () => {
+    if (selectedElementIds.length === (space.elements?.length || 0)) {
+      setSelectedElementIds([])
+    } else {
+      setSelectedElementIds(space.elements?.map(e => e.id) || [])
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Copy className="h-5 w-5 text-green-600" />
+            Cloner l'espace vert
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <X className="h-5 w-5 text-gray-500" />
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
+            Un snapshot de l'état actuel sera automatiquement créé avant le clonage.
+          </p>
+
+          {/* Nom */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom du clone</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          {/* Statut */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Statut initial</label>
+            <select
+              value={status}
+              onChange={e => setStatus(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            >
+              <option value="projet">🟡 En projet</option>
+              <option value="travaux">🟠 Travaux</option>
+              <option value="actif">🟢 Actif</option>
+              <option value="inactif">⚪ Inactif</option>
+            </select>
+            <p className="text-xs text-gray-400 mt-1">Workflow typique : En projet → Travaux → Actif</p>
+          </div>
+
+          {/* Copier les éléments */}
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={copyElements}
+                onChange={e => setCopyElements(e.target.checked)}
+                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+              />
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                Copier les éléments, annotations et groupes
+              </span>
+            </label>
+          </div>
+
+          {/* Sélection des éléments */}
+          {copyElements && space.elements && space.elements.length > 0 && (
+            <div className="border border-gray-200 dark:border-gray-600 rounded-lg p-3">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Éléments à copier ({selectedElementIds.length}/{space.elements.length})
+                </span>
+                <button
+                  onClick={toggleAll}
+                  className="text-xs text-green-600 hover:text-green-700"
+                >
+                  {selectedElementIds.length === space.elements.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                </button>
+              </div>
+              <div className="max-h-48 overflow-y-auto space-y-1">
+                {space.elements.map(el => (
+                  <label key={el.id} className="flex items-center gap-2 py-1 px-2 hover:bg-gray-50 dark:hover:bg-gray-700 rounded cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={selectedElementIds.includes(el.id)}
+                      onChange={() => toggleElement(el.id)}
+                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                      {el.label || el.code || `Élément #${el.id}`}
+                    </span>
+                    {el.element_type && (
+                      <span className="text-xs text-gray-400 ml-auto">{el.element_type}</span>
+                    )}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={() => cloneMutation.mutate()}
+            disabled={cloneMutation.isPending || !name.trim()}
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {cloneMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
+            Cloner
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ======================== ONGLET ARCHIVES ========================
+
+function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null)
+  const [compareMode, setCompareMode] = useState(false)
+  const [showCreateSnapshot, setShowCreateSnapshot] = useState(false)
+  const [snapshotLabel, setSnapshotLabel] = useState('')
+  const [snapshotNotes, setSnapshotNotes] = useState('')
+
+  // Récupérer les archives (snapshots + données source si cloné)
+  const { data: archives } = useQuery({
+    queryKey: ['green-spaces', space.id, 'archives'],
+    queryFn: () => api.get(`/green-spaces/${space.id}/archives`).then(r => r.data.data)
+  })
+
+  // Détail d'un snapshot sélectionné
+  const { data: snapshotDetail } = useQuery({
+    queryKey: ['green-space-snapshot', selectedSnapshotId],
+    queryFn: () => api.get(`/green-spaces/snapshots/${selectedSnapshotId}`).then(r => r.data.data),
+    enabled: !!selectedSnapshotId
+  })
+
+  // Créer un snapshot
+  const createSnapshotMutation = useMutation({
+    mutationFn: () => api.post(`/green-spaces/${space.id}/snapshots`, {
+      label: snapshotLabel || undefined,
+      notes: snapshotNotes || undefined
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-spaces'] })
+      queryClient.invalidateQueries({ queryKey: ['green-spaces', space.id, 'archives'] })
+      setShowCreateSnapshot(false)
+      setSnapshotLabel('')
+      setSnapshotNotes('')
+    }
+  })
+
+  // Supprimer un snapshot
+  const deleteSnapshotMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/snapshots/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-spaces'] })
+      queryClient.invalidateQueries({ queryKey: ['green-spaces', space.id, 'archives'] })
+      if (selectedSnapshotId) setSelectedSnapshotId(null)
+    }
+  })
+
+  const allSnapshots = [
+    ...(archives?.snapshots || []),
+    ...(archives?.source_snapshots || []).map((s: any) => ({ ...s, fromSource: true }))
+  ].sort((a: any, b: any) => new Date(b.snapshot_date).getTime() - new Date(a.snapshot_date).getTime())
+
+  return (
+    <div className="space-y-6">
+      {/* En-tête */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <Archive className="h-5 w-5 text-green-600" />
+          Archives & Snapshots
+        </h3>
+        <div className="flex gap-2">
+          {selectedSnapshotId && (
+            <button
+              onClick={() => setCompareMode(!compareMode)}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                compareMode
+                  ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                  : 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+              }`}
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+              Comparer
+            </button>
+          )}
+          <button
+            onClick={() => setShowCreateSnapshot(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+          >
+            <Camera className="h-4 w-4" />
+            Créer un snapshot
+          </button>
+        </div>
+      </div>
+
+      {/* Info clone */}
+      {archives?.cloned_from && (
+        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+            <History className="h-4 w-4" />
+            Cet espace est un clone de <strong>{archives.cloned_from.name}</strong> (statut : {archives.cloned_from.status})
+          </p>
+        </div>
+      )}
+
+      {/* Formulaire créer snapshot */}
+      {showCreateSnapshot && (
+        <div className="bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg p-4 space-y-3">
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Nouveau snapshot</h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Capture l'état actuel du plan, des éléments, annotations et groupes.
+          </p>
+          <input
+            type="text"
+            placeholder="Label (ex: Avant travaux printemps 2025)"
+            value={snapshotLabel}
+            onChange={e => setSnapshotLabel(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+          />
+          <textarea
+            placeholder="Notes (optionnel)"
+            value={snapshotNotes}
+            onChange={e => setSnapshotNotes(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+            rows={2}
+          />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowCreateSnapshot(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg">
+              Annuler
+            </button>
+            <button
+              onClick={() => createSnapshotMutation.mutate()}
+              disabled={createSnapshotMutation.isPending}
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+            >
+              {createSnapshotMutation.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
+              Capturer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Liste des snapshots */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Colonne liste */}
+        <div className="space-y-2">
+          <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-400 uppercase tracking-wide">
+            Snapshots ({allSnapshots.length})
+          </h4>
+          {allSnapshots.length === 0 ? (
+            <p className="text-sm text-gray-400 italic py-4 text-center">Aucun snapshot</p>
+          ) : (
+            <div className="space-y-1 max-h-[400px] overflow-y-auto">
+              {allSnapshots.map((snap: any) => (
+                <button
+                  key={`${snap.fromSource ? 's' : ''}${snap.id}`}
+                  onClick={() => setSelectedSnapshotId(snap.fromSource ? null : snap.id)}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                    selectedSnapshotId === snap.id && !snap.fromSource
+                      ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                      : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                        {snap.label}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                        {formatDate(snap.snapshot_date)}
+                      </p>
+                      {snap.fromSource && (
+                        <span className="inline-block mt-1 text-xs bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
+                          Espace source
+                        </span>
+                      )}
+                    </div>
+                    {!snap.fromSource && (
+                      <button
+                        onClick={e => { e.stopPropagation(); deleteSnapshotMutation.mutate(snap.id) }}
+                        className="p-1 text-gray-400 hover:text-red-500 rounded"
+                        title="Supprimer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                  {snap.notes && (
+                    <p className="text-xs text-gray-400 mt-1 truncate">{snap.notes}</p>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Colonne détail / comparaison */}
+        <div className={compareMode ? 'md:col-span-2 grid grid-cols-2 gap-4' : 'md:col-span-2'}>
+          {/* Snapshot sélectionné */}
+          {selectedSnapshotId && snapshotDetail ? (
+            <>
+              <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                  <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                    <Camera className="h-4 w-4" />
+                    {compareMode ? 'Archivé' : 'Détail du snapshot'} — {snapshotDetail.label}
+                  </h5>
+                  <p className="text-xs text-gray-500">{formatDate(snapshotDetail.snapshot_date)}</p>
+                </div>
+
+                {/* Plan archivé */}
+                {snapshotDetail.plan_image && (
+                  <div className="relative bg-gray-100 dark:bg-gray-900" style={{ minHeight: '250px' }}>
+                    <img
+                      src={getImageUrl(snapshotDetail.plan_image)}
+                      alt="Plan archivé"
+                      className="w-full object-contain"
+                      style={{ maxHeight: '400px' }}
+                    />
+                    {/* Annotations overlay */}
+                    {snapshotDetail.annotations_data?.map((ann: any, i: number) => (
+                      <div
+                        key={i}
+                        className="absolute text-xs font-bold px-1.5 py-0.5 rounded shadow"
+                        style={{
+                          left: `${ann.pos_x}%`,
+                          top: `${ann.pos_y}%`,
+                          transform: 'translate(-50%, -50%)',
+                          backgroundColor: ann.color || '#22c55e',
+                          color: '#fff'
+                        }}
+                      >
+                        {ann.icon && <span className="mr-0.5">{ann.icon}</span>}
+                        {ann.label}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Éléments archivés */}
+                <div className="p-4">
+                  <h6 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-2">
+                    Éléments ({snapshotDetail.elements_data?.length || 0})
+                  </h6>
+                  <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                    {(snapshotDetail.elements_data || []).map((el: any, i: number) => (
+                      <div key={i} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+                        <Tag className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                        <span className="truncate">{el.label || el.code || `Élément #${el.id}`}</span>
+                        <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{el.element_type}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Groupes archivés */}
+                  {snapshotDetail.groups_data && snapshotDetail.groups_data.length > 0 && (
+                    <>
+                      <h6 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-2 mt-4">
+                        Groupes ({snapshotDetail.groups_data.length})
+                      </h6>
+                      <div className="space-y-1">
+                        {snapshotDetail.groups_data.map((g: any, i: number) => (
+                          <div key={i} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+                            <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: g.color || '#ccc' }} />
+                            <span className="truncate">{g.name}</span>
+                            <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{g.group_type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  {snapshotDetail.notes && (
+                    <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded text-xs text-gray-600 dark:text-gray-400">
+                      {snapshotDetail.notes}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* État actuel (mode comparaison) */}
+              {compareMode && (
+                <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
+                  <div className="bg-green-50 dark:bg-green-900/30 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                    <h5 className="text-sm font-semibold text-green-700 dark:text-green-300 flex items-center gap-1.5">
+                      <Eye className="h-4 w-4" />
+                      État actuel — {space.name}
+                    </h5>
+                    <p className="text-xs text-green-600 dark:text-green-400">Statut : {space.status}</p>
+                  </div>
+
+                  {/* Plan actuel */}
+                  {space.plan_image && (
+                    <div className="relative bg-gray-100 dark:bg-gray-900" style={{ minHeight: '250px' }}>
+                      <img
+                        src={getImageUrl(space.plan_image)}
+                        alt="Plan actuel"
+                        className="w-full object-contain"
+                        style={{ maxHeight: '400px' }}
+                      />
+                      {space.annotations?.map((ann, i) => (
+                        <div
+                          key={i}
+                          className="absolute text-xs font-bold px-1.5 py-0.5 rounded shadow"
+                          style={{
+                            left: `${ann.pos_x}%`,
+                            top: `${ann.pos_y}%`,
+                            transform: 'translate(-50%, -50%)',
+                            backgroundColor: ann.color || '#22c55e',
+                            color: '#fff'
+                          }}
+                        >
+                          {ann.icon && <span className="mr-0.5">{ann.icon}</span>}
+                          {ann.label}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="p-4">
+                    <h6 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-2">
+                      Éléments ({space.elements?.length || 0})
+                    </h6>
+                    <div className="space-y-1 max-h-[200px] overflow-y-auto">
+                      {(space.elements || []).map(el => (
+                        <div key={el.id} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+                          <Tag className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                          <span className="truncate">{el.label || el.code || `Élément #${el.id}`}</span>
+                          <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{el.element_type}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {space.groups && space.groups.length > 0 && (
+                      <>
+                        <h6 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-2 mt-4">
+                          Groupes ({space.groups.length})
+                        </h6>
+                        <div className="space-y-1">
+                          {space.groups.map(g => (
+                            <div key={g.id} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
+                              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: g.color || '#ccc' }} />
+                              <span className="truncate">{g.name}</span>
+                              <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{g.group_type}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    )}
+
+                    {/* Résumé comparaison */}
+                    <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                      <h6 className="text-xs font-semibold text-gray-600 dark:text-gray-400 uppercase mb-2">
+                        Différences
+                      </h6>
+                      <div className="space-y-1 text-xs text-gray-600 dark:text-gray-400">
+                        <p>
+                          Éléments : {snapshotDetail.elements_data?.length || 0} archivé(s) → {space.elements?.length || 0} actuel(s)
+                          {(snapshotDetail.elements_data?.length || 0) !== (space.elements?.length || 0) && (
+                            <span className="ml-1 text-orange-500 font-medium">
+                              ({(space.elements?.length || 0) - (snapshotDetail.elements_data?.length || 0) > 0 ? '+' : ''}
+                              {(space.elements?.length || 0) - (snapshotDetail.elements_data?.length || 0)})
+                            </span>
+                          )}
+                        </p>
+                        <p>
+                          Annotations : {snapshotDetail.annotations_data?.length || 0} → {space.annotations?.length || 0}
+                        </p>
+                        <p>
+                          Groupes : {snapshotDetail.groups_data?.length || 0} → {space.groups?.length || 0}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+              <Camera className="h-12 w-12 mb-3" />
+              <p className="text-sm">Sélectionnez un snapshot pour voir les détails</p>
+              {allSnapshots.length === 0 && (
+                <p className="text-xs mt-1">Créez un snapshot pour capturer l'état actuel</p>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Documents et entretiens de l'espace source (si cloné) */}
+      {archives?.cloned_from && (
+        <div className="space-y-4">
+          <h4 className="text-md font-semibold text-gray-800 dark:text-gray-200 flex items-center gap-2 border-t border-gray-200 dark:border-gray-700 pt-4">
+            <History className="h-4 w-4 text-blue-500" />
+            Historique de l'espace source : {archives.cloned_from.name}
+          </h4>
+
+          {/* Documents source */}
+          {archives.source_documents && archives.source_documents.length > 0 && (
+            <div>
+              <h5 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2 flex items-center gap-1.5">
+                <FileText className="h-4 w-4" />
+                Documents ({archives.source_documents.length})
+              </h5>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {archives.source_documents.map((doc: any) => (
+                  <div key={doc.id} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{doc.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {doc.doc_type} • {formatDate(doc.created_at)}
+                      </p>
+                    </div>
+                    {doc.file_path && (
+                      <a
+                        href={getImageUrl(doc.file_path)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"
+                        title="Télécharger"
+                      >
+                        <Download className="h-4 w-4" />
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Entretiens source */}
+          {archives.source_maintenances && archives.source_maintenances.length > 0 && (
+            <div>
+              <h5 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2 flex items-center gap-1.5">
+                <Wrench className="h-4 w-4" />
+                Entretiens ({archives.source_maintenances.length})
+              </h5>
+              <div className="space-y-2">
+                {archives.source_maintenances.map((m: any) => (
+                  <div key={m.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+                    <div className="p-1.5 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex-shrink-0">
+                      <Wrench className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{m.title}</p>
+                      <p className="text-xs text-gray-400">
+                        {m.maintenance_type} • {formatDate(m.performed_date)} • {m.performed_by || 'N/A'}
+                      </p>
+                      {m.notes && <p className="text-xs text-gray-500 mt-1">{m.notes}</p>}
+                    </div>
+                    {m.cost != null && m.cost > 0 && (
+                      <span className="text-xs font-medium text-gray-500 flex-shrink-0">{m.cost}€</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

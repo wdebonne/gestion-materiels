@@ -398,9 +398,15 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       )).map((r: any) => r.document_id);
     }
 
+    // Récupérer les snapshots
+    const snapshots = await db.query(
+      'SELECT id, label, snapshot_date, notes, created_at FROM green_space_snapshots WHERE green_space_id = ? ORDER BY snapshot_date DESC',
+      [req.params.id]
+    );
+
     res.json({
       success: true,
-      data: { ...space, elements, annotations, seasons, documents, groups, maintenances }
+      data: { ...space, elements, annotations, seasons, documents, groups, maintenances, snapshots }
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -1105,6 +1111,270 @@ router.delete('/maintenances/:maintenanceId', authenticateToken, requireSupervis
     await db.execute("DELETE FROM alerts WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ?", [req.params.maintenanceId]);
     await db.execute('DELETE FROM green_space_maintenances WHERE id = ?', [req.params.maintenanceId]);
     res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== SNAPSHOTS / ARCHIVES ========================
+
+// POST /:id/snapshots - Créer un snapshot de l'état actuel
+router.post('/:id/snapshots', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const space = await db.queryOne('SELECT * FROM green_spaces WHERE id = ?', [req.params.id]);
+    if (!space) {
+      return res.status(404).json({ success: false, message: 'Espace vert non trouvé' });
+    }
+
+    const { label, notes } = req.body;
+    const now = new Date().toISOString();
+
+    // Capturer les éléments actuels
+    const elements = await db.query(
+      `SELECT gse.*, o.name as object_name FROM green_space_elements gse
+       LEFT JOIN objects o ON o.id = gse.object_id
+       WHERE gse.green_space_id = ?`, [req.params.id]
+    );
+
+    // Capturer les annotations actuelles
+    const annotations = await db.query(
+      'SELECT * FROM green_space_annotations WHERE green_space_id = ?', [req.params.id]
+    );
+
+    // Capturer les groupes actuels
+    const groups = await db.query(
+      'SELECT * FROM green_space_groups WHERE green_space_id = ?', [req.params.id]
+    );
+
+    const result = await db.execute(
+      `INSERT INTO green_space_snapshots (green_space_id, label, snapshot_date, plan_image, elements_data, annotations_data, groups_data, notes, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.params.id,
+        label || `Snapshot du ${new Date().toLocaleDateString('fr-FR')}`,
+        now,
+        space.plan_image || '',
+        JSON.stringify(elements),
+        JSON.stringify(annotations),
+        JSON.stringify(groups),
+        notes || '',
+        now
+      ]
+    );
+
+    const created = await db.queryOne('SELECT * FROM green_space_snapshots WHERE id = ?', [result.lastInsertRowid]);
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /:id/snapshots - Liste des snapshots
+router.get('/:id/snapshots', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const snapshots = await db.query(
+      'SELECT id, green_space_id, label, snapshot_date, notes, created_at FROM green_space_snapshots WHERE green_space_id = ? ORDER BY snapshot_date DESC',
+      [req.params.id]
+    );
+    res.json({ success: true, data: snapshots });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /snapshots/:snapshotId - Détail d'un snapshot
+router.get('/snapshots/:snapshotId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const snapshot = await db.queryOne('SELECT * FROM green_space_snapshots WHERE id = ?', [req.params.snapshotId]);
+    if (!snapshot) {
+      return res.status(404).json({ success: false, message: 'Snapshot non trouvé' });
+    }
+    // Parser les données JSON
+    snapshot.elements_data = JSON.parse(snapshot.elements_data || '[]');
+    snapshot.annotations_data = JSON.parse(snapshot.annotations_data || '[]');
+    snapshot.groups_data = JSON.parse(snapshot.groups_data || '[]');
+    res.json({ success: true, data: snapshot });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /snapshots/:snapshotId - Supprimer un snapshot
+router.delete('/snapshots/:snapshotId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.execute('DELETE FROM green_space_snapshots WHERE id = ?', [req.params.snapshotId]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /:id/clone - Cloner un espace vert
+router.post('/:id/clone', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const source = await db.queryOne('SELECT * FROM green_spaces WHERE id = ?', [req.params.id]);
+    if (!source) {
+      return res.status(404).json({ success: false, message: 'Espace vert non trouvé' });
+    }
+
+    const { name, status, element_ids, copy_elements } = req.body;
+    const now = new Date().toISOString();
+
+    // 1. Créer un snapshot automatique de l'espace source avant le clonage
+    const sourceElements = await db.query(
+      `SELECT gse.*, o.name as object_name FROM green_space_elements gse
+       LEFT JOIN objects o ON o.id = gse.object_id
+       WHERE gse.green_space_id = ?`, [req.params.id]
+    );
+    const sourceAnnotations = await db.query(
+      'SELECT * FROM green_space_annotations WHERE green_space_id = ?', [req.params.id]
+    );
+    const sourceGroups = await db.query(
+      'SELECT * FROM green_space_groups WHERE green_space_id = ?', [req.params.id]
+    );
+
+    await db.execute(
+      `INSERT INTO green_space_snapshots (green_space_id, label, snapshot_date, plan_image, elements_data, annotations_data, groups_data, notes, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        req.params.id,
+        `Avant clonage - ${new Date().toLocaleDateString('fr-FR')}`,
+        now, source.plan_image || '',
+        JSON.stringify(sourceElements),
+        JSON.stringify(sourceAnnotations),
+        JSON.stringify(sourceGroups),
+        `Snapshot automatique avant clonage vers "${name || source.name + ' (copie)'}"`,
+        now
+      ]
+    );
+
+    // 2. Créer le nouvel espace vert
+    const cloneName = name || `${source.name} (copie)`;
+    const cloneResult = await db.execute(
+      `INSERT INTO green_spaces (name, description, address, latitude, longitude,
+        area_m2, space_type, soil_type, status, image, plan_image, custom_fields,
+        cloned_from_id, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        cloneName, source.description, source.address,
+        source.latitude, source.longitude,
+        source.area_m2, source.space_type, source.soil_type,
+        status || 'projet', source.image, source.plan_image,
+        source.custom_fields,
+        source.id, req.user!.userId, now, now
+      ]
+    );
+
+    const newSpaceId = cloneResult.lastInsertRowid;
+
+    // 3. Copier les éléments sélectionnés
+    if (copy_elements) {
+      const elementsToCopy = element_ids && element_ids.length > 0
+        ? (sourceElements as any[]).filter((el: any) => element_ids.includes(el.id))
+        : sourceElements as any[];
+
+      const elementIdMap: Record<number, number> = {};
+
+      for (const el of elementsToCopy) {
+        const elResult = await db.execute(
+          `INSERT INTO green_space_elements (green_space_id, object_id, label, code,
+            element_type, description, image, pos_x, pos_y, quantity,
+            purchase_price, maintenance_notes, species, planting_date,
+            last_maintenance_date, next_maintenance_date, condition_state,
+            custom_fields, area_m2, zone_points, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            newSpaceId, el.object_id, el.label, el.code,
+            el.element_type, el.description, el.image,
+            el.pos_x, el.pos_y, el.quantity,
+            el.purchase_price, el.maintenance_notes,
+            el.species, el.planting_date,
+            el.last_maintenance_date, el.next_maintenance_date,
+            el.condition_state, el.custom_fields || '{}',
+            el.area_m2, el.zone_points, now, now
+          ]
+        );
+        elementIdMap[el.id] = Number(elResult.lastInsertRowid);
+      }
+
+      // 4. Copier les annotations liées aux éléments copiés (et les annotations libres)
+      for (const ann of sourceAnnotations as any[]) {
+        const newElementId = ann.element_id ? elementIdMap[ann.element_id] : null;
+        if (ann.element_id && !newElementId) continue; // skip si l'élément n'a pas été copié
+        await db.execute(
+          `INSERT INTO green_space_annotations (green_space_id, element_id, pos_x, pos_y, label, icon, color, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          [newSpaceId, newElementId || null, ann.pos_x, ann.pos_y, ann.label, ann.icon, ann.color, now]
+        );
+      }
+
+      // 5. Copier les groupes
+      for (const g of sourceGroups as any[]) {
+        await db.execute(
+          `INSERT INTO green_space_groups (green_space_id, name, group_type, description, color, icon, pos_x, pos_y, area_m2, zone_points)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [newSpaceId, g.name, g.group_type, g.description, g.color, g.icon, g.pos_x, g.pos_y, g.area_m2, g.zone_points]
+        );
+      }
+    }
+
+    await logService.info('other', `Espace vert cloné: ${source.name} -> ${cloneName}`, { userId: req.user!.userId });
+
+    const created = await db.queryOne('SELECT * FROM green_spaces WHERE id = ?', [newSpaceId]);
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /:id/archives - Récupérer les données archivées (espace source si cloné)
+router.get('/:id/archives', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const space = await db.queryOne('SELECT * FROM green_spaces WHERE id = ?', [req.params.id]);
+    if (!space) {
+      return res.status(404).json({ success: false, message: 'Espace vert non trouvé' });
+    }
+
+    // Snapshots de cet espace
+    const snapshots = await db.query(
+      'SELECT id, label, snapshot_date, notes, created_at FROM green_space_snapshots WHERE green_space_id = ? ORDER BY snapshot_date DESC',
+      [req.params.id]
+    );
+
+    // Si l'espace est un clone, récupérer aussi les données de l'original
+    let sourceSpace = null;
+    let sourceDocuments: any[] = [];
+    let sourceMaintenances: any[] = [];
+    let sourceSnapshots: any[] = [];
+
+    if (space.cloned_from_id) {
+      sourceSpace = await db.queryOne('SELECT id, name, status FROM green_spaces WHERE id = ?', [space.cloned_from_id]);
+      if (sourceSpace) {
+        sourceDocuments = await db.query(
+          'SELECT * FROM green_space_documents WHERE green_space_id = ? ORDER BY created_at DESC',
+          [space.cloned_from_id]
+        ) as any[];
+        sourceMaintenances = await db.query(
+          'SELECT * FROM green_space_maintenances WHERE green_space_id = ? ORDER BY performed_date DESC',
+          [space.cloned_from_id]
+        ) as any[];
+        sourceSnapshots = await db.query(
+          'SELECT id, label, snapshot_date, notes, created_at FROM green_space_snapshots WHERE green_space_id = ? ORDER BY snapshot_date DESC',
+          [space.cloned_from_id]
+        ) as any[];
+      }
+    }
+
+    res.json({
+      success: true,
+      data: {
+        snapshots,
+        cloned_from: sourceSpace,
+        source_documents: sourceDocuments,
+        source_maintenances: sourceMaintenances,
+        source_snapshots: sourceSnapshots
+      }
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
