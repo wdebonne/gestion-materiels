@@ -10,6 +10,15 @@ import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import ImageUpload from '@/components/ui/ImageUpload'
 
+/** Normalise un chemin d'image : évite le doublon /uploads//uploads/... */
+function getImageUrl(path: string): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  if (path.startsWith('/uploads/')) return path
+  if (path.startsWith('/')) return path
+  return `/uploads/${path}`
+}
+
 // ======================== TYPES ========================
 
 interface GreenSpace {
@@ -314,7 +323,7 @@ export default function EspacesVertsPage() {
                 >
                   <div className="flex items-start gap-3">
                     {space.image ? (
-                      <img src={`/uploads/${space.image}`} alt="" className="w-14 h-14 rounded-lg object-cover" />
+                      <img src={getImageUrl(space.image)} alt="" className="w-14 h-14 rounded-lg object-cover" />
                     ) : (
                       <div className="w-14 h-14 rounded-lg bg-green-100 dark:bg-green-900 flex items-center justify-center text-2xl">
                         {typeInfo?.icon || '🌳'}
@@ -409,7 +418,7 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
       {/* Header */}
       <div className="relative">
         {space.image ? (
-          <img src={`/uploads/${space.image}`} alt="" className="w-full h-48 object-cover" />
+          <img src={getImageUrl(space.image)} alt="" className="w-full h-48 object-cover" />
         ) : (
           <div className="w-full h-32 bg-gradient-to-r from-green-400 to-emerald-500 flex items-center justify-center">
             <span className="text-6xl">{typeInfo?.icon || '🌳'}</span>
@@ -584,7 +593,7 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                   <div key={el.id} className="p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-green-300 dark:hover:border-green-700 transition-colors">
                     <div className="flex items-start gap-3">
                       {el.image || el.object_image ? (
-                        <img src={`/uploads/${el.image || el.object_image}`} alt="" className="w-12 h-12 rounded-lg object-cover" />
+                        <img src={getImageUrl(el.image || el.object_image)} alt="" className="w-12 h-12 rounded-lg object-cover" />
                       ) : (
                         <div className="w-12 h-12 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: (typeInfo?.color || '#6b7280') + '20' }}>
                           {typeInfo?.icon || '📌'}
@@ -748,7 +757,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           onClick={handlePlanClick}
           style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', transition: 'transform 0.2s' }}
         >
-          <img src={`/uploads/${space.plan_image}`} alt="Plan" className="w-full" />
+          <img src={getImageUrl(space.plan_image)} alt="Plan" className="w-full" />
 
           {/* Annotations des éléments positionnés */}
           {elements.filter(el => el.pos_x != null && el.pos_y != null).map(el => {
@@ -1183,7 +1192,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                   <div className="flex items-center gap-1">
                     {doc.file_path && (
                       <a
-                        href={`/uploads/${doc.file_path}`}
+                        href={getImageUrl(doc.file_path)}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-1 text-gray-400 hover:text-blue-600"
