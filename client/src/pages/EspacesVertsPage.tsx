@@ -669,15 +669,30 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const [addingAnnotation, setAddingAnnotation] = useState(false)
   const [selectedAnnotation, setSelectedAnnotation] = useState<Annotation | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<number | null>(null)
+  const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(null)
+  const [freeLabel, setFreeLabel] = useState('')
 
   const annotations = space.annotations || []
   const elements = space.elements || []
+  const unplacedElements = elements.filter(el => el.pos_x == null || el.pos_y == null)
 
   const addAnnotationMutation = useMutation({
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/annotations`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
       setAddingAnnotation(false)
+      setClickPos(null)
+      setFreeLabel('')
+    }
+  })
+
+  const updateElementPosMutation = useMutation({
+    mutationFn: ({ elementId, pos_x, pos_y }: { elementId: number; pos_x: number; pos_y: number }) =>
+      api.put(`/green-spaces/elements/${elementId}`, { pos_x, pos_y }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      setAddingAnnotation(false)
+      setClickPos(null)
     }
   })
 
@@ -694,11 +709,18 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     const rect = canvasRef.current.getBoundingClientRect()
     const x = ((e.clientX - rect.left) / rect.width * 100) / zoom
     const y = ((e.clientY - rect.top) / rect.height * 100) / zoom
+    setClickPos({ x, y })
+    setFreeLabel('')
+  }
 
-    const label = prompt('Libellé de l\'annotation :')
-    if (!label) return
+  const handlePlaceElement = (el: GreenSpaceElement) => {
+    if (!clickPos) return
+    updateElementPosMutation.mutate({ elementId: el.id, pos_x: clickPos.x, pos_y: clickPos.y })
+  }
 
-    addAnnotationMutation.mutate({ pos_x: x, pos_y: y, label, icon: 'circle', color: '#22c55e' })
+  const handleAddFreeAnnotation = () => {
+    if (!clickPos || !freeLabel.trim()) return
+    addAnnotationMutation.mutate({ pos_x: clickPos.x, pos_y: clickPos.y, label: freeLabel.trim(), icon: 'circle', color: '#22c55e' })
   }
 
   if (!space.plan_image) {
@@ -811,6 +833,82 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           ))}
         </div>
       </div>
+
+      {/* Popup choix élément / annotation libre */}
+      {clickPos && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setClickPos(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-80 max-h-96 overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="p-3 border-b border-gray-200 dark:border-gray-700">
+              <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <MapPin className="h-4 w-4 text-green-600" />
+                Placer sur le plan
+              </h4>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Position : {clickPos.x.toFixed(1)}%, {clickPos.y.toFixed(1)}%
+              </p>
+            </div>
+
+            {unplacedElements.length > 0 && (
+              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1">Éléments liés</p>
+                <div className="max-h-40 overflow-y-auto space-y-1">
+                  {unplacedElements.map(el => {
+                    const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                    return (
+                      <button
+                        key={el.id}
+                        onClick={() => handlePlaceElement(el)}
+                        disabled={updateElementPosMutation.isPending}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-left transition-colors"
+                      >
+                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: typeInfo?.color || '#22c55e' }} />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm text-gray-900 dark:text-white truncate">{el.label}</p>
+                          <p className="text-xs text-gray-500 truncate">
+                            {el.code && <span className="font-mono mr-1">{el.code}</span>}
+                            {typeInfo?.label}{el.species ? ` • ${el.species}` : ''}
+                          </p>
+                        </div>
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="p-2">
+              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1">Annotation libre</p>
+              <div className="flex gap-1">
+                <input
+                  type="text"
+                  value={freeLabel}
+                  onChange={e => setFreeLabel(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddFreeAnnotation()}
+                  placeholder="Libellé..."
+                  className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  autoFocus
+                />
+                <button
+                  onClick={handleAddFreeAnnotation}
+                  disabled={!freeLabel.trim() || addAnnotationMutation.isPending}
+                  className="px-2 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                >
+                  OK
+                </button>
+              </div>
+            </div>
+
+            <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={() => setClickPos(null)}
+                className="w-full text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 py-1"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Détail annotation sélectionnée */}
       {selectedAnnotation && (
