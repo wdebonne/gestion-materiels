@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import ImageUpload from '@/components/ui/ImageUpload'
 
 // ======================== TYPES ========================
 
@@ -1346,23 +1347,17 @@ function SpaceFormModal({ space, onClose, onSaved }: { space: GreenSpace | null,
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Image principale</label>
-              <input
-                type="text"
+              <ImageUpload
+                label="Image principale"
                 value={form.image}
-                onChange={(e) => setForm({ ...form, image: e.target.value })}
-                placeholder="nom-du-fichier.jpg"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                onChange={(url) => setForm({ ...form, image: url })}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Image du plan</label>
-              <input
-                type="text"
+              <ImageUpload
+                label="Image du plan"
                 value={form.plan_image}
-                onChange={(e) => setForm({ ...form, plan_image: e.target.value })}
-                placeholder="plan-espace.jpg"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                onChange={(url) => setForm({ ...form, plan_image: url })}
               />
             </div>
           </div>
@@ -1593,13 +1588,10 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Image</label>
-              <input
-                type="text"
+              <ImageUpload
+                label="Image"
                 value={form.image}
-                onChange={(e) => setForm({ ...form, image: e.target.value })}
-                placeholder="nom-fichier.jpg"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                onChange={(url) => setForm({ ...form, image: url })}
               />
             </div>
             <div className="col-span-2">
