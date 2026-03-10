@@ -143,6 +143,50 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// GET /api/categories/:categorySlug/:subcategorySlug - Sous-catégorie par slugs
+router.get('/:categorySlug/:subcategorySlug', authenticateToken, async (req: AuthRequest, res: Response, next: any) => {
+  try {
+    const { categorySlug, subcategorySlug } = req.params;
+
+    // Laisser passer vers les routes avec segments fixes (subcategories)
+    if (subcategorySlug === 'subcategories') {
+      return next('route');
+    }
+
+    // Trouver la catégorie par slug
+    const category = await db.queryOne('SELECT * FROM categories WHERE slug = ?', [categorySlug]);
+    if (!category) {
+      return res.status(404).json({ success: false, message: 'Catégorie non trouvée' });
+    }
+
+    // Trouver la sous-catégorie par slug dans cette catégorie
+    const subcategory = await db.queryOne(
+      'SELECT * FROM subcategories WHERE category_id = ? AND slug = ?',
+      [category.id, subcategorySlug]
+    );
+    if (!subcategory) {
+      return res.status(404).json({ success: false, message: 'Sous-catégorie non trouvée' });
+    }
+
+    res.json({
+      success: true,
+      subcategory: {
+        id: subcategory.id,
+        categoryId: subcategory.category_id,
+        name: subcategory.name,
+        slug: subcategory.slug,
+        image: subcategory.image,
+        sortOrder: subcategory.sort_order,
+        createdAt: subcategory.created_at,
+        updatedAt: subcategory.updated_at
+      }
+    });
+  } catch (error: any) {
+    console.error('Erreur get subcategory by slugs:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // GET /api/categories/:id - Détail d'une catégorie
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
