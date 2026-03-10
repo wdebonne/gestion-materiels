@@ -531,7 +531,8 @@ router.get('/search/objects', authenticateToken, async (req: AuthRequest, res: R
       return res.json({ success: true, data: [] });
     }
     const objects = await db.query(`
-      SELECT o.id, o.name, o.reference, o.image, o.purchase_price,
+      SELECT o.id, o.name, o.reference, o.image, o.purchase_price, o.purchase_date,
+        o.status, o.description, o.custom_fields,
         c.name as category_name, sc.name as subcategory_name
       FROM objects o
       LEFT JOIN categories c ON c.id = o.category_id

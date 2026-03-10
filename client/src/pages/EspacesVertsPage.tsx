@@ -1508,7 +1508,30 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                     <button
                       key={obj.id}
                       onClick={() => {
-                        setForm({ ...form, object_id: obj.id.toString() })
+                        // Pré-remplir les champs depuis l'objet lié
+                        const customFields = obj.custom_fields ? (typeof obj.custom_fields === 'string' ? JSON.parse(obj.custom_fields) : obj.custom_fields) : {}
+                        const updates: any = { object_id: obj.id.toString() }
+                        if (obj.image && !form.image) updates.image = obj.image
+                        if (obj.purchase_price && !form.purchase_price) updates.purchase_price = obj.purchase_price.toString()
+                        if (obj.description && !form.description) updates.description = obj.description
+                        if (obj.purchase_date && !form.planting_date) updates.planting_date = obj.purchase_date
+                        // Mapper le statut de l'objet vers l'état de l'élément
+                        if (obj.status && form.condition_state === 'bon') {
+                          const statusMap: Record<string, string> = { active: 'bon', good: 'bon', warning: 'moyen', poor: 'mauvais', broken: 'mauvais', inactive: 'mauvais' }
+                          if (statusMap[obj.status]) updates.condition_state = statusMap[obj.status]
+                        }
+                        // Remplir depuis les champs personnalisés
+                        if (customFields.espece && !form.species) updates.species = customFields.espece
+                        if (customFields.variete && !form.species) updates.species = customFields.variete
+                        if (customFields.species && !form.species) updates.species = customFields.species
+                        if (customFields['espece_variete'] && !form.species) updates.species = customFields['espece_variete']
+                        if (customFields.type && form.element_type === 'arbre') {
+                          const typeMap: Record<string, string> = { arbre: 'arbre', arbuste: 'arbuste', haie: 'haie', fleur: 'fleur', pelouse: 'pelouse', mobilier: 'mobilier', eclairage: 'eclairage', cloture: 'cloture' }
+                          if (typeMap[customFields.type.toLowerCase()]) updates.element_type = typeMap[customFields.type.toLowerCase()]
+                        }
+                        if (!form.label) updates.label = obj.name
+                        if (obj.reference && !form.code) updates.code = obj.reference
+                        setForm({ ...form, ...updates })
                         setObjectSearch(`${obj.name} (${obj.reference || 'N/A'})`)
                         setShowObjectResults(false)
                       }}
