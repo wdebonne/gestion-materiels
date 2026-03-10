@@ -83,6 +83,7 @@ export default function PluginsPage() {
     onSuccess: () => {
       // Invalider toutes les queries qui dépendent des plugins
       queryClient.invalidateQueries({ queryKey: ['plugins'] })
+      queryClient.invalidateQueries({ queryKey: ['menuPlugins'] })
       queryClient.invalidateQueries({ queryKey: ['object'] })
       queryClient.invalidateQueries({ queryKey: ['objects'] })
       toast.success('Plugin mis à jour')
@@ -142,6 +143,7 @@ export default function PluginsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] })
+      queryClient.invalidateQueries({ queryKey: ['menuPlugins'] })
       toast.success('Plugin supprimé')
       setDeleteConfirm(null)
     },
@@ -157,6 +159,7 @@ export default function PluginsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['plugins'] })
+      queryClient.invalidateQueries({ queryKey: ['menuPlugins'] })
       toast.success('Plugin importé avec succès')
     },
     onError: (err: any) => {
