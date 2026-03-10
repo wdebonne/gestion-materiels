@@ -1391,14 +1391,14 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           <img src={getImageUrl(space.plan_image)} alt="Plan" className="w-full" />
 
           {/* SVG overlay pour les zones (polygones) */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }}>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} viewBox="0 0 100 100" preserveAspectRatio="none">
             {/* Zones des éléments */}
             {elements.filter(el => el.zone_points).map(el => {
               const pts = parseZonePoints(el.zone_points)
               if (pts.length < 3) return null
               const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
               const color = typeInfo?.color || '#22c55e'
-              const pointsStr = pts.map(p => `${p.x}%,${p.y}%`).join(' ')
+              const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
               return (
                 <polygon
                   key={`zone-el-${el.id}`}
@@ -1409,6 +1409,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   strokeWidth={2}
                   strokeOpacity={0.7}
                   strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
                   className="pointer-events-auto cursor-pointer"
                   onClick={(e) => { e.stopPropagation(); setSelectedMarker({ type: 'element', id: el.id }) }}
                 >
@@ -1422,7 +1423,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
               if (pts.length < 3) return null
               const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
               const color = g.color || typeInfo?.color || '#8b5cf6'
-              const pointsStr = pts.map(p => `${p.x}%,${p.y}%`).join(' ')
+              const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
               return (
                 <polygon
                   key={`zone-grp-${g.id}`}
@@ -1433,6 +1434,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   strokeWidth={2}
                   strokeOpacity={0.8}
                   strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
                   strokeDasharray="6 3"
                   className="pointer-events-auto cursor-pointer"
                   onClick={(e) => e.stopPropagation()}
@@ -1446,34 +1448,37 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
               <>
                 {zonePoints.length >= 3 && (
                   <polygon
-                    points={zonePoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                    points={zonePoints.map(p => `${p.x},${p.y}`).join(' ')}
                     fill="#8b5cf6"
                     fillOpacity={0.15}
                     stroke="#8b5cf6"
                     strokeWidth={2}
                     strokeDasharray="6 3"
                     strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
                   />
                 )}
                 {zonePoints.length >= 2 && zonePoints.length < 3 && (
                   <polyline
-                    points={zonePoints.map(p => `${p.x}%,${p.y}%`).join(' ')}
+                    points={zonePoints.map(p => `${p.x},${p.y}`).join(' ')}
                     fill="none"
                     stroke="#8b5cf6"
                     strokeWidth={2}
                     strokeDasharray="6 3"
                     strokeLinejoin="round"
+                    vectorEffect="non-scaling-stroke"
                   />
                 )}
                 {zonePoints.map((pt, i) => (
                   <circle
                     key={i}
-                    cx={`${pt.x}%`}
-                    cy={`${pt.y}%`}
-                    r={4}
+                    cx={pt.x}
+                    cy={pt.y}
+                    r={0.5}
                     fill="#8b5cf6"
                     stroke="white"
                     strokeWidth={2}
+                    vectorEffect="non-scaling-stroke"
                   />
                 ))}
               </>

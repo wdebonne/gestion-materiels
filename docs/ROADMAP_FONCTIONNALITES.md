@@ -23,6 +23,7 @@
 | 12 | 🟢 Optionnel | WebSocket temps réel | Moyen | Moyen | ✅ Fait |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | Moyen | Fort | ✅ Fait |
 | 14 | 🔴 Haute | Manifestations (gestion matériel événementiel) | Élevé | Fort | ✅ Plugin système |
+| 15 | 🔴 Haute | Espaces Verts (gestion espaces verts municipaux) | Élevé | Fort | ✅ Plugin système |
 
 ---
 
@@ -183,3 +184,21 @@
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
 - **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
+
+### 15. Espaces Verts (gestion espaces verts municipaux)
+- **Description :** Plugin système complet pour la gestion des espaces verts avec plan interactif annoté, composition botanique, entretiens et intégrations transversales.
+- **Fonctionnalités :**
+  - **Plan interactif** : Upload d'image du plan, placement de repères par clic avec drag & drop, popup persistant au clic
+  - **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec état de santé, dimensions, espèce, photo
+  - **Groupes de composition** : Regroupement logique d'éléments (massif, zone, alignement, haie, autre) avec couleur
+  - **Zones polygonales** : Dessin de zones par clics successifs sur le plan
+  - **Légende interactive** : Filtrage par type et groupe, codes couleur des états
+  - **Entretiens** : Historique avec type, date, intervenant, durée, coût, éléments concernés, documents joints (upload direct)
+  - **Export PDF du plan** : Plan annoté en paysage + légende + tableaux détaillés via jsPDF + html2canvas
+  - **Intégration Alertes** : Les entretiens avec date d'échéance prochaine génèrent automatiquement des alertes via cron
+  - **Intégration Calendrier** : Les entretiens programmés créent automatiquement un événement calendrier
+  - **Intégration Suivi** : Les coûts d'entretien apparaissent dans le module Suivi avec filtre et tableau dédiés
+- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`
+- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types, stats
+- **Frontend :** 5 onglets (Informations, Plan & Annotations, Composition, Entretiens, Documents), export PDF
+- **Impact :** Gestion complète des espaces verts communaux avec vision cartographique et suivi des interventions

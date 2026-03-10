@@ -8,6 +8,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- **Module Espaces Verts — Plugin système complet** : Gestion des espaces verts municipaux avec plan interactif annoté, composition botanique, entretiens et documents :
+  - **Tables base de données** : `green_spaces` (informations générales, type, superficie, localisation, plan), `green_space_elements` (éléments du plan : arbres, massifs, mobilier...), `green_space_annotations` (annotations textuelles sur le plan), `green_space_seasons` (gestion saisonnière), `green_space_documents` (documents et fichiers), `green_space_element_groups` (groupes d'éléments), `green_space_maintenances` (entretiens programmés), `green_space_maintenance_elements` (éléments concernés), `green_space_maintenance_documents` (documents liés aux entretiens)
+  - **Routes API complètes** (`/api/green-spaces`) : CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types personnalisés, statistiques
+  - **Plan interactif** : Upload d'image du plan, placement de repères par clic avec drag & drop, popup persistant au clic affichant le détail de chaque élément (espèce, état, dimensions, photo)
+  - **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec icônes dédiées, état de santé (excellent/bon/moyen/mauvais/critique/mort), gestion d'images par élément
+  - **Groupes de composition** : Regroupement logique d'éléments (massif, zone, alignement, haie, autre) avec couleur et description
+  - **Zones polygonales** : Dessin de zones par clics successifs sur le plan avec couleur, opacité et légende
+  - **Légende interactive** : Légende du plan avec filtrage par type d'élément et groupe, codes couleur des états
+  - **Entretiens** : Historique des interventions avec type, date, intervenant, durée, coût, éléments concernés, documents joints (upload direct)
+  - **Export PDF du plan** (`PlanPDFExport.tsx`) : Export via jsPDF + html2canvas avec le plan annoté en paysage, légende, tableaux détaillés des éléments/groupes/annotations, options de sélection des sections
+  - **Upload de documents** : Possibilité de joindre directement des fichiers (PDF, images, docs) lors de la création d'un entretien
+  - **Intégration Alertes** : Les entretiens avec date d'échéance prochaine génèrent automatiquement des alertes dans le module Alertes (via `cron.service.ts` + `plugin_reference: 'green-space-maintenance'`)
+  - **Intégration Calendrier** : Les entretiens avec `next_maintenance_date` créent automatiquement un événement dans le calendrier (🌿 icône verte, type maintenance)
+  - **Intégration Suivi (Tracking)** : Les coûts et données d'entretien des espaces verts apparaissent dans le module Suivi avec filtre dédié "Espaces verts" (icône TreePine), carte statistique et tableau détaillé
+  - **Suppression avec nettoyage** : La suppression d'un entretien nettoie aussi les événements calendrier et alertes associés
 - **Module Manifestations — Page dédiée complète** : Gestion des manifestations (prêts de matériel pour événements) avec page dédiée accessible depuis la navigation principale :
   - **3 tables base de données** : `manifestations` (informations générales, statut, contact, lieu), `manifestation_items` (articles liés avec quantités commandées/livrées/retournées), `manifestation_history` (historique horodaté de chaque action)
   - **Routes API complètes** (`/api/manifestations`) : CRUD, stats par statut, changement de statut avec validation des transitions, historique, recherche d'objets du parc
@@ -31,6 +46,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Documentation plugins système** : Section dédiée dans `docs/PLUGIN_STRUCTURE.md` décrivant l'architecture built-in vs personnalisé, la navigation dynamique et l'activation/désactivation
 
 ### Modifié
+- **cron.service.ts** : Ajout de la vérification des entretiens espaces verts (`green_space_maintenances.next_maintenance_date`) — création d'alertes automatiques avec `plugin_reference: 'green-space-maintenance'`
+- **espaceVert.routes.ts** : Création/mise à jour/suppression d'événements calendrier et d'alertes lors des opérations sur les entretiens
+- **AlertsPage.tsx** : Ajout du champ `pluginReference` dans l'interface Alert, lien "Voir l'espace vert" pour les alertes d'espaces verts
+- **TrackingPage.tsx** : Ajout du type de données "Espaces verts" (`green_space`) avec carte statistique, onglet dédié et tableau détaillé
+- **tracking.routes.ts** : Ajout du type `green_space` dans les filtres de suivi, requête des `green_space_maintenances` avec coûts et résumé
+- **database/index.ts** : Ajout des 9 tables espaces verts
+- **server.ts** : Route `/api/green-spaces` câblée
+- **Layout.tsx** : Entrée de navigation « Espaces Verts » ajoutée avec icône TreePine
+- **App.tsx** : Route frontend `/espaces-verts` ajoutée
 - **database/index.ts** : Ajout des 3 tables `manifestations`, `manifestation_items`, `manifestation_history`
 - **server.ts** : Route `/api/manifestations` câblée
 - **Layout.tsx** : Icône `CalendarDays` ajoutée, entrée de navigation « Manifestations » ajoutée
