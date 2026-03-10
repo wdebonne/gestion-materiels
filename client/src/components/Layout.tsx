@@ -149,7 +149,6 @@ export default function Layout() {
     { name: t('nav.categories'), href: '/categories', icon: FolderOpen },
     { name: t('nav.alerts'), href: '/alerts', icon: Bell, badge: alertsCount },
     { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
-    { name: 'Espaces Verts', href: '/espaces-verts', icon: TreePine },
   ]
 
   // Ajouter le menu Suivi si l'utilisateur a les permissions
@@ -160,7 +159,7 @@ export default function Layout() {
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
   const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts']
   // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
-  const baseNavSlugs = ['manifestations', 'espaces-verts']
+  const baseNavSlugs = ['manifestations']
   const pluginNavigation = menuPlugins
     .filter((plugin: any) => !baseNavSlugs.includes(plugin.slug))
     .map((plugin: any) => {
