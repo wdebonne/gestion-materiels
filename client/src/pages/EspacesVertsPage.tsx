@@ -4,7 +4,7 @@ import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
   FileText, X,
   Download, Image, Tag, Ruler, CloudSun,
-  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon
+  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -42,6 +42,7 @@ interface GreenSpace {
   seasons?: Season[]
   documents?: GreenSpaceDocument[]
   groups?: CompositionGroup[]
+  maintenances?: Maintenance[]
 }
 
 interface GreenSpaceElement {
@@ -117,6 +118,24 @@ interface CompositionGroup {
   pos_y: number | null
   area_m2?: number | null
   zone_points?: string | null
+}
+
+interface Maintenance {
+  id: number
+  green_space_id: number
+  maintenance_type: string
+  title: string
+  description: string
+  performed_date: string | null
+  next_maintenance_date: string | null
+  performed_by: string
+  duration_minutes: number | null
+  cost: number | null
+  notes: string
+  element_ids: number[]
+  document_ids: number[]
+  created_at: string
+  updated_at: string
 }
 
 // ======================== CONSTANTES ========================
@@ -204,7 +223,7 @@ export default function EspacesVertsPage() {
   const [selectedSpace, setSelectedSpace] = useState<GreenSpace | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingSpace, setEditingSpace] = useState<GreenSpace | null>(null)
-  const [activeTab, setActiveTab] = useState<'elements' | 'plan' | 'saisons' | 'documents' | 'carte'>('elements')
+  const [activeTab, setActiveTab] = useState<'elements' | 'plan' | 'saisons' | 'documents' | 'carte' | 'entretien'>('elements')
   const [expanded, setExpanded] = useState(false)
 
   // Stats
@@ -505,6 +524,7 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
             { key: 'carte', label: 'Carte', icon: MapPin },
             { key: 'saisons', label: 'Saisons', icon: CloudSun, count: space.seasons?.length },
             { key: 'documents', label: 'Documents', icon: FileText, count: space.documents?.length },
+            { key: 'entretien', label: 'Entretien', icon: Wrench, count: space.maintenances?.length },
           ].map(tab => (
             <button
               key={tab.key}
@@ -543,6 +563,9 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
         )}
         {activeTab === 'documents' && (
           <DocumentsTab space={space} queryClient={queryClient} />
+        )}
+        {activeTab === 'entretien' && (
+          <MaintenanceTab space={space} queryClient={queryClient} />
         )}
       </div>
     </div>
@@ -1323,7 +1346,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       </div>
 
       {/* Plan avec annotations */}
-      <div className="relative overflow-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-100 dark:bg-gray-900" style={{ maxHeight: '600px' }}>
+      <div className="relative overflow-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-100 dark:bg-gray-900" style={{ maxHeight: 'calc(100vh - 220px)' }}>
         <div
           ref={canvasRef}
           className={`relative ${addingAnnotation || dragging || drawingZone ? 'cursor-crosshair' : 'cursor-default'}`}
@@ -2068,6 +2091,505 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                     <button
                       onClick={() => { if (confirm('Supprimer ce document ?')) deleteMutation.mutate(doc.id) }}
                       className="p-1 text-gray-400 hover:text-red-600"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ======================== ONGLET ENTRETIEN ========================
+
+const DEFAULT_MAINTENANCE_TYPES = [
+  { value: 'tonte', label: 'Tonte', icon: '🌿' },
+  { value: 'elagage', label: 'Élagage', icon: '✂️' },
+  { value: 'taille', label: 'Taille', icon: '🌳' },
+  { value: 'arrosage', label: 'Arrosage', icon: '💧' },
+  { value: 'desherbage', label: 'Désherbage', icon: '🌱' },
+  { value: 'fertilisation', label: 'Fertilisation', icon: '🧪' },
+  { value: 'traitement_phytosanitaire', label: 'Traitement phytosanitaire', icon: '🧴' },
+  { value: 'plantation', label: 'Plantation', icon: '🌺' },
+  { value: 'ramassage_feuilles', label: 'Ramassage de feuilles', icon: '🍂' },
+  { value: 'nettoyage', label: 'Nettoyage', icon: '🧹' },
+  { value: 'reparation', label: 'Réparation', icon: '🔧' },
+  { value: 'inspection', label: 'Inspection', icon: '🔍' },
+  { value: 'autre', label: 'Autre', icon: '📋' },
+]
+
+function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const [showForm, setShowForm] = useState(false)
+  const [editingMaintenance, setEditingMaintenance] = useState<Maintenance | null>(null)
+  const [form, setForm] = useState({
+    maintenance_type: 'tonte',
+    title: '',
+    description: '',
+    performed_date: new Date().toISOString().split('T')[0],
+    next_maintenance_date: '',
+    performed_by: '',
+    duration_minutes: '',
+    cost: '',
+    notes: '',
+    element_ids: [] as number[],
+    document_ids: [] as number[],
+  })
+  const [typeSearch, setTypeSearch] = useState('')
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false)
+  const [customTypes, setCustomTypes] = useState<string[]>([])
+
+  // Récupérer les types existants depuis l'API
+  const { data: apiTypes = [] } = useQuery({
+    queryKey: ['maintenance-types'],
+    queryFn: () => api.get('/green-spaces/maintenance-types').then(r => r.data.data),
+  })
+
+  const maintenances = space.maintenances || []
+  const elements = space.elements || []
+  const documents = space.documents || []
+
+  // Fusionner les types par défaut + API + custom
+  const allTypeValues = [...new Set([
+    ...DEFAULT_MAINTENANCE_TYPES.map(t => t.value),
+    ...(apiTypes as string[]),
+    ...customTypes
+  ])].sort()
+
+  const getTypeLabel = (value: string) => {
+    const def = DEFAULT_MAINTENANCE_TYPES.find(t => t.value === value)
+    if (def) return def
+    return { value, label: value.charAt(0).toUpperCase() + value.slice(1).replace(/_/g, ' '), icon: '🔧' }
+  }
+
+  const filteredTypes = allTypeValues.filter(t => {
+    const info = getTypeLabel(t)
+    return info.label.toLowerCase().includes(typeSearch.toLowerCase()) || t.includes(typeSearch.toLowerCase())
+  })
+
+  const addMutation = useMutation({
+    mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/maintenances`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      queryClient.invalidateQueries({ queryKey: ['maintenance-types'] })
+      resetForm()
+    }
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/maintenances/${id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+      queryClient.invalidateQueries({ queryKey: ['maintenance-types'] })
+      resetForm()
+    }
+  })
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/maintenances/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+  })
+
+  const resetForm = () => {
+    setShowForm(false)
+    setEditingMaintenance(null)
+    setForm({
+      maintenance_type: 'tonte', title: '', description: '',
+      performed_date: new Date().toISOString().split('T')[0],
+      next_maintenance_date: '', performed_by: '', duration_minutes: '', cost: '', notes: '',
+      element_ids: [], document_ids: [],
+    })
+    setTypeSearch('')
+    setShowTypeDropdown(false)
+  }
+
+  const openEdit = (m: Maintenance) => {
+    setEditingMaintenance(m)
+    setForm({
+      maintenance_type: m.maintenance_type,
+      title: m.title || '',
+      description: m.description || '',
+      performed_date: m.performed_date || '',
+      next_maintenance_date: m.next_maintenance_date || '',
+      performed_by: m.performed_by || '',
+      duration_minutes: m.duration_minutes?.toString() || '',
+      cost: m.cost?.toString() || '',
+      notes: m.notes || '',
+      element_ids: m.element_ids || [],
+      document_ids: m.document_ids || [],
+    })
+    setShowForm(true)
+  }
+
+  const handleSave = () => {
+    if (!form.maintenance_type) return
+    const data = {
+      ...form,
+      duration_minutes: form.duration_minutes ? parseInt(form.duration_minutes) : null,
+      cost: form.cost ? parseFloat(form.cost) : null,
+    }
+    if (editingMaintenance) {
+      updateMutation.mutate({ id: editingMaintenance.id, ...data })
+    } else {
+      addMutation.mutate(data)
+    }
+  }
+
+  const toggleElementId = (id: number) => {
+    setForm(f => ({
+      ...f,
+      element_ids: f.element_ids.includes(id) ? f.element_ids.filter(x => x !== id) : [...f.element_ids, id]
+    }))
+  }
+
+  const toggleDocumentId = (id: number) => {
+    setForm(f => ({
+      ...f,
+      document_ids: f.document_ids.includes(id) ? f.document_ids.filter(x => x !== id) : [...f.document_ids, id]
+    }))
+  }
+
+  const addCustomType = () => {
+    const normalized = typeSearch.trim().toLowerCase().replace(/\s+/g, '_')
+    if (normalized && !allTypeValues.includes(normalized)) {
+      setCustomTypes(prev => [...prev, normalized])
+    }
+    setForm({ ...form, maintenance_type: normalized })
+    setTypeSearch('')
+    setShowTypeDropdown(false)
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
+          <Wrench className="h-4 w-4" /> Historique d'entretien
+        </h4>
+        <button
+          onClick={() => { resetForm(); setShowForm(true) }}
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+        >
+          <Plus className="h-4 w-4" /> Nouvel entretien
+        </button>
+      </div>
+
+      {/* Formulaire */}
+      {showForm && (
+        <div className="p-4 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/30 space-y-4">
+          <h5 className="text-sm font-semibold text-gray-900 dark:text-white">
+            {editingMaintenance ? 'Modifier l\'entretien' : 'Nouvel entretien'}
+          </h5>
+
+          <div className="grid grid-cols-2 gap-3">
+            {/* Type d'entretien : autocomplete éditable */}
+            <div className="relative">
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Type d'entretien *</label>
+              <input
+                type="text"
+                value={typeSearch || getTypeLabel(form.maintenance_type).label}
+                onChange={(e) => { setTypeSearch(e.target.value); setShowTypeDropdown(true) }}
+                onFocus={() => setShowTypeDropdown(true)}
+                placeholder="Type d'entretien..."
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+              {showTypeDropdown && (
+                <div className="absolute z-20 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {filteredTypes.map(t => {
+                    const info = getTypeLabel(t)
+                    return (
+                      <button
+                        key={t}
+                        onClick={() => {
+                          setForm({ ...form, maintenance_type: t })
+                          setTypeSearch('')
+                          setShowTypeDropdown(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 flex items-center gap-2 ${
+                          form.maintenance_type === t ? 'bg-green-50 dark:bg-green-900/30' : ''
+                        }`}
+                      >
+                        <span>{info.icon}</span>
+                        <span className="text-gray-900 dark:text-white">{info.label}</span>
+                        {form.maintenance_type === t && <Check className="h-3 w-3 text-green-600 ml-auto" />}
+                      </button>
+                    )
+                  })}
+                  {typeSearch.trim() && !filteredTypes.some(t => getTypeLabel(t).label.toLowerCase() === typeSearch.trim().toLowerCase()) && (
+                    <button
+                      onClick={addCustomType}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-purple-600 dark:text-purple-400 flex items-center gap-2"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Ajouter « {typeSearch.trim()} »
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Titre (optionnel)</label>
+              <input
+                type="text"
+                value={form.title}
+                onChange={(e) => setForm({ ...form, title: e.target.value })}
+                placeholder="Ex: Tonte pelouse secteur nord"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Date de réalisation</label>
+              <input
+                type="date"
+                value={form.performed_date}
+                onChange={(e) => setForm({ ...form, performed_date: e.target.value })}
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Prochain entretien</label>
+              <input
+                type="date"
+                value={form.next_maintenance_date}
+                onChange={(e) => setForm({ ...form, next_maintenance_date: e.target.value })}
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Réalisé par</label>
+              <input
+                type="text"
+                value={form.performed_by}
+                onChange={(e) => setForm({ ...form, performed_by: e.target.value })}
+                placeholder="Nom ou équipe"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Durée (minutes)</label>
+              <input
+                type="number"
+                min="0"
+                value={form.duration_minutes}
+                onChange={(e) => setForm({ ...form, duration_minutes: e.target.value })}
+                placeholder="Ex: 120"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Coût (€)</label>
+              <input
+                type="number"
+                step="0.01"
+                min="0"
+                value={form.cost}
+                onChange={(e) => setForm({ ...form, cost: e.target.value })}
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          {/* Éléments liés */}
+          {elements.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Éléments concernés ({form.element_ids.length} sélectionné{form.element_ids.length > 1 ? 's' : ''})
+              </label>
+              <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-1 space-y-0.5">
+                {elements.map(el => {
+                  const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                  const isChecked = form.element_ids.includes(el.id)
+                  return (
+                    <label
+                      key={el.id}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
+                        isChecked ? 'bg-green-50 dark:bg-green-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleElementId(el.id)}
+                        className="rounded text-green-600"
+                      />
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: elType?.color }} />
+                      <span className="text-sm text-gray-900 dark:text-white truncate">{el.label}</span>
+                      {el.code && <span className="text-xs font-mono text-gray-400">{el.code}</span>}
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Documents liés */}
+          {documents.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Documents liés ({form.document_ids.length} sélectionné{form.document_ids.length > 1 ? 's' : ''})
+              </label>
+              <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-1 space-y-0.5">
+                {documents.map((doc: GreenSpaceDocument) => {
+                  const isChecked = form.document_ids.includes(doc.id)
+                  return (
+                    <label
+                      key={doc.id}
+                      className={`flex items-center gap-2 px-2 py-1.5 rounded cursor-pointer transition-colors ${
+                        isChecked ? 'bg-blue-50 dark:bg-blue-900/30' : 'hover:bg-gray-50 dark:hover:bg-gray-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleDocumentId(doc.id)}
+                        className="rounded text-blue-600"
+                      />
+                      <FileText className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                      <span className="text-sm text-gray-900 dark:text-white truncate">{doc.name}</span>
+                    </label>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
+            <textarea
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              rows={2}
+              placeholder="Détails de l'intervention..."
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={2}
+              placeholder="Observations, recommandations..."
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <button onClick={resetForm} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400">Annuler</button>
+            <button
+              onClick={handleSave}
+              disabled={!form.maintenance_type || addMutation.isPending || updateMutation.isPending}
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            >
+              {addMutation.isPending || updateMutation.isPending ? 'Enregistrement...' : (editingMaintenance ? 'Modifier' : 'Enregistrer')}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Liste des entretiens */}
+      {maintenances.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+          <Wrench className="h-10 w-10 mx-auto mb-2 opacity-50" />
+          <p className="text-sm">Aucun entretien enregistré</p>
+          <p className="text-xs mt-1">Ajoutez un entretien pour suivre l'historique des interventions.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {maintenances.map((m: Maintenance) => {
+            const typeInfo = getTypeLabel(m.maintenance_type)
+            const linkedElements = elements.filter(el => m.element_ids?.includes(el.id))
+            const linkedDocs = documents.filter((d: GreenSpaceDocument) => m.document_ids?.includes(d.id))
+            const isOverdue = m.next_maintenance_date && new Date(m.next_maintenance_date) < new Date()
+            const isSoon = m.next_maintenance_date && !isOverdue && new Date(m.next_maintenance_date) < new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+            return (
+              <div key={m.id} className={`p-3 rounded-lg border ${
+                isOverdue ? 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30' :
+                isSoon ? 'border-yellow-200 bg-yellow-50 dark:border-yellow-800 dark:bg-yellow-950/30' :
+                'border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-700/50'
+              }`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex items-start gap-3 flex-1 min-w-0">
+                    <span className="text-lg mt-0.5">{typeInfo.icon}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {m.title || typeInfo.label}
+                        </p>
+                        <span className="px-1.5 py-0.5 text-xs rounded bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+                          {typeInfo.label}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
+                        {m.performed_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" /> {formatDate(m.performed_date)}
+                          </span>
+                        )}
+                        {m.performed_by && <span>par {m.performed_by}</span>}
+                        {m.duration_minutes && <span>{m.duration_minutes} min</span>}
+                        {m.cost && <span>{m.cost} €</span>}
+                      </div>
+                      {m.next_maintenance_date && (
+                        <p className={`text-xs mt-1 ${isOverdue ? 'text-red-600 font-medium' : isSoon ? 'text-yellow-600 font-medium' : 'text-gray-400'}`}>
+                          {isOverdue ? '⚠️ En retard — ' : '📅 '}Prochain : {formatDate(m.next_maintenance_date)}
+                        </p>
+                      )}
+                      {m.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{m.description}</p>}
+                      {m.notes && <p className="text-xs text-gray-400 italic mt-1">{m.notes}</p>}
+
+                      {/* Éléments liés */}
+                      {linkedElements.length > 0 && (
+                        <div className="flex items-center gap-1 mt-2 flex-wrap">
+                          <Tag className="h-3 w-3 text-gray-400" />
+                          {linkedElements.map(el => {
+                            const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                            return (
+                              <span key={el.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: elType?.color }} />
+                                {el.label}
+                              </span>
+                            )
+                          })}
+                        </div>
+                      )}
+
+                      {/* Documents liés */}
+                      {linkedDocs.length > 0 && (
+                        <div className="flex items-center gap-1 mt-1 flex-wrap">
+                          <FileText className="h-3 w-3 text-gray-400" />
+                          {linkedDocs.map((doc: GreenSpaceDocument) => (
+                            <span key={doc.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                              {doc.name}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                    <button
+                      onClick={() => openEdit(m)}
+                      className="p-1 text-gray-400 hover:text-green-600"
+                      title="Modifier"
+                    >
+                      <Edit3 className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      onClick={() => { if (confirm('Supprimer cet entretien ?')) deleteMutation.mutate(m.id) }}
+                      className="p-1 text-gray-400 hover:text-red-600"
+                      title="Supprimer"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>

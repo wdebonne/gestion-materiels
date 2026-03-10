@@ -79,6 +79,37 @@ router.get('/types', authenticateToken, async (_req: AuthRequest, res: Response)
   }
 });
 
+// GET /maintenance-types - Liste des types d'entretien (autocomplete éditable)
+router.get('/maintenance-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const types = await db.query(
+      "SELECT DISTINCT maintenance_type FROM green_space_maintenances WHERE maintenance_type != '' ORDER BY maintenance_type"
+    );
+    const defaultTypes = ['tonte', 'elagage', 'taille', 'arrosage', 'desherbage', 'fertilisation', 'traitement_phytosanitaire', 'plantation', 'ramassage_feuilles', 'nettoyage', 'reparation', 'inspection', 'autre'];
+    const existingTypes = types.map((t: any) => t.maintenance_type);
+    const allTypes = [...new Set([...existingTypes, ...defaultTypes])].sort();
+    res.json({ success: true, data: allTypes });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== TYPES D'ÉLÉMENTS ========================
+
+router.get('/element-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const types = await db.query(
+      "SELECT DISTINCT element_type FROM green_space_elements WHERE element_type != '' ORDER BY element_type"
+    );
+    const defaultTypes = ['arbre', 'arbuste', 'fleur', 'mobilier_urbain', 'jeux', 'poubelle', 'banc', 'eclairage', 'cloture', 'allee', 'pelouse', 'bassin', 'autre'];
+    const existingTypes = types.map((t: any) => t.element_type);
+    const allTypes = [...new Set([...existingTypes, ...defaultTypes])].sort();
+    res.json({ success: true, data: allTypes });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // GET /:id - Détail d'un espace vert avec éléments
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -124,9 +155,23 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [req.params.id]
     );
 
+    // Récupérer les entretiens avec éléments et documents liés
+    const maintenances = await db.query(
+      'SELECT * FROM green_space_maintenances WHERE green_space_id = ? ORDER BY performed_date DESC, created_at DESC',
+      [req.params.id]
+    );
+    for (const m of maintenances as any[]) {
+      m.element_ids = (await db.query(
+        'SELECT element_id FROM green_space_maintenance_elements WHERE maintenance_id = ?', [m.id]
+      )).map((r: any) => r.element_id);
+      m.document_ids = (await db.query(
+        'SELECT document_id FROM green_space_maintenance_documents WHERE maintenance_id = ?', [m.id]
+      )).map((r: any) => r.document_id);
+    }
+
     res.json({
       success: true,
-      data: { ...space, elements, annotations, seasons, documents, groups }
+      data: { ...space, elements, annotations, seasons, documents, groups, maintenances }
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -557,23 +602,6 @@ router.get('/search/objects', authenticateToken, async (req: AuthRequest, res: R
   }
 });
 
-// ======================== TYPES D'ÉLÉMENTS ========================
-
-router.get('/element-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
-  try {
-    const types = await db.query(
-      "SELECT DISTINCT element_type FROM green_space_elements WHERE element_type != '' ORDER BY element_type"
-    );
-    // Ajouter les types par défaut s'ils n'existent pas
-    const defaultTypes = ['arbre', 'arbuste', 'fleur', 'mobilier_urbain', 'jeux', 'poubelle', 'banc', 'eclairage', 'cloture', 'allee', 'pelouse', 'bassin', 'autre'];
-    const existingTypes = types.map((t: any) => t.element_type);
-    const allTypes = [...new Set([...existingTypes, ...defaultTypes])].sort();
-    res.json({ success: true, data: allTypes });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
 // ======================== GROUPES DE COMPOSITION ========================
 
 // POST /:id/groups - Créer un groupe de composition
@@ -635,6 +663,101 @@ router.put('/groups/:groupId/elements', authenticateToken, requireSupervisor, as
     for (const eid of element_ids) {
       await db.execute('UPDATE green_space_elements SET group_id = ? WHERE id = ?', [req.params.groupId, eid]);
     }
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== ENTRETIENS ========================
+
+// POST /:id/maintenances - Créer un entretien
+router.post('/:id/maintenances', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { maintenance_type, title, description, performed_date, next_maintenance_date, performed_by, duration_minutes, cost, notes, element_ids, document_ids } = req.body;
+    if (!maintenance_type) return res.status(400).json({ success: false, message: 'Le type d\'entretien est requis' });
+
+    const now = new Date().toISOString();
+    const result = await db.execute(
+      `INSERT INTO green_space_maintenances (green_space_id, maintenance_type, title, description, performed_date, next_maintenance_date, performed_by, duration_minutes, cost, notes, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [req.params.id, maintenance_type, title || '', description || '', performed_date || null, next_maintenance_date || null, performed_by || '', duration_minutes || null, cost || null, notes || '', now, now]
+    );
+
+    const maintenanceId = result.lastInsertRowid;
+
+    // Lier les éléments
+    if (Array.isArray(element_ids)) {
+      for (const eid of element_ids) {
+        await db.execute('INSERT INTO green_space_maintenance_elements (maintenance_id, element_id) VALUES (?, ?)', [maintenanceId, eid]);
+      }
+      // Mettre à jour la date de dernier entretien des éléments
+      if (performed_date) {
+        for (const eid of element_ids) {
+          await db.execute('UPDATE green_space_elements SET last_maintenance_date = ? WHERE id = ?', [performed_date, eid]);
+        }
+      }
+      if (next_maintenance_date) {
+        for (const eid of element_ids) {
+          await db.execute('UPDATE green_space_elements SET next_maintenance_date = ? WHERE id = ?', [next_maintenance_date, eid]);
+        }
+      }
+    }
+
+    // Lier les documents
+    if (Array.isArray(document_ids)) {
+      for (const did of document_ids) {
+        await db.execute('INSERT INTO green_space_maintenance_documents (maintenance_id, document_id) VALUES (?, ?)', [maintenanceId, did]);
+      }
+    }
+
+    const created = await db.queryOne('SELECT * FROM green_space_maintenances WHERE id = ?', [maintenanceId]);
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// PUT /maintenances/:maintenanceId - Modifier un entretien
+router.put('/maintenances/:maintenanceId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { maintenance_type, title, description, performed_date, next_maintenance_date, performed_by, duration_minutes, cost, notes, element_ids, document_ids } = req.body;
+    const now = new Date().toISOString();
+
+    await db.execute(
+      `UPDATE green_space_maintenances SET maintenance_type = ?, title = ?, description = ?, performed_date = ?, next_maintenance_date = ?, performed_by = ?, duration_minutes = ?, cost = ?, notes = ?, updated_at = ? WHERE id = ?`,
+      [maintenance_type, title || '', description || '', performed_date || null, next_maintenance_date || null, performed_by || '', duration_minutes || null, cost || null, notes || '', now, req.params.maintenanceId]
+    );
+
+    // Re-lier les éléments
+    if (Array.isArray(element_ids)) {
+      await db.execute('DELETE FROM green_space_maintenance_elements WHERE maintenance_id = ?', [req.params.maintenanceId]);
+      for (const eid of element_ids) {
+        await db.execute('INSERT INTO green_space_maintenance_elements (maintenance_id, element_id) VALUES (?, ?)', [req.params.maintenanceId, eid]);
+      }
+    }
+
+    // Re-lier les documents
+    if (Array.isArray(document_ids)) {
+      await db.execute('DELETE FROM green_space_maintenance_documents WHERE maintenance_id = ?', [req.params.maintenanceId]);
+      for (const did of document_ids) {
+        await db.execute('INSERT INTO green_space_maintenance_documents (maintenance_id, document_id) VALUES (?, ?)', [req.params.maintenanceId, did]);
+      }
+    }
+
+    const updated = await db.queryOne('SELECT * FROM green_space_maintenances WHERE id = ?', [req.params.maintenanceId]);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /maintenances/:maintenanceId - Supprimer un entretien
+router.delete('/maintenances/:maintenanceId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.execute('DELETE FROM green_space_maintenance_elements WHERE maintenance_id = ?', [req.params.maintenanceId]);
+    await db.execute('DELETE FROM green_space_maintenance_documents WHERE maintenance_id = ?', [req.params.maintenanceId]);
+    await db.execute('DELETE FROM green_space_maintenances WHERE id = ?', [req.params.maintenanceId]);
     res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

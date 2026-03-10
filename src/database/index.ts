@@ -799,6 +799,42 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
+      )`,
+
+      // Entretiens des espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_maintenances (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        maintenance_type VARCHAR(100) NOT NULL,
+        title VARCHAR(255),
+        description ${textType},
+        performed_date DATE,
+        next_maintenance_date DATE,
+        performed_by VARCHAR(255),
+        duration_minutes INTEGER,
+        cost DECIMAL(10,2),
+        notes ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
+      )`,
+
+      // Liaison entretien <-> éléments
+      `CREATE TABLE IF NOT EXISTS green_space_maintenance_elements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        maintenance_id INTEGER NOT NULL,
+        element_id INTEGER NOT NULL,
+        FOREIGN KEY (maintenance_id) REFERENCES green_space_maintenances(id) ON DELETE CASCADE,
+        FOREIGN KEY (element_id) REFERENCES green_space_elements(id) ON DELETE CASCADE
+      )`,
+
+      // Liaison entretien <-> documents
+      `CREATE TABLE IF NOT EXISTS green_space_maintenance_documents (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        maintenance_id INTEGER NOT NULL,
+        document_id INTEGER NOT NULL,
+        FOREIGN KEY (maintenance_id) REFERENCES green_space_maintenances(id) ON DELETE CASCADE,
+        FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE
       )`
     ];
 
