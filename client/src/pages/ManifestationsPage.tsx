@@ -172,7 +172,7 @@ export default function ManifestationsPage() {
     queryKey: ['categories-list'],
     queryFn: async () => {
       const res = await api.get('/categories')
-      return res.data.data || res.data
+      return res.data.categories || res.data.data || []
     }
   })
 
@@ -183,7 +183,7 @@ export default function ManifestationsPage() {
     queryFn: async () => {
       if (!selectedCatForSub) return []
       const res = await api.get(`/categories/${selectedCatForSub}/subcategories`)
-      return res.data.data || res.data
+      return res.data.subcategories || res.data.data || []
     },
     enabled: !!selectedCatForSub
   })

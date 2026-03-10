@@ -677,6 +677,36 @@ class DatabaseManager {
         table: 'custom_fields_config',
         column: 'applicable_subcategories',
         type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // Manifestation stock: ajout champ état
+      {
+        table: 'manifestation_stock',
+        column: 'etat',
+        type: "VARCHAR(50) DEFAULT 'bon'"
+      },
+      // Manifestation stock: ajout champ lieu
+      {
+        table: 'manifestation_stock',
+        column: 'lieu',
+        type: "VARCHAR(255) DEFAULT ''"
+      },
+      // Manifestation stock: ajout champ type
+      {
+        table: 'manifestation_stock',
+        column: 'stock_type',
+        type: "VARCHAR(100) DEFAULT ''"
+      },
+      // Manifestation stock: lien catégorie
+      {
+        table: 'manifestation_stock',
+        column: 'category_id',
+        type: 'INTEGER'
+      },
+      // Manifestation stock: lien sous-catégorie
+      {
+        table: 'manifestation_stock',
+        column: 'subcategory_id',
+        type: 'INTEGER'
       }
     ];
 
