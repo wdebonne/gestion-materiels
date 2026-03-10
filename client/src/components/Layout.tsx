@@ -128,7 +128,10 @@ export default function Layout() {
     TrendingDown,
     'trending-down': TrendingDown,
     MapPin,
-    'map-pin': MapPin
+    'map-pin': MapPin,
+    FileSpreadsheet,
+    filespreadsheet: FileSpreadsheet,
+    'file-spreadsheet': FileSpreadsheet
   }
 
   // Navigation de base
@@ -143,13 +146,8 @@ export default function Layout() {
     baseNavigation.push({ name: t('nav.tracking'), href: '/tracking', icon: BarChart3 })
   }
 
-  // Import/Export (pas un plugin)
-  baseNavigation.push(
-    { name: t('nav.importExport'), href: '/import-export', icon: FileSpreadsheet }
-  )
-
-  // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map']
+  // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export']
   const pluginNavigation = menuPlugins.map((plugin: any) => {
     const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
     return {

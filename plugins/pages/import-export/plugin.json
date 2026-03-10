@@ -1,0 +1,103 @@
+{
+  "name": "Import / Export",
+  "slug": "import-export",
+  "version": "1.0.0",
+  "description": "Import et export de matériels au format Excel ou CSV",
+  "author": "Système",
+  "icon": "FileSpreadsheet",
+  "type": "menu",
+  "route": "import-export",
+  "config": {
+    "max_file_size_mb": 10,
+    "allowed_formats": ["csv", "xlsx", "xls"],
+    "export_formats": ["xlsx", "csv"]
+  },
+  "api": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/export",
+        "action": "export",
+        "description": "Exporter les matériels en Excel ou CSV"
+      },
+      {
+        "method": "GET",
+        "path": "/template",
+        "action": "download",
+        "description": "Télécharger le template d'import"
+      },
+      {
+        "method": "POST",
+        "path": "/import",
+        "action": "upload",
+        "description": "Importer des matériels depuis un fichier CSV/Excel"
+      }
+    ]
+  },
+  "pages": {
+    "index": {
+      "title": "Import / Export",
+      "layout": "default",
+      "components": [
+        {
+          "type": "header",
+          "title": "Import / Export",
+          "subtitle": "Importez et exportez vos matériels au format Excel ou CSV"
+        },
+        {
+          "type": "form",
+          "title": "Importer des matériels",
+          "fields": [
+            {
+              "name": "file",
+              "label": "Fichier CSV ou Excel",
+              "type": "file",
+              "accept": ".csv,.xlsx,.xls",
+              "required": true,
+              "placeholder": "Glissez-déposez un fichier ou cliquez pour sélectionner"
+            }
+          ],
+          "actions": [
+            {
+              "label": "Importer",
+              "action": "upload",
+              "icon": "Upload",
+              "variant": "primary"
+            },
+            {
+              "label": "Télécharger le template",
+              "action": "download",
+              "icon": "Download",
+              "variant": "outline",
+              "href": "/api/import-export/template"
+            }
+          ]
+        },
+        {
+          "type": "form",
+          "title": "Exporter les matériels",
+          "fields": [
+            {
+              "name": "format",
+              "label": "Format d'export",
+              "type": "select",
+              "options": [
+                { "value": "xlsx", "label": "Excel (.xlsx)" },
+                { "value": "csv", "label": "CSV (.csv)" }
+              ]
+            }
+          ],
+          "actions": [
+            {
+              "label": "Exporter",
+              "action": "download",
+              "icon": "Download",
+              "variant": "primary",
+              "href": "/api/import-export/export"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

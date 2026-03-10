@@ -369,6 +369,23 @@ const DEFAULT_PLUGINS = [
       default_zoom: 13,
       tile_provider: 'openstreetmap'
     })
+  },
+  {
+    name: 'Import / Export',
+    slug: 'import-export',
+    version: '1.0.0',
+    description: 'Import et export de matériels au format Excel ou CSV',
+    author: 'Système',
+    icon: 'FileSpreadsheet',
+    plugin_type: 'menu',
+    route: 'import-export',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      max_file_size_mb: 10,
+      allowed_formats: ['csv', 'xlsx', 'xls'],
+      export_formats: ['xlsx', 'csv']
+    })
   }
 ];
 

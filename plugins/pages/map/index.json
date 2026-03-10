@@ -1,0 +1,51 @@
+{
+  "title": "Cartographie",
+  "layout": "fullwidth",
+  "components": [
+    {
+      "type": "header",
+      "title": "Cartographie",
+      "subtitle": "Localisation géographique des équipements"
+    },
+    {
+      "type": "filters",
+      "fields": [
+        {
+          "name": "category",
+          "label": "Catégorie",
+          "type": "select",
+          "source": "categories"
+        },
+        {
+          "name": "status",
+          "label": "Statut",
+          "type": "select",
+          "options": [
+            { "value": "", "label": "Tous" },
+            { "value": "active", "label": "Actif" },
+            { "value": "inactive", "label": "Inactif" },
+            { "value": "maintenance", "label": "En maintenance" },
+            { "value": "out_of_service", "label": "Hors service" }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "stats",
+      "items": [
+        {
+          "label": "Équipements localisés",
+          "source": "located_count",
+          "icon": "MapPin",
+          "color": "bg-blue-100 text-blue-600"
+        },
+        {
+          "label": "Catégories",
+          "source": "category_count",
+          "icon": "Layers",
+          "color": "bg-green-100 text-green-600"
+        }
+      ]
+    }
+  ]
+}

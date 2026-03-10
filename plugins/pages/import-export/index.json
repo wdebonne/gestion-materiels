@@ -1,0 +1,64 @@
+{
+  "title": "Import / Export",
+  "layout": "default",
+  "components": [
+    {
+      "type": "header",
+      "title": "Import / Export",
+      "subtitle": "Importez et exportez vos matériels au format Excel ou CSV"
+    },
+    {
+      "type": "form",
+      "title": "Importer des matériels",
+      "fields": [
+        {
+          "name": "file",
+          "label": "Fichier CSV ou Excel",
+          "type": "file",
+          "accept": ".csv,.xlsx,.xls",
+          "required": true,
+          "placeholder": "Glissez-déposez un fichier ou cliquez pour sélectionner"
+        }
+      ],
+      "actions": [
+        {
+          "label": "Importer",
+          "action": "upload",
+          "icon": "Upload",
+          "variant": "primary"
+        },
+        {
+          "label": "Télécharger le template",
+          "action": "download",
+          "icon": "Download",
+          "variant": "outline",
+          "href": "/api/import-export/template"
+        }
+      ]
+    },
+    {
+      "type": "form",
+      "title": "Exporter les matériels",
+      "fields": [
+        {
+          "name": "format",
+          "label": "Format d'export",
+          "type": "select",
+          "options": [
+            { "value": "xlsx", "label": "Excel (.xlsx)" },
+            { "value": "csv", "label": "CSV (.csv)" }
+          ]
+        }
+      ],
+      "actions": [
+        {
+          "label": "Exporter",
+          "action": "download",
+          "icon": "Download",
+          "variant": "primary",
+          "href": "/api/import-export/export"
+        }
+      ]
+    }
+  ]
+}

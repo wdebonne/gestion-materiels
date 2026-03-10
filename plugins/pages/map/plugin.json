@@ -1,0 +1,78 @@
+{
+  "name": "Cartographie",
+  "slug": "map",
+  "version": "1.0.0",
+  "description": "Localisation géographique des équipements sur carte interactive",
+  "author": "Système",
+  "icon": "map-pin",
+  "type": "menu",
+  "route": "map",
+  "config": {
+    "default_center": [49.5833, 0.9500],
+    "default_zoom": 13,
+    "tile_provider": "openstreetmap"
+  },
+  "api": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/objects",
+        "query": "SELECT o.*, c.name as category_name, s.name as subcategory_name FROM objects o LEFT JOIN categories c ON o.category_id = c.id LEFT JOIN subcategories s ON o.subcategory_id = s.id WHERE o.location IS NOT NULL AND o.location != '' ORDER BY o.name ASC",
+        "description": "Liste des objets localisés"
+      }
+    ]
+  },
+  "pages": {
+    "index": {
+      "title": "Cartographie",
+      "layout": "fullwidth",
+      "components": [
+        {
+          "type": "header",
+          "title": "Cartographie",
+          "subtitle": "Localisation géographique des équipements"
+        },
+        {
+          "type": "filters",
+          "fields": [
+            {
+              "name": "category",
+              "label": "Catégorie",
+              "type": "select",
+              "source": "categories"
+            },
+            {
+              "name": "status",
+              "label": "Statut",
+              "type": "select",
+              "options": [
+                { "value": "", "label": "Tous" },
+                { "value": "active", "label": "Actif" },
+                { "value": "inactive", "label": "Inactif" },
+                { "value": "maintenance", "label": "En maintenance" },
+                { "value": "out_of_service", "label": "Hors service" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "stats",
+          "items": [
+            {
+              "label": "Équipements localisés",
+              "source": "located_count",
+              "icon": "MapPin",
+              "color": "bg-blue-100 text-blue-600"
+            },
+            {
+              "label": "Catégories",
+              "source": "category_count",
+              "icon": "Layers",
+              "color": "bg-green-100 text-green-600"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
