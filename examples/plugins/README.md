@@ -15,6 +15,7 @@ Les plugins système sont intégrés à l'application avec des pages React dédi
 | Amortissement | `depreciation` | `/depreciation` | Dépréciation et valeur résiduelle |
 | Cartographie | `map` | `/map` | Carte interactive Leaflet/OpenStreetMap |
 | Import / Export | `import-export` | `/import-export` | Import/Export CSV et Excel |
+| Manifestations | `manifestations` | `/manifestations` | Gestion événements et prêt matériel |
 
 Leurs fichiers de configuration se trouvent dans `plugins/pages/<slug>/` (plugin.json + index.json).
 

@@ -69,6 +69,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 📉 **Amortissement** *(plugin système)* : Dépréciation linéaire, graphiques Recharts
 - 🗺️ **Cartographie** *(plugin système)* : Carte interactive Leaflet/OpenStreetMap
 - 📥 **Import/Export** *(plugin système)* : Import CSV/Excel et export filtrable
+- 🎉 **Manifestations** *(plugin système)* : Gestion d'événements avec prêt/livraison/récupération de matériel et suivi de stock
 
 ### 🔌 Système de Plugins Avancé (Nouveau!)
 - 📦 Import de plugins via fichiers ZIP

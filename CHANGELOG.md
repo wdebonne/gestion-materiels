@@ -8,6 +8,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
+- **Plugin Manifestations** : Nouveau plugin système complet pour la gestion des manifestations et prêts de matériel :
+  - **3 tables base de données** : `manifestation_stock` (catalogue matériel), `manifestations` (événements), `manifestation_materials` (matériel par manifestation)
+  - **Gestion de stock** : Catalogue matériel avec quantités totales, disponibles, prêtées et réservées (prévisionnel) — calcul en temps réel
+  - **Workflow de statut** : Brouillon → Validé → Livré → Récupéré → Archivé (+ Annulé) avec transitions contrôlées côté serveur
+  - **Suivi livraison/récupération** : Contact livraison (nom, téléphone, email), adresse, date de livraison, quantités livrées vs récupérées
+  - **Impact stock automatique** : Validation = stock réservé, livraison = stock engagé, récupération = stock restitué
+  - **3 onglets frontend** : Manifestations (liste filtrée + stats), Stock (gestion catalogue), Archives (consultables en lecture seule)
+  - **Filtres avancés** : Par statut, dates, recherche textuelle
+  - **Modales détail & livraison** : Consultation complète et mise à jour des quantités livrées/récupérées
+  - **Route API complète** : CRUD stock, CRUD manifestations, transitions de statut, stats, disponibilité stock à une date
 - **Page Authentification** : Nouveau menu « Authentification » dans Paramètres avec 5 onglets de configuration :
   - **Général** : Politique de connexion (connexion locale, inscription publique, 2FA obligatoire, timeout session, blocage après tentatives échouées) et politique de mot de passe (longueur min, complexité, expiration)
   - **LDAP / Active Directory** : Connexion à un annuaire LDAP avec mapping d'attributs (uid, mail, givenName, sn), mapping de groupes vers rôles (admin, superviseur), création automatique d'utilisateurs, STARTTLS
@@ -21,6 +31,10 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Documentation plugins système** : Section dédiée dans `docs/PLUGIN_STRUCTURE.md` décrivant l'architecture built-in vs personnalisé, la navigation dynamique et l'activation/désactivation
 
 ### Modifié
+- **seed.ts** : Nouveau plugin `manifestations` ajouté aux `DEFAULT_PLUGINS` avec config JSON (statuts, export PDF, gestion stock)
+- **Layout.tsx** : Icône `PartyPopper` ajoutée au `iconMap`, slug `manifestations` ajouté à `builtInPluginSlugs`
+- **server.ts** : Route `/api/manifestations` câblée
+- **App.tsx** : Route frontend `/manifestations` ajoutée
 - **seed.ts** : Nouveau plugin `import-export` ajouté aux `DEFAULT_PLUGINS` avec config JSON (formats autorisés, taille max)
 - **Layout.tsx** : Import/Export retiré du `baseNavigation` codé en dur — ajouté à `builtInPluginSlugs` (`['calendar', 'reservations', 'depreciation', 'map', 'import-export']`) — sa visibilité dans la sidebar dépend désormais de l'activation du plugin — icône `FileSpreadsheet` ajoutée au `iconMap`
 - **ROADMAP_FONCTIONNALITES.md** : Import/Export marqué comme « Plugin système » au lieu de « Fait »

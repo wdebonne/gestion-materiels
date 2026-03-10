@@ -1,0 +1,61 @@
+{
+  "page": "index",
+  "title": "Manifestations",
+  "layout": "default",
+  "components": [
+    {
+      "type": "header",
+      "props": {
+        "title": "Manifestations",
+        "subtitle": "Gestion des manifestations et prêt de matériel",
+        "icon": "party-popper",
+        "actions": ["export-pdf", "new-manifestation", "new-stock"]
+      }
+    },
+    {
+      "type": "stats",
+      "props": {
+        "cards": [
+          { "label": "En cours", "key": "total", "color": "gray" },
+          { "label": "À venir", "key": "upcoming", "color": "blue" },
+          { "label": "Livré", "key": "delivered", "color": "yellow" },
+          { "label": "Archivées", "key": "archived", "color": "purple" },
+          { "label": "Articles stock", "key": "stockItems", "color": "green" }
+        ]
+      }
+    },
+    {
+      "type": "tabs",
+      "props": {
+        "tabs": [
+          { "id": "manifestations", "label": "Manifestations", "icon": "party-popper" },
+          { "id": "stock", "label": "Stock matériel", "icon": "package" },
+          { "id": "archives", "label": "Archives", "icon": "archive" }
+        ]
+      }
+    },
+    {
+      "type": "list",
+      "props": {
+        "tab": "manifestations",
+        "filters": ["search", "status", "date_range"],
+        "columns": ["title", "dates", "contact", "materials_summary", "status", "actions"]
+      }
+    },
+    {
+      "type": "stock-table",
+      "props": {
+        "tab": "stock",
+        "columns": ["name", "category", "total", "available", "lent", "reserved_future"],
+        "filters": ["search", "category"]
+      }
+    },
+    {
+      "type": "archive-list",
+      "props": {
+        "tab": "archives",
+        "columns": ["title", "dates", "contact", "materials_count", "total_value", "archived_at"]
+      }
+    }
+  ]
+}

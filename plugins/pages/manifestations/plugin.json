@@ -1,0 +1,39 @@
+{
+  "name": "Manifestations",
+  "slug": "manifestations",
+  "version": "1.0.0",
+  "description": "Gestion des manifestations avec prêt et suivi de matériel, stock, livraison et récupération",
+  "author": "Système",
+  "icon": "party-popper",
+  "type": "menu",
+  "route": "manifestations",
+  "config": {
+    "statuses": ["draft", "validated", "delivered", "recovered", "archived", "cancelled"],
+    "enable_pdf_export": true,
+    "enable_stock_management": true
+  },
+  "api": {
+    "endpoints": [
+      { "method": "GET", "path": "/manifestations", "description": "Liste des manifestations avec filtres" },
+      { "method": "GET", "path": "/manifestations/:id", "description": "Détail d'une manifestation" },
+      { "method": "POST", "path": "/manifestations", "description": "Créer une manifestation" },
+      { "method": "PUT", "path": "/manifestations/:id", "description": "Modifier une manifestation" },
+      { "method": "PUT", "path": "/manifestations/:id/status", "description": "Changer le statut" },
+      { "method": "PUT", "path": "/manifestations/:id/materials", "description": "Mettre à jour matériel livré/récupéré" },
+      { "method": "DELETE", "path": "/manifestations/:id", "description": "Supprimer une manifestation" },
+      { "method": "GET", "path": "/manifestations/stock", "description": "Stock avec disponibilités" },
+      { "method": "POST", "path": "/manifestations/stock", "description": "Ajouter article au stock" },
+      { "method": "PUT", "path": "/manifestations/stock/:id", "description": "Modifier article stock" },
+      { "method": "DELETE", "path": "/manifestations/stock/:id", "description": "Supprimer article stock" },
+      { "method": "GET", "path": "/manifestations/stats/summary", "description": "Statistiques globales" },
+      { "method": "GET", "path": "/manifestations/stock/availability", "description": "Disponibilité à date" }
+    ]
+  },
+  "pages": {
+    "index": {
+      "title": "Manifestations",
+      "layout": "default",
+      "components": ["header", "stats", "tabs", "list", "stock", "archives"]
+    }
+  }
+}

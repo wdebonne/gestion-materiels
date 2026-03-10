@@ -386,6 +386,23 @@ const DEFAULT_PLUGINS = [
       allowed_formats: ['csv', 'xlsx', 'xls'],
       export_formats: ['xlsx', 'csv']
     })
+  },
+  {
+    name: 'Manifestations',
+    slug: 'manifestations',
+    version: '1.0.0',
+    description: 'Gestion des manifestations avec prêt et suivi de matériel, stock, livraison et récupération',
+    author: 'Système',
+    icon: 'party-popper',
+    plugin_type: 'menu',
+    route: 'manifestations',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      statuses: ['draft', 'validated', 'delivered', 'recovered', 'archived', 'cancelled'],
+      enable_pdf_export: true,
+      enable_stock_management: true
+    })
   }
 ];
 

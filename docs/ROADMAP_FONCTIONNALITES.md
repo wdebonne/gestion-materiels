@@ -22,6 +22,7 @@
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | Moyen | Faible | ✅ Fait |
 | 12 | 🟢 Optionnel | WebSocket temps réel | Moyen | Moyen | ✅ Fait |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | Moyen | Fort | ✅ Fait |
+| 14 | 🔴 Haute | Manifestations (gestion matériel événementiel) | Élevé | Fort | ✅ Plugin système |
 
 ---
 
@@ -165,3 +166,20 @@
 - **Tables BDD :** `auth_config` (provider, is_active, config JSON)
 - **Routes API :** `/api/settings/auth` — GET, GET/:provider, PUT/:provider, POST/:provider/test
 - **Impact :** Intégration entreprise, SSO centralisé, sécurité renforcée
+
+### 14. Manifestations (gestion matériel événementiel)
+- **Description :** Plugin système pour gérer les manifestations/événements avec prêt, livraison et récupération de matériel.
+- **Fonctionnalités :**
+  - **Gestion de stock dédié** : Catalogue matériel avec quantités totales, disponibles (temps réel), prêtées et réservées (prévisionnel)
+  - **Manifestations** : CRUD complet avec dates, horaires, nombre de personnes attendues, notes intérieures/extérieures
+  - **Workflow de statut** : Brouillon → Validé → Livré → Récupéré → Archivé (+ Annulé), transitions contrôlées serveur
+  - **Contact livraison** : Nom, téléphone, email, adresse de livraison, date de livraison
+  - **Matériel par manifestation** : Quantités demandées, livrées, récupérées avec suivi unitaire
+  - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue
+  - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
+  - **Filtres** : Par statut, dates, recherche textuelle
+  - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
+- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`
+- **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
+- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison
+- **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel

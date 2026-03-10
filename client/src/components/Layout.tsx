@@ -31,7 +31,8 @@ import {
   MapPin,
   Sun,
   Moon,
-  Monitor
+  Monitor,
+  PartyPopper
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -131,7 +132,10 @@ export default function Layout() {
     'map-pin': MapPin,
     FileSpreadsheet,
     filespreadsheet: FileSpreadsheet,
-    'file-spreadsheet': FileSpreadsheet
+    'file-spreadsheet': FileSpreadsheet,
+    PartyPopper,
+    partypopper: PartyPopper,
+    'party-popper': PartyPopper
   }
 
   // Navigation de base
@@ -147,7 +151,7 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations']
   const pluginNavigation = menuPlugins.map((plugin: any) => {
     const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
     return {

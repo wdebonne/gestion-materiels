@@ -563,6 +563,56 @@ class DatabaseManager {
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
+      // Table du stock matériel manifestations
+      `CREATE TABLE IF NOT EXISTS manifestation_stock (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        description ${textType},
+        category VARCHAR(100) DEFAULT '',
+        quantity_total INTEGER NOT NULL DEFAULT 0,
+        unit VARCHAR(50) DEFAULT 'unité',
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
+      // Table des manifestations
+      `CREATE TABLE IF NOT EXISTS manifestations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        title VARCHAR(255) NOT NULL,
+        date_start DATE NOT NULL,
+        date_end DATE,
+        start_time VARCHAR(10),
+        end_time VARCHAR(10),
+        expected_people INTEGER DEFAULT 0,
+        contact_name VARCHAR(255),
+        contact_phone VARCHAR(50),
+        contact_email VARCHAR(255),
+        delivery_address ${textType},
+        delivery_date DATE,
+        notes_interior ${textType},
+        notes_exterior ${textType},
+        status VARCHAR(20) DEFAULT 'draft',
+        created_by INTEGER,
+        archived_at DATETIME,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Table de liaison matériel ↔ manifestation
+      `CREATE TABLE IF NOT EXISTS manifestation_materials (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        stock_id INTEGER NOT NULL,
+        quantity_requested INTEGER NOT NULL DEFAULT 0,
+        quantity_delivered INTEGER NOT NULL DEFAULT 0,
+        quantity_recovered INTEGER NOT NULL DEFAULT 0,
+        unit_value REAL DEFAULT 0,
+        notes ${textType},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE
+      )`,
+
       // Table de configuration de l'authentification (SSO, LDAP, Passkey)
       `CREATE TABLE IF NOT EXISTS auth_config (
         id INTEGER PRIMARY KEY ${autoIncrement},
