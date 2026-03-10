@@ -192,6 +192,61 @@ router.delete('/stock/:id', authenticateToken, requireSupervisor, async (req: Au
   }
 });
 
+// GET /stock/availability - Disponibilité stock à une date donnée
+router.get('/stock/availability', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { date } = req.query;
+    const targetDate = date || new Date().toISOString().split('T')[0];
+
+    const stock = await db.query('SELECT * FROM manifestation_stock ORDER BY category, name');
+    const enriched = await Promise.all(stock.map(async (item: any) => {
+      const engaged = await db.queryOne(`
+        SELECT COALESCE(SUM(mm.quantity_delivered), 0) as qty
+        FROM manifestation_materials mm
+        JOIN manifestations m ON m.id = mm.manifestation_id
+        WHERE mm.stock_id = ? AND m.status IN ('validated', 'delivered')
+          AND m.date_start <= ? AND (m.date_end >= ? OR m.date_end IS NULL)
+      `, [item.id, targetDate, targetDate]);
+
+      return {
+        ...item,
+        quantity_engaged: engaged?.qty || 0,
+        quantity_available: item.quantity_total - (engaged?.qty || 0)
+      };
+    }));
+
+    res.json({ success: true, data: enriched });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== STATS / DASHBOARD ========================
+
+// GET /stats/summary - Statistiques globales
+router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const total = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status != 'archived'");
+    const upcoming = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status IN ('draft', 'validated') AND date_start >= date('now')");
+    const delivered = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'delivered'");
+    const archived = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'archived'");
+    const stockItems = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestation_stock");
+
+    res.json({
+      success: true,
+      data: {
+        total: total?.cnt || 0,
+        upcoming: upcoming?.cnt || 0,
+        delivered: delivered?.cnt || 0,
+        archived: archived?.cnt || 0,
+        stockItems: stockItems?.cnt || 0
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ======================== MANIFESTATIONS ========================
 
 // GET / - Liste des manifestations avec filtres
@@ -456,62 +511,6 @@ router.delete('/:id', authenticateToken, requireSupervisor, async (req: AuthRequ
     await db.execute('DELETE FROM manifestations WHERE id = ?', [req.params.id]);
     await logService.info('other', `Manifestation supprimée: ${m.title}`, { userId: req.user!.userId });
     res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ======================== STATS / DASHBOARD ========================
-
-// GET /stats/summary - Statistiques globales
-router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: Response) => {
-  try {
-    const total = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status != 'archived'");
-    const upcoming = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status IN ('draft', 'validated') AND date_start >= date('now')");
-    const delivered = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'delivered'");
-    const archived = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'archived'");
-    const stockItems = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestation_stock");
-
-    res.json({
-      success: true,
-      data: {
-        total: total?.cnt || 0,
-        upcoming: upcoming?.cnt || 0,
-        delivered: delivered?.cnt || 0,
-        archived: archived?.cnt || 0,
-        stockItems: stockItems?.cnt || 0
-      }
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// GET /stock/availability - Disponibilité stock à une date donnée
-router.get('/stock/availability', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const { date } = req.query;
-    const targetDate = date || new Date().toISOString().split('T')[0];
-
-    const stock = await db.query('SELECT * FROM manifestation_stock ORDER BY category, name');
-    const enriched = await Promise.all(stock.map(async (item: any) => {
-      // Quantité engagée à cette date (manifs qui chevauchent la date et sont validées/livrées)
-      const engaged = await db.queryOne(`
-        SELECT COALESCE(SUM(mm.quantity_delivered), 0) as qty
-        FROM manifestation_materials mm
-        JOIN manifestations m ON m.id = mm.manifestation_id
-        WHERE mm.stock_id = ? AND m.status IN ('validated', 'delivered')
-          AND m.date_start <= ? AND (m.date_end >= ? OR m.date_end IS NULL)
-      `, [item.id, targetDate, targetDate]);
-
-      return {
-        ...item,
-        quantity_engaged: engaged?.qty || 0,
-        quantity_available: item.quantity_total - (engaged?.qty || 0)
-      };
-    }));
-
-    res.json({ success: true, data: enriched });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
