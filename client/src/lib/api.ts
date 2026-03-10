@@ -255,3 +255,145 @@ export interface Maintenance {
   addToCalendar: boolean
   createdAt: string
 }
+
+// ======================== MANIFESTATIONS ========================
+
+export interface ManifestationStockItem {
+  id: number
+  name: string
+  description: string
+  category: string
+  quantity_total: number
+  unit: string
+  quantity_available: number
+  quantity_lent: number
+  quantity_reserved_future: number
+  created_at: string
+  updated_at: string
+}
+
+export interface ManifestationMaterial {
+  id?: number
+  stock_id: number
+  stock_name?: string
+  unit?: string
+  stock_category?: string
+  quantity_requested: number
+  quantity_delivered: number
+  quantity_recovered: number
+  unit_value: number
+  notes: string
+  stock_total?: number
+}
+
+export interface Manifestation {
+  id: number
+  title: string
+  date_start: string
+  date_end: string
+  start_time: string
+  end_time: string
+  expected_people: number
+  contact_name: string
+  contact_phone: string
+  contact_email: string
+  delivery_address: string
+  delivery_date: string
+  notes_interior: string
+  notes_exterior: string
+  status: string
+  created_by: number
+  created_by_name: string
+  archived_at: string
+  created_at: string
+  updated_at: string
+  materials: ManifestationMaterial[]
+}
+
+export interface ManifestationStats {
+  total: number
+  upcoming: number
+  delivered: number
+  archived: number
+  stockItems: number
+}
+
+export interface ManifestationFilters {
+  status?: string
+  search?: string
+  archived?: boolean
+  date_from?: string
+  date_to?: string
+}
+
+export interface ManifestationFormData {
+  title: string
+  date_start: string
+  date_end?: string
+  start_time?: string
+  end_time?: string
+  expected_people?: number
+  contact_name?: string
+  contact_phone?: string
+  contact_email?: string
+  delivery_address?: string
+  delivery_date?: string
+  notes_interior?: string
+  notes_exterior?: string
+  materials?: Omit<ManifestationMaterial, 'id' | 'stock_name' | 'unit' | 'stock_category' | 'stock_total'>[]
+}
+
+export interface StockFormData {
+  name: string
+  description?: string
+  category?: string
+  quantity_total: number
+  unit?: string
+}
+
+// --- API Manifestations ---
+
+export const manifestationApi = {
+  // Manifestations CRUD
+  getAll: (filters?: ManifestationFilters) => {
+    const p = new URLSearchParams()
+    if (filters?.status) p.append('status', filters.status)
+    if (filters?.search) p.append('search', filters.search)
+    if (filters?.archived) p.append('archived', 'true')
+    if (filters?.date_from) p.append('date_from', filters.date_from)
+    if (filters?.date_to) p.append('date_to', filters.date_to)
+    return api.get<{ success: boolean; data: Manifestation[] }>(`/manifestations?${p.toString()}`)
+  },
+  getById: (id: number) =>
+    api.get<{ success: boolean; data: Manifestation }>(`/manifestations/${id}`),
+  create: (data: ManifestationFormData) =>
+    api.post<{ success: boolean; data: Manifestation }>('/manifestations', data),
+  update: (id: number, data: ManifestationFormData) =>
+    api.put<{ success: boolean; data: Manifestation }>(`/manifestations/${id}`, data),
+  delete: (id: number) =>
+    api.delete<{ success: boolean }>(`/manifestations/${id}`),
+  updateStatus: (id: number, status: string) =>
+    api.put<{ success: boolean }>(`/manifestations/${id}/status`, { status }),
+  updateMaterials: (id: number, materials: Partial<ManifestationMaterial>[]) =>
+    api.put<{ success: boolean }>(`/manifestations/${id}/materials`, { materials }),
+
+  // Stats
+  getStats: () =>
+    api.get<{ success: boolean; data: ManifestationStats }>('/manifestations/stats/summary'),
+
+  // Stock
+  getStock: () =>
+    api.get<{ success: boolean; data: ManifestationStockItem[] }>('/manifestations/stock'),
+  getStockCategories: () =>
+    api.get<{ success: boolean; data: string[] }>('/manifestations/stock/categories'),
+  getStockAvailability: (date?: string) => {
+    const p = date ? `?date=${date}` : ''
+    return api.get<{ success: boolean; data: ManifestationStockItem[] }>(`/manifestations/stock/availability${p}`)
+  },
+  createStock: (data: StockFormData) =>
+    api.post<{ success: boolean; data: ManifestationStockItem }>('/manifestations/stock', data),
+  updateStock: (id: number, data: StockFormData) =>
+    api.put<{ success: boolean; data: ManifestationStockItem }>(`/manifestations/stock/${id}`, data),
+  deleteStock: (id: number) =>
+    api.delete<{ success: boolean }>(`/manifestations/stock/${id}`),
+}

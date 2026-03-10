@@ -9,32 +9,13 @@ import {
   Card, CardBody, CardHeader, CardTitle, Badge, Alert, Tabs, Tab, TextArea
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
-import api from '@/lib/api'
+import {
+  manifestationApi,
+  type Manifestation,
+  type ManifestationStockItem as StockItem,
+  type ManifestationMaterial as ManifMaterial
+} from '@/lib/api'
 import toast from 'react-hot-toast'
-
-// ==================== TYPES ====================
-
-interface StockItem {
-  id: number; name: string; description: string; category: string
-  quantity_total: number; unit: string; quantity_available: number
-  quantity_lent: number; quantity_reserved_future: number
-}
-
-interface ManifMaterial {
-  id?: number; stock_id: number; stock_name?: string; unit?: string; stock_category?: string
-  quantity_requested: number; quantity_delivered: number; quantity_recovered: number
-  unit_value: number; notes: string; stock_total?: number
-}
-
-interface Manifestation {
-  id: number; title: string; date_start: string; date_end: string
-  start_time: string; end_time: string; expected_people: number
-  contact_name: string; contact_phone: string; contact_email: string
-  delivery_address: string; delivery_date: string
-  notes_interior: string; notes_exterior: string
-  status: string; created_by_name: string; archived_at: string
-  created_at: string; materials: ManifMaterial[]
-}
 
 // ==================== CONSTANTES ====================
 
@@ -119,13 +100,13 @@ export default function ManifestationsPage() {
   const { data: manifestations = [], isLoading } = useQuery({
     queryKey: ['manifestations', statusFilter, search, showArchived, dateFrom, dateTo],
     queryFn: async () => {
-      const p = new URLSearchParams()
-      if (statusFilter) p.append('status', statusFilter)
-      if (search) p.append('search', search)
-      if (showArchived) p.append('archived', 'true')
-      if (dateFrom) p.append('date_from', dateFrom)
-      if (dateTo) p.append('date_to', dateTo)
-      const res = await api.get(`/manifestations?${p.toString()}`)
+      const res = await manifestationApi.getAll({
+        status: statusFilter || undefined,
+        search: search || undefined,
+        archived: showArchived || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined
+      })
       return res.data.data
     }
   })
@@ -133,7 +114,7 @@ export default function ManifestationsPage() {
   const { data: stock = [], isLoading: stockLoading } = useQuery({
     queryKey: ['manifestation-stock'],
     queryFn: async () => {
-      const res = await api.get('/manifestations/stock')
+      const res = await manifestationApi.getStock()
       return res.data.data
     }
   })
@@ -141,7 +122,7 @@ export default function ManifestationsPage() {
   const { data: stockCategories = [] } = useQuery({
     queryKey: ['manifestation-stock-categories'],
     queryFn: async () => {
-      const res = await api.get('/manifestations/stock/categories')
+      const res = await manifestationApi.getStockCategories()
       return res.data.data
     }
   })
@@ -149,7 +130,7 @@ export default function ManifestationsPage() {
   const { data: stats } = useQuery({
     queryKey: ['manifestation-stats'],
     queryFn: async () => {
-      const res = await api.get('/manifestations/stats/summary')
+      const res = await manifestationApi.getStats()
       return res.data.data
     }
   })
@@ -158,8 +139,8 @@ export default function ManifestationsPage() {
 
   const createManifMutation = useMutation({
     mutationFn: (data: any) => editingManif
-      ? api.put(`/manifestations/${editingManif.id}`, data)
-      : api.post('/manifestations', data),
+      ? manifestationApi.update(editingManif.id, data)
+      : manifestationApi.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
@@ -174,7 +155,7 @@ export default function ManifestationsPage() {
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: number; status: string }) =>
-      api.put(`/manifestations/${id}/status`, { status }),
+      manifestationApi.updateStatus(id, status),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
@@ -186,7 +167,7 @@ export default function ManifestationsPage() {
 
   const updateMaterialsMutation = useMutation({
     mutationFn: ({ id, materials }: { id: number; materials: any[] }) =>
-      api.put(`/manifestations/${id}/materials`, { materials }),
+      manifestationApi.updateMaterials(id, materials),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
@@ -197,7 +178,7 @@ export default function ManifestationsPage() {
   })
 
   const deleteManifMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/manifestations/${id}`),
+    mutationFn: (id: number) => manifestationApi.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
@@ -209,8 +190,8 @@ export default function ManifestationsPage() {
 
   const createStockMutation = useMutation({
     mutationFn: (data: any) => editingStock
-      ? api.put(`/manifestations/stock/${editingStock.id}`, data)
-      : api.post('/manifestations/stock', data),
+      ? manifestationApi.updateStock(editingStock.id, data)
+      : manifestationApi.createStock(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock-categories'] })
@@ -223,7 +204,7 @@ export default function ManifestationsPage() {
   })
 
   const deleteStockMutation = useMutation({
-    mutationFn: (id: number) => api.delete(`/manifestations/stock/${id}`),
+    mutationFn: (id: number) => manifestationApi.deleteStock(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
       setDeleteConfirm(null)
@@ -827,7 +808,7 @@ function ArchivesTab() {
   const { data: archived = [], isLoading } = useQuery({
     queryKey: ['manifestations', 'archived'],
     queryFn: async () => {
-      const res = await api.get('/manifestations?archived=true')
+      const res = await manifestationApi.getAll({ archived: true })
       return res.data.data
     }
   })
