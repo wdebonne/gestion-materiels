@@ -232,6 +232,15 @@ const GROUP_TYPES = [
   { value: 'autre', label: 'Autre', icon: '📍', color: '#6b7280' },
 ]
 
+/** Parse zone_points from JSON string (shared helper) */
+function parseZonePoints(zp: string | null | undefined): { x: number; y: number }[] {
+  if (!zp) return []
+  try {
+    const parsed = typeof zp === 'string' ? JSON.parse(zp) : zp
+    return Array.isArray(parsed) ? parsed : []
+  } catch { return [] }
+}
+
 // ======================== COMPOSANT PRINCIPAL ========================
 
 export default function EspacesVertsPage() {
@@ -1362,15 +1371,6 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
 
   const removeLastZonePoint = () => {
     setZonePoints(prev => prev.slice(0, -1))
-  }
-
-  /** Parse zone_points from JSON string */
-  const parseZonePoints = (zp: string | null | undefined): { x: number; y: number }[] => {
-    if (!zp) return []
-    try {
-      const parsed = typeof zp === 'string' ? JSON.parse(zp) : zp
-      return Array.isArray(parsed) ? parsed : []
-    } catch { return [] }
   }
 
   const clearZone = (type: 'element' | 'group', id: number) => {
@@ -3414,6 +3414,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
   const [showCreateSnapshot, setShowCreateSnapshot] = useState(false)
   const [snapshotLabel, setSnapshotLabel] = useState('')
   const [snapshotNotes, setSnapshotNotes] = useState('')
+  const [showArchivedPDF, setShowArchivedPDF] = useState(false)
 
   // Récupérer les archives (snapshots + données source si cloné)
   const { data: archives } = useQuery({
@@ -3599,15 +3600,27 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
           {selectedSnapshotId && snapshotDetail ? (
             <>
               <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
-                  <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
-                    <Camera className="h-4 w-4" />
-                    {compareMode ? 'Archivé' : 'Détail du snapshot'} — {snapshotDetail.label}
-                  </h5>
-                  <p className="text-xs text-gray-500">{formatDate(snapshotDetail.snapshot_date)}</p>
+                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600 flex items-center justify-between">
+                  <div>
+                    <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
+                      <Camera className="h-4 w-4" />
+                      {compareMode ? 'Archivé' : 'Détail du snapshot'} — {snapshotDetail.label}
+                    </h5>
+                    <p className="text-xs text-gray-500">{formatDate(snapshotDetail.snapshot_date)}</p>
+                  </div>
+                  {snapshotDetail.plan_image && (
+                    <button
+                      onClick={() => setShowArchivedPDF(true)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+                      title="Exporter le plan archivé en PDF"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Export PDF
+                    </button>
+                  )}
                 </div>
 
-                {/* Plan archivé */}
+                {/* Plan archivé avec repères, zones et annotations */}
                 {snapshotDetail.plan_image && (
                   <div className="relative bg-gray-100 dark:bg-gray-900" style={{ minHeight: '250px' }}>
                     <img
@@ -3616,23 +3629,64 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                       className="w-full object-contain"
                       style={{ maxHeight: '400px' }}
                     />
-                    {/* Annotations overlay */}
-                    {snapshotDetail.annotations_data?.map((ann: any, i: number) => (
-                      <div
-                        key={i}
-                        className="absolute text-xs font-bold px-1.5 py-0.5 rounded shadow"
-                        style={{
-                          left: `${ann.pos_x}%`,
-                          top: `${ann.pos_y}%`,
-                          transform: 'translate(-50%, -50%)',
-                          backgroundColor: ann.color || '#22c55e',
-                          color: '#fff'
-                        }}
-                      >
-                        {ann.icon && <span className="mr-0.5">{ann.icon}</span>}
-                        {ann.label}
+                    {/* SVG zones polygones */}
+                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                      {(snapshotDetail.elements_data || []).filter((el: any) => el.zone_points).map((el: any, i: number) => {
+                        const pts = parseZonePoints(el.zone_points)
+                        if (pts.length < 3) return null
+                        const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                        const color = typeInfo?.color || '#22c55e'
+                        const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
+                        return <polygon key={`sz-el-${i}`} points={pointsStr} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.7} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                      })}
+                      {(snapshotDetail.groups_data || []).filter((g: any) => g.zone_points).map((g: any, i: number) => {
+                        const pts = parseZonePoints(g.zone_points)
+                        if (pts.length < 3) return null
+                        const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+                        const color = g.color || typeInfo?.color || '#8b5cf6'
+                        const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
+                        return <polygon key={`sz-grp-${i}`} points={pointsStr} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={0.5} strokeOpacity={0.8} strokeLinejoin="round" strokeDasharray="6 3" vectorEffect="non-scaling-stroke" />
+                      })}
+                    </svg>
+                    {/* Markers éléments */}
+                    {(snapshotDetail.elements_data || []).filter((el: any) => el.pos_x != null && el.pos_y != null).map((el: any, i: number) => {
+                      const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                      return (
+                        <div key={`sel-${i}`} className="absolute" style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
+                          <div className="w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: typeInfo?.color || '#22c55e' }}>
+                            <span className="text-white font-bold" style={{ fontSize: '7px' }}>{el.code ? el.code.substring(0, 2) : ''}</span>
+                          </div>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
+                            {el.code || el.label}
+                          </div>
+                        </div>
+                      )
+                    })}
+                    {/* Markers annotations */}
+                    {(snapshotDetail.annotations_data || []).filter((ann: any) => ann.pos_x != null && ann.pos_y != null).map((ann: any, i: number) => (
+                      <div key={`sann-${i}`} className="absolute" style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
+                        <div className="w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center" style={{ backgroundColor: ann.color || '#22c55e' }}>
+                          <MapPin className="h-3 w-3 text-white" />
+                        </div>
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px' }}>
+                          {ann.label}
+                        </div>
                       </div>
                     ))}
+                    {/* Markers groupes */}
+                    {(snapshotDetail.groups_data || []).filter((g: any) => g.pos_x != null && g.pos_y != null).map((g: any, i: number) => {
+                      const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+                      return (
+                        <div key={`sgrp-${i}`} className="absolute" style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
+                          <div className="w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: g.color || typeInfo?.color || '#8b5cf6' }}>
+                            <Layers className="h-4 w-4 text-white" />
+                          </div>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
+                            {g.name}
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
 
@@ -3688,7 +3742,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                     <p className="text-xs text-green-600 dark:text-green-400">Statut : {space.status}</p>
                   </div>
 
-                  {/* Plan actuel */}
+                  {/* Plan actuel avec repères, zones et annotations */}
                   {space.plan_image && (
                     <div className="relative bg-gray-100 dark:bg-gray-900" style={{ minHeight: '250px' }}>
                       <img
@@ -3697,22 +3751,64 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                         className="w-full object-contain"
                         style={{ maxHeight: '400px' }}
                       />
-                      {space.annotations?.map((ann, i) => (
-                        <div
-                          key={i}
-                          className="absolute text-xs font-bold px-1.5 py-0.5 rounded shadow"
-                          style={{
-                            left: `${ann.pos_x}%`,
-                            top: `${ann.pos_y}%`,
-                            transform: 'translate(-50%, -50%)',
-                            backgroundColor: ann.color || '#22c55e',
-                            color: '#fff'
-                          }}
-                        >
-                          {ann.icon && <span className="mr-0.5">{ann.icon}</span>}
-                          {ann.label}
+                      {/* SVG zones polygones */}
+                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
+                        {(space.elements || []).filter(el => el.zone_points).map(el => {
+                          const pts = parseZonePoints(el.zone_points)
+                          if (pts.length < 3) return null
+                          const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                          const color = typeInfo?.color || '#22c55e'
+                          const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
+                          return <polygon key={`cz-el-${el.id}`} points={pointsStr} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.7} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                        })}
+                        {(space.groups || []).filter(g => g.zone_points).map(g => {
+                          const pts = parseZonePoints(g.zone_points)
+                          if (pts.length < 3) return null
+                          const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+                          const color = g.color || typeInfo?.color || '#8b5cf6'
+                          const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
+                          return <polygon key={`cz-grp-${g.id}`} points={pointsStr} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={0.5} strokeOpacity={0.8} strokeLinejoin="round" strokeDasharray="6 3" vectorEffect="non-scaling-stroke" />
+                        })}
+                      </svg>
+                      {/* Markers éléments */}
+                      {(space.elements || []).filter(el => el.pos_x != null && el.pos_y != null).map(el => {
+                        const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
+                        return (
+                          <div key={`cel-${el.id}`} className="absolute" style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
+                            <div className="w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: typeInfo?.color || '#22c55e' }}>
+                              <span className="text-white font-bold" style={{ fontSize: '7px' }}>{el.code ? el.code.substring(0, 2) : ''}</span>
+                            </div>
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
+                              {el.code || el.label}
+                            </div>
+                          </div>
+                        )
+                      })}
+                      {/* Markers annotations */}
+                      {(space.annotations || []).filter(ann => ann.pos_x != null && ann.pos_y != null).map((ann, i) => (
+                        <div key={`cann-${i}`} className="absolute" style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
+                          <div className="w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center" style={{ backgroundColor: ann.color || '#22c55e' }}>
+                            <MapPin className="h-3 w-3 text-white" />
+                          </div>
+                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px' }}>
+                            {ann.label}
+                          </div>
                         </div>
                       ))}
+                      {/* Markers groupes */}
+                      {(space.groups || []).filter(g => g.pos_x != null && g.pos_y != null).map(g => {
+                        const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+                        return (
+                          <div key={`cgrp-${g.id}`} className="absolute" style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
+                            <div className="w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: g.color || typeInfo?.color || '#8b5cf6' }}>
+                              <Layers className="h-4 w-4 text-white" />
+                            </div>
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
+                              {g.name}
+                            </div>
+                          </div>
+                        )
+                      })}
                     </div>
                   )}
 
@@ -3857,6 +3953,23 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
             </div>
           )}
         </div>
+      )}
+
+      {/* Modal export PDF plan archivé */}
+      {showArchivedPDF && snapshotDetail && (
+        <PlanPDFExport
+          space={{
+            name: `${space.name} — Snapshot ${snapshotDetail.label}`,
+            address: space.address,
+            space_type: space.space_type,
+            area_m2: space.area_m2,
+            plan_image: snapshotDetail.plan_image,
+            elements: snapshotDetail.elements_data || [],
+            groups: snapshotDetail.groups_data || [],
+            annotations: snapshotDetail.annotations_data || [],
+          }}
+          onClose={() => setShowArchivedPDF(false)}
+        />
       )}
     </div>
   )
