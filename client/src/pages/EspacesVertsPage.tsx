@@ -1269,8 +1269,6 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
               </div>
             )
           })}
-            ))
-          })}
 
           {/* Groupes de composition positionnés */}
           {groups.filter(g => g.pos_x != null && g.pos_y != null).map(g => {
