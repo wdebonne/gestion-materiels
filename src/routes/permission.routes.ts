@@ -187,6 +187,134 @@ router.get('/modules', authenticateToken, requireAdmin, async (req: AuthRequest,
   }
 });
 
+// ==================== PERMISSIONS PLUGINS ====================
+
+// GET /api/permissions/plugins - Récupérer les permissions plugins pour tous les rôles
+router.get('/plugins', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const plugins = await db.query('SELECT id, name, slug, icon, plugin_type, is_active FROM plugins ORDER BY name');
+    const permissions = await db.query('SELECT * FROM plugin_permissions');
+
+    // Structurer : { pluginId: { supervisor: { canAccess }, user: { canAccess } } }
+    const permMap: Record<number, Record<string, boolean>> = {};
+    for (const p of permissions) {
+      if (!permMap[p.plugin_id]) permMap[p.plugin_id] = {};
+      permMap[p.plugin_id][p.role] = !!p.can_access;
+    }
+
+    res.json({
+      success: true,
+      plugins: plugins.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        icon: p.icon,
+        pluginType: p.plugin_type,
+        isActive: !!p.is_active,
+        permissions: {
+          supervisor: permMap[p.id]?.supervisor ?? true,
+          user: permMap[p.id]?.user ?? true
+        }
+      }))
+    });
+  } catch (error: any) {
+    console.error('Erreur get plugin permissions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/permissions/plugins/:pluginId/role/:role - Mettre à jour la permission plugin d'un rôle
+router.put('/plugins/:pluginId/role/:role', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { pluginId, role } = req.params;
+    const { canAccess } = req.body;
+
+    if (!['supervisor', 'user'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Rôle invalide' });
+    }
+
+    const existing = await db.queryOne(
+      'SELECT id FROM plugin_permissions WHERE plugin_id = ? AND role = ?',
+      [pluginId, role]
+    );
+
+    if (existing) {
+      await db.execute(
+        'UPDATE plugin_permissions SET can_access = ?, updated_at = ? WHERE plugin_id = ? AND role = ?',
+        [canAccess ? 1 : 0, new Date().toISOString(), pluginId, role]
+      );
+    } else {
+      await db.execute(
+        'INSERT INTO plugin_permissions (plugin_id, role, can_access) VALUES (?, ?, ?)',
+        [pluginId, role, canAccess ? 1 : 0]
+      );
+    }
+
+    res.json({ success: true, message: 'Permission plugin mise à jour' });
+  } catch (error: any) {
+    console.error('Erreur update plugin permission:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// GET /api/permissions/plugins/user/:userId - Récupérer les permissions plugins d'un utilisateur
+router.get('/plugins/user/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { userId } = req.params;
+    const permissions = await db.query(
+      'SELECT * FROM user_plugin_permissions WHERE user_id = ?',
+      [userId]
+    );
+
+    const permMap: Record<number, boolean> = {};
+    for (const p of permissions) {
+      permMap[p.plugin_id] = !!p.can_access;
+    }
+
+    res.json({ success: true, permissions: permMap });
+  } catch (error: any) {
+    console.error('Erreur get user plugin permissions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// PUT /api/permissions/plugins/:pluginId/user/:userId - Mettre à jour la permission plugin d'un utilisateur
+router.put('/plugins/:pluginId/user/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { pluginId, userId } = req.params;
+    const { canAccess, remove } = req.body;
+
+    if (remove) {
+      await db.execute(
+        'DELETE FROM user_plugin_permissions WHERE plugin_id = ? AND user_id = ?',
+        [pluginId, userId]
+      );
+    } else {
+      const existing = await db.queryOne(
+        'SELECT id FROM user_plugin_permissions WHERE plugin_id = ? AND user_id = ?',
+        [pluginId, userId]
+      );
+
+      if (existing) {
+        await db.execute(
+          'UPDATE user_plugin_permissions SET can_access = ?, updated_at = ? WHERE plugin_id = ? AND user_id = ?',
+          [canAccess ? 1 : 0, new Date().toISOString(), pluginId, userId]
+        );
+      } else {
+        await db.execute(
+          'INSERT INTO user_plugin_permissions (user_id, plugin_id, can_access) VALUES (?, ?, ?)',
+          [userId, pluginId, canAccess ? 1 : 0]
+        );
+      }
+    }
+
+    res.json({ success: true, message: 'Permission plugin utilisateur mise à jour' });
+  } catch (error: any) {
+    console.error('Erreur update user plugin permission:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // GET /api/permissions/modules/:moduleName/group/:role - Récupérer les permissions module d'un groupe
 router.get('/modules/:moduleName/group/:role', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {

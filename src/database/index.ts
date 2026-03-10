@@ -664,6 +664,31 @@ class DatabaseManager {
         updated_at DATETIME ${timestampDefault}
       )`,
 
+      // Permissions d'accès aux plugins par rôle
+      `CREATE TABLE IF NOT EXISTS plugin_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        plugin_id INTEGER NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        can_access ${boolType} DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (plugin_id) REFERENCES plugins(id) ON DELETE CASCADE,
+        UNIQUE(plugin_id, role)
+      )`,
+
+      // Permissions d'accès aux plugins par utilisateur (override individuel)
+      `CREATE TABLE IF NOT EXISTS user_plugin_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        user_id INTEGER NOT NULL,
+        plugin_id INTEGER NOT NULL,
+        can_access ${boolType} DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (plugin_id) REFERENCES plugins(id) ON DELETE CASCADE,
+        UNIQUE(user_id, plugin_id)
+      )`,
+
       // ======================== ESPACES VERTS ========================
 
       // Table principale des espaces verts
@@ -758,6 +783,7 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`
       )`
     ];
 

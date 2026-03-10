@@ -72,12 +72,52 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/plugins/menu - Liste des plugins de type menu (pour la sidebar)
+// GET /api/plugins/menu - Liste des plugins de type menu (pour la sidebar, filtrée par permissions)
 router.get('/menu', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const plugins = await db.query('SELECT * FROM plugins WHERE is_active = 1 AND plugin_type = ? ORDER BY name', ['menu']);
+    const userId = req.user!.userId;
+    const userRole = req.user!.role;
 
-    res.json(plugins.map((p: any) => ({
+    // Les admins voient tout
+    if (userRole === 'admin') {
+      return res.json(plugins.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        slug: p.slug,
+        route: p.route || p.slug,
+        icon: p.icon,
+        config: p.config ? JSON.parse(p.config) : {}
+      })));
+    }
+
+    // Récupérer les permissions par rôle et individuelles
+    const rolePerms = await db.query(
+      'SELECT plugin_id, can_access FROM plugin_permissions WHERE role = ?',
+      [userRole]
+    );
+    const userPerms = await db.query(
+      'SELECT plugin_id, can_access FROM user_plugin_permissions WHERE user_id = ?',
+      [userId]
+    );
+
+    const rolePermMap: Record<number, boolean> = {};
+    for (const rp of rolePerms) {
+      rolePermMap[rp.plugin_id] = !!rp.can_access;
+    }
+    const userPermMap: Record<number, boolean> = {};
+    for (const up of userPerms) {
+      userPermMap[up.plugin_id] = !!up.can_access;
+    }
+
+    // Filtrer : permission individuelle > permission rôle > autorisé par défaut
+    const filtered = plugins.filter((p: any) => {
+      if (userPermMap[p.id] !== undefined) return userPermMap[p.id];
+      if (rolePermMap[p.id] !== undefined) return rolePermMap[p.id];
+      return true; // Par défaut autorisé si pas de config
+    });
+
+    res.json(filtered.map((p: any) => ({
       id: p.id,
       name: p.name,
       slug: p.slug,
