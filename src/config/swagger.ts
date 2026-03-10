@@ -149,6 +149,13 @@ const options: swaggerJSDoc.Options = {
       { name: 'Logs', description: 'Journaux d\'activité' },
       { name: 'Webhooks', description: 'Configuration des webhooks' },
       { name: 'Security', description: 'Sécurité et rotation JWT' },
+      { name: 'QR Code', description: 'Génération de QR codes' },
+      { name: 'API Tokens', description: 'Gestion des tokens API' },
+      { name: 'Import/Export', description: 'Import et export de données' },
+      { name: 'Réservations', description: 'Gestion des réservations de matériels' },
+      { name: 'Manifestations', description: 'Gestion des manifestations et événements' },
+      { name: 'Manifestations Stock', description: 'Stock matériel dédié aux manifestations' },
+      { name: 'Auth Settings', description: 'Configuration SSO, LDAP et Passkey' },
     ],
     paths: {
       // ─── Auth ───
@@ -412,6 +419,172 @@ const options: swaggerJSDoc.Options = {
       },
       '/security/jwt/history': {
         get: { tags: ['Security'], summary: 'Historique des rotations JWT', responses: { '200': { description: 'Historique' } } },
+      },
+
+      // ─── QR Code ───
+      '/qrcode/{objectId}': {
+        get: { tags: ['QR Code'], summary: 'Générer un QR code pour un objet', parameters: [{ name: 'objectId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'QR code PNG data URL' } } },
+      },
+      '/qrcode/batch': {
+        post: { tags: ['QR Code'], summary: 'Générer des QR codes en lot (max 100)', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { objectIds: { type: 'array', items: { type: 'integer' } } } } } } }, responses: { '200': { description: 'QR codes générés' } } },
+      },
+
+      // ─── API Tokens ───
+      '/api-tokens': {
+        get: { tags: ['API Tokens'], summary: 'Liste des tokens API', responses: { '200': { description: 'Tokens' } } },
+        post: { tags: ['API Tokens'], summary: 'Créer un token API', responses: { '201': { description: 'Token créé' } } },
+      },
+      '/api-tokens/{id}': {
+        delete: { tags: ['API Tokens'], summary: 'Révoquer un token API', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Token révoqué' } } },
+      },
+
+      // ─── Import/Export ───
+      '/import-export/export': {
+        get: { tags: ['Import/Export'], summary: 'Exporter les matériels (Excel/CSV)', parameters: [{ name: 'format', in: 'query', schema: { type: 'string', enum: ['xlsx', 'csv'] } }, { name: 'categoryId', in: 'query', schema: { type: 'integer' } }], responses: { '200': { description: 'Fichier exporté' } } },
+      },
+      '/import-export/template': {
+        get: { tags: ['Import/Export'], summary: 'Télécharger le template d\'import', responses: { '200': { description: 'Template Excel' } } },
+      },
+      '/import-export/import': {
+        post: { tags: ['Import/Export'], summary: 'Importer des matériels depuis CSV/Excel', requestBody: { content: { 'multipart/form-data': { schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } } } }, responses: { '200': { description: 'Import réussi' } } },
+      },
+
+      // ─── Réservations ───
+      '/reservations': {
+        get: { tags: ['Réservations'], summary: 'Liste des réservations', parameters: [{ name: 'objectId', in: 'query', schema: { type: 'integer' } }, { name: 'status', in: 'query', schema: { type: 'string', enum: ['reserved', 'borrowed', 'returned', 'cancelled', 'overdue'] } }, { name: 'userId', in: 'query', schema: { type: 'integer' } }], responses: { '200': { description: 'Réservations' } } },
+        post: { tags: ['Réservations'], summary: 'Créer une réservation', requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { object_id: { type: 'integer' }, start_date: { type: 'string', format: 'date' }, end_date: { type: 'string', format: 'date' }, notes: { type: 'string' } } } } } }, responses: { '201': { description: 'Réservation créée' } } },
+      },
+      '/reservations/availability/{objectId}': {
+        get: { tags: ['Réservations'], summary: 'Vérifier la disponibilité d\'un objet', parameters: [{ name: 'objectId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Disponibilité' } } },
+      },
+      '/reservations/{id}/status': {
+        put: { tags: ['Réservations'], summary: 'Modifier le statut d\'une réservation', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['reserved', 'borrowed', 'returned', 'cancelled', 'overdue'] } } } } } }, responses: { '200': { description: 'Statut modifié' } } },
+      },
+      '/reservations/{id}': {
+        delete: { tags: ['Réservations'], summary: 'Supprimer une réservation', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Réservation supprimée' } } },
+      },
+
+      // ─── Manifestations ───
+      '/manifestations': {
+        get: { tags: ['Manifestations'], summary: 'Liste des manifestations', parameters: [{ name: 'status', in: 'query', schema: { type: 'string', enum: ['draft', 'validated', 'delivered', 'recovered', 'archived'] } }, { name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'archived', in: 'query', schema: { type: 'string' } }, { name: 'date_from', in: 'query', schema: { type: 'string', format: 'date' } }, { name: 'date_to', in: 'query', schema: { type: 'string', format: 'date' } }], responses: { '200': { description: 'Liste des manifestations' } } },
+        post: { tags: ['Manifestations'], summary: 'Créer une manifestation', requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['title', 'date_start'], properties: { title: { type: 'string' }, date_start: { type: 'string', format: 'date' }, date_end: { type: 'string', format: 'date' }, contact_name: { type: 'string' }, contact_phone: { type: 'string' }, contact_email: { type: 'string', format: 'email' }, delivery_address: { type: 'string' }, delivery_date: { type: 'string', format: 'date' }, materials: { type: 'array', items: { type: 'object', properties: { stock_id: { type: 'integer' }, quantity_requested: { type: 'integer' } } } } } } } } }, responses: { '201': { description: 'Manifestation créée' } } },
+      },
+      '/manifestations/{id}': {
+        get: { tags: ['Manifestations'], summary: 'Détail d\'une manifestation', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Détail' } } },
+        put: { tags: ['Manifestations'], summary: 'Modifier une manifestation', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Manifestation modifiée' } } },
+        delete: { tags: ['Manifestations'], summary: 'Supprimer une manifestation', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Manifestation supprimée' } } },
+      },
+      '/manifestations/{id}/status': {
+        put: { tags: ['Manifestations'], summary: 'Changer le statut', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { status: { type: 'string', enum: ['draft', 'validated', 'delivered', 'recovered', 'archived'] } } } } } }, responses: { '200': { description: 'Statut modifié' } } },
+      },
+      '/manifestations/{id}/materials': {
+        put: { tags: ['Manifestations'], summary: 'Mise à jour matériel livré/récupéré', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { materials: { type: 'array', items: { type: 'object', properties: { id: { type: 'integer' }, quantity_delivered: { type: 'integer' }, quantity_recovered: { type: 'integer' } } } } } } } } }, responses: { '200': { description: 'Matériel mis à jour' } } },
+      },
+      '/manifestations/stats/summary': {
+        get: { tags: ['Manifestations'], summary: 'Statistiques globales des manifestations', responses: { '200': { description: 'Stats (total, à venir, livrées, archivées, stock)' } } },
+      },
+
+      // ─── Manifestations Stock ───
+      '/manifestations/stock': {
+        get: { tags: ['Manifestations Stock'], summary: 'Liste du stock matériel', parameters: [{ name: 'search', in: 'query', schema: { type: 'string' } }, { name: 'category', in: 'query', schema: { type: 'string' } }, { name: 'etat', in: 'query', schema: { type: 'string' } }, { name: 'lieu', in: 'query', schema: { type: 'string' } }, { name: 'stock_type', in: 'query', schema: { type: 'string' } }, { name: 'category_id', in: 'query', schema: { type: 'integer' } }, { name: 'subcategory_id', in: 'query', schema: { type: 'integer' } }], responses: { '200': { description: 'Articles en stock avec quantités disponibles/prêtées/réservées' } } },
+        post: { tags: ['Manifestations Stock'], summary: 'Créer un article de stock', requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['name', 'quantity_total'], properties: { name: { type: 'string' }, description: { type: 'string' }, category: { type: 'string' }, quantity_total: { type: 'integer' }, unit: { type: 'string', default: 'unité' }, etat: { type: 'string', default: 'bon' }, lieu: { type: 'string' }, stock_type: { type: 'string' }, price: { type: 'number', default: 0 }, category_id: { type: 'integer', nullable: true }, subcategory_id: { type: 'integer', nullable: true } } } } } }, responses: { '201': { description: 'Article créé' } } },
+      },
+      '/manifestations/stock/{id}': {
+        put: { tags: ['Manifestations Stock'], summary: 'Modifier un article de stock', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Article modifié' } } },
+        delete: { tags: ['Manifestations Stock'], summary: 'Supprimer un article de stock', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Article supprimé' } } },
+      },
+      '/manifestations/stock/categories': {
+        get: { tags: ['Manifestations Stock'], summary: 'Liste des catégories distinctes du stock', responses: { '200': { description: 'Catégories' } } },
+      },
+      '/manifestations/stock/etats': {
+        get: { tags: ['Manifestations Stock'], summary: 'Liste des états distincts', responses: { '200': { description: 'États' } } },
+      },
+      '/manifestations/stock/lieux': {
+        get: { tags: ['Manifestations Stock'], summary: 'Liste des lieux distincts', responses: { '200': { description: 'Lieux' } } },
+      },
+      '/manifestations/stock/types': {
+        get: { tags: ['Manifestations Stock'], summary: 'Liste des types distincts', responses: { '200': { description: 'Types' } } },
+      },
+      '/manifestations/stock/availability': {
+        get: { tags: ['Manifestations Stock'], summary: 'Disponibilité du stock à une date', parameters: [{ name: 'date', in: 'query', schema: { type: 'string', format: 'date' } }], responses: { '200': { description: 'Stock avec quantités engagées et disponibles' } } },
+      },
+
+      // ─── Auth Settings ───
+      '/settings/auth': {
+        get: { tags: ['Auth Settings'], summary: 'Récupérer la configuration d\'authentification', responses: { '200': { description: 'Configuration SSO/LDAP/Passkey' } } },
+        put: { tags: ['Auth Settings'], summary: 'Mettre à jour la configuration d\'authentification', responses: { '200': { description: 'Configuration mise à jour' } } },
+      },
+
+      // ─── Alerts (routes manquantes) ───
+      '/alerts/settings': {
+        get: { tags: ['Alerts'], summary: 'Paramètres d\'alertes', responses: { '200': { description: 'Paramètres' } } },
+        put: { tags: ['Alerts'], summary: 'Modifier les paramètres d\'alertes', responses: { '200': { description: 'Paramètres modifiés' } } },
+      },
+      '/alerts/{id}/read': {
+        put: { tags: ['Alerts'], summary: 'Marquer une alerte comme lue', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Alerte lue' } } },
+      },
+      '/alerts/{id}/dismiss': {
+        put: { tags: ['Alerts'], summary: 'Ignorer une alerte', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Alerte ignorée' } } },
+      },
+      '/alerts/read-all': {
+        put: { tags: ['Alerts'], summary: 'Marquer toutes les alertes comme lues', responses: { '200': { description: 'Toutes lues' } } },
+      },
+      '/alerts/check': {
+        post: { tags: ['Alerts'], summary: 'Vérifier et déclencher les alertes', responses: { '200': { description: 'Alertes vérifiées' } } },
+      },
+      '/alerts/{id}': {
+        delete: { tags: ['Alerts'], summary: 'Supprimer une alerte', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Alerte supprimée' } } },
+      },
+
+      // ─── Calendar (routes manquantes) ───
+      '/calendar/{id}': {
+        put: { tags: ['Calendar'], summary: 'Modifier un événement', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Événement modifié' } } },
+        delete: { tags: ['Calendar'], summary: 'Supprimer un événement', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Événement supprimé' } } },
+      },
+      '/calendar/events/{id}': {
+        get: { tags: ['Calendar'], summary: 'Détail d\'un événement', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Événement' } } },
+        put: { tags: ['Calendar'], summary: 'Modifier un événement', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Événement modifié' } } },
+        delete: { tags: ['Calendar'], summary: 'Supprimer un événement', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Événement supprimé' } } },
+      },
+      '/calendar/sync/status': {
+        get: { tags: ['Calendar'], summary: 'Statut de synchronisation calendriers externes', responses: { '200': { description: 'Statut sync' } } },
+      },
+      '/calendar/sync/config': {
+        get: { tags: ['Calendar'], summary: 'Configuration de synchronisation', responses: { '200': { description: 'Config' } } },
+      },
+      '/calendar/sync/outlook/config': {
+        post: { tags: ['Calendar'], summary: 'Configurer la synchronisation Outlook', responses: { '200': { description: 'Configuré' } } },
+      },
+      '/calendar/sync/caldav/config': {
+        post: { tags: ['Calendar'], summary: 'Configurer la synchronisation CalDAV', responses: { '200': { description: 'Configuré' } } },
+      },
+      '/calendar/sync/outlook/test': {
+        post: { tags: ['Calendar'], summary: 'Tester la connexion Outlook', responses: { '200': { description: 'Test réussi' } } },
+      },
+      '/calendar/sync/caldav/test': {
+        post: { tags: ['Calendar'], summary: 'Tester la connexion CalDAV', responses: { '200': { description: 'Test réussi' } } },
+      },
+      '/calendar/sync': {
+        post: { tags: ['Calendar'], summary: 'Synchroniser tous les calendriers externes', responses: { '200': { description: 'Synchronisé' } } },
+      },
+      '/calendar/sync/outlook': {
+        delete: { tags: ['Calendar'], summary: 'Déconnecter Outlook', responses: { '200': { description: 'Déconnecté' } } },
+      },
+      '/calendar/sync/caldav': {
+        delete: { tags: ['Calendar'], summary: 'Déconnecter CalDAV', responses: { '200': { description: 'Déconnecté' } } },
+      },
+
+      // ─── Tracking (routes manquantes) ───
+      '/tracking/permissions': {
+        get: { tags: ['Tracking'], summary: 'Vérifier les permissions de l\'utilisateur', responses: { '200': { description: 'Permissions' } } },
+      },
+      '/tracking/yearly-comparison': {
+        get: { tags: ['Tracking'], summary: 'Comparaison annuelle des coûts', responses: { '200': { description: 'Comparaison' } } },
+      },
+
+      // ─── Dashboard (routes manquantes) ───
+      '/dashboard/depreciation': {
+        get: { tags: ['Dashboard'], summary: 'Données de dépréciation', responses: { '200': { description: 'Dépréciation' } } },
       },
     },
   },
