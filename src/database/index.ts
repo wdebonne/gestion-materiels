@@ -784,7 +784,6 @@ class DatabaseManager {
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
       )`
-      )`
     ];
 
     for (const table of tables) {
