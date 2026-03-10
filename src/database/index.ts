@@ -587,14 +587,20 @@ class DatabaseManager {
       `CREATE TABLE IF NOT EXISTS manifestations (
         id INTEGER PRIMARY KEY ${autoIncrement},
         title VARCHAR(255) NOT NULL,
+        name VARCHAR(255),
+        description ${textType},
         date_start DATE NOT NULL,
         date_end DATE,
+        start_date DATE,
+        end_date DATE,
         start_time VARCHAR(10),
         end_time VARCHAR(10),
         expected_people INTEGER DEFAULT 0,
+        contact VARCHAR(255),
         contact_name VARCHAR(255),
         contact_phone VARCHAR(50),
         contact_email VARCHAR(255),
+        location VARCHAR(255),
         delivery_address ${textType},
         delivery_date DATE,
         notes_interior ${textType},
@@ -619,6 +625,33 @@ class DatabaseManager {
         notes ${textType},
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
         FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE
+      )`,
+
+      // Table des items de manifestation (objets du parc)
+      `CREATE TABLE IF NOT EXISTS manifestation_items (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        object_id INTEGER NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        quantity_delivered INTEGER DEFAULT 0,
+        quantity_returned INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
+      )`,
+
+      // Table historique des manifestations
+      `CREATE TABLE IF NOT EXISTS manifestation_history (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        user_id INTEGER,
+        action VARCHAR(100) NOT NULL,
+        from_status VARCHAR(50),
+        to_status VARCHAR(50),
+        comment ${textType},
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
       // Table de configuration de l'authentification (SSO, LDAP, Passkey)

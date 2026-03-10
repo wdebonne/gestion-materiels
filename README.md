@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.60-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
@@ -59,6 +59,21 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
   - Capture des graphiques en haute qualité
   - Pièces jointes optionnelles
 - 🔐 **Permissions granulaires** : Contrôle d'accès par rôle et par utilisateur
+
+### 📦 Gestion des Manifestations (Nouveau!)
+- 🎪 **Page dédiée** : Gestion complète des manifestations (prêts de matériel pour événements)
+- 🔍 **Recherche avancée** : Recherche en temps réel avec debounce sur les manifestations
+- 📊 **Tableau de bord** : Statistiques avec compteurs par statut (brouillons, en cours, archivées)
+- 🔄 **Workflow complet** : Circuit de validation en 5 étapes (Brouillon → Validée → Livrée → Récupérée → Archivée)
+- 🎨 **Indicateurs visuels** : Cartes colorées par statut (bordure, fond, badge) avec barre de progression du workflow
+- ✅ **Modales de changement de statut** :
+  - Refus/Validation avec commentaire optionnel
+  - Livraison avec gestion des quantités livrées (individuel ou global)
+  - Récupération avec gestion des quantités retournées
+- 📝 **Historique horodaté** : Timeline complète de toutes les actions avec utilisateur, date et commentaire
+- 📄 **Export PDF** : Génération de rapport PDF avec en-tête, articles (commandé/livré/récupéré), et historique
+- 🗂️ **Onglets** : Vue par manifestations actives, stock, et archives
+- 🔗 **Recherche d'objets** : Autocomplete de recherche d'objets du parc pour ajout aux manifestations
 
 ### Plugins intégrés
 - ⛽ **Carburant** : Suivi des consommations et coûts, gestion des stations, filtrage avancé, pièces jointes (PDF/images)
@@ -266,14 +281,16 @@ gestion-materiels/
 │   │   ├── components/    # Composants réutilisables
 │   │   │   ├── ui/        # Composants UI (Button, Modal, etc.)
 │   │   │   ├── Layout.tsx # Layout principal
+│   │   │   ├── ManifestationPDFExport.tsx # Export PDF manifestations
 │   │   │   └── DynamicPluginPage.tsx # Pages plugins dynamiques
 │   │   ├── pages/         # Pages de l'application
+│   │   │   ├── ManifestationsPage.tsx # Gestion des manifestations
 │   │   │   └── settings/  # Pages d'administration
 │   │   ├── stores/        # État global (Zustand)
 │   │   └── lib/           # Utilitaires et API
 │   └── ...
 ├── src/                    # Backend Node.js
-│   ├── routes/            # Routes API
+│   ├── routes/            # Routes API (dont manifestation.routes.ts)
 │   ├── services/          # Services métier
 │   │   ├── plugin.service.ts         # Gestion plugins
 │   │   ├── pluginAdvanced.service.ts # Plugins avancés (ZIP, tables)
@@ -419,6 +436,20 @@ POST /api/objects/:id/maintenance     # Ajouter une maintenance
 # Contrôle technique
 GET  /api/objects/:id/controls        # Historique contrôles
 POST /api/objects/:id/controls        # Ajouter un contrôle
+```
+
+### Manifestations
+
+```
+GET    /api/manifestations           # Liste des manifestations (filtres: search, status)
+GET    /api/manifestations/stats     # Statistiques par statut
+GET    /api/manifestations/search/objects  # Recherche d'objets du parc
+POST   /api/manifestations           # Créer une manifestation
+GET    /api/manifestations/:id       # Détail (avec articles et historique)
+PUT    /api/manifestations/:id       # Modifier une manifestation
+DELETE /api/manifestations/:id       # Supprimer une manifestation
+POST   /api/manifestations/:id/status # Changer le statut (avec validation des transitions)
+GET    /api/manifestations/:id/history # Historique des changements
 ```
 
 ### Calendrier

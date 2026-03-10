@@ -32,7 +32,8 @@ import {
   Sun,
   Moon,
   Monitor,
-  PartyPopper
+  PartyPopper,
+  CalendarDays
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -143,6 +144,7 @@ export default function Layout() {
     { name: t('nav.dashboard'), href: '/', icon: Home },
     { name: t('nav.categories'), href: '/categories', icon: FolderOpen },
     { name: t('nav.alerts'), href: '/alerts', icon: Bell, badge: alertsCount },
+    { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
   ]
 
   // Ajouter le menu Suivi si l'utilisateur a les permissions

@@ -8,16 +8,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 ## [Non publié]
 
 ### Ajouté
-- **Plugin Manifestations** : Nouveau plugin système complet pour la gestion des manifestations et prêts de matériel :
-  - **3 tables base de données** : `manifestation_stock` (catalogue matériel), `manifestations` (événements), `manifestation_materials` (matériel par manifestation)
-  - **Gestion de stock** : Catalogue matériel avec quantités totales, disponibles, prêtées et réservées (prévisionnel) — calcul en temps réel
-  - **Workflow de statut** : Brouillon → Validé → Livré → Récupéré → Archivé (+ Annulé) avec transitions contrôlées côté serveur
-  - **Suivi livraison/récupération** : Contact livraison (nom, téléphone, email), adresse, date de livraison, quantités livrées vs récupérées
-  - **Impact stock automatique** : Validation = stock réservé, livraison = stock engagé, récupération = stock restitué
-  - **3 onglets frontend** : Manifestations (liste filtrée + stats), Stock (gestion catalogue), Archives (consultables en lecture seule)
-  - **Filtres avancés** : Par statut, dates, recherche textuelle
-  - **Modales détail & livraison** : Consultation complète et mise à jour des quantités livrées/récupérées
-  - **Route API complète** : CRUD stock, CRUD manifestations, transitions de statut, stats, disponibilité stock à une date
+- **Module Manifestations — Page dédiée complète** : Gestion des manifestations (prêts de matériel pour événements) avec page dédiée accessible depuis la navigation principale :
+  - **3 tables base de données** : `manifestations` (informations générales, statut, contact, lieu), `manifestation_items` (articles liés avec quantités commandées/livrées/retournées), `manifestation_history` (historique horodaté de chaque action)
+  - **Routes API complètes** (`/api/manifestations`) : CRUD, stats par statut, changement de statut avec validation des transitions, historique, recherche d'objets du parc
+  - **Workflow en 5 étapes** : Brouillon → Validée → Livrée → Récupérée → Archivée (+ Refusée → retour Brouillon) avec transitions contrôlées côté serveur
+  - **ManifestationsPage.tsx** (~700 lignes) : Cartes statistiques, onglets (Manifestations/Stock/Archives), recherche debounce, filtre par statut
+  - **Cartes colorées par statut** : Bordure gauche colorée, fond teinté, badge, barre de progression du workflow
+  - **Modales de changement de statut** : Validation/Refus avec commentaire, Livraison/Récupération avec gestion des quantités (individuel ou global)
+  - **Modale de création/édition** : Formulaire avec recherche d'objets par autocomplete, ajout/suppression d'articles
+  - **Modale de détail** : Tableau des articles (commandé/livré/récupéré), timeline historique horodatée
+  - **Export PDF** (`ManifestationPDFExport.tsx`) : Rapport via jsPDF avec en-tête, articles, et historique
 - **Page Authentification** : Nouveau menu « Authentification » dans Paramètres avec 5 onglets de configuration :
   - **Général** : Politique de connexion (connexion locale, inscription publique, 2FA obligatoire, timeout session, blocage après tentatives échouées) et politique de mot de passe (longueur min, complexité, expiration)
   - **LDAP / Active Directory** : Connexion à un annuaire LDAP avec mapping d'attributs (uid, mail, givenName, sn), mapping de groupes vers rôles (admin, superviseur), création automatique d'utilisateurs, STARTTLS
@@ -31,10 +31,11 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Documentation plugins système** : Section dédiée dans `docs/PLUGIN_STRUCTURE.md` décrivant l'architecture built-in vs personnalisé, la navigation dynamique et l'activation/désactivation
 
 ### Modifié
-- **seed.ts** : Nouveau plugin `manifestations` ajouté aux `DEFAULT_PLUGINS` avec config JSON (statuts, export PDF, gestion stock)
-- **Layout.tsx** : Icône `PartyPopper` ajoutée au `iconMap`, slug `manifestations` ajouté à `builtInPluginSlugs`
+- **database/index.ts** : Ajout des 3 tables `manifestations`, `manifestation_items`, `manifestation_history`
 - **server.ts** : Route `/api/manifestations` câblée
+- **Layout.tsx** : Icône `CalendarDays` ajoutée, entrée de navigation « Manifestations » ajoutée
 - **App.tsx** : Route frontend `/manifestations` ajoutée
+- **pages/index.ts** : Export `ManifestationsPage` ajouté
 - **seed.ts** : Nouveau plugin `import-export` ajouté aux `DEFAULT_PLUGINS` avec config JSON (formats autorisés, taille max)
 - **Layout.tsx** : Import/Export retiré du `baseNavigation` codé en dur — ajouté à `builtInPluginSlugs` (`['calendar', 'reservations', 'depreciation', 'map', 'import-export']`) — sa visibilité dans la sidebar dépend désormais de l'activation du plugin — icône `FileSpreadsheet` ajoutée au `iconMap`
 - **ROADMAP_FONCTIONNALITES.md** : Import/Export marqué comme « Plugin système » au lieu de « Fait »

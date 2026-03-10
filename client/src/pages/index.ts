@@ -17,6 +17,7 @@ export { default as ReservationsPage } from './ReservationsPage'
 export { default as DepreciationPage } from './DepreciationPage'
 export { default as ImportExportPage } from './ImportExportPage'
 export { default as MapPage } from './MapPage'
+export { default as ManifestationsPage } from './ManifestationsPage'
 
 // Settings pages
 export { default as GeneralSettingsPage } from './settings/GeneralSettingsPage'
