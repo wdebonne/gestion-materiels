@@ -268,6 +268,7 @@ export interface ManifestationStockItem {
   etat: string
   lieu: string
   stock_type: string
+  price: number
   category_id: number | null
   subcategory_id: number | null
   category_name?: string
@@ -360,6 +361,7 @@ export interface StockFormData {
   etat?: string
   lieu?: string
   stock_type?: string
+  price?: number
   category_id?: number | null
   subcategory_id?: number | null
 }

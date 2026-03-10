@@ -574,6 +574,7 @@ class DatabaseManager {
         etat VARCHAR(50) DEFAULT 'bon',
         lieu VARCHAR(255) DEFAULT '',
         stock_type VARCHAR(100) DEFAULT '',
+        price REAL DEFAULT 0,
         category_id INTEGER,
         subcategory_id INTEGER,
         created_at DATETIME ${timestampDefault},
@@ -707,6 +708,12 @@ class DatabaseManager {
         table: 'manifestation_stock',
         column: 'subcategory_id',
         type: 'INTEGER'
+      },
+      // Manifestation stock: prix unitaire
+      {
+        table: 'manifestation_stock',
+        column: 'price',
+        type: 'REAL DEFAULT 0'
       }
     ];
 

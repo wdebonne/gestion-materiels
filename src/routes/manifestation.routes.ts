@@ -144,10 +144,10 @@ router.post('/stock', authenticateToken, requireSupervisor,
       return res.status(400).json({ success: false, errors: errors.array() });
     }
     try {
-      const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id } = req.body;
+      const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price } = req.body;
       const result = await db.execute(
-        'INSERT INTO manifestation_stock (name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null]
+        'INSERT INTO manifestation_stock (name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, price || 0]
       );
       await logService.info('other', `Stock manifestation créé: ${name}`, { userId: req.user!.userId });
       const created = await db.queryOne('SELECT * FROM manifestation_stock WHERE id = ?', [result.lastInsertRowid]);
@@ -161,10 +161,10 @@ router.post('/stock', authenticateToken, requireSupervisor,
 // PUT /stock/:id - Modifier un article de stock
 router.put('/stock/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id } = req.body;
+    const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price } = req.body;
     await db.execute(
-      `UPDATE manifestation_stock SET name = ?, description = ?, category = ?, quantity_total = ?, unit = ?, etat = ?, lieu = ?, stock_type = ?, category_id = ?, subcategory_id = ?, updated_at = datetime('now') WHERE id = ?`,
-      [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, req.params.id]
+      `UPDATE manifestation_stock SET name = ?, description = ?, category = ?, quantity_total = ?, unit = ?, etat = ?, lieu = ?, stock_type = ?, category_id = ?, subcategory_id = ?, price = ?, updated_at = datetime('now') WHERE id = ?`,
+      [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, price || 0, req.params.id]
     );
     const updated = await db.queryOne('SELECT * FROM manifestation_stock WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: updated });
@@ -300,7 +300,6 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     res.json({ success: true, data: enriched });
   } catch (error: any) {
-    console.error('[GET /manifestations] ERROR:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

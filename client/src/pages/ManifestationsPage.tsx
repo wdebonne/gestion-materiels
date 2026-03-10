@@ -67,7 +67,7 @@ const emptyForm = {
   notes_interior: '', notes_exterior: '', materials: [] as ManifMaterial[]
 }
 
-const emptyStockForm = { name: '', description: '', category: '', quantity_total: 0, unit: 'unité', etat: 'bon', lieu: '', stock_type: '', category_id: null as number | null, subcategory_id: null as number | null }
+const emptyStockForm = { name: '', description: '', category: '', quantity_total: 0, unit: 'unité', etat: 'bon', lieu: '', stock_type: '', price: 0, category_id: null as number | null, subcategory_id: null as number | null }
 
 const etatOptions = [
   { value: 'neuf', label: 'Neuf' },
@@ -305,7 +305,7 @@ export default function ManifestationsPage() {
       name: s.name, description: s.description || '', category: s.category || '',
       quantity_total: s.quantity_total, unit: s.unit || 'unité',
       etat: s.etat || 'bon', lieu: s.lieu || '', stock_type: s.stock_type || '',
-      category_id: s.category_id || null, subcategory_id: s.subcategory_id || null
+      price: s.price || 0, category_id: s.category_id || null, subcategory_id: s.subcategory_id || null
     })
     if (s.category_id) setSelectedCatForSub(s.category_id)
     setShowStockModal(true)
@@ -456,20 +456,13 @@ export default function ManifestationsPage() {
             <Input label="Titre de la manifestation *" value={manifForm.title}
               onChange={e => setManifForm({ ...manifForm, title: e.target.value })} placeholder="Ex: Fête de la musique" />
 
-            {/* Dates & horaires */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {/* Dates */}
+            <div className="grid grid-cols-2 gap-4">
               <Input label="Date début *" type="date" value={manifForm.date_start}
                 onChange={e => setManifForm({ ...manifForm, date_start: e.target.value })} />
               <Input label="Date fin" type="date" value={manifForm.date_end}
                 onChange={e => setManifForm({ ...manifForm, date_end: e.target.value })} />
-              <Input label="Heure début" type="time" value={manifForm.start_time}
-                onChange={e => setManifForm({ ...manifForm, start_time: e.target.value })} />
-              <Input label="Heure fin" type="time" value={manifForm.end_time}
-                onChange={e => setManifForm({ ...manifForm, end_time: e.target.value })} />
             </div>
-
-            <Input label="Nombre de personnes attendues" type="number" value={String(manifForm.expected_people)}
-              onChange={e => setManifForm({ ...manifForm, expected_people: parseInt(e.target.value) || 0 })} />
 
             {/* Contact livraison */}
             <Card>
@@ -489,16 +482,6 @@ export default function ManifestationsPage() {
                   onChange={e => setManifForm({ ...manifForm, delivery_date: e.target.value })} />
               </CardBody>
             </Card>
-
-            {/* Notes intérieures / extérieures */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <TextArea label="Intérieur (besoins)" value={manifForm.notes_interior} rows={3}
-                onChange={e => setManifForm({ ...manifForm, notes_interior: e.target.value })}
-                placeholder="Matériel intérieur nécessaire..." />
-              <TextArea label="Extérieur (besoins)" value={manifForm.notes_exterior} rows={3}
-                onChange={e => setManifForm({ ...manifForm, notes_exterior: e.target.value })}
-                placeholder="Matériel extérieur nécessaire..." />
-            </div>
 
             {/* Matériel demandé */}
             <Card>
@@ -594,8 +577,13 @@ export default function ManifestationsPage() {
               {stockCategories.map((c: string) => <option key={c} value={c} />)}
             </datalist>
 
-            <Input label="Quantité totale *" type="number" value={String(stockForm.quantity_total)}
-              onChange={e => setStockForm({ ...stockForm, quantity_total: parseInt(e.target.value) || 0 })} />
+            <div className="grid grid-cols-2 gap-4">
+              <Input label="Quantité totale *" type="number" value={String(stockForm.quantity_total)}
+                onChange={e => setStockForm({ ...stockForm, quantity_total: parseInt(e.target.value) || 0 })} />
+              <Input label="Prix unitaire (€)" type="number" value={String(stockForm.price)}
+                onChange={e => setStockForm({ ...stockForm, price: parseFloat(e.target.value) || 0 })}
+                placeholder="0.00" />
+            </div>
 
             {/* Champs personnalisés */}
             <Card>
@@ -976,6 +964,7 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
                 <th className="pb-2 font-medium text-gray-500">Lieu</th>
                 <th className="pb-2 font-medium text-gray-500">Type</th>
                 <th className="pb-2 font-medium text-gray-500 text-center">Total</th>
+                <th className="pb-2 font-medium text-gray-500 text-right">Prix unit.</th>
                 <th className="pb-2 font-medium text-gray-500 text-center">Disponible</th>
                 <th className="pb-2 font-medium text-gray-500 text-center">En prêt</th>
                 <th className="pb-2 font-medium text-gray-500 text-center">Réservé (futur)</th>
@@ -1007,6 +996,7 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
                     {s.stock_type && <Badge variant="default">{s.stock_type}</Badge>}
                   </td>
                   <td className="py-2 text-center">{s.quantity_total} {s.unit}</td>
+                  <td className="py-2 text-right text-gray-700 dark:text-gray-300">{s.price ? `${Number(s.price).toFixed(2)} €` : '—'}</td>
                   <td className="py-2 text-center">
                     <span className={s.quantity_available <= 0 ? 'text-red-600 font-bold' : s.quantity_available < s.quantity_total * 0.2 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>
                       {s.quantity_available}
