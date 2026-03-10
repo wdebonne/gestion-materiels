@@ -837,6 +837,28 @@ class DatabaseManager {
         FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE
       )`,
 
+      // Types d'espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        icon VARCHAR(10) DEFAULT '🌳',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Statuts d'espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_statuses (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        color VARCHAR(50) DEFAULT '',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
       // Types de documents pour espaces verts
       `CREATE TABLE IF NOT EXISTS green_space_doc_types (
         id INTEGER PRIMARY KEY ${autoIncrement},
@@ -1034,6 +1056,45 @@ class DatabaseManager {
   }
 
   private async seedDefaultTypes(): Promise<void> {
+    const defaultSpaceTypes = [
+      { value: 'parc', label: 'Parc', icon: '🌳' },
+      { value: 'jardin', label: 'Jardin public', icon: '🌺' },
+      { value: 'square', label: 'Square', icon: '🏛️' },
+      { value: 'aire_jeux', label: 'Aire de jeux', icon: '🎠' },
+      { value: 'espace_naturel', label: 'Espace naturel', icon: '🌿' },
+      { value: 'rond_point', label: 'Rond-point', icon: '🔄' },
+      { value: 'allee', label: 'Allée / Promenade', icon: '🚶' },
+      { value: 'berge', label: 'Berge / Bord de rivière', icon: '🌊' },
+      { value: 'cimetiere', label: 'Cimetière végétalisé', icon: '⚱️' },
+      { value: 'terrain_sport', label: 'Terrain de sport', icon: '⚽' },
+      { value: 'autre', label: 'Autre', icon: '📍' },
+    ];
+
+    const defaultStatuses = [
+      { value: 'actif', label: 'Actif', color: 'green' },
+      { value: 'en_travaux', label: 'En travaux', color: 'orange' },
+      { value: 'ferme', label: 'Fermé au public', color: 'red' },
+      { value: 'projet', label: 'En projet', color: 'blue' },
+    ];
+
+    for (const st of defaultSpaceTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_types (value, label, icon, is_default) VALUES (?, ?, ?, 1)',
+          [st.value, st.label, st.icon]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    for (const s of defaultStatuses) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_statuses (value, label, color, is_default) VALUES (?, ?, ?, 1)',
+          [s.value, s.label, s.color]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
     const defaultDocTypes = [
       { value: 'plan', label: 'Plan / Cadastre' },
       { value: 'permis', label: 'Permis / Autorisation' },

@@ -227,12 +227,40 @@ export default function EspacesVertsPage() {
   const [editingSpace, setEditingSpace] = useState<GreenSpace | null>(null)
   const [activeTab, setActiveTab] = useState<'elements' | 'plan' | 'saisons' | 'documents' | 'carte' | 'entretien'>('elements')
   const [expanded, setExpanded] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   // Stats
   const { data: stats } = useQuery({
     queryKey: ['green-spaces-stats'],
     queryFn: () => api.get('/green-spaces/stats').then(r => r.data.data)
   })
+
+  // Types d'espaces verts depuis l'API
+  const { data: apiSpaceTypes = [] } = useQuery({
+    queryKey: ['green-space-types'],
+    queryFn: () => api.get('/green-spaces/space-types').then(r => r.data.data)
+  })
+  const activeSpaceTypes = (apiSpaceTypes as any[]).filter((t: any) => !t.disabled)
+
+  // Statuts depuis l'API
+  const { data: apiStatuses = [] } = useQuery({
+    queryKey: ['green-space-statuses'],
+    queryFn: () => api.get('/green-spaces/space-statuses').then(r => r.data.data)
+  })
+  const activeStatuses = (apiStatuses as any[]).filter((s: any) => !s.disabled)
+
+  // Helpers
+  const getTypeInfo = (value: string) => {
+    const t = (apiSpaceTypes as any[]).find((t: any) => t.value === value)
+    if (t) return { value: t.value, label: t.label, icon: t.icon || '🌳' }
+    const def = SPACE_TYPES.find(t => t.value === value)
+    return def || { value, label: value, icon: '🌳' }
+  }
+  const getStatusInfo = (value: string) => {
+    const s = (apiStatuses as any[]).find((s: any) => s.value === value)
+    if (s) return { value: s.value, label: s.label, color: s.color || '' }
+    return { value, label: value, color: '' }
+  }
 
   // Liste des espaces verts
   const { data: spaces = [], isLoading } = useQuery({
@@ -269,13 +297,23 @@ export default function EspacesVertsPage() {
             Gestion des espaces verts, parcs et aménagements urbains
           </p>
         </div>
-        <button
-          onClick={() => { setEditingSpace(null); setShowForm(true) }}
-          className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-        >
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowSettings(true)}
+            className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+            title="Options (Types & Statuts)"
+          >
+            <Settings className="h-4 w-4" />
+            Options
+          </button>
+          <button
+            onClick={() => { setEditingSpace(null); setShowForm(true) }}
+            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+          >
           <Plus className="h-4 w-4" />
           Nouvel espace vert
         </button>
+        </div>
       </div>
 
       {/* Statistiques */}
@@ -339,7 +377,7 @@ export default function EspacesVertsPage() {
           className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
         >
           <option value="">Tous les types</option>
-          {SPACE_TYPES.map(t => (
+          {activeSpaceTypes.map((t: any) => (
             <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
           ))}
         </select>
@@ -361,7 +399,7 @@ export default function EspacesVertsPage() {
             </div>
           ) : (
             spaces.map((space: GreenSpace) => {
-              const typeInfo = SPACE_TYPES.find(t => t.value === space.space_type)
+              const typeInfo = getTypeInfo(space.space_type)
               const isSelected = selectedSpace?.id === space.id
               return (
                 <div
@@ -387,13 +425,20 @@ export default function EspacesVertsPage() {
                         {typeInfo?.label || space.space_type} • {space.area_m2 > 0 ? `${space.area_m2.toLocaleString()} m²` : 'Superficie N/A'}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          space.status === 'actif' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                          space.status === 'en_travaux' ? 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300' :
-                          'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
-                        }`}>
-                          {space.status === 'actif' ? 'Actif' : space.status === 'en_travaux' ? 'En travaux' : space.status}
-                        </span>
+                        {(() => {
+                          const sInfo = getStatusInfo(space.status)
+                          const colorMap: Record<string, string> = {
+                            green: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
+                            orange: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
+                            red: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
+                            blue: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
+                          }
+                          return (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colorMap[sInfo.color] || 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300'}`}>
+                              {sInfo.label}
+                            </span>
+                          )
+                        })()}
                         {(space.element_count ?? 0) > 0 && (
                           <span className="text-xs text-gray-400">{space.element_count} élém.</span>
                         )}
@@ -441,6 +486,8 @@ export default function EspacesVertsPage() {
       {showForm && (
         <SpaceFormModal
           space={editingSpace}
+          spaceTypes={activeSpaceTypes}
+          statuses={activeStatuses}
           onClose={() => setShowForm(false)}
           onSaved={() => {
             setShowForm(false)
@@ -450,6 +497,13 @@ export default function EspacesVertsPage() {
               queryClient.invalidateQueries({ queryKey: ['green-space', editingSpace.id] })
             }
           }}
+        />
+      )}
+
+      {/* Modal Options (Types & Statuts) */}
+      {showSettings && (
+        <SpaceSettingsModal
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>
@@ -3120,7 +3174,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
 
 // ======================== MODAL FORMULAIRE ESPACE VERT ========================
 
-function SpaceFormModal({ space, onClose, onSaved }: { space: GreenSpace | null, onClose: () => void, onSaved: () => void }) {
+function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { space: GreenSpace | null, spaceTypes: any[], statuses: any[], onClose: () => void, onSaved: () => void }) {
   const [form, setForm] = useState({
     name: space?.name || '',
     description: space?.description || '',
@@ -3181,7 +3235,7 @@ function SpaceFormModal({ space, onClose, onSaved }: { space: GreenSpace | null,
                 onChange={(e) => setForm({ ...form, space_type: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
-                {SPACE_TYPES.map(t => (
+                {(spaceTypes.length > 0 ? spaceTypes : SPACE_TYPES).map((t: any) => (
                   <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
                 ))}
               </select>
@@ -3193,10 +3247,16 @@ function SpaceFormModal({ space, onClose, onSaved }: { space: GreenSpace | null,
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
-                <option value="actif">Actif</option>
-                <option value="en_travaux">En travaux</option>
-                <option value="ferme">Fermé au public</option>
-                <option value="projet">En projet</option>
+                {statuses.length > 0 ? statuses.map((s: any) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                )) : (
+                  <>
+                    <option value="actif">Actif</option>
+                    <option value="en_travaux">En travaux</option>
+                    <option value="ferme">Fermé au public</option>
+                    <option value="projet">En projet</option>
+                  </>
+                )}
               </select>
             </div>
             <div className="col-span-2">
@@ -3761,6 +3821,305 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
             {mutation.isPending ? 'Enregistrement...' : (element ? 'Modifier' : 'Ajouter')}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ======================== MODAL OPTIONS (TYPES & STATUTS) ========================
+
+function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient()
+  const [settingsTab, setSettingsTab] = useState<'types' | 'statuts'>('types')
+
+  // Types d'espaces verts
+  const { data: allTypes = [] } = useQuery({
+    queryKey: ['green-space-types'],
+    queryFn: () => api.get('/green-spaces/space-types').then(r => r.data.data)
+  })
+  const [newType, setNewType] = useState({ label: '', icon: '🌳' })
+  const [editingType, setEditingType] = useState<{ id: number, label: string, icon: string } | null>(null)
+
+  const addTypeMutation = useMutation({
+    mutationFn: (data: any) => api.post('/green-spaces/space-types', data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-types'] }); setNewType({ label: '', icon: '🌳' }) }
+  })
+  const updateTypeMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/space-types/${id}`, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-types'] }); setEditingType(null) }
+  })
+  const deleteTypeMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/space-types/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-types'] })
+  })
+
+  // Statuts d'espaces verts
+  const { data: allStatuses = [] } = useQuery({
+    queryKey: ['green-space-statuses'],
+    queryFn: () => api.get('/green-spaces/space-statuses').then(r => r.data.data)
+  })
+  const [newStatus, setNewStatus] = useState({ label: '', color: 'gray' })
+  const [editingStatus, setEditingStatus] = useState<{ id: number, label: string, color: string } | null>(null)
+
+  const addStatusMutation = useMutation({
+    mutationFn: (data: any) => api.post('/green-spaces/space-statuses', data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-statuses'] }); setNewStatus({ label: '', color: 'gray' }) }
+  })
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/space-statuses/${id}`, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-statuses'] }); setEditingStatus(null) }
+  })
+  const deleteStatusMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/space-statuses/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-statuses'] })
+  })
+
+  const colorOptions = [
+    { value: 'green', label: 'Vert', css: 'bg-green-500' },
+    { value: 'orange', label: 'Orange', css: 'bg-orange-500' },
+    { value: 'red', label: 'Rouge', css: 'bg-red-500' },
+    { value: 'blue', label: 'Bleu', css: 'bg-blue-500' },
+    { value: 'yellow', label: 'Jaune', css: 'bg-yellow-500' },
+    { value: 'purple', label: 'Violet', css: 'bg-purple-500' },
+    { value: 'gray', label: 'Gris', css: 'bg-gray-500' },
+  ]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Settings className="h-5 w-5" />
+            Options Espaces Verts
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+          <button
+            onClick={() => setSettingsTab('types')}
+            className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              settingsTab === 'types' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            Types d'espaces
+          </button>
+          <button
+            onClick={() => setSettingsTab('statuts')}
+            className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
+              settingsTab === 'statuts' ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm' : 'text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            Statuts
+          </button>
+        </div>
+
+        {/* Onglet Types */}
+        {settingsTab === 'types' && (
+          <div>
+            <div className="flex gap-2 mb-4">
+              <input
+                value={newType.icon}
+                onChange={e => setNewType({ ...newType, icon: e.target.value })}
+                className="w-12 px-2 py-2 text-sm text-center border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                title="Icône emoji"
+              />
+              <input
+                value={newType.label}
+                onChange={e => setNewType({ ...newType, label: e.target.value })}
+                placeholder="Nouveau type..."
+                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
+              <button
+                onClick={() => {
+                  if (newType.label.trim()) {
+                    const val = newType.label.trim().toLowerCase().replace(/\s+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    addTypeMutation.mutate({ value: val, label: newType.label.trim(), icon: newType.icon || '🌳' })
+                  }
+                }}
+                disabled={!newType.label.trim() || addTypeMutation.isPending}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {(allTypes as any[]).map((t: any) => (
+                <div key={t.id} className={`flex items-center gap-2 p-2 rounded-lg border ${t.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
+                  {editingType?.id === t.id ? (
+                    <>
+                      <input
+                        value={editingType.icon}
+                        onChange={e => setEditingType({ ...editingType, icon: e.target.value })}
+                        className="w-10 px-1 py-1 text-sm text-center border rounded dark:bg-gray-700 dark:border-gray-600"
+                      />
+                      <input
+                        value={editingType.label}
+                        onChange={e => setEditingType({ ...editingType, label: e.target.value })}
+                        className="flex-1 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                      />
+                      <button
+                        onClick={() => {
+                          if (editingType.label.trim()) {
+                            updateTypeMutation.mutate({ id: t.id, label: editingType.label.trim(), icon: editingType.icon })
+                          }
+                        }}
+                        className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                      >
+                        <Check className="h-4 w-4" />
+                      </button>
+                      <button onClick={() => setEditingType(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-lg">{t.icon}</span>
+                      <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                        {t.label}
+                        {t.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                      </span>
+                      <button
+                        onClick={() => setEditingType({ id: t.id, label: t.label, icon: t.icon || '🌳' })}
+                        className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                        title="Modifier"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => updateTypeMutation.mutate({ id: t.id, disabled: t.disabled ? 0 : 1 })}
+                        className={`p-1 rounded ${t.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
+                        title={t.disabled ? 'Réactiver' : 'Désactiver'}
+                      >
+                        {t.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                      </button>
+                      {!t.is_default && (
+                        <button
+                          onClick={() => { if (confirm('Supprimer ce type ?')) deleteTypeMutation.mutate(t.id) }}
+                          className="p-1 text-gray-400 hover:text-red-600 rounded"
+                          title="Supprimer"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Onglet Statuts */}
+        {settingsTab === 'statuts' && (
+          <div>
+            <div className="flex gap-2 mb-4">
+              <select
+                value={newStatus.color}
+                onChange={e => setNewStatus({ ...newStatus, color: e.target.value })}
+                className="w-24 px-2 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              >
+                {colorOptions.map(c => (
+                  <option key={c.value} value={c.value}>{c.label}</option>
+                ))}
+              </select>
+              <input
+                value={newStatus.label}
+                onChange={e => setNewStatus({ ...newStatus, label: e.target.value })}
+                placeholder="Nouveau statut..."
+                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+              />
+              <button
+                onClick={() => {
+                  if (newStatus.label.trim()) {
+                    const val = newStatus.label.trim().toLowerCase().replace(/\s+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                    addStatusMutation.mutate({ value: val, label: newStatus.label.trim(), color: newStatus.color })
+                  }
+                }}
+                disabled={!newStatus.label.trim() || addStatusMutation.isPending}
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {(allStatuses as any[]).map((s: any) => {
+                const colorCss = colorOptions.find(c => c.value === s.color)?.css || 'bg-gray-500'
+                return (
+                  <div key={s.id} className={`flex items-center gap-2 p-2 rounded-lg border ${s.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
+                    {editingStatus?.id === s.id ? (
+                      <>
+                        <select
+                          value={editingStatus.color}
+                          onChange={e => setEditingStatus({ ...editingStatus, color: e.target.value })}
+                          className="w-20 px-1 py-1 text-xs border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        >
+                          {colorOptions.map(c => (
+                            <option key={c.value} value={c.value}>{c.label}</option>
+                          ))}
+                        </select>
+                        <input
+                          value={editingStatus.label}
+                          onChange={e => setEditingStatus({ ...editingStatus, label: e.target.value })}
+                          className="flex-1 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                        />
+                        <button
+                          onClick={() => {
+                            if (editingStatus.label.trim()) {
+                              updateStatusMutation.mutate({ id: s.id, label: editingStatus.label.trim(), color: editingStatus.color })
+                            }
+                          }}
+                          className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                        >
+                          <Check className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => setEditingStatus(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                          <X className="h-4 w-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className={`w-3 h-3 rounded-full ${colorCss}`} />
+                        <span className={`flex-1 text-sm ${s.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                          {s.label}
+                          {s.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                        </span>
+                        <button
+                          onClick={() => setEditingStatus({ id: s.id, label: s.label, color: s.color || 'gray' })}
+                          className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                          title="Modifier"
+                        >
+                          <Edit3 className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          onClick={() => updateStatusMutation.mutate({ id: s.id, disabled: s.disabled ? 0 : 1 })}
+                          className={`p-1 rounded ${s.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
+                          title={s.disabled ? 'Réactiver' : 'Désactiver'}
+                        >
+                          {s.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                        </button>
+                        {!s.is_default && (
+                          <button
+                            onClick={() => { if (confirm('Supprimer ce statut ?')) deleteStatusMutation.mutate(s.id) }}
+                            className="p-1 text-gray-400 hover:text-red-600 rounded"
+                            title="Supprimer"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )
