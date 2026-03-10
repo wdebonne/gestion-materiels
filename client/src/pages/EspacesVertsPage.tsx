@@ -3549,10 +3549,12 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
           ) : (
             <div className="space-y-1 max-h-[400px] overflow-y-auto">
               {allSnapshots.map((snap: any) => (
-                <button
+                <div
                   key={`${snap.fromSource ? 's' : ''}${snap.id}`}
                   onClick={() => setSelectedSnapshotId(snap.fromSource ? null : snap.id)}
-                  className={`w-full text-left p-3 rounded-lg border transition-colors ${
+                  role="button"
+                  tabIndex={0}
+                  className={`w-full text-left p-3 rounded-lg border transition-colors cursor-pointer ${
                     selectedSnapshotId === snap.id && !snap.fromSource
                       ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
                       : 'border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700'
@@ -3585,7 +3587,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                   {snap.notes && (
                     <p className="text-xs text-gray-400 mt-1 truncate">{snap.notes}</p>
                   )}
-                </button>
+                </div>
               ))}
             </div>
           )}
