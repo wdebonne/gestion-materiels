@@ -23,6 +23,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   - **Intégration Calendrier** : Les entretiens avec `next_maintenance_date` créent automatiquement un événement dans le calendrier (🌿 icône verte, type maintenance)
   - **Intégration Suivi (Tracking)** : Les coûts et données d'entretien des espaces verts apparaissent dans le module Suivi avec filtre dédié "Espaces verts" (icône TreePine), carte statistique et tableau détaillé
   - **Suppression avec nettoyage** : La suppression d'un entretien nettoie aussi les événements calendrier et alertes associés
+  - **Clonage d'espace** (`CloneSpaceModal`) : Copie vierge ou avec éléments sélectionnés, statut initial configurable (projet → travaux → actif), snapshot automatique de l'espace source créé avant le clonage, copie des annotations et groupes liés aux éléments copiés
+  - **Archives & Snapshots** (`ArchivesTab`) : Nouvel onglet "Archives" avec capture de l'état complet (plan, éléments, annotations, groupes) à un instant T sous forme de snapshot JSON, liste chronologique des snapshots avec label/date/notes, vue détaillée du plan archivé avec superposition des annotations
+  - **Comparaison de versions** : Mode côte-à-côte entre un snapshot archivé et l'état actuel — affichage simultané des plans annotés avec résumé des différences (nombre d'éléments, annotations, groupes ajoutés/supprimés)
+  - **Historique de l'espace source** : Si l'espace est un clone, accès aux documents et entretiens de l'espace vert original (via `cloned_from_id` FK)
+  - **Table `green_space_snapshots`** : id, green_space_id (FK), label, snapshot_date, plan_image, elements_data (JSON), annotations_data (JSON), groups_data (JSON), notes, created_at
+  - **Colonne `cloned_from_id`** : Ajout d'une FK auto-référentielle sur `green_spaces` pour tracer la filiation des clones
+  - **7 nouvelles routes API** : POST/GET `/:id/snapshots`, GET/DELETE `/snapshots/:snapshotId`, POST `/:id/clone`, GET `/:id/archives`
+  - **Liaison documents-éléments** : Table de jonction `green_space_document_elements`, association de documents à des éléments spécifiques, affichage croisé dans DocumentsTab et ElementFormModal
+  - **Options d'espace** (`SpaceSettingsModal`) : Modale de gestion des types et statuts d'espaces verts (ajout, modification, activation/désactivation) depuis la barre d'outils
 - **Module Manifestations — Page dédiée complète** : Gestion des manifestations (prêts de matériel pour événements) avec page dédiée accessible depuis la navigation principale :
   - **3 tables base de données** : `manifestations` (informations générales, statut, contact, lieu), `manifestation_items` (articles liés avec quantités commandées/livrées/retournées), `manifestation_history` (historique horodaté de chaque action)
   - **Routes API complètes** (`/api/manifestations`) : CRUD, stats par statut, changement de statut avec validation des transitions, historique, recherche d'objets du parc
@@ -51,7 +60,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **AlertsPage.tsx** : Ajout du champ `pluginReference` dans l'interface Alert, lien "Voir l'espace vert" pour les alertes d'espaces verts
 - **TrackingPage.tsx** : Ajout du type de données "Espaces verts" (`green_space`) avec carte statistique, onglet dédié et tableau détaillé
 - **tracking.routes.ts** : Ajout du type `green_space` dans les filtres de suivi, requête des `green_space_maintenances` avec coûts et résumé
-- **database/index.ts** : Ajout des 9 tables espaces verts
+- **database/index.ts** : Ajout des 9 tables espaces verts + table `green_space_document_elements` (liaison documents-éléments) + table `green_space_snapshots` (archives) + colonne `cloned_from_id` (FK auto-référentielle sur `green_spaces`)
 - **server.ts** : Route `/api/green-spaces` câblée
 - **Layout.tsx** : Entrée de navigation « Espaces Verts » ajoutée avec icône TreePine
 - **App.tsx** : Route frontend `/espaces-verts` ajoutée

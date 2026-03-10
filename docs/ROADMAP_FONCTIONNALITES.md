@@ -198,12 +198,18 @@
   - **Gestion des types d'entretien** : Types par défaut en BDD (modifiables, désactivables), ajout de types personnalisés, modale de gestion complète
   - **Gestion des types de documents** : Types par défaut en BDD (modifiables, désactivables), ajout de types personnalisés, modale de gestion complète
   - **Documents** : Upload, catégorisation par type, recherche/filtre textuel
+  - **Liaison documents-éléments** : Association de documents à des éléments spécifiques via table de jonction, affichage croisé
   - **Mise à jour automatique des dates** : La création ou modification d'un entretien met à jour automatiquement `last_maintenance_date` et `next_maintenance_date` sur les éléments concernés
+  - **Options d'espace** : Modale de gestion des types et statuts d'espaces verts (ajout, modification, activation/désactivation)
+  - **Clonage d'espace** : Copie vierge ou avec éléments sélectionnés, statut initial configurable (projet → travaux → actif), snapshot automatique avant clonage, copie des annotations et groupes liés
+  - **Archives & Snapshots** : Capture de l'état complet (plan, éléments, annotations, groupes) à un instant T, liste chronologique, vue détaillée du plan archivé avec annotations
+  - **Comparaison de versions** : Mode côte-à-côte entre snapshot archivé et état actuel avec résumé des différences (éléments, annotations, groupes)
+  - **Historique de l'espace source** : Accès aux documents et entretiens de l'espace original si l'espace est un clone
   - **Export PDF du plan** : Plan annoté en paysage + légende + tableaux détaillés via jsPDF + html2canvas
   - **Intégration Alertes** : Les entretiens avec date d'échéance prochaine génèrent automatiquement des alertes via cron
   - **Intégration Calendrier** : Les entretiens programmés créent automatiquement un événement calendrier
   - **Intégration Suivi** : Les coûts d'entretien apparaissent dans le module Suivi avec filtre et tableau dédiés
-- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`, `green_space_doc_types`, `green_space_maintenance_types`
-- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, stats
-- **Frontend :** 5 onglets (Informations, Plan & Annotations, Composition, Entretiens, Documents), export PDF
+- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`, `green_space_doc_types`, `green_space_maintenance_types`, `green_space_document_elements`, `green_space_snapshots`
+- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, clonage, snapshots, archives, stats
+- **Frontend :** 7 onglets (Éléments, Plan annoté, Carte, Saisons, Documents, Entretien, Archives), modale clonage, export PDF
 - **Impact :** Gestion complète des espaces verts communaux avec vision cartographique et suivi des interventions

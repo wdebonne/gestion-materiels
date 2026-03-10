@@ -2,7 +2,7 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.60-blue.svg)
+![Version](https://img.shields.io/badge/version-1.2.61-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
@@ -75,6 +75,22 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🗂️ **Onglets** : Vue par manifestations actives, stock, et archives
 - 🔗 **Recherche d'objets** : Autocomplete de recherche d'objets du parc pour ajout aux manifestations
 
+### 🌳 Espaces Verts (Nouveau!)
+- 🗺️ **Plan interactif** : Upload du plan, placement de repères par clic avec drag & drop, popup persistant, labels visibles
+- 🌿 **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec état de santé et fiche détaillée
+- 📐 **Zones polygonales** : Dessin de zones par clics successifs avec couleur et opacité
+- 📦 **Groupes de composition** : Regroupement logique d'éléments avec couleur et description
+- 🔧 **Entretiens** : Historique complet avec type, intervenant, durée, coût, éléments concernés, documents joints
+- 📄 **Documents** : Upload, catégorisation par type, liaison aux éléments
+- 📋 **Types personnalisés** : Gestion des types d'entretien et de documents (ajout, modification, activation/désactivation)
+- ⚙️ **Options d'espace** : Gestion des types et statuts d'espaces verts depuis une modale dédiée
+- 📸 **Clonage d'espace** : Copie vierge ou avec éléments sélectionnés, statut initial configurable (projet → travaux → actif), snapshot automatique avant clonage
+- 🗂️ **Archives & Snapshots** : Capture de l'état complet (plan, éléments, annotations, groupes) à un instant T, liste chronologique, vue détaillée du plan archivé
+- 🔄 **Comparaison de versions** : Mode côte-à-côte entre snapshot archivé et état actuel avec résumé des différences (éléments, annotations, groupes)
+- 📜 **Historique de l'espace source** : Accès aux documents et entretiens de l'espace original si l'espace est un clone
+- 📊 **Export PDF** : Plan annoté en paysage + légende + tableaux détaillés
+- 🔗 **Intégrations** : Alertes automatiques (cron), événements calendrier, coûts dans le module Suivi
+
 ### Plugins intégrés
 - ⛽ **Carburant** : Suivi des consommations et coûts, gestion des stations, filtrage avancé, pièces jointes (PDF/images)
 - 🔧 **Maintenance** : Historique des interventions, gestion des types d'entretien et prestataires, synchronisation kilométrage, pièces jointes (PDF/images)
@@ -85,6 +101,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🗺️ **Cartographie** *(plugin système)* : Carte interactive Leaflet/OpenStreetMap
 - 📥 **Import/Export** *(plugin système)* : Import CSV/Excel et export filtrable
 - 🎉 **Manifestations** *(plugin système)* : Gestion d'événements avec prêt/livraison/récupération de matériel et suivi de stock
+- 🌳 **Espaces Verts** *(plugin système)* : Plan interactif annoté, composition botanique, entretiens, clonage, archives & snapshots
 
 ### 🔌 Système de Plugins Avancé (Nouveau!)
 - 📦 Import de plugins via fichiers ZIP
@@ -285,12 +302,13 @@ gestion-materiels/
 │   │   │   └── DynamicPluginPage.tsx # Pages plugins dynamiques
 │   │   ├── pages/         # Pages de l'application
 │   │   │   ├── ManifestationsPage.tsx # Gestion des manifestations
+│   │   │   ├── EspacesVertsPage.tsx   # Gestion des espaces verts
 │   │   │   └── settings/  # Pages d'administration
 │   │   ├── stores/        # État global (Zustand)
 │   │   └── lib/           # Utilitaires et API
 │   └── ...
 ├── src/                    # Backend Node.js
-│   ├── routes/            # Routes API (dont manifestation.routes.ts)
+│   ├── routes/            # Routes API (dont manifestation.routes.ts, espaceVert.routes.ts)
 │   ├── services/          # Services métier
 │   │   ├── plugin.service.ts         # Gestion plugins
 │   │   ├── pluginAdvanced.service.ts # Plugins avancés (ZIP, tables)
@@ -450,6 +468,57 @@ PUT    /api/manifestations/:id       # Modifier une manifestation
 DELETE /api/manifestations/:id       # Supprimer une manifestation
 POST   /api/manifestations/:id/status # Changer le statut (avec validation des transitions)
 GET    /api/manifestations/:id/history # Historique des changements
+```
+
+### Espaces Verts
+
+```
+GET    /api/green-spaces              # Liste des espaces verts
+GET    /api/green-spaces/stats        # Statistiques
+POST   /api/green-spaces              # Créer un espace vert
+GET    /api/green-spaces/:id          # Détail (avec éléments, annotations, groupes, documents, entretiens, snapshots)
+PUT    /api/green-spaces/:id          # Modifier un espace vert
+DELETE /api/green-spaces/:id          # Supprimer un espace vert
+
+# Éléments
+POST   /api/green-spaces/:id/elements      # Ajouter un élément
+PUT    /api/green-spaces/elements/:eid     # Modifier un élément
+DELETE /api/green-spaces/elements/:eid     # Supprimer un élément
+
+# Annotations
+POST   /api/green-spaces/:id/annotations   # Ajouter une annotation
+PUT    /api/green-spaces/annotations/:aid  # Modifier une annotation
+DELETE /api/green-spaces/annotations/:aid  # Supprimer une annotation
+
+# Groupes
+POST   /api/green-spaces/:id/groups        # Ajouter un groupe
+PUT    /api/green-spaces/groups/:gid       # Modifier un groupe
+DELETE /api/green-spaces/groups/:gid       # Supprimer un groupe
+
+# Documents
+POST   /api/green-spaces/:id/documents     # Ajouter un document
+DELETE /api/green-spaces/documents/:did    # Supprimer un document
+
+# Entretiens
+POST   /api/green-spaces/:id/maintenances  # Ajouter un entretien
+PUT    /api/green-spaces/maintenances/:mid # Modifier un entretien
+DELETE /api/green-spaces/maintenances/:mid # Supprimer un entretien
+
+# Types personnalisés
+GET    /api/green-spaces/doc-types         # Types de documents
+POST   /api/green-spaces/doc-types         # Créer un type de document
+PUT    /api/green-spaces/doc-types/:id     # Modifier un type
+GET    /api/green-spaces/custom-maintenance-types  # Types d'entretien
+POST   /api/green-spaces/custom-maintenance-types  # Créer un type d'entretien
+PUT    /api/green-spaces/custom-maintenance-types/:id # Modifier un type
+
+# Clonage & Archives
+POST   /api/green-spaces/:id/clone         # Cloner un espace vert
+POST   /api/green-spaces/:id/snapshots     # Créer un snapshot
+GET    /api/green-spaces/:id/snapshots     # Liste des snapshots
+GET    /api/green-spaces/snapshots/:sid    # Détail d'un snapshot
+DELETE /api/green-spaces/snapshots/:sid    # Supprimer un snapshot
+GET    /api/green-spaces/:id/archives      # Archives (snapshots + données source si cloné)
 ```
 
 ### Calendrier
