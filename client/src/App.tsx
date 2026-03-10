@@ -24,6 +24,7 @@ import LogsPage from '@/pages/settings/LogsPage'
 import WebhooksPage from '@/pages/settings/WebhooksPage'
 import ApiPage from '@/pages/settings/ApiPage'
 import ApiTokensPage from '@/pages/settings/ApiTokensPage'
+import AuthSettingsPage from '@/pages/settings/AuthSettingsPage'
 import ProfilePage from '@/pages/ProfilePage'
 import PluginPage from '@/pages/PluginPage'
 import CustomFieldsPage from '@/pages/CustomFieldsPage'
@@ -107,6 +108,7 @@ function App() {
           <Route path="general" element={<GeneralSettingsPage />} />
           <Route path="users" element={<UsersPage />} />
           <Route path="permissions" element={<PermissionsPage />} />
+          <Route path="auth" element={<AuthSettingsPage />} />
           <Route path="smtp" element={<SmtpSettingsPage />} />
           <Route path="email-templates" element={<EmailTemplatesPage />} />
           <Route path="plugins" element={<PluginsPage />} />

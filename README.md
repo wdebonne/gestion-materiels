@@ -64,10 +64,11 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - ⛽ **Carburant** : Suivi des consommations et coûts, gestion des stations, filtrage avancé, pièces jointes (PDF/images)
 - 🔧 **Maintenance** : Historique des interventions, gestion des types d'entretien et prestataires, synchronisation kilométrage, pièces jointes (PDF/images)
 - 📋 **Contrôle technique** : Suivi des échéances, gestion des centres, calcul automatique expiration (+2 ans), pièces jointes (PDF/images)
-- 📅 **Calendrier** : Planning et événements
+- 📅 **Calendrier** *(plugin système)* : Planning et événements
 - 🔄 **Réservations** *(plugin système)* : Gestion des prêts de matériel, statuts, alertes retards
 - 📉 **Amortissement** *(plugin système)* : Dépréciation linéaire, graphiques Recharts
 - 🗺️ **Cartographie** *(plugin système)* : Carte interactive Leaflet/OpenStreetMap
+- 📥 **Import/Export** *(plugin système)* : Import CSV/Excel et export filtrable
 
 ### 🔌 Système de Plugins Avancé (Nouveau!)
 - 📦 Import de plugins via fichiers ZIP
@@ -98,29 +99,30 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔗 **Webhooks** : Notifications HTTP vers des services externes
 - 📖 **API** : Documentation interactive Swagger UI, spécification OpenAPI, statistiques
 
-### 📦 QR Codes & Import/Export
+### 📦 QR Codes
 - 📱 **QR Codes** : Génération par matériel, scan terrain pour accès rapide à la fiche
-- 📥 **Import CSV/Excel** : Import massif avec validation des données
-- 📤 **Export** : Export filtrable par catégorie au format CSV ou XLSX
-- 📋 Template d'import téléchargeable
 
-### 🔄 Réservation / Prêt de matériel *(plugin)*
+### 🔌 Plugins système (activables/désactivables depuis Paramètres > Plugins)
+
+#### 🔄 Réservation / Prêt de matériel
 - 📅 Formulaire de réservation (dates, motif, emprunteur)
 - 🔄 Statuts : réservé, en prêt, retourné, en retard
 - ⏰ Alertes automatiques CRON pour retours en retard
 - 📜 Historique complet des emprunts
-- 🔌 Activable/désactivable depuis Paramètres > Plugins
 
-### 💰 Amortissement / Dépréciation *(plugin)*
+#### 💰 Amortissement / Dépréciation
 - 📉 Calcul linéaire automatique de la valeur résiduelle
 - 📊 Graphiques interactifs (barres + camembert)
 - 🏷️ Vision financière du patrimoine matériel
-- 🔌 Activable/désactivable depuis Paramètres > Plugins
 
-### 🗺️ Cartographie & Timeline *(plugin)*
+#### 🗺️ Cartographie
 - 🗺️ **Carte interactive** OpenStreetMap (Leaflet) avec marqueurs par matériel
 - 📜 **Timeline** : Frise chronologique consolidée sur la fiche objet (maintenances, contrôles, carburant, alertes)
-- 🔌 Activable/désactivable depuis Paramètres > Plugins
+
+#### 📥 Import / Export
+- 📥 **Import CSV/Excel** : Import massif avec validation des données
+- 📤 **Export** : Export filtrable par catégorie au format CSV ou XLSX
+- 📋 Template d'import téléchargeable
 
 ### 📧 Reporting automatique
 - 📊 Rapport hebdomadaire envoyé par email aux admins/superviseurs
@@ -480,7 +482,7 @@ DELETE /api/backup/:id        # Supprimer
 POST   /api/backup/migrate    # Migrer vers MySQL
 ```
 
-## 🔒 Sécurité
+## 🔒 Sécurité & Authentification
 
 - Authentification JWT avec refresh tokens
 - Mots de passe hashés avec bcrypt
@@ -489,6 +491,12 @@ POST   /api/backup/migrate    # Migrer vers MySQL
 - Validation des entrées
 - Headers de sécurité HTTP
 - Rotation automatique des secrets JWT
+- **SSO SAML 2.0** : Azure AD, Google Workspace, Okta, Keycloak
+- **SSO OpenID Connect** : Azure AD, Google, Auth0, Keycloak
+- **LDAP / Active Directory** : Authentification annuaire avec mapping groupes/rôles
+- **Passkey (WebAuthn / FIDO2)** : Empreinte digitale, reconnaissance faciale, clés USB
+- **Politique de mot de passe** : Longueur, complexité, expiration configurables
+- **Politique de connexion** : Blocage après N tentatives, 2FA obligatoire, timeout session
 
 ## 🛠️ Développement
 

@@ -7,6 +7,26 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ajouté
+- **Page Authentification** : Nouveau menu « Authentification » dans Paramètres avec 5 onglets de configuration :
+  - **Général** : Politique de connexion (connexion locale, inscription publique, 2FA obligatoire, timeout session, blocage après tentatives échouées) et politique de mot de passe (longueur min, complexité, expiration)
+  - **LDAP / Active Directory** : Connexion à un annuaire LDAP avec mapping d'attributs (uid, mail, givenName, sn), mapping de groupes vers rôles (admin, superviseur), création automatique d'utilisateurs, STARTTLS
+  - **SAML 2.0 SSO** : Authentification via fournisseur SAML (Azure AD, Google Workspace, Okta, Keycloak) avec certificat X.509, mapping d'attributs, algorithme de signature configurable
+  - **OpenID Connect** : Authentification OIDC avec URL de découverte, scopes configurables, type de réponse (Authorization Code / Implicit), mapping des claims
+  - **Passkey (WebAuthn / FIDO2)** : Authentification sans mot de passe via empreinte digitale, reconnaissance faciale ou clé USB — utilisable comme méthode principale ou second facteur (2FA)
+- **Table `auth_config`** : Nouvelle table base de données pour stocker la configuration par fournisseur d'authentification (provider, is_active, config JSON)
+- **Routes API `/api/settings/auth`** : GET (liste), GET/:provider, PUT/:provider (mise à jour avec préservation des secrets), POST/:provider/test (test de connexion)
+- **Plugin Import/Export** : Import/Export converti en plugin système de type `menu` (`is_system: 1`, `is_active: 1`) — activable/désactivable depuis Paramètres > Plugins
+- **Fichiers plugin JSON** : Ajout de `plugin.json` et `index.json` pour les 4 plugins système : Réservations (`plugins/pages/reservations/`), Amortissement (`plugins/pages/depreciation/`), Cartographie (`plugins/pages/map/`), Import/Export (`plugins/pages/import-export/`)
+- **Documentation plugins système** : Section dédiée dans `docs/PLUGIN_STRUCTURE.md` décrivant l'architecture built-in vs personnalisé, la navigation dynamique et l'activation/désactivation
+
+### Modifié
+- **seed.ts** : Nouveau plugin `import-export` ajouté aux `DEFAULT_PLUGINS` avec config JSON (formats autorisés, taille max)
+- **Layout.tsx** : Import/Export retiré du `baseNavigation` codé en dur — ajouté à `builtInPluginSlugs` (`['calendar', 'reservations', 'depreciation', 'map', 'import-export']`) — sa visibilité dans la sidebar dépend désormais de l'activation du plugin — icône `FileSpreadsheet` ajoutée au `iconMap`
+- **ROADMAP_FONCTIONNALITES.md** : Import/Export marqué comme « Plugin système » au lieu de « Fait »
+- **README.md** : Section Import/Export mise à jour pour refléter son statut de plugin système activable/désactivable
+- **examples/plugins/README.md** : Ajout de la liste des 4 plugins système built-in avec explication de la différence entre plugins système et plugins personnalisés
+
 ## [1.3.1] - 2026-03-06
 
 ### Ajouté

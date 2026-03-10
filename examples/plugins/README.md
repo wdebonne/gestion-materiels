@@ -2,7 +2,27 @@
 
 Ce dossier contient des exemples de plugins avancés pour l'application de Gestion des Matériels.
 
-## Comment créer un plugin
+## Types de plugins
+
+### Plugins système (built-in)
+
+Les plugins système sont intégrés à l'application avec des pages React dédiées. Ils sont enregistrés dans la base de données au seed et sont activables/désactivables depuis **Paramètres > Plugins**.
+
+| Plugin | Slug | Route | Description |
+|--------|------|-------|-------------|
+| Calendrier | `calendar` | `/calendar` | Planning et événements |
+| Réservations | `reservations` | `/reservations` | Gestion des réservations et prêts de matériel |
+| Amortissement | `depreciation` | `/depreciation` | Dépréciation et valeur résiduelle |
+| Cartographie | `map` | `/map` | Carte interactive Leaflet/OpenStreetMap |
+| Import / Export | `import-export` | `/import-export` | Import/Export CSV et Excel |
+
+Leurs fichiers de configuration se trouvent dans `plugins/pages/<slug>/` (plugin.json + index.json).
+
+### Plugins personnalisés (ZIP)
+
+Les plugins personnalisés sont importables via fichier ZIP avec des pages dynamiques en JSON et des API configurables.
+
+## Comment créer un plugin personnalisé
 
 1. Créez un dossier avec les fichiers suivants :
    - `plugin.json` : Configuration du plugin (obligatoire)
@@ -37,7 +57,7 @@ Ce dossier contient des exemples de plugins avancés pour l'application de Gesti
 }
 ```
 
-## Exemples inclus
+## Exemples de plugins personnalisés inclus
 
 ### 1. image-manager (Gestion des Images)
 - Type : Menu

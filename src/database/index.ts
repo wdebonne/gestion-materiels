@@ -561,6 +561,16 @@ class DatabaseManager {
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Table de configuration de l'authentification (SSO, LDAP, Passkey)
+      `CREATE TABLE IF NOT EXISTS auth_config (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        provider VARCHAR(50) NOT NULL,
+        is_active ${boolType} DEFAULT 0,
+        config ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
       )`
     ];
 

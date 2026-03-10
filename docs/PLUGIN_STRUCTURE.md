@@ -1,8 +1,26 @@
 # Structure des Plugins
 
+## Vue d'ensemble
+
+L'application utilise un système de plugins extensible avec deux catégories :
+
+### Plugins système (built-in)
+Plugins intégrés à l'application avec des pages React dédiées, mais gérés comme des plugins activables/désactivables depuis **Paramètres > Plugins**.
+
+| Plugin | Slug | Route | Description |
+|--------|------|-------|-------------|
+| Calendrier | `calendar` | `/calendar` | Planning et événements |
+| Réservations | `reservations` | `/reservations` | Gestion des prêts de matériel |
+| Amortissement | `depreciation` | `/depreciation` | Dépréciation et valeur résiduelle |
+| Cartographie | `map` | `/map` | Carte interactive Leaflet |
+| Import / Export | `import-export` | `/import-export` | Import/Export CSV et Excel |
+
+### Plugins personnalisés (ZIP)
+Plugins importables via fichier ZIP avec pages dynamiques JSON et API configurables.
+
 ## Format du fichier ZIP
 
-Un plugin doit être fourni sous forme de fichier ZIP contenant :
+Un plugin personnalisé doit être fourni sous forme de fichier ZIP contenant :
 
 ```
 mon-plugin.zip
@@ -161,3 +179,52 @@ Affiche un graphique (nécessite chart.js).
 - `delete`: Supprime l'élément (avec confirmation)
 - `edit`: Ouvre le formulaire d'édition
 - `custom`: Action personnalisée (nécessite un handler)
+
+## Plugins système built-in
+
+Les plugins système utilisent des pages React dédiées tout en étant enregistrés dans la table `plugins` de la base de données. Ils possèdent aussi des fichiers `plugin.json` et `index.json` dans `plugins/pages/`.
+
+### Structure des dossiers
+
+```
+plugins/pages/
+├── reservations/
+│   ├── plugin.json        # Configuration du plugin
+│   └── index.json         # Définition de la page principale
+├── depreciation/
+│   ├── plugin.json
+│   └── index.json
+├── map/
+│   ├── plugin.json
+│   └── index.json
+├── import-export/
+│   ├── plugin.json
+│   └── index.json
+├── image-manager/         # Plugin personnalisé (exemple)
+│   └── index.json
+└── file-manager/          # Plugin personnalisé (exemple)
+    └── index.json
+```
+
+### Navigation dynamique
+
+La sidebar charge les plugins actifs via `GET /api/plugins/menu`. Les plugins système sont routés directement (`/reservations`, `/map`, etc.) tandis que les plugins personnalisés passent par `/plugin/:slug`.
+
+```typescript
+// Layout.tsx
+const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export']
+const pluginNavigation = menuPlugins.map((plugin) => ({
+  name: plugin.name,
+  href: builtInPluginSlugs.includes(plugin.slug)
+    ? `/${plugin.route || plugin.slug}`
+    : `/plugin/${plugin.slug}`,
+  icon: iconMap[plugin.icon] || Plug
+}))
+```
+
+### Activation / Désactivation
+
+Depuis **Paramètres > Plugins**, un administrateur peut activer ou désactiver chaque plugin système. Lorsqu'un plugin est désactivé :
+- Il disparaît de la sidebar
+- Sa route reste définie mais n'est plus accessible via la navigation
+- Les données associées sont conservées

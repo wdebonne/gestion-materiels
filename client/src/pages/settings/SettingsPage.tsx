@@ -11,7 +11,8 @@ import {
   ScrollText,
   Webhook,
   Code2,
-  Key
+  Key,
+  ShieldCheck
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -32,6 +33,12 @@ const settingsNavItems = [
     to: '/settings/permissions', 
     icon: Lock, 
     label: 'Droits',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/auth', 
+    icon: ShieldCheck, 
+    label: 'Authentification',
     adminOnly: true
   },
   { 

@@ -41,6 +41,7 @@ import apiTokenRoutes from './routes/apiToken.routes';
 import qrcodeRoutes from './routes/qrcode.routes';
 import importExportRoutes from './routes/importExport.routes';
 import reservationRoutes from './routes/reservation.routes';
+import authSettingsRoutes from './routes/authSettings.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -239,6 +240,7 @@ app.use('/api/api-tokens', apiTokenRoutes);
 app.use('/api/qrcode', qrcodeRoutes);
 app.use('/api/import-export', exportLimiter, importExportRoutes);
 app.use('/api/reservations', reservationRoutes);
+app.use('/api/settings/auth', authSettingsRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {

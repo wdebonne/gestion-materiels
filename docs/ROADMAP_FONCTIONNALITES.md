@@ -10,7 +10,7 @@
 | # | Priorité | Fonctionnalité | Effort | Impact | Statut |
 |---|----------|---------------|--------|--------|--------|
 | 1 | 🔴 Haute | QR Codes matériels | Faible | Fort | ✅ Fait |
-| 2 | 🔴 Haute | Import/Export CSV & Excel | Moyen | Fort | ✅ Fait |
+| 2 | 🔴 Haute | Import/Export CSV & Excel | Moyen | Fort | ✅ Plugin système |
 | 3 | 🔴 Haute | Tests automatisés | Moyen | Fort | ✅ Fait |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | Élevé | Fort | ✅ Plugin système |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | Moyen | Moyen | ✅ Plugin système |
@@ -21,6 +21,7 @@
 | 10 | 🟢 Optionnel | Dark Mode | Faible | Faible | ✅ Fait |
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | Moyen | Faible | ✅ Fait |
 | 12 | 🟢 Optionnel | WebSocket temps réel | Moyen | Moyen | ✅ Fait |
+| 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | Moyen | Fort | ✅ Fait |
 
 ---
 
@@ -150,3 +151,17 @@
   - Statuts de connexion utilisateurs
 - **Librairies :** `socket.io`, `socket.io-client`
 - **Impact :** Expérience collaborative améliorée
+
+### 13. Authentification SSO / LDAP / Passkey
+- **Description :** Page de configuration complète des méthodes d'authentification dans Paramètres > Authentification.
+- **Fonctionnalités :**
+  - **Général** : Politique de connexion (connexion locale, inscription, 2FA, timeout session, blocage tentatives) et politique de mot de passe (longueur, complexité, expiration)
+  - **LDAP / Active Directory** : Connexion annuaire, mapping attributs et groupes, création auto d'utilisateurs, STARTTLS
+  - **SAML 2.0 SSO** : Compatible Azure AD, Google Workspace, Okta, OneLogin, Keycloak — certificat X.509, mapping attributs, algorithme signature
+  - **OpenID Connect** : URL de découverte, scopes, Authorization Code / Implicit, mapping claims
+  - **Passkey (WebAuthn / FIDO2)** : Empreinte digitale, reconnaissance faciale, clés USB — mode principal ou 2FA
+  - Bouton de test de connexion pour chaque fournisseur
+  - Préservation des secrets lors de la mise à jour
+- **Tables BDD :** `auth_config` (provider, is_active, config JSON)
+- **Routes API :** `/api/settings/auth` — GET, GET/:provider, PUT/:provider, POST/:provider/test
+- **Impact :** Intégration entreprise, SSO centralisé, sécurité renforcée
