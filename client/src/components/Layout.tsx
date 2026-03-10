@@ -159,14 +159,18 @@ export default function Layout() {
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
   const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts']
-  const pluginNavigation = menuPlugins.map((plugin: any) => {
-    const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
-    return {
-      name: plugin.name,
-      href: isBuiltIn ? `/${plugin.route || plugin.slug}` : `/plugin/${plugin.slug}`,
-      icon: iconMap[plugin.icon] || Plug
-    }
-  })
+  // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
+  const baseNavSlugs = ['manifestations', 'espaces-verts']
+  const pluginNavigation = menuPlugins
+    .filter((plugin: any) => !baseNavSlugs.includes(plugin.slug))
+    .map((plugin: any) => {
+      const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
+      return {
+        name: plugin.name,
+        href: isBuiltIn ? `/${plugin.route || plugin.slug}` : `/plugin/${plugin.slug}`,
+        icon: iconMap[plugin.icon] || Plug
+      }
+    })
 
   const navigation = [...baseNavigation, ...pluginNavigation]
 
