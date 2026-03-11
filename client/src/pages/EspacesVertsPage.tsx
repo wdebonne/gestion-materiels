@@ -4691,16 +4691,44 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 />
               </div>
             </div>
-            {form.latitude && form.longitude && (
-              <button
-                type="button"
-                onClick={() => setShowStreetView(true)}
-                className="mt-2 flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-              >
-                <Globe className="h-4 w-4" />
-                Voir dans Google Street View
-              </button>
-            )}
+            {form.latitude && form.longitude && (() => {
+              const streetViewUrl = `https://www.google.com/maps/@${form.latitude},${form.longitude},3a,75y,90h,90t`
+              return (
+                <div className="mt-2 space-y-2">
+                  <div className="flex items-center gap-2">
+                    <a
+                      href={streetViewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                    >
+                      <Globe className="h-4 w-4 flex-shrink-0" />
+                      Ouvrir dans Google Street View
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => setShowStreetView(true)}
+                      className="p-2 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                      title="Aperçu Street View"
+                    >
+                      <MapPin className="h-4 w-4" />
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5">
+                    <Globe className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                    <span className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate font-mono select-all">{streetViewUrl}</span>
+                    <button
+                      type="button"
+                      onClick={() => navigator.clipboard.writeText(streetViewUrl)}
+                      className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
+                      title="Copier l'URL"
+                    >
+                      <Copy className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
 
           {/* ── Section : Image & Documents ── */}
