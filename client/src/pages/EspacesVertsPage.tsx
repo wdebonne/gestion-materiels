@@ -6,7 +6,7 @@ import {
   Download, Image, Tag, Ruler, CloudSun,
   Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
   Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight,
-  Navigation, Globe, Hash, Leaf, Euro, SquareAsterisk
+  Navigation, Globe, Hash, Leaf, Euro, SquareAsterisk, RefreshCw
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -675,6 +675,8 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
   const [showForm, setShowForm] = useState(false)
   const [editingElement, setEditingElement] = useState<GreenSpaceElement | null>(null)
   const [viewingElement, setViewingElement] = useState<GreenSpaceElement | null>(null)
+  const [replacingElement, setReplacingElement] = useState<GreenSpaceElement | null>(null)
+  const [historyElement, setHistoryElement] = useState<GreenSpaceElement | null>(null)
   const [searchElements, setSearchElements] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
 
@@ -787,6 +789,9 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                         </div>
                       </div>
                       <div className="flex gap-1">
+                        <button onClick={(e) => { e.stopPropagation(); setReplacingElement(el) }} className="p-1 text-gray-400 hover:text-orange-600" title="Remplacer (avec historique)">
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </button>
                         <button onClick={(e) => { e.stopPropagation(); setEditingElement(el); setShowForm(true) }} className="p-1 text-gray-400 hover:text-green-600" title="Modifier">
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
@@ -826,6 +831,14 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
               setViewingElement(null)
             }
           }}
+          onReplace={() => {
+            setReplacingElement(viewingElement)
+            setViewingElement(null)
+          }}
+          onHistory={() => {
+            setHistoryElement(viewingElement)
+            setViewingElement(null)
+          }}
         />
       )}
 
@@ -842,6 +855,27 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
           }}
         />
       )}
+
+      {/* Modal de remplacement d'élément */}
+      {replacingElement && (
+        <ReplaceElementModal
+          element={replacingElement}
+          spaceId={space.id}
+          onClose={() => setReplacingElement(null)}
+          onReplaced={() => {
+            setReplacingElement(null)
+            queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+          }}
+        />
+      )}
+
+      {/* Modal historique d'un élément */}
+      {historyElement && (
+        <ElementHistoryModal
+          element={historyElement}
+          onClose={() => setHistoryElement(null)}
+        />
+      )}
     </div>
   )
 }
@@ -854,6 +888,14 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
   const [assigningGroup, setAssigningGroup] = useState<CompositionGroup | null>(null)
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([])
+  const [showGroupTypeSettings, setShowGroupTypeSettings] = useState(false)
+
+  // Types de groupes dynamiques depuis la BDD
+  const { data: dynamicGroupTypes = [] } = useQuery({
+    queryKey: ['green-space-group-types'],
+    queryFn: () => api.get('/green-spaces/group-types').then(r => r.data.data)
+  })
+  const activeGroupTypes = (dynamicGroupTypes as any[]).filter((t: any) => !t.disabled)
 
   // Form state
   const [gName, setGName] = useState('')
@@ -921,7 +963,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   }
 
   const handleSaveGroup = () => {
-    const data = { name: gName, group_type: gType, description: gDesc, color: gColor, icon: GROUP_TYPES.find(t => t.value === gType)?.icon || 'layers', area_m2: gArea ? parseFloat(gArea) : null }
+    const data = { name: gName, group_type: gType, description: gDesc, color: gColor, icon: activeGroupTypes.find((t: any) => t.value === gType)?.icon || 'layers', area_m2: gArea ? parseFloat(gArea) : null }
     if (editingGroup) {
       updateGroupMutation.mutate({ id: editingGroup.id, ...data, pos_x: editingGroup.pos_x, pos_y: editingGroup.pos_y })
     } else {
@@ -948,14 +990,24 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
           <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
             <Layers className="h-4 w-4" /> Groupes de composition
           </h4>
-          <button
-            onClick={() => { resetForm(); setShowGroupForm(true) }}
-            className="flex items-center gap-1 text-xs px-2 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-          >
-            <Plus className="h-3 w-3" /> Nouveau groupe
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setShowGroupTypeSettings(true)}
+              className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
+              title="Gérer les types de groupes"
+            >
+              <Settings className="h-3.5 w-3.5" />
+            </button>
+            <button
+              onClick={() => { resetForm(); setShowGroupForm(true) }}
+              className="flex items-center gap-1 text-xs px-2 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+            >
+              <Plus className="h-3 w-3" /> Nouveau groupe
+            </button>
+          </div>
         </div>
         <p className="text-sm text-gray-500 dark:text-gray-400">Créez des groupes pour composer vos massifs, haies, bosquets... et les placer sur le plan.</p>
+        {showGroupTypeSettings && <GroupTypesSettingsModal onClose={() => setShowGroupTypeSettings(false)} />}
       </div>
     )
   }
@@ -966,16 +1018,25 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-2">
           <Layers className="h-4 w-4" /> Groupes de composition ({groups.length})
         </h4>
-        <button
-          onClick={() => { resetForm(); setShowGroupForm(true) }}
-          className="flex items-center gap-1 text-xs px-2 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
-        >
-          <Plus className="h-3 w-3" /> Nouveau groupe
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setShowGroupTypeSettings(true)}
+            className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
+            title="Gérer les types de groupes"
+          >
+            <Settings className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => { resetForm(); setShowGroupForm(true) }}
+            className="flex items-center gap-1 text-xs px-2 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700"
+          >
+            <Plus className="h-3 w-3" /> Nouveau groupe
+          </button>
+        </div>
       </div>
 
       {groups.map(g => {
-        const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+        const typeInfo = activeGroupTypes.find((t: any) => t.value === g.group_type) || GROUP_TYPES.find(t => t.value === g.group_type)
         const groupElements = elements.filter(el => el.group_id === g.id)
         const isExpanded = expandedGroups.has(g.id)
         return (
@@ -1055,10 +1116,10 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
                   <select
                     value={gType}
-                    onChange={e => { setGType(e.target.value); setGColor(GROUP_TYPES.find(t => t.value === e.target.value)?.color || '#8b5cf6') }}
+                    onChange={e => { setGType(e.target.value); setGColor(activeGroupTypes.find((t: any) => t.value === e.target.value)?.color || '#8b5cf6') }}
                     className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   >
-                    {GROUP_TYPES.map(t => (
+                    {(activeGroupTypes.length > 0 ? activeGroupTypes : GROUP_TYPES).map((t: any) => (
                       <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
                     ))}
                   </select>
@@ -1173,6 +1234,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
           </div>
         </div>
       )}
+      {showGroupTypeSettings && <GroupTypesSettingsModal onClose={() => setShowGroupTypeSettings(false)} />}
     </div>
   )
 }
@@ -4158,8 +4220,8 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
 
 // ======================== MODAL VISUALISATION ÉLÉMENT ========================
 
-function ElementViewModal({ element, space, onClose, onEdit, onDelete }: {
-  element: GreenSpaceElement, space: GreenSpace, onClose: () => void, onEdit: () => void, onDelete: () => void
+function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace, onHistory }: {
+  element: GreenSpaceElement, space: GreenSpace, onClose: () => void, onEdit: () => void, onDelete: () => void, onReplace?: () => void, onHistory?: () => void
 }) {
   const typeInfo = ELEMENT_TYPES.find(t => t.value === element.element_type)
   const conditionInfo = CONDITION_STATES.find(c => c.value === element.condition_state)
@@ -4179,6 +4241,16 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete }: {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {onHistory && (
+              <button onClick={onHistory} className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-gray-500 hover:text-blue-600" title="Historique des remplacements">
+                <History className="h-5 w-5" />
+              </button>
+            )}
+            {onReplace && (
+              <button onClick={onReplace} className="p-2 hover:bg-orange-50 dark:hover:bg-orange-900/30 rounded-lg text-gray-500 hover:text-orange-600" title="Remplacer (avec historique)">
+                <RefreshCw className="h-5 w-5" />
+              </button>
+            )}
             <button onClick={onEdit} className="p-2 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg text-gray-500 hover:text-green-600" title="Modifier">
               <Edit3 className="h-5 w-5" />
             </button>
@@ -5215,6 +5287,427 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  )
+}
+
+// ======================== MODAL TYPES DE GROUPES ========================
+
+function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
+  const queryClient = useQueryClient()
+
+  const { data: allGroupTypes = [] } = useQuery({
+    queryKey: ['green-space-group-types'],
+    queryFn: () => api.get('/green-spaces/group-types').then(r => r.data.data)
+  })
+  const [newGT, setNewGT] = useState({ label: '', icon: '🌺', color: '#8b5cf6' })
+  const [editingGT, setEditingGT] = useState<{ id: number, label: string, icon: string, color: string } | null>(null)
+
+  const addMutation = useMutation({
+    mutationFn: (data: any) => api.post('/green-spaces/group-types', data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-group-types'] }); setNewGT({ label: '', icon: '🌺', color: '#8b5cf6' }) }
+  })
+  const updateMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/group-types/${id}`, data),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-group-types'] }); setEditingGT(null) }
+  })
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/green-spaces/group-types/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-group-types'] })
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <Layers className="h-5 w-5 text-purple-600" />
+            Types de groupes de composition
+          </h3>
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Formulaire d'ajout */}
+        <div className="flex gap-2 mb-4">
+          <input
+            value={newGT.icon}
+            onChange={e => setNewGT({ ...newGT, icon: e.target.value })}
+            className="w-12 px-2 py-2 text-sm text-center border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+            title="Icône emoji"
+          />
+          <input
+            value={newGT.label}
+            onChange={e => setNewGT({ ...newGT, label: e.target.value })}
+            placeholder="Nouveau type de groupe..."
+            className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+          />
+          <input
+            type="color"
+            value={newGT.color}
+            onChange={e => setNewGT({ ...newGT, color: e.target.value })}
+            className="w-10 h-9 rounded-lg border border-gray-300 dark:border-gray-600 cursor-pointer"
+            title="Couleur"
+          />
+          <button
+            onClick={() => {
+              if (newGT.label.trim()) {
+                const val = newGT.label.trim().toLowerCase().replace(/\s+/g, '_').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                addMutation.mutate({ value: val, label: newGT.label.trim(), icon: newGT.icon || '🌺', color: newGT.color })
+              }
+            }}
+            disabled={!newGT.label.trim() || addMutation.isPending}
+            className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" />
+          </button>
+        </div>
+
+        {/* Liste des types */}
+        <div className="space-y-1">
+          {(allGroupTypes as any[]).map((t: any) => (
+            <div key={t.id} className={`flex items-center gap-2 p-2 rounded-lg border ${t.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
+              {editingGT?.id === t.id ? (
+                <>
+                  <input
+                    value={editingGT.icon}
+                    onChange={e => setEditingGT({ ...editingGT, icon: e.target.value })}
+                    className="w-10 px-1 py-1 text-sm text-center border rounded dark:bg-gray-700 dark:border-gray-600"
+                  />
+                  <input
+                    value={editingGT.label}
+                    onChange={e => setEditingGT({ ...editingGT, label: e.target.value })}
+                    className="flex-1 px-2 py-1 text-sm border rounded dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                  />
+                  <input
+                    type="color"
+                    value={editingGT.color}
+                    onChange={e => setEditingGT({ ...editingGT, color: e.target.value })}
+                    className="w-8 h-7 rounded border border-gray-300 dark:border-gray-600 cursor-pointer"
+                  />
+                  <button
+                    onClick={() => {
+                      if (editingGT.label.trim()) {
+                        updateMutation.mutate({ id: t.id, label: editingGT.label.trim(), icon: editingGT.icon, color: editingGT.color })
+                      }
+                    }}
+                    className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                  >
+                    <Check className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => setEditingGT(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                    <X className="h-4 w-4" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || '#8b5cf6' }} />
+                  <span className="text-lg">{t.icon}</span>
+                  <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                    {t.label}
+                    {t.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                  </span>
+                  <button
+                    onClick={() => setEditingGT({ id: t.id, label: t.label, icon: t.icon || '🌺', color: t.color || '#8b5cf6' })}
+                    className="p-1 text-gray-400 hover:text-blue-600 rounded"
+                    title="Modifier"
+                  >
+                    <Edit3 className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    onClick={() => updateMutation.mutate({ id: t.id, disabled: t.disabled ? 0 : 1 })}
+                    className={`p-1 rounded ${t.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
+                    title={t.disabled ? 'Réactiver' : 'Désactiver'}
+                  >
+                    {t.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+                  </button>
+                  {!t.is_default && (
+                    <button
+                      onClick={() => { if (confirm('Supprimer ce type de groupe ?')) deleteMutation.mutate(t.id) }}
+                      className="p-1 text-gray-400 hover:text-red-600 rounded"
+                      title="Supprimer"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ======================== MODAL REMPLACEMENT D'ÉLÉMENT ========================
+
+function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
+  element: GreenSpaceElement, spaceId: number, onClose: () => void, onReplaced: () => void
+}) {
+  const SEASONS = [
+    { value: 'printemps', label: '🌱 Printemps' },
+    { value: 'ete', label: '☀️ Été' },
+    { value: 'automne', label: '🍂 Automne' },
+    { value: 'hiver', label: '❄️ Hiver' },
+    { value: 'annuel', label: '📅 Annuel' },
+  ]
+
+  const currentYear = new Date().getFullYear()
+  const [form, setForm] = useState({
+    season: 'printemps',
+    year: currentYear,
+    reason: '',
+    notes: '',
+    new_label: element.label,
+    new_species: element.species || '',
+    new_element_type: element.element_type,
+    new_description: element.description || '',
+    new_condition_state: 'bon',
+    new_image: element.image || '',
+    new_quantity: element.quantity || 1,
+    new_purchase_price: element.purchase_price || '',
+    new_planting_date: new Date().toISOString().split('T')[0],
+  })
+
+  const replaceMutation = useMutation({
+    mutationFn: (data: any) => api.post(`/green-spaces/elements/${element.id}/replace`, data),
+    onSuccess: () => onReplaced()
+  })
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <RefreshCw className="h-5 w-5 text-orange-600" />
+            Remplacer l'élément
+          </h3>
+          <p className="text-sm text-gray-500 mt-1">
+            L'état actuel de « <strong>{element.label}</strong> » sera archivé pour traçabilité avant le remplacement.
+          </p>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {/* Contexte du remplacement */}
+          <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3">
+            <h4 className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase tracking-wider mb-2">Contexte du remplacement</h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Saison</label>
+                <select
+                  value={form.season}
+                  onChange={e => setForm({ ...form, season: e.target.value })}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                >
+                  {SEASONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Année</label>
+                <input
+                  type="number"
+                  value={form.year}
+                  onChange={e => setForm({ ...form, year: parseInt(e.target.value) })}
+                  min={2020} max={2050}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Raison du remplacement</label>
+              <input
+                type="text"
+                value={form.reason}
+                onChange={e => setForm({ ...form, reason: e.target.value })}
+                placeholder="Ex: Changement saisonnier, fin de vie, dégât..."
+                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              />
+            </div>
+          </div>
+
+          {/* Nouveau contenu */}
+          <div>
+            <h4 className="text-xs font-semibold text-green-700 dark:text-green-300 uppercase tracking-wider mb-2">Nouveau contenu</h4>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nom *</label>
+                  <input
+                    type="text"
+                    value={form.new_label}
+                    onChange={e => setForm({ ...form, new_label: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Espèce / Variété</label>
+                  <input
+                    type="text"
+                    value={form.new_species}
+                    onChange={e => setForm({ ...form, new_species: e.target.value })}
+                    placeholder="Ex: Pensée, Tulipe..."
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Type</label>
+                  <select
+                    value={form.new_element_type}
+                    onChange={e => setForm({ ...form, new_element_type: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  >
+                    {ELEMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Quantité</label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={form.new_quantity}
+                    onChange={e => setForm({ ...form, new_quantity: parseInt(e.target.value) || 1 })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date plantation</label>
+                  <input
+                    type="date"
+                    value={form.new_planting_date}
+                    onChange={e => setForm({ ...form, new_planting_date: e.target.value })}
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes</label>
+                <textarea
+                  value={form.notes}
+                  onChange={e => setForm({ ...form, notes: e.target.value })}
+                  rows={2}
+                  placeholder="Notes sur le remplacement..."
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            Annuler
+          </button>
+          <button
+            onClick={() => replaceMutation.mutate(form)}
+            disabled={!form.new_label.trim() || replaceMutation.isPending}
+            className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+          >
+            {replaceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Remplacer et archiver
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ======================== MODAL HISTORIQUE DES REMPLACEMENTS ========================
+
+function ElementHistoryModal({ element, onClose }: { element: GreenSpaceElement, onClose: () => void }) {
+  const { data: historyData = [], isLoading } = useQuery({
+    queryKey: ['element-history', element.id],
+    queryFn: () => api.get(`/green-spaces/elements/${element.id}/history`).then(r => r.data.data)
+  })
+
+  const history = historyData as any[]
+
+  const SEASON_LABELS: Record<string, string> = {
+    printemps: '🌱 Printemps',
+    ete: '☀️ Été',
+    automne: '🍂 Automne',
+    hiver: '❄️ Hiver',
+    annuel: '📅 Annuel',
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+            <History className="h-5 w-5 text-blue-600" />
+            Historique des remplacements — {element.label}
+          </h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {isLoading && (
+            <div className="flex items-center justify-center py-10">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-500" />
+            </div>
+          )}
+
+          {!isLoading && history.length === 0 && (
+            <div className="text-center py-10">
+              <History className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+              <p className="text-sm text-gray-500 dark:text-gray-400">Aucun remplacement enregistré pour cet élément.</p>
+              <p className="text-xs text-gray-400 mt-1">L'historique apparaîtra ici lorsque vous utiliserez la fonction « Remplacer ».</p>
+            </div>
+          )}
+
+          {!isLoading && history.length > 0 && (
+            <div className="space-y-4">
+              {/* État actuel */}
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-3">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-xs font-bold text-green-700 dark:text-green-300 uppercase">Actuel</span>
+                </div>
+                <p className="text-sm font-medium text-gray-900 dark:text-white">{element.label}</p>
+                {element.species && <p className="text-xs text-gray-500 italic">{element.species}</p>}
+                <p className="text-xs text-gray-400 mt-1">
+                  {ELEMENT_TYPES.find(t => t.value === element.element_type)?.icon} {ELEMENT_TYPES.find(t => t.value === element.element_type)?.label}
+                  {element.quantity > 1 ? ` × ${element.quantity}` : ''}
+                </p>
+              </div>
+
+              {/* Timeline des remplacements */}
+              <div className="relative border-l-2 border-blue-200 dark:border-blue-800 ml-3 space-y-4">
+                {history.map((h: any, idx: number) => (
+                  <div key={h.id} className="relative pl-6">
+                    <div className="absolute -left-[9px] top-1 w-4 h-4 bg-blue-500 rounded-full border-2 border-white dark:border-gray-800" />
+                    <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3 border border-gray-200 dark:border-gray-600">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
+                            {SEASON_LABELS[h.season] || h.season} {h.year}
+                          </span>
+                          {idx === 0 && <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded">Dernier remplacement</span>}
+                        </div>
+                        <span className="text-xs text-gray-400">{h.replaced_at ? new Date(h.replaced_at).toLocaleDateString('fr-FR') : ''}</span>
+                      </div>
+                      <p className="text-sm font-medium text-gray-900 dark:text-white">{h.previous_label}</p>
+                      {h.previous_species && <p className="text-xs text-gray-500 italic">{h.previous_species}</p>}
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                        <span>{ELEMENT_TYPES.find(t => t.value === h.previous_element_type)?.icon} {ELEMENT_TYPES.find(t => t.value === h.previous_element_type)?.label}</span>
+                        {h.previous_quantity > 1 && <span>× {h.previous_quantity}</span>}
+                        {h.previous_condition_state && <span>État: {CONDITION_STATES.find(c => c.value === h.previous_condition_state)?.label || h.previous_condition_state}</span>}
+                      </div>
+                      {h.reason && <p className="text-xs text-orange-600 dark:text-orange-400 mt-1">Raison: {h.reason}</p>}
+                      {h.notes && <p className="text-xs text-gray-500 mt-1">{h.notes}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

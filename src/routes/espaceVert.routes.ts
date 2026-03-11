@@ -334,6 +334,152 @@ router.delete('/space-statuses/:id', authenticateToken, requireSupervisor, async
   }
 });
 
+// ======================== TYPES DE GROUPES DE COMPOSITION (CRUD) ========================
+
+router.get('/group-types', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    const types = await db.query('SELECT * FROM green_space_group_types ORDER BY is_default DESC, label ASC');
+    res.json({ success: true, data: types });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/group-types', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { value, label, icon, color } = req.body;
+    if (!value || !label) return res.status(400).json({ success: false, message: 'value et label sont requis' });
+    const now = new Date().toISOString();
+    const result = await db.execute(
+      'INSERT INTO green_space_group_types (value, label, icon, color, is_default, created_at) VALUES (?, ?, ?, ?, 0, ?)',
+      [value.toLowerCase().replace(/\s+/g, '_'), label, icon || '🌺', color || '#8b5cf6', now]
+    );
+    const created = await db.queryOne('SELECT * FROM green_space_group_types WHERE id = ?', [result.lastInsertRowid]);
+    res.status(201).json({ success: true, data: created });
+  } catch (error: any) {
+    if (error.message?.includes('UNIQUE')) return res.status(409).json({ success: false, message: 'Ce type de groupe existe déjà' });
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.put('/group-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { label, icon, color, disabled } = req.body;
+    if (label !== undefined) {
+      await db.execute('UPDATE green_space_group_types SET label = ?, icon = ?, color = ? WHERE id = ?', [label, icon || '🌺', color || '#8b5cf6', req.params.id]);
+    }
+    if (disabled !== undefined) {
+      await db.execute('UPDATE green_space_group_types SET disabled = ? WHERE id = ?', [disabled ? 1 : 0, req.params.id]);
+    }
+    const updated = await db.queryOne('SELECT * FROM green_space_group_types WHERE id = ?', [req.params.id]);
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/group-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.execute('DELETE FROM green_space_group_types WHERE id = ? AND is_default = 0', [req.params.id]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== REMPLACEMENT D'ÉLÉMENTS (HISTORIQUE) ========================
+
+// POST /elements/:elementId/replace - Remplacer un élément en archivant l'ancien
+router.post('/elements/:elementId/replace', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const existing = await db.queryOne('SELECT * FROM green_space_elements WHERE id = ?', [req.params.elementId]);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Élément non trouvé' });
+    }
+
+    const { season, year, reason, notes, new_label, new_species, new_element_type, new_description,
+      new_condition_state, new_image, new_quantity, new_purchase_price, new_planting_date, new_custom_fields } = req.body;
+
+    const now = new Date().toISOString();
+
+    // Archiver l'état actuel de l'élément
+    await db.execute(
+      `INSERT INTO green_space_element_replacements (element_id, green_space_id, group_id, replaced_at, season, year, reason, notes,
+        previous_label, previous_species, previous_element_type, previous_description, previous_condition_state,
+        previous_image, previous_quantity, previous_purchase_price, previous_planting_date, previous_custom_fields,
+        previous_data, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        existing.id, existing.green_space_id, existing.group_id || null,
+        now, season || '', year || new Date().getFullYear(), reason || '', notes || '',
+        existing.label, existing.species, existing.element_type, existing.description,
+        existing.condition_state, existing.image, existing.quantity, existing.purchase_price,
+        existing.planting_date, existing.custom_fields || '{}',
+        JSON.stringify(existing),
+        now
+      ]
+    );
+
+    // Mettre à jour l'élément avec les nouvelles données
+    await db.execute(
+      `UPDATE green_space_elements SET
+        label = ?, species = ?, element_type = ?, description = ?,
+        condition_state = ?, image = ?, quantity = ?, purchase_price = ?,
+        planting_date = ?, custom_fields = ?, updated_at = ?
+       WHERE id = ?`,
+      [
+        new_label ?? existing.label, new_species ?? existing.species,
+        new_element_type ?? existing.element_type, new_description ?? existing.description,
+        new_condition_state ?? 'bon', new_image ?? existing.image,
+        new_quantity ?? existing.quantity, new_purchase_price ?? existing.purchase_price,
+        new_planting_date || now.split('T')[0], new_custom_fields ? JSON.stringify(new_custom_fields) : existing.custom_fields,
+        now, req.params.elementId
+      ]
+    );
+
+    const updated = await db.queryOne(`
+      SELECT gse.*, o.name as object_name, o.image as object_image
+      FROM green_space_elements gse
+      LEFT JOIN objects o ON o.id = gse.object_id
+      WHERE gse.id = ?
+    `, [req.params.elementId]);
+
+    res.json({ success: true, data: updated });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /elements/:elementId/history - Historique des remplacements d'un élément
+router.get('/elements/:elementId/history', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const history = await db.query(
+      'SELECT * FROM green_space_element_replacements WHERE element_id = ? ORDER BY replaced_at DESC',
+      [req.params.elementId]
+    );
+    res.json({ success: true, data: history });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /:id/replacement-history - Historique global de tous les remplacements d'un espace
+router.get('/:id/replacement-history', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const history = await db.query(
+      `SELECT r.*, e.label as current_label, e.species as current_species, e.element_type as current_element_type
+       FROM green_space_element_replacements r
+       LEFT JOIN green_space_elements e ON e.id = r.element_id
+       WHERE r.green_space_id = ?
+       ORDER BY r.replaced_at DESC`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: history });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // GET /:id - Détail d'un espace vert avec éléments
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {

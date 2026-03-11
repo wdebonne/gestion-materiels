@@ -904,6 +904,43 @@ class DatabaseManager {
         is_default INTEGER DEFAULT 0,
         disabled INTEGER DEFAULT 0,
         created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Types de groupes de composition
+      `CREATE TABLE IF NOT EXISTS green_space_group_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        icon VARCHAR(10) DEFAULT '🌺',
+        color VARCHAR(20) DEFAULT '#8b5cf6',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Historique de remplacement d'éléments
+      `CREATE TABLE IF NOT EXISTS green_space_element_replacements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        element_id INTEGER NOT NULL,
+        green_space_id INTEGER NOT NULL,
+        group_id INTEGER,
+        replaced_at DATETIME ${timestampDefault},
+        season VARCHAR(50) DEFAULT '',
+        year INTEGER,
+        reason TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        previous_label VARCHAR(255),
+        previous_species VARCHAR(255),
+        previous_element_type VARCHAR(100),
+        previous_description TEXT,
+        previous_condition_state VARCHAR(50),
+        previous_image VARCHAR(500),
+        previous_quantity INTEGER,
+        previous_purchase_price DECIMAL(10,2),
+        previous_planting_date DATE,
+        previous_custom_fields TEXT DEFAULT '{}',
+        previous_data TEXT DEFAULT '{}',
+        created_at DATETIME ${timestampDefault}
       )`
     ];
 
@@ -1175,6 +1212,27 @@ class DatabaseManager {
         await this.execute(
           'INSERT OR IGNORE INTO green_space_maintenance_types (value, label, icon, is_default) VALUES (?, ?, ?, 1)',
           [mt.value, mt.label, mt.icon]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    // Types de groupes de composition par défaut
+    const defaultGroupTypes = [
+      { value: 'massif', label: 'Massif floral', icon: '🌺', color: '#ec4899' },
+      { value: 'haie', label: 'Haie composée', icon: '🌲', color: '#15803d' },
+      { value: 'bosquet', label: 'Bosquet', icon: '🌳', color: '#16a34a' },
+      { value: 'rocaille', label: 'Rocaille', icon: '🪨', color: '#78716c' },
+      { value: 'jardiniere', label: 'Jardinière', icon: '🌷', color: '#f472b6' },
+      { value: 'plate_bande', label: 'Plate-bande', icon: '🌸', color: '#a855f7' },
+      { value: 'mixed_border', label: 'Mixed-border', icon: '🌼', color: '#f59e0b' },
+      { value: 'autre', label: 'Autre', icon: '📍', color: '#6b7280' },
+    ];
+
+    for (const gt of defaultGroupTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_group_types (value, label, icon, color, is_default) VALUES (?, ?, ?, ?, 1)',
+          [gt.value, gt.label, gt.icon, gt.color]
         );
       } catch { /* ignore duplicates */ }
     }
