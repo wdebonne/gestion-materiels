@@ -205,11 +205,13 @@
   - **Archives & Snapshots** : Capture de l'état complet (plan, éléments, annotations, groupes) à un instant T, liste chronologique, vue détaillée du plan archivé avec annotations
   - **Comparaison de versions** : Mode côte-à-côte entre snapshot archivé et état actuel avec résumé des différences (éléments, annotations, groupes)
   - **Historique de l'espace source** : Accès aux documents et entretiens de l'espace original si l'espace est un clone
+  - **Gestion des types de groupes** : Modale CRUD (ajout/modification/activation/suppression) pour les types de groupes de composition — 8 types par défaut (massif, haie, bosquet, rocaille, jardinière, plate-bande, mixed border, autre) avec icône et couleur personnalisables
+  - **Remplacement d'éléments avec historique** : Archivage automatique de l'état complet avant remplacement — contexte saisonnier (printemps/été/automne/hiver/annuel), année, raison — timeline visuelle des versions précédentes pour traçabilité (ex: compositions été vs hiver)
   - **Export PDF du plan** : Plan annoté en paysage + légende + tableaux détaillés via jsPDF + html2canvas
   - **Intégration Alertes** : Les entretiens avec date d'échéance prochaine génèrent automatiquement des alertes via cron
   - **Intégration Calendrier** : Les entretiens programmés créent automatiquement un événement calendrier
   - **Intégration Suivi** : Les coûts d'entretien apparaissent dans le module Suivi avec filtre et tableau dédiés
-- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`, `green_space_doc_types`, `green_space_maintenance_types`, `green_space_document_elements`, `green_space_snapshots`
-- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, clonage, snapshots, archives, stats
+- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`, `green_space_doc_types`, `green_space_maintenance_types`, `green_space_document_elements`, `green_space_snapshots`, `green_space_group_types`, `green_space_element_replacements`
+- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, types de groupes, remplacement d'éléments, historique remplacements, clonage, snapshots, archives, stats
 - **Frontend :** 7 onglets (Éléments, Plan annoté, Carte, Saisons, Documents, Entretien, Archives), modale clonage, export PDF
 - **Impact :** Gestion complète des espaces verts communaux avec vision cartographique et suivi des interventions

@@ -32,6 +32,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   - **7 nouvelles routes API** : POST/GET `/:id/snapshots`, GET/DELETE `/snapshots/:snapshotId`, POST `/:id/clone`, GET `/:id/archives`
   - **Liaison documents-éléments** : Table de jonction `green_space_document_elements`, association de documents à des éléments spécifiques, affichage croisé dans DocumentsTab et ElementFormModal
   - **Options d'espace** (`SpaceSettingsModal`) : Modale de gestion des types et statuts d'espaces verts (ajout, modification, activation/désactivation) depuis la barre d'outils
+  - **Gestion des types de groupes** (`GroupTypesSettingsModal`) : Modale CRUD pour les types de groupes de composition (massif, haie, bosquet, rocaille, jardinière, plate-bande, mixed border, autre) — ajout, modification (icône/label/couleur), activation/désactivation, suppression — bouton ⚙️ à côté de « Nouveau groupe »
+  - **Table `green_space_group_types`** : Nouvelle table pour stocker les types de groupes avec icône, couleur, label, état d'activation et 8 types par défaut
+  - **Remplacement d'éléments avec historique** (`ReplaceElementModal`) : Archivage automatique de l'état complet de l'élément (label, espèce, type, état, quantité, prix, date plantation, image, champs personnalisés) avant remplacement — contexte saisonnier (printemps/été/automne/hiver/annuel), année, raison et notes
+  - **Historique des remplacements** (`ElementHistoryModal`) : Timeline visuelle avec état actuel (encart vert) et chronologie des versions précédentes — saison/année, données archivées, raison du remplacement
+  - **Table `green_space_element_replacements`** : Nouvelle table d'archivage avec toutes les données précédentes de l'élément, saison, année, raison et notes
+  - **Routes API remplacement** : POST `/elements/:id/replace` (archive + mise à jour), GET `/elements/:id/history` (historique par élément), GET `/:id/replacement-history` (historique global par espace)
+  - **Routes API types de groupes** : GET/POST/PUT/DELETE `/group-types` avec CRUD complet
 - **Module Manifestations — Page dédiée complète** : Gestion des manifestations (prêts de matériel pour événements) avec page dédiée accessible depuis la navigation principale :
   - **3 tables base de données** : `manifestations` (informations générales, statut, contact, lieu), `manifestation_items` (articles liés avec quantités commandées/livrées/retournées), `manifestation_history` (historique horodaté de chaque action)
   - **Routes API complètes** (`/api/manifestations`) : CRUD, stats par statut, changement de statut avec validation des transitions, historique, recherche d'objets du parc
@@ -60,7 +67,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **AlertsPage.tsx** : Ajout du champ `pluginReference` dans l'interface Alert, lien "Voir l'espace vert" pour les alertes d'espaces verts
 - **TrackingPage.tsx** : Ajout du type de données "Espaces verts" (`green_space`) avec carte statistique, onglet dédié et tableau détaillé
 - **tracking.routes.ts** : Ajout du type `green_space` dans les filtres de suivi, requête des `green_space_maintenances` avec coûts et résumé
-- **database/index.ts** : Ajout des 9 tables espaces verts + table `green_space_document_elements` (liaison documents-éléments) + table `green_space_snapshots` (archives) + colonne `cloned_from_id` (FK auto-référentielle sur `green_spaces`)
+- **database/index.ts** : Ajout des 9 tables espaces verts + table `green_space_document_elements` (liaison documents-éléments) + table `green_space_snapshots` (archives) + colonne `cloned_from_id` (FK auto-référentielle sur `green_spaces`) + table `green_space_group_types` (types de groupes) + table `green_space_element_replacements` (historique remplacements)
 - **server.ts** : Route `/api/green-spaces` câblée
 - **Layout.tsx** : Entrée de navigation « Espaces Verts » ajoutée avec icône TreePine
 - **App.tsx** : Route frontend `/espaces-verts` ajoutée

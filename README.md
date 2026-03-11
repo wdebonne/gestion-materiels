@@ -88,7 +88,9 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🗂️ **Archives & Snapshots** : Capture de l'état complet (plan, éléments, annotations, groupes) à un instant T, liste chronologique, vue détaillée du plan archivé
 - 🔄 **Comparaison de versions** : Mode côte-à-côte entre snapshot archivé et état actuel avec résumé des différences (éléments, annotations, groupes)
 - 📜 **Historique de l'espace source** : Accès aux documents et entretiens de l'espace original si l'espace est un clone
-- 📊 **Export PDF** : Plan annoté en paysage + légende + tableaux détaillés
+- � **Types de groupes** : Gestion CRUD des types de groupes de composition (massif, haie, bosquet, rocaille, jardinière...) avec icône et couleur personnalisables
+- ♻️ **Remplacement d'éléments** : Archivage automatique de l'état avant remplacement avec contexte saisonnier (printemps/été/automne/hiver) — timeline visuelle de l'historique pour traçabilité
+- �📊 **Export PDF** : Plan annoté en paysage + légende + tableaux détaillés
 - 🔗 **Intégrations** : Alertes automatiques (cron), événements calendrier, coûts dans le module Suivi
 
 ### Plugins intégrés
