@@ -5,7 +5,8 @@ import {
   FileText, X, Eye,
   Download, Image, Tag, Ruler, CloudSun,
   Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
-  Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight
+  Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight,
+  Navigation, Globe, Hash, Leaf, Euro, SquareAsterisk
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -77,6 +78,8 @@ interface GreenSpaceElement {
   group_id?: number | null
   area_m2?: number | null
   zone_points?: string | null
+  latitude?: number | null
+  longitude?: number | null
 }
 
 interface Annotation {
@@ -4342,9 +4345,12 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
     condition_state: element?.condition_state || 'bon',
     object_id: element?.object_id?.toString() || '',
     area_m2: element?.area_m2?.toString() || '',
+    latitude: element?.latitude?.toString() || '',
+    longitude: element?.longitude?.toString() || '',
   })
   const [objectSearch, setObjectSearch] = useState('')
   const [showObjectResults, setShowObjectResults] = useState(false)
+  const [showStreetView, setShowStreetView] = useState(false)
 
   // Documents à joindre
   const [attachments, setAttachments] = useState<{ name: string, file_path: string, doc_type: string }[]>([])
@@ -4425,6 +4431,8 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
       purchase_price: form.purchase_price ? parseFloat(form.purchase_price) : null,
       object_id: form.object_id ? parseInt(form.object_id) : null,
       area_m2: form.area_m2 ? parseFloat(form.area_m2) : null,
+      latitude: form.latitude ? parseFloat(form.latitude) : null,
+      longitude: form.longitude ? parseFloat(form.longitude) : null,
     })
   }
 
@@ -4440,63 +4448,77 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Libellé *</label>
-              <input
-                type="text"
-                value={form.label}
-                onChange={(e) => setForm({ ...form, label: e.target.value })}
-                placeholder="ex: Chêne centenaire, Banc n°3..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Code / Identifiant</label>
-              <input
-                type="text"
-                value={form.code}
-                onChange={(e) => setForm({ ...form, code: e.target.value })}
-                placeholder="ex: A-001, B-012..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
-              <select
-                value={form.element_type}
-                onChange={(e) => setForm({ ...form, element_type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                {ELEMENT_TYPES.map(t => (
-                  <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">État</label>
-              <select
-                value={form.condition_state}
-                onChange={(e) => setForm({ ...form, condition_state: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              >
-                {CONDITION_STATES.map(c => (
-                  <option key={c.value} value={c.value}>{c.label}</option>
-                ))}
-              </select>
-            </div>
+        <div className="p-6 space-y-5">
 
-            {/* Lier un objet du parc */}
-            <div className="col-span-2 relative">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Lier un objet du parc (optionnel)</label>
+          {/* ── Section : Identification ── */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Tag className="h-3.5 w-3.5" /> Identification
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Libellé *</label>
+                <input
+                  type="text"
+                  value={form.label}
+                  onChange={(e) => setForm({ ...form, label: e.target.value })}
+                  placeholder="ex: Chêne centenaire, Banc n°3..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Code / Identifiant</label>
+                <div className="relative">
+                  <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={form.code}
+                    onChange={(e) => setForm({ ...form, code: e.target.value })}
+                    placeholder="ex: A-001, B-012..."
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Type</label>
+                <select
+                  value={form.element_type}
+                  onChange={(e) => setForm({ ...form, element_type: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                >
+                  {ELEMENT_TYPES.map(t => (
+                    <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">État</label>
+                <select
+                  value={form.condition_state}
+                  onChange={(e) => setForm({ ...form, condition_state: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                >
+                  {CONDITION_STATES.map(c => (
+                    <option key={c.value} value={c.value}>{c.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section : Lier un objet ── */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Link2 className="h-3.5 w-3.5" /> Liaison objet du parc
+            </h4>
+            <div className="relative">
               <input
                 type="text"
                 value={objectSearch}
                 onChange={(e) => { setObjectSearch(e.target.value); setShowObjectResults(true) }}
                 onFocus={() => setShowObjectResults(true)}
                 placeholder="Rechercher un objet par nom ou référence..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
               />
               {showObjectResults && objectResults.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -4504,19 +4526,16 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                     <button
                       key={obj.id}
                       onClick={() => {
-                        // Pré-remplir les champs depuis l'objet lié
                         const customFields = obj.custom_fields ? (typeof obj.custom_fields === 'string' ? JSON.parse(obj.custom_fields) : obj.custom_fields) : {}
                         const updates: any = { object_id: obj.id.toString() }
                         if (obj.image && !form.image) updates.image = obj.image
                         if (obj.purchase_price && !form.purchase_price) updates.purchase_price = obj.purchase_price.toString()
                         if (obj.description && !form.description) updates.description = obj.description
                         if (obj.purchase_date && !form.planting_date) updates.planting_date = obj.purchase_date
-                        // Mapper le statut de l'objet vers l'état de l'élément
                         if (obj.status && form.condition_state === 'bon') {
                           const statusMap: Record<string, string> = { active: 'bon', good: 'bon', warning: 'moyen', poor: 'mauvais', broken: 'mauvais', inactive: 'mauvais' }
                           if (statusMap[obj.status]) updates.condition_state = statusMap[obj.status]
                         }
-                        // Remplir depuis les champs personnalisés
                         if (customFields.espece && !form.species) updates.species = customFields.espece
                         if (customFields.variete && !form.species) updates.species = customFields.variete
                         if (customFields.species && !form.species) updates.species = customFields.species
@@ -4542,198 +4561,333 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
               {form.object_id && (
                 <button
                   onClick={() => { setForm({ ...form, object_id: '' }); setObjectSearch('') }}
-                  className="absolute right-2 top-8 text-gray-400 hover:text-red-500"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
                 >
                   <X className="h-4 w-4" />
                 </button>
               )}
             </div>
+          </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Espèce / Variété</label>
-              <input
-                type="text"
-                value={form.species}
-                onChange={(e) => setForm({ ...form, species: e.target.value })}
-                placeholder="ex: Quercus robur, Tulipa gesneriana..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quantité</label>
-              <input
-                type="number"
-                min="1"
-                value={form.quantity}
-                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Superficie (m²)</label>
-              <input
-                type="number"
-                step="0.01"
-                min="0"
-                value={form.area_m2}
-                onChange={(e) => setForm({ ...form, area_m2: e.target.value })}
-                placeholder="ex: 25.5"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Prix d'achat (€)</label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.purchase_price}
-                onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date de plantation</label>
-              <input
-                type="date"
-                value={form.planting_date}
-                onChange={(e) => setForm({ ...form, planting_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dernier entretien</label>
-              <input
-                type="date"
-                value={form.last_maintenance_date}
-                onChange={(e) => setForm({ ...form, last_maintenance_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Prochain entretien</label>
-              <input
-                type="date"
-                value={form.next_maintenance_date}
-                onChange={(e) => setForm({ ...form, next_maintenance_date: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <ImageUpload
-                label="Image"
-                value={form.image}
-                onChange={(url) => setForm({ ...form, image: url })}
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
-                <Paperclip className="h-4 w-4" /> Documents joints (factures, etc.)
-              </label>
-
-              {/* Documents existants liés */}
-              {(existingDocs as any[]).length > 0 && (
-                <div className="mb-2 space-y-1">
-                  {(existingDocs as any[]).map((doc: any) => (
-                    <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm">
-                      <FileText className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
-                      <span className="flex-1 text-gray-700 dark:text-gray-300 truncate">{doc.name}</span>
-                      {doc.file_path && (
-                        <a href={`${api.defaults.baseURL?.replace('/api', '')}${doc.file_path}`} target="_blank" rel="noopener noreferrer" className="p-0.5 text-blue-500 hover:text-blue-700">
-                          <Download className="h-3.5 w-3.5" />
-                        </a>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Nouveaux documents à joindre */}
-              {attachments.map((att, idx) => (
-                <div key={idx} className="flex items-center gap-2 mb-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm">
-                  <FileText className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
-                  <input
-                    value={att.name}
-                    onChange={e => {
-                      const updated = [...attachments]
-                      updated[idx] = { ...att, name: e.target.value }
-                      setAttachments(updated)
-                    }}
-                    className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 dark:text-gray-300"
-                    placeholder="Nom du document"
-                  />
-                  <select
-                    value={att.doc_type}
-                    onChange={e => {
-                      const updated = [...attachments]
-                      updated[idx] = { ...att, doc_type: e.target.value }
-                      setAttachments(updated)
-                    }}
-                    className="text-xs px-1.5 py-0.5 border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-                  >
-                    <option value="facture">Facture</option>
-                    <option value="bon_commande">Bon de commande</option>
-                    <option value="garantie">Garantie</option>
-                    <option value="fiche_technique">Fiche technique</option>
-                    <option value="autre">Autre</option>
-                  </select>
-                  <button
-                    onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                    className="p-0.5 text-gray-400 hover:text-red-500"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
-
-              <label className={`flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${uploadingAttachment ? 'opacity-50 pointer-events-none' : ''}`}>
-                {uploadingAttachment ? <Loader2 className="h-4 w-4 text-gray-400 animate-spin" /> : <Upload className="h-4 w-4 text-gray-400" />}
-                <span className="text-sm text-gray-500 dark:text-gray-400">
-                  {uploadingAttachment ? 'Envoi en cours...' : 'Joindre un document (facture, bon de commande...)'}
-                </span>
+          {/* ── Section : Caractéristiques ── */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Leaf className="h-3.5 w-3.5" /> Caractéristiques
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Espèce / Variété</label>
                 <input
-                  ref={attachFileRef}
-                  type="file"
-                  className="hidden"
-                  accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.odt,.ods,.zip"
-                  onChange={handleAttachFile}
-                  disabled={uploadingAttachment}
+                  type="text"
+                  value={form.species}
+                  onChange={(e) => setForm({ ...form, species: e.target.value })}
+                  placeholder="ex: Quercus robur..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
                 />
-              </label>
-            </div>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
-              <textarea
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div className="col-span-2">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Notes d'entretien</label>
-              <textarea
-                value={form.maintenance_notes}
-                onChange={(e) => setForm({ ...form, maintenance_notes: e.target.value })}
-                placeholder="Arrosage hebdomadaire, taille annuelle..."
-                rows={2}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Quantité</label>
+                <input
+                  type="number"
+                  min="1"
+                  value={form.quantity}
+                  onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Superficie (m²)</label>
+                <div className="relative">
+                  <Ruler className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={form.area_m2}
+                    onChange={(e) => setForm({ ...form, area_m2: e.target.value })}
+                    placeholder="ex: 25.5"
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Prix d'achat (€)</label>
+                <div className="relative">
+                  <Euro className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={form.purchase_price}
+                    onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  />
+                </div>
+              </div>
             </div>
           </div>
+
+          {/* ── Section : Dates d'entretien ── */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Calendar className="h-3.5 w-3.5" /> Dates
+            </h4>
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date de plantation</label>
+                <input
+                  type="date"
+                  value={form.planting_date}
+                  onChange={(e) => setForm({ ...form, planting_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Dernier entretien</label>
+                <input
+                  type="date"
+                  value={form.last_maintenance_date}
+                  onChange={(e) => setForm({ ...form, last_maintenance_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Prochain entretien</label>
+                <input
+                  type="date"
+                  value={form.next_maintenance_date}
+                  onChange={(e) => setForm({ ...form, next_maintenance_date: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section : Coordonnées GPS ── */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Navigation className="h-3.5 w-3.5" /> Coordonnées GPS
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Latitude</label>
+                <input
+                  type="number"
+                  step="0.0000001"
+                  value={form.latitude}
+                  onChange={(e) => setForm({ ...form, latitude: e.target.value })}
+                  placeholder="ex: 43.6047"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Longitude</label>
+                <input
+                  type="number"
+                  step="0.0000001"
+                  value={form.longitude}
+                  onChange={(e) => setForm({ ...form, longitude: e.target.value })}
+                  placeholder="ex: 1.4442"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+            </div>
+            {form.latitude && form.longitude && (
+              <button
+                type="button"
+                onClick={() => setShowStreetView(true)}
+                className="mt-2 flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+              >
+                <Globe className="h-4 w-4" />
+                Voir dans Google Street View
+              </button>
+            )}
+          </div>
+
+          {/* ── Section : Image & Documents ── */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <Image className="h-3.5 w-3.5" /> Image & Documents
+            </h4>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <ImageUpload
+                  label="Image"
+                  value={form.image}
+                  onChange={(url) => setForm({ ...form, image: url })}
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1 flex items-center gap-1.5">
+                  <Paperclip className="h-3.5 w-3.5" /> Documents joints
+                </label>
+
+                {(existingDocs as any[]).length > 0 && (
+                  <div className="mb-2 space-y-1">
+                    {(existingDocs as any[]).map((doc: any) => (
+                      <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs">
+                        <FileText className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                        <span className="flex-1 text-gray-700 dark:text-gray-300 truncate">{doc.name}</span>
+                        {doc.file_path && (
+                          <a href={`${api.defaults.baseURL?.replace('/api', '')}${doc.file_path}`} target="_blank" rel="noopener noreferrer" className="p-0.5 text-blue-500 hover:text-blue-700">
+                            <Download className="h-3.5 w-3.5" />
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {attachments.map((att, idx) => (
+                  <div key={idx} className="flex items-center gap-2 mb-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs">
+                    <FileText className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
+                    <input
+                      value={att.name}
+                      onChange={e => {
+                        const updated = [...attachments]
+                        updated[idx] = { ...att, name: e.target.value }
+                        setAttachments(updated)
+                      }}
+                      className="flex-1 bg-transparent border-none outline-none text-xs text-gray-700 dark:text-gray-300"
+                      placeholder="Nom du document"
+                    />
+                    <select
+                      value={att.doc_type}
+                      onChange={e => {
+                        const updated = [...attachments]
+                        updated[idx] = { ...att, doc_type: e.target.value }
+                        setAttachments(updated)
+                      }}
+                      className="text-xs px-1.5 py-0.5 border rounded bg-white dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                    >
+                      <option value="facture">Facture</option>
+                      <option value="bon_commande">Bon de commande</option>
+                      <option value="garantie">Garantie</option>
+                      <option value="fiche_technique">Fiche technique</option>
+                      <option value="autre">Autre</option>
+                    </select>
+                    <button
+                      onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
+                      className="p-0.5 text-gray-400 hover:text-red-500"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                ))}
+
+                <label className={`flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${uploadingAttachment ? 'opacity-50 pointer-events-none' : ''}`}>
+                  {uploadingAttachment ? <Loader2 className="h-4 w-4 text-gray-400 animate-spin" /> : <Upload className="h-4 w-4 text-gray-400" />}
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    {uploadingAttachment ? 'Envoi...' : 'Joindre un document'}
+                  </span>
+                  <input
+                    ref={attachFileRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx,.odt,.ods,.zip"
+                    onChange={handleAttachFile}
+                    disabled={uploadingAttachment}
+                  />
+                </label>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Section : Notes ── */}
+          <div>
+            <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+              <FileText className="h-3.5 w-3.5" /> Notes
+            </h4>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Description</label>
+                <textarea
+                  value={form.description}
+                  onChange={(e) => setForm({ ...form, description: e.target.value })}
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Notes d'entretien</label>
+                <textarea
+                  value={form.maintenance_notes}
+                  onChange={(e) => setForm({ ...form, maintenance_notes: e.target.value })}
+                  placeholder="Arrosage hebdomadaire, taille annuelle..."
+                  rows={2}
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                />
+              </div>
+            </div>
+          </div>
+
         </div>
 
         <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
             Annuler
           </button>
           <button
             onClick={handleSubmit}
             disabled={!form.label.trim() || mutation.isPending}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            className="px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
           >
             {mutation.isPending ? 'Enregistrement...' : (element ? 'Modifier' : 'Ajouter')}
           </button>
         </div>
+
+        {/* Modal Google Street View */}
+        {showStreetView && form.latitude && form.longitude && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={() => setShowStreetView(false)}>
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-[900px] max-w-[95vw] max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Globe className="h-4 w-4 text-blue-600" />
+                  Google Street View — {form.label || 'Élément'}
+                </h4>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{form.latitude}, {form.longitude}</span>
+                  <button onClick={() => setShowStreetView(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+              <div style={{ height: '70vh' }}>
+                <iframe
+                  src={`https://www.google.com/maps/embed?pb=!4v0!6m8!1m7!1s!2m2!1d${encodeURIComponent(form.latitude)}!2d${encodeURIComponent(form.longitude)}!3f0!4f0!5f0.7820865974627469&q=${encodeURIComponent(form.latitude)},${encodeURIComponent(form.longitude)}`}
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  allowFullScreen
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Google Street View"
+                  sandbox="allow-scripts allow-same-origin allow-popups"
+                />
+              </div>
+              <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+                <a
+                  href={`https://www.google.com/maps/@${encodeURIComponent(form.latitude)},${encodeURIComponent(form.longitude)},18z`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 flex items-center gap-1"
+                >
+                  <MapPin className="h-3 w-3" /> Ouvrir dans Google Maps
+                </a>
+                <a
+                  href={`https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${encodeURIComponent(form.latitude)},${encodeURIComponent(form.longitude)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 flex items-center gap-1"
+                >
+                  <Globe className="h-3 w-3" /> Ouvrir Street View plein écran
+                </a>
+                <button onClick={() => setShowStreetView(false)} className="px-3 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+                  Fermer
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -563,7 +563,7 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
         object_id, label, code, element_type, description, image,
         pos_x, pos_y, quantity, purchase_price, maintenance_notes,
         species, planting_date, last_maintenance_date, next_maintenance_date,
-        condition_state, custom_fields, area_m2, zone_points
+        condition_state, custom_fields, area_m2, zone_points, latitude, longitude
       } = req.body;
 
       const now = new Date().toISOString();
@@ -572,8 +572,8 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
           element_type, description, image, pos_x, pos_y, quantity,
           purchase_price, maintenance_notes, species, planting_date,
           last_maintenance_date, next_maintenance_date, condition_state,
-          custom_fields, area_m2, zone_points, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          custom_fields, area_m2, zone_points, latitude, longitude, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           req.params.id, object_id || null, label, code || '',
           element_type || 'autre', description || '', image || '',
@@ -585,6 +585,7 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
           custom_fields ? JSON.stringify(custom_fields) : '{}',
           area_m2 || null,
           zone_points ? JSON.stringify(zone_points) : null,
+          latitude || null, longitude || null,
           now, now
         ]
       );
@@ -618,7 +619,7 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
       object_id, label, code, element_type, description, image,
       pos_x, pos_y, quantity, purchase_price, maintenance_notes,
       species, planting_date, last_maintenance_date, next_maintenance_date,
-      condition_state, custom_fields, area_m2, zone_points
+      condition_state, custom_fields, area_m2, zone_points, latitude, longitude
     } = req.body;
 
     const now = new Date().toISOString();
@@ -629,7 +630,8 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         purchase_price = ?, maintenance_notes = ?,
         species = ?, planting_date = ?,
         last_maintenance_date = ?, next_maintenance_date = ?,
-        condition_state = ?, custom_fields = ?, area_m2 = ?, zone_points = ?, updated_at = ?
+        condition_state = ?, custom_fields = ?, area_m2 = ?, zone_points = ?,
+        latitude = ?, longitude = ?, updated_at = ?
        WHERE id = ?`,
       [
         object_id ?? existing.object_id, label ?? existing.label,
@@ -645,6 +647,7 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         custom_fields ? JSON.stringify(custom_fields) : existing.custom_fields,
         area_m2 ?? existing.area_m2,
         zone_points !== undefined ? (zone_points ? JSON.stringify(zone_points) : null) : existing.zone_points,
+        latitude ?? existing.latitude, longitude ?? existing.longitude,
         now, req.params.elementId
       ]
     );

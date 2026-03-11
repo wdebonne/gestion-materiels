@@ -1043,6 +1043,17 @@ class DatabaseManager {
         table: 'green_space_maintenance_types',
         column: 'disabled',
         type: 'INTEGER DEFAULT 0'
+      },
+      // Coordonnées GPS pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'latitude',
+        type: 'DECIMAL(10,7)'
+      },
+      {
+        table: 'green_space_elements',
+        column: 'longitude',
+        type: 'DECIMAL(10,7)'
       }
     ];
 
