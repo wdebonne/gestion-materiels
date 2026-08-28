@@ -70,3 +70,6 @@ nginx/ssl/*.crt
 
 # Yarn
 .yarn-integrity
+
+# Sorties du navigateur piloté (Playwright MCP) — artefacts de test, pas du code
+.playwright-mcp/

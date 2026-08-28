@@ -1,7 +1,0 @@
-- generic [ref=f4e4]:
-  - banner [ref=f4e5]:
-    - generic [ref=f4e6]:
-      - button [ref=f4e7] [cursor=pointer]
-      - button "AS" [ref=f4e10] [cursor=pointer]
-  - main [ref=f4e14]:
-    - paragraph [ref=f4e19]: Chargement du matériel...
