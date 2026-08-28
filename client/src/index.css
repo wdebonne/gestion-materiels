@@ -46,6 +46,88 @@ body {
   display: none;
 }
 
+/*
+ * Actions révélées au survol.
+ *
+ * `opacity-0 group-hover:opacity-100` rendait les boutons Modifier et Supprimer
+ * purement invisibles sur téléphone et tablette : sans souris, il n'y a pas de
+ * survol. Ici on ne les cache que si l'appareil possède un vrai pointeur.
+ */
+.hover-reveal {
+  opacity: 1;
+}
+
+/*
+ * Zone de contact élargie.
+ *
+ * Les listes denses utilisent des boutons-icones de 18 à 28 px : redimensionner
+ * chacun ferait exploser la hauteur des lignes. On agrandit donc la seule zone
+ * cliquable, via un pseudo-élément, sans toucher à l'apparence.
+ */
+.touch-target {
+  position: relative;
+}
+
+/*
+ * Mode contraste élevé.
+ *
+ * Assombrit le texte secondaire et renforce les bordures. Destiné au travail
+ * en extérieur, où la lumière directe efface les gris clairs.
+ */
+.high-contrast {
+  --tw-text-opacity: 1;
+}
+
+.high-contrast .text-gray-500,
+.high-contrast .text-gray-600 {
+  color: #1e293b;
+}
+
+.high-contrast .dark\:text-gray-400,
+.high-contrast .dark\:text-gray-300 {
+  color: inherit;
+}
+
+.high-contrast.dark .text-gray-500,
+.high-contrast.dark .text-gray-600,
+.high-contrast.dark .dark\:text-gray-400 {
+  color: #f1f5f9;
+}
+
+.high-contrast .border-gray-200,
+.high-contrast .border-gray-300 {
+  border-color: #475569;
+}
+
+.high-contrast.dark .border-gray-700,
+.high-contrast.dark .border-gray-600 {
+  border-color: #cbd5e1;
+}
+
+.touch-target::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  min-width: 44px;
+  min-height: 44px;
+  transform: translate(-50%, -50%);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .hover-reveal {
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .group:hover .hover-reveal,
+  .hover-reveal:focus-within {
+    opacity: 1;
+  }
+}
+
 /* Glassmorphism utilities */
 .glass {
   @apply bg-white/70 backdrop-blur-md border border-white/20;

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, User, Shield, UserCheck, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, User, Shield, UserCheck, HardHat, Search } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, CardTitle, Button, Input, Select,
   Modal, ModalBody, ModalFooter, Badge, LoadingInline, Alert
@@ -9,6 +9,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import api, { User as UserType } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
+import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '@/lib/permissions'
 
 export default function UsersPage() {
   const queryClient = useQueryClient()
@@ -126,6 +127,8 @@ export default function UsersPage() {
         return <Shield className="w-4 h-4" />
       case 'supervisor':
         return <UserCheck className="w-4 h-4" />
+      case 'agent':
+        return <HardHat className="w-4 h-4" />
       default:
         return <User className="w-4 h-4" />
     }
@@ -137,6 +140,8 @@ export default function UsersPage() {
         return <Badge variant="danger">Administrateur</Badge>
       case 'supervisor':
         return <Badge variant="warning">Superviseur</Badge>
+      case 'agent':
+        return <Badge variant="info">{ROLE_LABELS.agent}</Badge>
       default:
         return <Badge variant="default">Utilisateur</Badge>
     }
@@ -222,14 +227,14 @@ export default function UsersPage() {
                         <div className="flex items-center justify-end gap-2">
                           <button
                             onClick={() => openModal(user)}
-                            className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                            className="p-2 text-gray-600 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
                           {user.id !== currentUser?.id && (
                             <button
                               onClick={() => setDeleteConfirm(user)}
-                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
+                              className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg"
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -289,10 +294,12 @@ export default function UsersPage() {
               label="Rôle"
               value={formData.role}
               onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+              hint={ROLE_DESCRIPTIONS[formData.role as keyof typeof ROLE_DESCRIPTIONS]}
               options={[
-                { value: 'user', label: 'Utilisateur' },
-                { value: 'supervisor', label: 'Superviseur' },
-                { value: 'admin', label: 'Administrateur' }
+                { value: 'user', label: ROLE_LABELS.user },
+                { value: 'agent', label: ROLE_LABELS.agent },
+                { value: 'supervisor', label: ROLE_LABELS.supervisor },
+                { value: 'admin', label: ROLE_LABELS.admin }
               ]}
             />
 

@@ -1,0 +1,107 @@
+- generic [ref=e33]:
+  - banner [ref=e34]:
+    - generic [ref=e35]:
+      - button [ref=e36] [cursor=pointer]
+      - button "AS" [ref=e39] [cursor=pointer]
+  - main [ref=e43]:
+    - generic [ref=e44]:
+      - generic [ref=e45]:
+        - generic [ref=e46]:
+          - heading "Espaces Verts" [level=1] [ref=e47]
+          - paragraph [ref=e50]: Gestion des espaces verts, parcs et aménagements urbains
+        - generic [ref=e51]:
+          - button "Options" [ref=e52] [cursor=pointer]
+          - button "Nouvel espace vert" [ref=e56] [cursor=pointer]
+      - generic [ref=e58]:
+        - generic [ref=e64]:
+          - paragraph [ref=e65]: "2"
+          - paragraph [ref=e66]: Espaces verts
+        - generic [ref=e72]:
+          - paragraph [ref=e73]: "0"
+          - paragraph [ref=e74]: Éléments référencés
+        - generic [ref=e84]:
+          - paragraph [ref=e85]: 0 m²
+          - paragraph [ref=e86]: Superficie totale
+      - generic [ref=e87]:
+        - textbox "Rechercher un espace vert..." [ref=e92]
+        - combobox [ref=e93]:
+          - option "Tous les types" [selected]
+          - option "🎠 Aire de jeux"
+          - option "🚶 Allée / Promenade"
+          - option "📍 Autre"
+          - option "🌊 Berge / Bord de rivière"
+          - option "⚱️ Cimetière végétalisé"
+          - option "🌿 Espace naturel"
+          - option "🌺 Jardin public"
+          - option "🌳 Parc"
+          - option "🔄 Rond-point"
+          - option "🏛️ Square"
+          - option "⚽ Terrain de sport"
+      - generic [ref=e94]:
+        - generic [ref=e95]:
+          - generic [ref=e278] [cursor=pointer]:
+            - generic [ref=e279]: 🌳
+            - generic [ref=e280]:
+              - heading "Rond-point de la Gare" [level=3] [ref=e281]
+              - paragraph [ref=e282]: Parc • Superficie N/A
+              - generic [ref=e283]: Actif
+          - generic [ref=e188] [cursor=pointer]:
+            - generic [ref=e189]: 🌳
+            - generic [ref=e190]:
+              - heading "Square des Tilleuls" [level=3] [ref=e191]
+              - paragraph [ref=e192]: Parc • Superficie N/A
+              - generic [ref=e193]: Actif
+        - generic [ref=e285]:
+          - generic [ref=e286]:
+            - generic [ref=e287]: 🌳
+            - generic [ref=e289]:
+              - button "Agrandir" [ref=e290] [cursor=pointer]
+              - button "Cloner / Copier" [ref=e296] [cursor=pointer]
+              - button "Modifier" [ref=e300] [cursor=pointer]
+              - button "Supprimer" [ref=e303] [cursor=pointer]
+          - generic [ref=e307]:
+            - heading "Square des Tilleuls" [level=2] [ref=e308]
+            - generic [ref=e309]:
+              - generic [ref=e310]: Adresse non renseignée
+              - generic [ref=e314]: N/A
+          - generic [ref=e322]:
+            - button "Éléments" [ref=e323] [cursor=pointer]
+            - button "Plan annoté" [ref=e326] [cursor=pointer]
+            - button "Carte" [ref=e332] [cursor=pointer]
+            - button "Saisons" [ref=e336] [cursor=pointer]
+            - button "Documents" [ref=e342] [cursor=pointer]
+            - button "Entretien" [ref=e346] [cursor=pointer]
+            - button "Archives" [ref=e349] [cursor=pointer]
+          - generic [ref=e354]:
+            - generic [ref=e355]:
+              - generic [ref=e356]:
+                - textbox "Rechercher un élément..." [ref=e361]
+                - combobox [ref=e362]:
+                  - option "Tous les types" [selected]
+                  - option "🌳 Arbre"
+                  - option "🌿 Arbuste"
+                  - option "🌺 Massif floral"
+                  - option "🟢 Pelouse"
+                  - option "🌲 Haie"
+                  - option "🪑 Mobilier urbain"
+                  - option "🪑 Banc"
+                  - option "🗑️ Poubelle / Corbeille"
+                  - option "🌷 Bac à fleurs"
+                  - option "💡 Éclairage"
+                  - option "⛲ Fontaine / Bassin"
+                  - option "🚧 Clôture / Barrière"
+                  - option "🎠 Jeux enfants"
+                  - option "🛤️ Allée / Chemin"
+                  - option "🪧 Panneau / Signalétique"
+                  - option "💧 Système d'arrosage"
+                  - option "🗿 Statue / Œuvre d'art"
+                  - option "📌 Autre"
+              - button "Ajouter" [ref=e363] [cursor=pointer]
+            - paragraph [ref=e368]: Aucun élément dans cet espace vert
+            - generic [ref=e369]:
+              - generic [ref=e370]:
+                - heading "Groupes de composition" [level=4] [ref=e371]
+                - generic [ref=e376]:
+                  - button "Gérer les types de groupes" [ref=e377] [cursor=pointer]
+                  - button "Nouveau groupe" [ref=e381] [cursor=pointer]
+              - paragraph [ref=e383]: Créez des groupes pour composer vos massifs, haies, bosquets... et les placer sur le plan.

@@ -434,7 +434,7 @@ export default function BackupPage() {
                     <tr key={backup.id} className="hover:bg-gray-50">
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          <FileArchive className="w-5 h-5 text-gray-400" />
+                          <FileArchive className="w-5 h-5 text-gray-600" />
                           <span className="font-medium text-gray-900 font-mono text-sm">
                             {backup.filename}
                           </span>
@@ -462,8 +462,8 @@ export default function BackupPage() {
                         <div className="flex items-center justify-end gap-1">
                           <button
                             onClick={() => handleDownload(backup)}
-                            className="p-2 text-gray-400 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
-                            title="Télécharger"
+                            className="p-2 text-gray-600 hover:text-primary-600 hover:bg-primary-50 rounded-lg transition-colors"
+                            title="Télécharger" aria-label="Télécharger"
                           >
                             <Download className="w-4 h-4" />
                           </button>
@@ -472,8 +472,8 @@ export default function BackupPage() {
                               setLinkModal(backup)
                               setGeneratedLink(null)
                             }}
-                            className="p-2 text-gray-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
-                            title="Générer un lien de téléchargement"
+                            className="p-2 text-gray-600 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors"
+                            title="Générer un lien de téléchargement" aria-label="Générer un lien de téléchargement"
                           >
                             <Link2 className="w-4 h-4" />
                           </button>
@@ -482,22 +482,22 @@ export default function BackupPage() {
                               setEmailModal(backup)
                               setEmailAddress('')
                             }}
-                            className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
-                            title="Envoyer par email"
+                            className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="Envoyer par email" aria-label="Envoyer par email"
                           >
                             <Mail className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setRestoreConfirm(backup)}
-                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="Restaurer"
+                            className="p-2 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Restaurer" aria-label="Restaurer"
                           >
                             <Upload className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setDeleteConfirm(backup)}
-                            className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="Supprimer"
+                            className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                            title="Supprimer" aria-label="Supprimer"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -740,7 +740,7 @@ export default function BackupPage() {
                     size="sm"
                     variant="secondary"
                     onClick={() => copyToClipboard(generatedLink.link)}
-                    title="Copier"
+                    title="Copier" aria-label="Copier"
                   >
                     <Copy className="w-4 h-4" />
                   </Button>
@@ -748,7 +748,7 @@ export default function BackupPage() {
                     size="sm"
                     variant="secondary"
                     onClick={() => window.open(generatedLink.link, '_blank')}
-                    title="Ouvrir"
+                    title="Ouvrir" aria-label="Ouvrir"
                   >
                     <ExternalLink className="w-4 h-4" />
                   </Button>

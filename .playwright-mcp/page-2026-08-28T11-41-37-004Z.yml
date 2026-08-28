@@ -1,0 +1,49 @@
+- generic [ref=e2]:
+  - generic [ref=e33]:
+    - banner [ref=e34]:
+      - generic [ref=e35]:
+        - button [ref=e36] [cursor=pointer]
+        - button "AS" [ref=e39] [cursor=pointer]
+    - main [ref=e43]:
+      - generic [ref=e44]:
+        - generic [ref=e45]:
+          - generic [ref=e46]:
+            - heading "Espaces Verts" [level=1] [ref=e47]
+            - paragraph [ref=e50]: Gestion des espaces verts, parcs et aménagements urbains
+          - generic [ref=e51]:
+            - button "Options" [ref=e52] [cursor=pointer]
+            - button "Nouvel espace vert" [ref=e56] [cursor=pointer]
+        - generic [ref=e58]:
+          - generic [ref=e64]:
+            - paragraph [ref=e65]: "1"
+            - paragraph [ref=e66]: Espaces verts
+          - generic [ref=e72]:
+            - paragraph [ref=e73]: "0"
+            - paragraph [ref=e74]: Éléments référencés
+          - generic [ref=e84]:
+            - paragraph [ref=e85]: 0 m²
+            - paragraph [ref=e86]: Superficie totale
+        - generic [ref=e87]:
+          - textbox "Rechercher un espace vert..." [ref=e92]
+          - combobox [ref=e93]:
+            - option "Tous les types" [selected]
+            - option "🎠 Aire de jeux"
+            - option "🚶 Allée / Promenade"
+            - option "📍 Autre"
+            - option "🌊 Berge / Bord de rivière"
+            - option "⚱️ Cimetière végétalisé"
+            - option "🌿 Espace naturel"
+            - option "🌺 Jardin public"
+            - option "🌳 Parc"
+            - option "🔄 Rond-point"
+            - option "🏛️ Square"
+            - option "⚽ Terrain de sport"
+        - generic [ref=e94]:
+          - generic [ref=e188] [cursor=pointer]:
+            - generic [ref=e189]: 🌳
+            - generic [ref=e190]:
+              - heading "Square des Tilleuls" [level=3] [ref=e191]
+              - paragraph [ref=e192]: Parc • Superficie N/A
+              - generic [ref=e193]: Actif
+          - paragraph [ref=e104]: Sélectionnez un espace vert pour voir ses détails
+  - status [ref=e200]: Espace vert enregistré

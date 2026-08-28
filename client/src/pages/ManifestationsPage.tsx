@@ -387,23 +387,23 @@ export default function ManifestationsPage() {
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</div>
-            <div className="text-xs text-gray-500">En cours</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">En cours</div>
           </CardBody></Card>
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-blue-600">{stats.upcoming}</div>
-            <div className="text-xs text-gray-500">À venir</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">À venir</div>
           </CardBody></Card>
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-yellow-600">{stats.delivered}</div>
-            <div className="text-xs text-gray-500">Livré</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Livré</div>
           </CardBody></Card>
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-purple-600">{stats.archived}</div>
-            <div className="text-xs text-gray-500">Archivées</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Archivées</div>
           </CardBody></Card>
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-green-600">{stats.stockItems}</div>
-            <div className="text-xs text-gray-500">Articles stock</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Articles stock</div>
           </CardBody></Card>
         </div>
       )}
@@ -509,7 +509,7 @@ export default function ManifestationsPage() {
                 />
 
                 {manifForm.materials.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-4">Aucun matériel ajouté</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">Aucun matériel ajouté</p>
                 ) : (
                   <div className="space-y-3 mt-3">
                     {manifForm.materials.map((mat, idx) => {
@@ -523,8 +523,8 @@ export default function ManifestationsPage() {
                           {stockItem && (
                             <div className="flex gap-2 mt-1 flex-wrap">
                               {stockItem.etat && <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium ${etatColors[stockItem.etat] || 'bg-gray-100 text-gray-600'}`}>{etatOptions.find(e => e.value === stockItem.etat)?.label || stockItem.etat}</span>}
-                              {stockItem.lieu && <span className="text-[10px] text-gray-500"><MapPin className="w-2.5 h-2.5 inline mr-0.5" />{stockItem.lieu}</span>}
-                              {stockItem.stock_type && <span className="text-[10px] text-gray-500"><Tag className="w-2.5 h-2.5 inline mr-0.5" />{stockItem.stock_type}</span>}
+                              {stockItem.lieu && <span className="text-[10px] text-gray-500 dark:text-gray-400"><MapPin className="w-2.5 h-2.5 inline mr-0.5" />{stockItem.lieu}</span>}
+                              {stockItem.stock_type && <span className="text-[10px] text-gray-500 dark:text-gray-400"><Tag className="w-2.5 h-2.5 inline mr-0.5" />{stockItem.stock_type}</span>}
                             </div>
                           )}
                         </div>
@@ -719,7 +719,7 @@ function MaterialFilter({ stock, stockCategories, stockTypes, materials, onAdd }
             <button key={s.id} onClick={() => onAdd(s.id)}
               className="inline-flex items-center gap-1 px-2 py-1 text-xs rounded-full border border-gray-300 dark:border-gray-600 hover:bg-primary-50 dark:hover:bg-primary-900/20 hover:border-primary-300 transition-colors">
               <Plus className="w-3 h-3" />
-              {s.name} <span className="text-gray-400">({s.quantity_available} {s.unit})</span>
+              {s.name} <span className="text-gray-600 dark:text-gray-300">({s.quantity_available} {s.unit})</span>
             </button>
           ))}
         </div>
@@ -770,9 +770,9 @@ function ManifestationsTab({
 
       {/* Liste */}
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Chargement...</div>
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">Chargement...</div>
       ) : manifestations.length === 0 ? (
-        <Card><CardBody className="text-center py-12 text-gray-500">
+        <Card><CardBody className="text-center py-12 text-gray-500 dark:text-gray-400">
           Aucune manifestation trouvée
         </CardBody></Card>
       ) : (
@@ -818,7 +818,7 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
               {m.expected_people > 0 && <span>{m.expected_people} pers.</span>}
             </div>
             {m.materials?.length > 0 && (
-              <div className="flex gap-4 mt-1 text-xs text-gray-500">
+              <div className="flex gap-4 mt-1 text-xs text-gray-500 dark:text-gray-400">
                 <span>Demandé: <strong>{totalRequested}</strong></span>
                 <span>Livré: <strong className="text-yellow-600">{totalDelivered}</strong></span>
                 <span>Récupéré: <strong className="text-green-600">{totalRecovered}</strong></span>
@@ -828,35 +828,35 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
 
           {/* Actions */}
           <div className="flex items-center gap-1 flex-shrink-0">
-            <button onClick={() => onView(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="Voir détails">
-              <Eye className="w-4 h-4 text-gray-500" />
+            <button onClick={() => onView(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Voir détails" aria-label="Voir détails">
+              <Eye className="w-4 h-4 text-gray-500 dark:text-gray-400" />
             </button>
             {isSupervisor && m.status !== 'archived' && (
               <>
                 {(m.status === 'delivered' || m.status === 'validated') && (
-                  <button onClick={() => onDelivery(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="Gérer matériel">
+                  <button onClick={() => onDelivery(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Gérer matériel" aria-label="Gérer matériel">
                     <Truck className="w-4 h-4 text-yellow-600" />
                   </button>
                 )}
                 {m.status !== 'delivered' && m.status !== 'recovered' && (
-                  <button onClick={() => onEdit(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="Modifier">
+                  <button onClick={() => onEdit(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Modifier" aria-label="Modifier">
                     <Edit className="w-4 h-4 text-blue-600" />
                   </button>
                 )}
                 {statusActions[m.status]?.map((action: any) => (
-                  <button key={action.next} onClick={() => onStatusChange(m.id, action.next)}
-                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title={action.label}>
+                  <button aria-label={action.label} key={action.next} onClick={() => onStatusChange(m.id, action.next)}
+                    className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title={action.label}>
                     <action.icon className={`w-4 h-4 ${action.color}`} />
                   </button>
                 ))}
                 {m.status === 'draft' && (
-                  <button onClick={() => onDelete(m.id, m.title)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="Supprimer">
+                  <button onClick={() => onDelete(m.id, m.title)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Supprimer" aria-label="Supprimer">
                     <Trash2 className="w-4 h-4 text-red-500" />
                   </button>
                 )}
               </>
             )}
-            <button onClick={() => setExpanded(!expanded)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+            <button onClick={() => setExpanded(!expanded)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
               {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           </div>
@@ -867,7 +867,7 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
           <div className="mt-3 pt-3 border-t dark:border-gray-700">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-gray-500 text-xs">
+                <tr className="text-left text-gray-500 dark:text-gray-400 text-xs">
                   <th className="pb-1">Matériel</th>
                   <th className="pb-1 text-center">Demandé</th>
                   <th className="pb-1 text-center">Livré</th>
@@ -948,9 +948,9 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
       </div>
 
       {isLoading ? (
-        <div className="text-center py-12 text-gray-500">Chargement...</div>
+        <div className="text-center py-12 text-gray-500 dark:text-gray-400">Chargement...</div>
       ) : filtered.length === 0 ? (
-        <Card><CardBody className="text-center py-12 text-gray-500">
+        <Card><CardBody className="text-center py-12 text-gray-500 dark:text-gray-400">
           Aucun article en stock
         </CardBody></Card>
       ) : (
@@ -958,17 +958,17 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b dark:border-gray-700 text-left">
-                <th className="pb-2 font-medium text-gray-500">Article</th>
-                <th className="pb-2 font-medium text-gray-500">Catégorie</th>
-                <th className="pb-2 font-medium text-gray-500">État</th>
-                <th className="pb-2 font-medium text-gray-500">Lieu</th>
-                <th className="pb-2 font-medium text-gray-500">Type</th>
-                <th className="pb-2 font-medium text-gray-500 text-center">Total</th>
-                <th className="pb-2 font-medium text-gray-500 text-right">Prix unit.</th>
-                <th className="pb-2 font-medium text-gray-500 text-center">Disponible</th>
-                <th className="pb-2 font-medium text-gray-500 text-center">En prêt</th>
-                <th className="pb-2 font-medium text-gray-500 text-center">Réservé (futur)</th>
-                {isSupervisor && <th className="pb-2 font-medium text-gray-500 text-center">Actions</th>}
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Article</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Catégorie</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">État</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Lieu</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Type</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Total</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-right">Prix unit.</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Disponible</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">En prêt</th>
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Réservé (futur)</th>
+                {isSupervisor && <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Actions</th>}
               </tr>
             </thead>
             <tbody>
@@ -978,8 +978,8 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
                 <tr key={s.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="py-2">
                     <div className="font-medium text-gray-900 dark:text-gray-100">{s.name}</div>
-                    {s.description && <div className="text-xs text-gray-500">{s.description}</div>}
-                    {s.category_name && <div className="text-xs text-gray-400">📁 {s.category_name}{s.subcategory_name ? ` / ${s.subcategory_name}` : ''}</div>}
+                    {s.description && <div className="text-xs text-gray-500 dark:text-gray-400">{s.description}</div>}
+                    {s.category_name && <div className="text-xs text-gray-600 dark:text-gray-300">📁 {s.category_name}{s.subcategory_name ? ` / ${s.subcategory_name}` : ''}</div>}
                   </td>
                   <td className="py-2">
                     {s.category && <Badge variant="default">{s.category}</Badge>}
@@ -1007,10 +1007,10 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
                   {isSupervisor && (
                     <td className="py-2 text-center">
                       <div className="flex justify-center gap-1">
-                        <button onClick={() => onEdit(s)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="Modifier">
+                        <button onClick={() => onEdit(s)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Modifier" aria-label="Modifier">
                           <Edit className="w-4 h-4 text-blue-600" />
                         </button>
-                        <button onClick={() => onDelete(s.id, s.name)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded" title="Supprimer">
+                        <button aria-label="Supprimer" onClick={() => onDelete(s.id, s.name)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Supprimer">
                           <Trash2 className="w-4 h-4 text-red-500" />
                         </button>
                       </div>
@@ -1037,8 +1037,8 @@ function ArchivesTab() {
     }
   })
 
-  if (isLoading) return <div className="text-center py-12 text-gray-500">Chargement...</div>
-  if (archived.length === 0) return <Card><CardBody className="text-center py-12 text-gray-500">Aucune manifestation archivée</CardBody></Card>
+  if (isLoading) return <div className="text-center py-12 text-gray-500 dark:text-gray-400">Chargement...</div>
+  if (archived.length === 0) return <Card><CardBody className="text-center py-12 text-gray-500 dark:text-gray-400">Aucune manifestation archivée</CardBody></Card>
 
   return (
     <div className="space-y-3">
@@ -1051,10 +1051,10 @@ function ArchivesTab() {
               <div className="flex justify-between items-start">
                 <div>
                   <h3 className="font-semibold text-gray-700 dark:text-gray-300">{m.title}</h3>
-                  <p className="text-sm text-gray-500">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
                     {formatD(m.date_start)}{m.date_end ? ` → ${formatD(m.date_end)}` : ''} • {m.contact_name}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
                     {m.materials?.length || 0} articles • Valeur: {totalValue.toFixed(2)} € • Archivée le {formatD(m.archived_at)}
                   </p>
                 </div>
@@ -1082,25 +1082,25 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[m.status]}`}>
               {statusLabels[m.status]}
             </span>
-            <span className="text-gray-500">Créée par {m.created_by_name}</span>
+            <span className="text-gray-500 dark:text-gray-400">Créée par {m.created_by_name}</span>
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div><span className="text-gray-500 block">Date début</span><strong>{formatD(m.date_start)}</strong></div>
-            <div><span className="text-gray-500 block">Date fin</span><strong>{formatD(m.date_end)}</strong></div>
-            <div><span className="text-gray-500 block">Horaires</span><strong>{m.start_time || '-'} → {m.end_time || '-'}</strong></div>
-            <div><span className="text-gray-500 block">Personnes</span><strong>{m.expected_people || '-'}</strong></div>
+            <div><span className="text-gray-500 dark:text-gray-400 block">Date début</span><strong>{formatD(m.date_start)}</strong></div>
+            <div><span className="text-gray-500 dark:text-gray-400 block">Date fin</span><strong>{formatD(m.date_end)}</strong></div>
+            <div><span className="text-gray-500 dark:text-gray-400 block">Horaires</span><strong>{m.start_time || '-'} → {m.end_time || '-'}</strong></div>
+            <div><span className="text-gray-500 dark:text-gray-400 block">Personnes</span><strong>{m.expected_people || '-'}</strong></div>
           </div>
 
           <Card>
             <CardHeader><CardTitle className="text-sm">Contact livraison</CardTitle></CardHeader>
             <CardBody>
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-gray-500">Nom:</span> {m.contact_name || '-'}</div>
-                <div><span className="text-gray-500">Tél:</span> {m.contact_phone || '-'}</div>
-                <div><span className="text-gray-500">Email:</span> {m.contact_email || '-'}</div>
-                <div><span className="text-gray-500">Livraison:</span> {formatD(m.delivery_date)}</div>
-                <div className="col-span-2"><span className="text-gray-500">Adresse:</span> {m.delivery_address || '-'}</div>
+                <div><span className="text-gray-500 dark:text-gray-400">Nom:</span> {m.contact_name || '-'}</div>
+                <div><span className="text-gray-500 dark:text-gray-400">Tél:</span> {m.contact_phone || '-'}</div>
+                <div><span className="text-gray-500 dark:text-gray-400">Email:</span> {m.contact_email || '-'}</div>
+                <div><span className="text-gray-500 dark:text-gray-400">Livraison:</span> {formatD(m.delivery_date)}</div>
+                <div className="col-span-2"><span className="text-gray-500 dark:text-gray-400">Adresse:</span> {m.delivery_address || '-'}</div>
               </div>
             </CardBody>
           </Card>
@@ -1126,7 +1126,7 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
               <CardBody>
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="border-b dark:border-gray-700 text-left text-gray-500 text-xs">
+                    <tr className="border-b dark:border-gray-700 text-left text-gray-500 dark:text-gray-400 text-xs">
                       <th className="pb-1">Matériel</th>
                       <th className="pb-1 text-center">Demandé</th>
                       <th className="pb-1 text-center">Livré</th>
@@ -1137,7 +1137,7 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
                   <tbody>
                     {m.materials.map((mat, i) => (
                       <tr key={i} className="border-b dark:border-gray-700">
-                        <td className="py-1.5">{mat.stock_name} <span className="text-gray-400">({mat.stock_category})</span></td>
+                        <td className="py-1.5">{mat.stock_name} <span className="text-gray-600 dark:text-gray-300">({mat.stock_category})</span></td>
                         <td className="py-1.5 text-center">{mat.quantity_requested} {mat.unit}</td>
                         <td className="py-1.5 text-center">{mat.quantity_delivered}</td>
                         <td className="py-1.5 text-center">{mat.quantity_recovered}</td>
@@ -1203,7 +1203,7 @@ function DeliveryModal({ manif, onClose, onSave, loading }: {
             <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
               <div className="flex-1">
                 <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{m.stock_name}</span>
-                <span className="text-xs text-gray-500 ml-1">(demandé: {m.quantity_requested} {m.unit})</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">(demandé: {m.quantity_requested} {m.unit})</span>
               </div>
               <div className="w-28">
                 <Input label="Livré" type="number" size="sm" value={String(m.quantity_delivered)}

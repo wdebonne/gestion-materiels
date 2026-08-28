@@ -11,6 +11,7 @@ import { db } from '../database';
 import { authenticateToken, AuthRequest, JwtPayload } from '../middleware/auth.middleware';
 import { sendEmail } from '../services/email.service';
 import { logService } from '../services/log.service';
+import { getJwtSecret } from '../config/secrets';
 
 const router = Router();
 
@@ -65,11 +66,11 @@ function generateTokens(user: any): { accessToken: string; refreshToken: string 
     role: user.role
   };
 
-  const accessToken = jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
+  const accessToken = jwt.sign(payload, getJwtSecret(), {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d'
   } as jwt.SignOptions);
 
-  const refreshToken = jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
+  const refreshToken = jwt.sign(payload, getJwtSecret(), {
     expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d'
   } as jwt.SignOptions);
 
@@ -424,7 +425,7 @@ router.post('/refresh', async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: 'Refresh token requis' });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_SECRET || 'secret') as JwtPayload;
+    const decoded = jwt.verify(refreshToken, getJwtSecret()) as JwtPayload;
     
     const user = await db.queryOne('SELECT * FROM users WHERE id = ? AND is_active = 1', [decoded.userId]);
     

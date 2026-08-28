@@ -11,6 +11,7 @@ import {
 } from '@/components/ui'
 import api, { Subcategory, EquipmentObject } from '@/lib/api'
 import toast from 'react-hot-toast'
+import Can from '@/components/Can'
 
 export default function SubcategoryDetailPage() {
   const { categorySlug, subcategorySlug } = useParams<{ categorySlug: string; subcategorySlug: string }>()
@@ -54,6 +55,9 @@ export default function SubcategoryDetailPage() {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
       params.append('subcategoryId', String(subcategory?.id))
+      // Le serveur pagine par 20 par défaut et le client n'exploitait pas la
+      // pagination renvoyée : les matériels au-delà du 20e étaient invisibles.
+      params.append('limit', '500')
       const response = await api.get(`/objects?${params}`)
       return response.data
     },
@@ -150,15 +154,15 @@ export default function SubcategoryDetailPage() {
     <div className="space-y-6">
       {/* Fil d'Ariane */}
       <nav className="flex items-center gap-2 text-sm flex-wrap">
-        <Link to="/categories" className="text-gray-500 hover:text-gray-700">
+        <Link to="/categories" className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
           Catégories
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <Link to={`/categories/${categorySlug}`} className="text-gray-500 hover:text-gray-700">
+        <Link to={`/categories/${categorySlug}`} className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
           {category?.name}
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <span className="text-gray-900 font-medium">{subcategory.name}</span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">{subcategory.name}</span>
       </nav>
 
       {/* En-tête */}
@@ -166,7 +170,7 @@ export default function SubcategoryDetailPage() {
         <CardBody>
           <div className="flex flex-col md:flex-row md:items-center gap-6">
             {/* Image */}
-            <div className="w-32 h-32 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden">
+            <div className="w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded-xl flex-shrink-0 overflow-hidden">
               {subcategory.image ? (
                 <img 
                   src={subcategory.image} 
@@ -174,7 +178,7 @@ export default function SubcategoryDetailPage() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                <div className="w-full h-full flex items-center justify-center text-gray-600 dark:text-gray-300">
                   <Package className="w-12 h-12" />
                 </div>
               )}
@@ -184,11 +188,11 @@ export default function SubcategoryDetailPage() {
             <div className="flex-1">
               <div className="flex items-start justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{subcategory.name}</h1>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{subcategory.name}</h1>
                   {subcategory.description && (
-                    <p className="text-gray-500 mt-1">{subcategory.description}</p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">{subcategory.description}</p>
                   )}
-                  <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                  <div className="flex items-center gap-4 mt-3 text-sm text-gray-500 dark:text-gray-400">
                     <span>{objects.length} matériel(s)</span>
                   </div>
                 </div>
@@ -222,9 +226,11 @@ export default function SubcategoryDetailPage() {
             icon={<Search className="w-5 h-5" />}
           />
         </div>
-        <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
-          Nouveau matériel
-        </Button>
+        <Can manage>
+          <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
+            Nouveau matériel
+          </Button>
+        </Can>
       </div>
 
       {/* Liste des objets */}
@@ -232,11 +238,11 @@ export default function SubcategoryDetailPage() {
         <LoadingInline message="Chargement des matériels..." />
       ) : objects.length === 0 ? (
         <div className="text-center py-12">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Package className="w-8 h-8 text-gray-400" />
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Package className="w-8 h-8 text-gray-600 dark:text-gray-300" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900">Aucun matériel</h3>
-          <p className="text-gray-500 mt-1">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Aucun matériel</h3>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             {search ? 'Aucun résultat pour cette recherche' : 'Commencez par ajouter un matériel'}
           </p>
           {!search && (
@@ -269,26 +275,34 @@ export default function SubcategoryDetailPage() {
               </div>
 
               {/* Actions au survol */}
-              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    openModal(obj)
-                  }}
-                  className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50"
-                >
-                  <Edit2 className="w-4 h-4 text-gray-600" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    setDeleteConfirm(obj)
-                  }}
-                  className="p-2 bg-white rounded-lg shadow-md hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4 text-red-600" />
-                </button>
-              </div>
+              <Can manage>
+                <div className="hover-reveal absolute top-2 right-2 flex gap-1">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      openModal(obj)
+                    }}
+                    aria-label={`Modifier ${obj.name}`}
+                    title="Modifier"
+                    className="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-600"
+                  >
+                    <Edit2 className="w-4 h-4 text-gray-600 dark:text-gray-200" />
+                  </button>
+                  <Can admin>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setDeleteConfirm(obj)
+                      }}
+                      aria-label={`Supprimer ${obj.name}`}
+                      title="Supprimer"
+                      className="p-2 bg-white dark:bg-gray-700 rounded-lg shadow-md hover:bg-red-50 dark:hover:bg-red-900/40"
+                    >
+                      <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
+                    </button>
+                  </Can>
+                </div>
+              </Can>
             </div>
           ))}
         </div>
@@ -352,7 +366,7 @@ export default function SubcategoryDetailPage() {
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer <strong>{deleteConfirm?.name}</strong> ?
           </p>
           <p className="text-sm text-red-600 mt-2">

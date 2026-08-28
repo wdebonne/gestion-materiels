@@ -8,6 +8,7 @@ import {
 import { Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert, Tabs, Tab } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
+import { ROLE_LABELS } from '@/lib/permissions'
 
 // ==================== COMPOSANT PRINCIPAL ====================
 
@@ -76,7 +77,7 @@ function ToggleSwitch({ enabled, onChange, label }: { enabled: boolean; onChange
       {enabled ? (
         <ToggleRight className="w-8 h-8 text-green-500" />
       ) : (
-        <ToggleLeft className="w-8 h-8 text-gray-400" />
+        <ToggleLeft className="w-8 h-8 text-gray-600" />
       )}
       <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-gray-100">
         {label}
@@ -482,9 +483,10 @@ function LdapSection({ config, queryClient }: { config: any; queryClient: any })
               value={formData.default_role}
               onChange={(e) => setFormData({ ...formData, default_role: e.target.value })}
               options={[
-                { value: 'user', label: 'Utilisateur' },
-                { value: 'supervisor', label: 'Superviseur' },
-                { value: 'admin', label: 'Administrateur' }
+                { value: 'user', label: ROLE_LABELS.user },
+                { value: 'agent', label: ROLE_LABELS.agent },
+                { value: 'supervisor', label: ROLE_LABELS.supervisor },
+                { value: 'admin', label: ROLE_LABELS.admin }
               ]}
             />
           </div>
@@ -705,9 +707,10 @@ function SamlSection({ config, queryClient }: { config: any; queryClient: any })
               value={formData.default_role}
               onChange={(e) => setFormData({ ...formData, default_role: e.target.value })}
               options={[
-                { value: 'user', label: 'Utilisateur' },
-                { value: 'supervisor', label: 'Superviseur' },
-                { value: 'admin', label: 'Administrateur' }
+                { value: 'user', label: ROLE_LABELS.user },
+                { value: 'agent', label: ROLE_LABELS.agent },
+                { value: 'supervisor', label: ROLE_LABELS.supervisor },
+                { value: 'admin', label: ROLE_LABELS.admin }
               ]}
             />
           </div>
@@ -930,9 +933,10 @@ function OidcSection({ config, queryClient }: { config: any; queryClient: any })
               value={formData.default_role}
               onChange={(e) => setFormData({ ...formData, default_role: e.target.value })}
               options={[
-                { value: 'user', label: 'Utilisateur' },
-                { value: 'supervisor', label: 'Superviseur' },
-                { value: 'admin', label: 'Administrateur' }
+                { value: 'user', label: ROLE_LABELS.user },
+                { value: 'agent', label: ROLE_LABELS.agent },
+                { value: 'supervisor', label: ROLE_LABELS.supervisor },
+                { value: 'admin', label: ROLE_LABELS.admin }
               ]}
             />
           </div>

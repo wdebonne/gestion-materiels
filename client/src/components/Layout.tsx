@@ -32,14 +32,19 @@ import {
   Sun,
   Moon,
   Monitor,
+  Contrast,
+  QrCode,
   PartyPopper,
   CalendarDays,
   TreePine
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
+import { useDisplayPrefs, TEXT_SIZE_LABELS } from '@/lib/useDisplayPrefs'
 import { useTranslation } from 'react-i18next'
 import { useRealtimeAlerts } from '@/lib/useWebSocket'
+import MobileBottomBar from '@/components/MobileBottomBar'
+import GlobalSearch from '@/components/GlobalSearch'
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
@@ -51,7 +56,9 @@ export default function Layout() {
     return saved ? JSON.parse(saved) : false
   })
   const [userMenuOpen, setUserMenuOpen] = useState(false)
+  const [rechercheOuverte, setRechercheOuverte] = useState(false)
   const { theme, setTheme } = useDarkMode()
+  const { textSize, setTextSize, highContrast, setHighContrast } = useDisplayPrefs()
   const { t } = useTranslation()
   const queryClient = useQueryClient()
 
@@ -67,6 +74,18 @@ export default function Layout() {
   useEffect(() => {
     localStorage.setItem('sidebarCollapsed', JSON.stringify(sidebarCollapsed))
   }, [sidebarCollapsed])
+
+  // Ctrl/Cmd + K : raccourci attendu par les habitués du clavier
+  useEffect(() => {
+    const surTouche = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setRechercheOuverte(true)
+      }
+    }
+    document.addEventListener('keydown', surTouche)
+    return () => document.removeEventListener('keydown', surTouche)
+  }, [])
 
   // Récupérer le nombre d'alertes non lues
   const { data: alertsCount } = useQuery({
@@ -217,12 +236,32 @@ export default function Layout() {
           <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden p-2 text-gray-500 hover:text-gray-700"
+              aria-label="Ouvrir le menu"
+              className="lg:hidden flex h-11 w-11 items-center justify-center rounded-lg text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:hover:text-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
             >
               <Menu className="w-6 h-6" />
             </button>
 
             <div className="flex-1" />
+
+            {/*
+              Scanner : accessible depuis n'importe quel écran.
+              C'est le geste le plus direct sur le terrain — viser l'étiquette
+              du matériel plutôt que le chercher dans l'arborescence.
+            */}
+            <NavLink
+              to="/scan"
+              aria-label="Scanner une étiquette"
+              title="Scanner une étiquette"
+              className={({ isActive }) => cn(
+                'flex h-11 w-11 items-center justify-center rounded-lg transition-colors',
+                isActive
+                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-gray-100'
+              )}
+            >
+              <QrCode className="w-6 h-6" />
+            </NavLink>
 
             {/* User menu */}
             <div className="relative">
@@ -240,7 +279,7 @@ export default function Layout() {
                 <span className="hidden sm:block text-sm font-medium text-gray-700 dark:text-gray-300">
                   {user?.firstName} {user?.lastName}
                 </span>
-                <ChevronDown className="w-4 h-4 text-gray-500" />
+                <ChevronDown className="w-4 h-4 text-gray-500 dark:text-gray-400" />
               </button>
 
               {userMenuOpen && (
@@ -255,32 +294,70 @@ export default function Layout() {
                       <User className="w-4 h-4" />
                       {t('nav.profile')}
                     </NavLink>
-                    {/* Sélecteur de thème */}
+                    {/* Thème */}
                     <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
-                      <span className="text-xs text-gray-400 uppercase font-medium">{t('theme.title')}</span>
-                      <div className="flex items-center gap-1 mt-1">
-                        <button
-                          onClick={() => setTheme('light')}
-                          className={cn("p-1.5 rounded", theme === 'light' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100')}
-                          title={t('theme.light')}
-                        >
-                          <Sun className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setTheme('dark')}
-                          className={cn("p-1.5 rounded", theme === 'dark' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100')}
-                          title={t('theme.dark')}
-                        >
-                          <Moon className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => setTheme('system')}
-                          className={cn("p-1.5 rounded", theme === 'system' ? 'bg-primary-100 text-primary-700' : 'hover:bg-gray-100')}
-                          title={t('theme.system')}
-                        >
-                          <Monitor className="w-4 h-4" />
-                        </button>
+                      <span className="text-xs text-gray-600 dark:text-gray-400 uppercase font-medium">{t('theme.title')}</span>
+                      <div className="flex items-center gap-1 mt-1.5">
+                        {([
+                          ['light', Sun, t('theme.light')],
+                          ['dark', Moon, t('theme.dark')],
+                          ['system', Monitor, t('theme.system')],
+                        ] as const).map(([valeur, Icone, libelle]) => (
+                          <button
+                            key={valeur}
+                            onClick={() => setTheme(valeur)}
+                            className={cn(
+                              'flex h-11 w-11 items-center justify-center rounded-lg transition-colors',
+                              theme === valeur
+                                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                            )}
+                            title={libelle}
+                            aria-label={libelle}
+                            aria-pressed={theme === valeur}
+                          >
+                            <Icone className="w-5 h-5" />
+                          </button>
+                        ))}
                       </div>
+                    </div>
+
+                    {/* Lisibilité — pour le travail en extérieur */}
+                    <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
+                      <span className="text-xs text-gray-600 dark:text-gray-400 uppercase font-medium">Taille du texte</span>
+                      <div className="flex items-center gap-1 mt-1.5">
+                        {(['normal', 'large', 'xlarge'] as const).map((taille, index) => (
+                          <button
+                            key={taille}
+                            onClick={() => setTextSize(taille)}
+                            className={cn(
+                              'flex h-11 min-w-[44px] flex-1 items-center justify-center rounded-lg transition-colors',
+                              textSize === taille
+                                ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                                : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                            )}
+                            title={TEXT_SIZE_LABELS[taille]}
+                            aria-label={'Taille du texte : ' + TEXT_SIZE_LABELS[taille]}
+                            aria-pressed={textSize === taille}
+                          >
+                            <span style={{ fontSize: `${0.875 + index * 0.25}rem` }} className="font-semibold">A</span>
+                          </button>
+                        ))}
+                      </div>
+
+                      <button
+                        onClick={() => setHighContrast(!highContrast)}
+                        className={cn(
+                          'mt-2 flex min-h-[44px] w-full items-center gap-2 rounded-lg px-2 transition-colors',
+                          highContrast
+                            ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/40 dark:text-primary-300'
+                            : 'hover:bg-gray-100 dark:hover:bg-gray-700'
+                        )}
+                        aria-pressed={highContrast}
+                      >
+                        <Contrast className="w-5 h-5 flex-shrink-0" />
+                        Contraste élevé
+                      </button>
                     </div>
                     {user?.role === 'admin' && (
                       <NavLink
@@ -307,11 +384,18 @@ export default function Layout() {
           </div>
         </header>
 
-        {/* Page content */}
-        <main className="p-4 sm:p-6 lg:p-8">
+        {/* Page content — la marge basse dégage la barre d'onglets mobile */}
+        <main className="p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">
           <Outlet />
         </main>
       </div>
+
+      <MobileBottomBar
+        onOuvrirRecherche={() => setRechercheOuverte(true)}
+        nombreAlertes={alertsCount}
+      />
+
+      <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />
     </div>
   )
 }
@@ -345,7 +429,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
           )}
         </div>
         {onClose && (
-          <button onClick={onClose} className="lg:hidden p-2 text-gray-500 hover:text-gray-700">
+          <button onClick={onClose} className="lg:hidden p-2 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
             <X className="w-5 h-5" />
           </button>
         )}
@@ -371,7 +455,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
               <>
                 <item.icon className={cn(
                   "w-5 h-5 transition-colors flex-shrink-0", 
-                  isActive ? "text-primary-600" : "text-gray-400 group-hover:text-gray-600"
+                  isActive ? "text-primary-600" : "text-gray-600 group-hover:text-gray-600"
                 )} />
                 {(!collapsed || onClose) && (
                   <>
@@ -413,7 +497,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
               <>
                 <Settings className={cn(
                   "w-5 h-5 transition-colors flex-shrink-0", 
-                  isActive ? "text-primary-600" : "text-gray-400 group-hover:text-gray-600"
+                  isActive ? "text-primary-600" : "text-gray-600 group-hover:text-gray-600"
                 )} />
                 {(!collapsed || onClose) && <span>{t('nav.settings')}</span>}
               </>
@@ -425,7 +509,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
       {/* Toggle collapse button (desktop only) */}
       {onToggleCollapse && (
         <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-700">
-          <button
+          <button aria-label={collapsed ? t('nav.expand') : t('nav.collapse')}
             onClick={onToggleCollapse}
             className={cn(
               "flex items-center gap-3 w-full px-3 py-2.5 rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200",
@@ -437,7 +521,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
               <ChevronRight className="w-5 h-5 text-gray-400" />
             ) : (
               <>
-                <ChevronLeft className="w-5 h-5 text-gray-400" />
+                <ChevronLeft className="w-5 h-5 text-gray-600 dark:text-gray-300" />
                 <span>{t('nav.collapse')}</span>
               </>
             )}
@@ -447,7 +531,7 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
 
       {/* Version */}
       <div className={cn(
-        "px-4 py-3 text-xs text-gray-400 border-t border-gray-200 dark:border-gray-700",
+        "px-4 py-3 text-xs text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-gray-700",
         collapsed && !onClose ? "text-center px-2" : ""
       )}>
         {collapsed && !onClose ? `v${settings.site_version?.split(' ')[0] || ''}` : `Version ${settings.site_version}`}

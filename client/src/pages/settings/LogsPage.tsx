@@ -521,7 +521,7 @@ export default function LogsPage() {
                     <tr key={log.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                         <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4 text-gray-400" />
+                          <Clock className="w-4 h-4 text-gray-600" />
                           {formatDate(log.createdAt)}
                         </div>
                       </td>

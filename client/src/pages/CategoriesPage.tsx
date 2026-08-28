@@ -105,8 +105,8 @@ export default function CategoriesPage() {
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Catégories</h1>
-          <p className="text-gray-500 mt-1">Gérez les catégories de matériels</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Catégories</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Gérez les catégories de matériels</p>
         </div>
         {isSupervisor && (
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
@@ -136,11 +136,11 @@ export default function CategoriesPage() {
         </Alert>
       ) : categories.length === 0 ? (
         <div className="text-center py-12">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <LayoutGrid className="w-8 h-8 text-gray-400" />
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <LayoutGrid className="w-8 h-8 text-gray-600 dark:text-gray-300" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900">Aucune catégorie</h3>
-          <p className="text-gray-500 mt-1">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Aucune catégorie</h3>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             {search ? 'Aucun résultat pour cette recherche' : 'Commencez par créer une catégorie'}
           </p>
           {!search && (
@@ -165,15 +165,15 @@ export default function CategoriesPage() {
               
               {/* Actions au survol - superviseurs et admins uniquement */}
               {isSupervisor && (
-              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute top-2 right-2 flex gap-1 hover-reveal">
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
                     openModal(category)
                   }}
-                  className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50"
+                  className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
-                  <Edit2 className="w-4 h-4 text-gray-600" />
+                  <Edit2 className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                 </button>
                 {isAdmin && (
                 <button
@@ -181,7 +181,7 @@ export default function CategoriesPage() {
                     e.stopPropagation()
                     setDeleteConfirm(category)
                   }}
-                  className="p-2 bg-white rounded-lg shadow-md hover:bg-red-50"
+                  className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-red-50"
                 >
                   <Trash2 className="w-4 h-4 text-red-600" />
                 </button>
@@ -231,9 +231,9 @@ export default function CategoriesPage() {
                 id="hasSubcategories"
                 checked={formData.hasSubcategories}
                 onChange={(e) => setFormData({ ...formData, hasSubcategories: e.target.checked })}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                className="w-4 h-4 text-blue-600 border-gray-300 dark:border-gray-600 rounded focus:ring-blue-500"
               />
-              <label htmlFor="hasSubcategories" className="text-sm text-gray-700">
+              <label htmlFor="hasSubcategories" className="text-sm text-gray-700 dark:text-gray-200">
                 Cette catégorie contient des sous-catégories
               </label>
             </div>
@@ -258,7 +258,7 @@ export default function CategoriesPage() {
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer la catégorie <strong>{deleteConfirm?.name}</strong> ?
           </p>
           <p className="text-sm text-red-600 mt-2">

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -530,7 +530,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
 // === PLUGIN: CARBURANT ===
 
 // POST /api/objects/:id/fuel - Ajouter une entrée carburant
-router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/:id/fuel', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     // Support des noms de champs du frontend (date, cost) et backend (entryDate, unitPrice)
@@ -654,12 +654,34 @@ router.get('/fuel-stations/list', authenticateToken, async (req: AuthRequest, re
 });
 
 // POST /api/objects/fuel-stations - Ajouter une station
+/**
+ * Cherche une entree de referentiel en ignorant la casse et les espaces.
+ *
+ * La contrainte UNIQUE de SQLite etant sensible a la casse, « Total Pavilly »
+ * et « TOTAL Pavilly » etaient acceptes tous les deux : les couts se
+ * retrouvaient alors eclates entre deux stations dans le module Suivi.
+ */
+async function trouverEntreeExistante(table: string, nom: string): Promise<{ id: number; name: string } | null> {
+  return db.queryOne(
+    `SELECT id, name FROM ${table} WHERE LOWER(TRIM(name)) = ?`,
+    [nom.trim().toLowerCase()]
+  );
+}
+
 router.post('/fuel-stations', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { name, address } = req.body;
     
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const existante = await trouverEntreeExistante('fuel_stations', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Cette station existe déjà sous le nom « ${existante.name} ».`
+      });
     }
 
     const result = await db.execute(
@@ -753,6 +775,14 @@ router.post('/maintenance-types', authenticateToken, requireAdmin, async (req: A
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
     }
 
+    const existante = await trouverEntreeExistante('maintenance_types', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Ce type d'entretien existe déjà sous le nom « ${existante.name} ».`
+      });
+    }
+
     const result = await db.execute(
       'INSERT INTO maintenance_types (name) VALUES (?)',
       [name.trim()]
@@ -842,6 +872,14 @@ router.post('/maintenance-providers', authenticateToken, requireAdmin, async (re
     
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const existante = await trouverEntreeExistante('maintenance_providers', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Ce prestataire existe déjà sous le nom « ${existante.name} ».`
+      });
     }
 
     const result = await db.execute(
@@ -935,6 +973,14 @@ router.post('/control-centers', authenticateToken, requireAdmin, async (req: Aut
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
     }
 
+    const existante = await trouverEntreeExistante('control_centers', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Ce centre de contrôle existe déjà sous le nom « ${existante.name} ».`
+      });
+    }
+
     const result = await db.execute(
       'INSERT INTO control_centers (name, address, phone) VALUES (?, ?, ?)',
       [name.trim(), address?.trim() || null, phone?.trim() || null]
@@ -1007,7 +1053,7 @@ router.delete('/control-centers/:centerId', authenticateToken, requireAdmin, asy
 // === PLUGIN: CONTRÔLE TECHNIQUE ===
 
 // POST /api/objects/:id/technical-control - Ajouter un contrôle technique
-router.post('/:id/technical-control', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/:id/technical-control', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments } = req.body;
@@ -1170,7 +1216,7 @@ router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin,
 // === PLUGIN: MAINTENANCE ===
 
 // POST /api/objects/:id/maintenance - Ajouter une maintenance
-router.post('/:id/maintenance', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/:id/maintenance', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { 

@@ -173,8 +173,8 @@ export default function ApiPage() {
                 </div>
                 <button
                   onClick={() => copyToClipboard(item.value, item.field)}
-                  className="flex-shrink-0 p-2 text-gray-400 hover:text-gray-600 transition-colors"
-                  title="Copier"
+                  className="flex-shrink-0 p-2 text-gray-600 hover:text-gray-600 transition-colors"
+                  title="Copier" aria-label="Copier"
                 >
                   {copiedField === item.field ? <CheckCircle className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
                 </button>
@@ -247,15 +247,15 @@ export default function ApiPage() {
             L'API utilise l'authentification JWT (JSON Web Token). La plupart des endpoints nécessitent un token valide.
           </p>
           <div className="bg-gray-900 rounded-lg p-4 text-sm font-mono text-gray-100 overflow-x-auto">
-            <p className="text-gray-400"># 1. Obtenir un token</p>
+            <p className="text-gray-600"># 1. Obtenir un token</p>
             <p className="text-green-400">POST /api/auth/login</p>
-            <p className="text-gray-300">{'{'} "email": "user@example.com", "password": "..." {'}'}</p>
-            <p className="mt-3 text-gray-400"># 2. Utiliser le token dans les requêtes</p>
+            <p className="text-gray-600">{'{'} "email": "user@example.com", "password": "..." {'}'}</p>
+            <p className="mt-3 text-gray-600"># 2. Utiliser le token dans les requêtes</p>
             <p className="text-blue-400">GET /api/objects</p>
-            <p className="text-gray-300">Authorization: Bearer {'<'}votre_token{'>'}</p>
-            <p className="mt-3 text-gray-400"># 3. Rafraîchir le token</p>
+            <p className="text-gray-600">Authorization: Bearer {'<'}votre_token{'>'}</p>
+            <p className="mt-3 text-gray-600"># 3. Rafraîchir le token</p>
             <p className="text-green-400">POST /api/auth/refresh</p>
-            <p className="text-gray-300">{'{'} "refreshToken": "..." {'}'}</p>
+            <p className="text-gray-600">{'{'} "refreshToken": "..." {'}'}</p>
           </div>
         </CardBody>
       </Card>

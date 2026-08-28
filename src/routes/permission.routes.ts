@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
+import { CONFIGURABLE_ROLES } from '../config/roles';
 
 const router = Router();
 
@@ -9,7 +10,7 @@ router.get('/group/:role', authenticateToken, requireAdmin, async (req: AuthRequ
   try {
     const { role } = req.params;
 
-    if (!['supervisor', 'user'].includes(role)) {
+    if (!(CONFIGURABLE_ROLES as readonly string[]).includes(role)) {
       return res.status(400).json({ success: false, message: 'Rôle invalide' });
     }
 
@@ -40,7 +41,7 @@ router.put('/group/:role', authenticateToken, requireAdmin, async (req: AuthRequ
     const { role } = req.params;
     const { permissions } = req.body;
 
-    if (!['supervisor', 'user'].includes(role)) {
+    if (!(CONFIGURABLE_ROLES as readonly string[]).includes(role)) {
       return res.status(400).json({ success: false, message: 'Rôle invalide' });
     }
 
@@ -229,7 +230,7 @@ router.put('/plugins/:pluginId/role/:role', authenticateToken, requireAdmin, asy
     const { pluginId, role } = req.params;
     const { canAccess } = req.body;
 
-    if (!['supervisor', 'user'].includes(role)) {
+    if (!(CONFIGURABLE_ROLES as readonly string[]).includes(role)) {
       return res.status(400).json({ success: false, message: 'Rôle invalide' });
     }
 
@@ -320,7 +321,7 @@ router.get('/modules/:moduleName/group/:role', authenticateToken, requireAdmin, 
   try {
     const { moduleName, role } = req.params;
 
-    if (!['supervisor', 'user'].includes(role)) {
+    if (!(CONFIGURABLE_ROLES as readonly string[]).includes(role)) {
       return res.status(400).json({ success: false, message: 'Rôle invalide' });
     }
 
@@ -353,7 +354,7 @@ router.put('/modules/:moduleName/group/:role', authenticateToken, requireAdmin, 
     const { moduleName, role } = req.params;
     const { canView, canExport, canCompare } = req.body;
 
-    if (!['supervisor', 'user'].includes(role)) {
+    if (!(CONFIGURABLE_ROLES as readonly string[]).includes(role)) {
       return res.status(400).json({ success: false, message: 'Rôle invalide' });
     }
 

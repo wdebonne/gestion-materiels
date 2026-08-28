@@ -76,11 +76,11 @@ export default function ImportExportPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
           <FileSpreadsheet className="w-7 h-7 text-primary-600" />
           Import / Export
         </h1>
-        <p className="text-gray-500 mt-1">Importer ou exporter vos matériels en masse</p>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">Importer ou exporter vos matériels en masse</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -93,7 +93,7 @@ export default function ImportExportPage() {
           </CardHeader>
           <CardBody>
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 Importez vos matériels depuis un fichier CSV ou Excel (.xlsx).
               </p>
               <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
@@ -101,7 +101,7 @@ export default function ImportExportPage() {
                 Télécharger le template
               </Button>
 
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+              <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
                 <input
                   type="file"
                   accept=".csv,.xlsx,.xls"
@@ -113,11 +113,11 @@ export default function ImportExportPage() {
                   id="import-file"
                 />
                 <label htmlFor="import-file" className="cursor-pointer">
-                  <FileSpreadsheet className="w-10 h-10 text-gray-400 mx-auto mb-2" />
-                  <p className="text-sm text-gray-600">
+                  <FileSpreadsheet className="w-10 h-10 text-gray-600 dark:text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-600 dark:text-gray-300">
                     {importFile ? importFile.name : 'Cliquez pour sélectionner un fichier'}
                   </p>
-                  <p className="text-xs text-gray-400 mt-1">CSV, XLSX (max 10 Mo)</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">CSV, XLSX (max 10 Mo)</p>
                 </label>
               </div>
 
@@ -138,8 +138,8 @@ export default function ImportExportPage() {
                     <span className="text-sm font-medium">{importResult.imported} matériel(s) importé(s)</span>
                   </div>
                   {importResult.errors?.length > 0 && (
-                    <div className="bg-red-50 rounded-lg p-3">
-                      <p className="text-sm font-medium text-red-700 flex items-center gap-1 mb-2">
+                    <div className="bg-red-50 dark:bg-red-900/30 rounded-lg p-3">
+                      <p className="text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-1 mb-2">
                         <AlertCircle className="w-4 h-4" /> {importResult.errors.length} erreur(s)
                       </p>
                       <ul className="text-xs text-red-600 space-y-0.5 max-h-40 overflow-y-auto">
@@ -164,7 +164,7 @@ export default function ImportExportPage() {
           </CardHeader>
           <CardBody>
             <div className="space-y-4">
-              <p className="text-sm text-gray-600">
+              <p className="text-sm text-gray-600 dark:text-gray-300">
                 Exporter vos matériels en fichier Excel ou CSV.
               </p>
               <div>

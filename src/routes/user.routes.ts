@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
+import { ROLES, isRole } from '../config/roles';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
 
     // Filtre par rôles
     if (req.query.roles) {
-      const roles = (req.query.roles as string).split(',').filter(r => ['admin', 'supervisor', 'user'].includes(r));
+      const roles = (req.query.roles as string).split(',').filter(isRole);
       if (roles.length > 0) {
         conditions.push(`role IN (${roles.map(() => '?').join(',')})`);
         params.push(...roles);
@@ -104,7 +105,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
 router.post('/', authenticateToken, requireAdmin, [
   body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
   body('password').isLength({ min: 8 }).withMessage('Le mot de passe doit contenir au moins 8 caractères'),
-  body('role').isIn(['admin', 'supervisor', 'user']).withMessage('Rôle invalide')
+  body('role').isIn(ROLES).withMessage('Rôle invalide')
 ], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);

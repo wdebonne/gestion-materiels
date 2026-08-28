@@ -115,8 +115,8 @@ function StatCard({
       <CardBody className="p-4">
         <div className="flex items-start justify-between">
           <div className="flex-1">
-            <p className="text-sm font-medium text-gray-500">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{value}</p>
             {comparison !== undefined && comparison !== null && (
               <div className="flex items-center gap-1 mt-2">
                 {trend === 'up' ? (
@@ -132,7 +132,7 @@ function StatCard({
                     ? `${comparison > 0 ? '+' : ''}${comparison.toFixed(1)}%` 
                     : comparison}
                 </span>
-                <span className="text-xs text-gray-400">vs période précédente</span>
+                <span className="text-xs text-gray-600 dark:text-gray-300">vs période précédente</span>
               </div>
             )}
           </div>
@@ -198,7 +198,7 @@ function MultiSelectFilter({
 
   return (
     <div className="relative">
-      <label className="block text-sm font-medium text-gray-700 mb-1">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
         <Icon className="w-4 h-4 inline-block mr-1" />
         {label}
       </label>
@@ -226,9 +226,9 @@ function MultiSelectFilter({
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
-          <div className="absolute z-50 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-64 overflow-auto">
+          <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-auto">
             {searchable && (
-              <div className="p-2 border-b sticky top-0 bg-white">
+              <div className="h-11 w-11 flex items-center justify-center border-b sticky top-0 bg-white dark:bg-gray-800">
                 <Input
                   placeholder="Rechercher..."
                   value={search}
@@ -239,7 +239,7 @@ function MultiSelectFilter({
               </div>
             )}
             
-            <div className="p-2 border-b flex gap-2">
+            <div className="h-11 w-11 flex items-center justify-center border-b flex gah-11 w-11 flex items-center justify-center">
               <button
                 type="button"
                 onClick={() => onChange(options.map(o => o.id))}
@@ -247,11 +247,11 @@ function MultiSelectFilter({
               >
                 Tout sélectionner
               </button>
-              <span className="text-gray-300">|</span>
+              <span className="text-gray-600 dark:text-gray-300">|</span>
               <button
                 type="button"
                 onClick={() => onChange([])}
-                className="text-xs text-gray-600 hover:text-gray-800"
+                className="text-xs text-gray-600 dark:text-gray-300 hover:text-gray-800"
               >
                 Tout désélectionner
               </button>
@@ -261,14 +261,14 @@ function MultiSelectFilter({
               {Object.entries(groupedOptions).map(([group, items]) => (
                 <div key={group}>
                   {group && (
-                    <div className="px-3 py-1 text-xs font-semibold text-gray-500 bg-gray-50">
+                    <div className="px-3 py-1 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/40">
                       {group}
                     </div>
                   )}
                   {items.map(option => (
                     <label
                       key={option.id}
-                      className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 cursor-pointer"
+                      className="flex items-center gap-2 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer min-h-[44px]"
                     >
                       <input
                         type="checkbox"
@@ -280,21 +280,21 @@ function MultiSelectFilter({
                             onChange(selected.filter(id => id !== option.id))
                           }
                         }}
-                        className="w-4 h-4 rounded border-gray-300 text-primary-600"
+                        className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600"
                       />
                       {option.image && (
                         <img src={option.image} alt="" className="w-6 h-6 rounded object-cover" />
                       )}
-                      <span className="text-sm text-gray-700 flex-1">{option.name}</span>
+                      <span className="text-sm text-gray-700 dark:text-gray-200 flex-1">{option.name}</span>
                       {option.reference && (
-                        <span className="text-xs text-gray-400">{option.reference}</span>
+                        <span className="text-xs text-gray-600 dark:text-gray-300">{option.reference}</span>
                       )}
                     </label>
                   ))}
                 </div>
               ))}
               {filteredOptions.length === 0 && (
-                <div className="px-3 py-4 text-sm text-gray-500 text-center">
+                <div className="px-3 py-4 text-sm text-gray-500 dark:text-gray-400 text-center">
                   Aucun résultat
                 </div>
               )}
@@ -330,7 +330,7 @@ function DataTypeFilter({
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 mb-2">
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
         Types de données
       </label>
       <div className="flex flex-wrap gap-2">
@@ -367,15 +367,15 @@ function DataTypeFilter({
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
-      <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3">
-        <p className="font-medium text-gray-900 mb-2">{label}</p>
+      <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
+        <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">{label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2 text-sm">
             <div 
               className="w-3 h-3 rounded-full" 
               style={{ backgroundColor: entry.color }}
             />
-            <span className="text-gray-600">{entry.name}:</span>
+            <span className="text-gray-600 dark:text-gray-300">{entry.name}:</span>
             <span className="font-medium">{formatCurrency(entry.value)}</span>
           </div>
         ))}
@@ -427,7 +427,7 @@ function DataTable({
 
   const SortHeader = ({ label, keyName }: { label: string; keyName: string }) => (
     <th 
-      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase cursor-pointer hover:bg-gray-100"
+      className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700"
       onClick={() => handleSort(keyName)}
     >
       <div className="flex items-center gap-1">
@@ -443,23 +443,23 @@ function DataTable({
     return (
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 dark:bg-gray-900/40">
             <tr>
               <SortHeader label="Date" keyName="date" />
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Catégorie</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Objet</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Catégorie</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
               <SortHeader label="Quantité" keyName="quantity" />
               <SortHeader label="Prix unit." keyName="unitPrice" />
               <SortHeader label="Total" keyName="totalPrice" />
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pièces</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Station</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pièces</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {paginatedData.map((item: any) => (
-              <tr key={item.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+              <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
                   {new Date(item.date).toLocaleDateString('fr-FR')}
                 </td>
                 <td className="px-4 py-3">
@@ -468,26 +468,26 @@ function DataTable({
                       <img src={item.objectImage} alt="" className="w-8 h-8 rounded object-cover" />
                     )}
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{item.objectName}</div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.objectName}</div>
                       {item.objectReference && (
-                        <div className="text-xs text-gray-500">{item.objectReference}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{item.objectReference}</div>
                       )}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{item.categoryName}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.categoryName}</td>
                 <td className="px-4 py-3">
                   <Badge variant="warning">{item.fuelType}</Badge>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-900">{formatNumber(item.quantity)} L</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{formatCurrency(item.unitPrice)}/L</td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(item.totalPrice)}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{item.station || '-'}</td>
+                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100">{formatNumber(item.quantity)} L</td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{formatCurrency(item.unitPrice)}/L</td>
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{formatCurrency(item.totalPrice)}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.station || '-'}</td>
                 <td className="px-4 py-3 text-center">
                   {item.attachments?.length > 0 && (
                     <button
                       onClick={() => onViewAttachments?.(item.attachments)}
-                      className="p-1 text-gray-400 hover:text-primary-600"
+                      className="p-1 text-gray-600 dark:text-gray-300 hover:text-primary-600 touch-target"
                       title={`${item.attachments.length} pièce(s) jointe(s)`}
                     >
                       <Paperclip className="w-4 h-4" />
@@ -501,7 +501,7 @@ function DataTable({
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               Affichage {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, data.length)} sur {data.length}
             </div>
             <div className="flex gap-2">
@@ -522,22 +522,22 @@ function DataTable({
     return (
       <div className="overflow-x-auto">
         <table className="w-full">
-          <thead className="bg-gray-50">
+          <thead className="bg-gray-50 dark:bg-gray-900/40">
             <tr>
               <SortHeader label="Date" keyName="date" />
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Catégorie</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Objet</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Catégorie</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
               <SortHeader label="Coût" keyName="cost" />
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prestataire</th>
               <SortHeader label="Prochaine" keyName="nextDate" />
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pièces</th>
+              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pièces</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
+          <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
             {paginatedData.map((item: any) => (
-              <tr key={item.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+              <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
                   {new Date(item.date).toLocaleDateString('fr-FR')}
                 </td>
                 <td className="px-4 py-3">
@@ -546,27 +546,27 @@ function DataTable({
                       <img src={item.objectImage} alt="" className="w-8 h-8 rounded object-cover" />
                     )}
                     <div>
-                      <div className="text-sm font-medium text-gray-900">{item.objectName}</div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.objectName}</div>
                       {item.objectReference && (
-                        <div className="text-xs text-gray-500">{item.objectReference}</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400">{item.objectReference}</div>
                       )}
                     </div>
                   </div>
                 </td>
-                <td className="px-4 py-3 text-sm text-gray-500">{item.categoryName}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.categoryName}</td>
                 <td className="px-4 py-3">
                   <Badge variant="info">{item.type}</Badge>
                 </td>
-                <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(item.cost)}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">{item.provider || '-'}</td>
-                <td className="px-4 py-3 text-sm text-gray-500">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{formatCurrency(item.cost)}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.provider || '-'}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
                   {item.nextDate ? new Date(item.nextDate).toLocaleDateString('fr-FR') : '-'}
                 </td>
                 <td className="px-4 py-3 text-center">
                   {item.attachments?.length > 0 && (
                     <button
                       onClick={() => onViewAttachments?.(item.attachments)}
-                      className="p-1 text-gray-400 hover:text-primary-600"
+                      className="p-1 text-gray-600 dark:text-gray-300 hover:text-primary-600 touch-target"
                       title={`${item.attachments.length} pièce(s) jointe(s)`}
                     >
                       <Paperclip className="w-4 h-4" />
@@ -580,7 +580,7 @@ function DataTable({
 
         {totalPages > 1 && (
           <div className="flex items-center justify-between px-4 py-3 border-t">
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-500 dark:text-gray-400">
               Affichage {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, data.length)} sur {data.length}
             </div>
             <div className="flex gap-2">
@@ -601,22 +601,22 @@ function DataTable({
   return (
     <div className="overflow-x-auto">
       <table className="w-full">
-        <thead className="bg-gray-50">
+        <thead className="bg-gray-50 dark:bg-gray-900/40">
           <tr>
             <SortHeader label="Date" keyName="date" />
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Objet</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Catégorie</th>
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Résultat</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Objet</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Catégorie</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Résultat</th>
             <SortHeader label="Coût" keyName="cost" />
-            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Centre</th>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Centre</th>
             <SortHeader label="Expiration" keyName="expiryDate" />
-            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Pièces</th>
+            <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pièces</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-200">
+        <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
           {paginatedData.map((item: any) => (
-            <tr key={item.id} className="hover:bg-gray-50">
-              <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+            <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+              <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
                 {new Date(item.date).toLocaleDateString('fr-FR')}
               </td>
               <td className="px-4 py-3">
@@ -625,29 +625,29 @@ function DataTable({
                     <img src={item.objectImage} alt="" className="w-8 h-8 rounded object-cover" />
                   )}
                   <div>
-                    <div className="text-sm font-medium text-gray-900">{item.objectName}</div>
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{item.objectName}</div>
                     {item.objectReference && (
-                      <div className="text-xs text-gray-500">{item.objectReference}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{item.objectReference}</div>
                     )}
                   </div>
                 </div>
               </td>
-              <td className="px-4 py-3 text-sm text-gray-500">{item.categoryName}</td>
+              <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.categoryName}</td>
               <td className="px-4 py-3">
                 <Badge variant={item.result === 'Favorable' ? 'success' : 'warning'}>
                   {item.result || '-'}
                 </Badge>
               </td>
-              <td className="px-4 py-3 text-sm font-medium text-gray-900">{formatCurrency(item.cost)}</td>
-              <td className="px-4 py-3 text-sm text-gray-500">{item.centerName || '-'}</td>
-              <td className="px-4 py-3 text-sm text-gray-500">
+              <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{formatCurrency(item.cost)}</td>
+              <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.centerName || '-'}</td>
+              <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
                 {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('fr-FR') : '-'}
               </td>
               <td className="px-4 py-3 text-center">
                 {item.attachments?.length > 0 && (
                   <button
                     onClick={() => onViewAttachments?.(item.attachments)}
-                    className="p-1 text-gray-400 hover:text-primary-600"
+                    className="p-1 text-gray-600 dark:text-gray-300 hover:text-primary-600 touch-target"
                     title={`${item.attachments.length} pièce(s) jointe(s)`}
                   >
                     <Paperclip className="w-4 h-4" />
@@ -661,7 +661,7 @@ function DataTable({
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between px-4 py-3 border-t">
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-gray-500 dark:text-gray-400">
             Affichage {(page - 1) * pageSize + 1} - {Math.min(page * pageSize, data.length)} sur {data.length}
           </div>
           <div className="flex gap-2">
@@ -869,8 +869,8 @@ export default function TrackingPage() {
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Suivi des coûts</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Suivi des coûts</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             Analysez et comparez les dépenses carburant, entretiens et contrôles techniques
           </p>
         </div>
@@ -907,7 +907,7 @@ export default function TrackingPage() {
             {/* Période */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                   <Calendar className="w-4 h-4 inline-block mr-1" />
                   Date de début
                 </label>
@@ -918,7 +918,7 @@ export default function TrackingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                   Date de fin
                 </label>
                 <Input
@@ -928,14 +928,14 @@ export default function TrackingPage() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
                   <BarChart3 className="w-4 h-4 inline-block mr-1" />
                   Grouper par
                 </label>
                 <select
                   value={filters.groupBy}
                   onChange={(e) => setFilters(f => ({ ...f, groupBy: e.target.value as any }))}
-                  className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none appearance-none cursor-pointer"
+                  className="block w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 focus:outline-none appearance-none cursor-pointer min-h-[44px]"
                 >
                   <option value="week">Semaine</option>
                   <option value="month">Mois</option>
@@ -948,9 +948,9 @@ export default function TrackingPage() {
                     type="checkbox"
                     checked={filters.compareEnabled}
                     onChange={(e) => setFilters(f => ({ ...f, compareEnabled: e.target.checked }))}
-                    className="w-5 h-5 rounded border-gray-300 text-primary-600"
+                    className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-primary-600"
                   />
-                  <span className="text-sm font-medium text-gray-700">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
                     <ArrowRightLeft className="w-4 h-4 inline-block mr-1" />
                     Comparer
                   </span>
@@ -1013,7 +1013,7 @@ export default function TrackingPage() {
                 {filters.compareMode === 'period' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <label className="block text-sm font-medium text-blue-700 mb-1">
+                      <label className="block text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">
                         Période de comparaison - Début
                       </label>
                       <Input
@@ -1023,7 +1023,7 @@ export default function TrackingPage() {
                       />
                     </div>
                     <div>
-                      <label className="block text-sm font-medium text-blue-700 mb-1">
+                      <label className="block text-sm font-medium text-blue-700 dark:text-blue-300 mb-1">
                         Période de comparaison - Fin
                       </label>
                       <Input
@@ -1045,7 +1045,7 @@ export default function TrackingPage() {
                       <select
                         value={filters.year1}
                         onChange={(e) => setFilters(f => ({ ...f, year1: parseInt(e.target.value) }))}
-                        className="block w-full rounded-lg border border-purple-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none"
+                        className="block w-full rounded-lg border border-purple-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none min-h-[44px]"
                       >
                         {availableYears.map(year => (
                           <option key={year} value={year}>{year}</option>
@@ -1059,7 +1059,7 @@ export default function TrackingPage() {
                       <select
                         value={filters.year2}
                         onChange={(e) => setFilters(f => ({ ...f, year2: parseInt(e.target.value) }))}
-                        className="block w-full rounded-lg border border-purple-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none"
+                        className="block w-full rounded-lg border border-purple-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none min-h-[44px]"
                       >
                         {availableYears.map(year => (
                           <option key={year} value={year}>{year}</option>
@@ -1073,14 +1073,14 @@ export default function TrackingPage() {
                 {filters.compareMode === 'monthly' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium text-green-700">
+                      <label className="block text-sm font-medium text-green-700 dark:text-green-300">
                         Mois 1
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         <select
                           value={filters.month1}
                           onChange={(e) => setFilters(f => ({ ...f, month1: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none"
+                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
                         >
                           {MONTHS_SHORT.map((month, index) => (
                             <option key={index} value={index + 1}>{month}</option>
@@ -1089,7 +1089,7 @@ export default function TrackingPage() {
                         <select
                           value={filters.year1}
                           onChange={(e) => setFilters(f => ({ ...f, year1: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none"
+                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
                         >
                           {availableYears.map(year => (
                             <option key={year} value={year}>{year}</option>
@@ -1098,14 +1098,14 @@ export default function TrackingPage() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <label className="block text-sm font-medium text-green-700">
+                      <label className="block text-sm font-medium text-green-700 dark:text-green-300">
                         Mois 2
                       </label>
                       <div className="grid grid-cols-2 gap-2">
                         <select
                           value={filters.month2}
                           onChange={(e) => setFilters(f => ({ ...f, month2: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none"
+                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
                         >
                           {MONTHS_SHORT.map((month, index) => (
                             <option key={index} value={index + 1}>{month}</option>
@@ -1114,7 +1114,7 @@ export default function TrackingPage() {
                         <select
                           value={filters.year2}
                           onChange={(e) => setFilters(f => ({ ...f, year2: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none"
+                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
                         >
                           {availableYears.map(year => (
                             <option key={year} value={year}>{year}</option>
@@ -1146,7 +1146,7 @@ export default function TrackingPage() {
 
             {/* Filtres avancés */}
             {showAdvanced && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 rounded-lg overflow-visible relative z-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-gray-900/40 rounded-lg overflow-visible relative z-10">
                 {!loadingFilters && filterOptions && (
                   <>
                     <MultiSelectFilter
@@ -1206,7 +1206,7 @@ export default function TrackingPage() {
         <Card>
           <CardBody className="py-12 text-center">
             <LoadingInline />
-            <p className="mt-2 text-gray-500">Chargement des données...</p>
+            <p className="mt-2 text-gray-500 dark:text-gray-400">Chargement des données...</p>
           </CardBody>
         </Card>
       )}
@@ -1216,8 +1216,8 @@ export default function TrackingPage() {
         <Card>
           <CardBody className="py-16 text-center">
             <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-semibold text-gray-600 mb-2">Aucune donnée pour cette période</h3>
-            <p className="text-sm text-gray-400 max-w-md mx-auto">
+            <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-2">Aucune donnée pour cette période</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-300 max-w-md mx-auto">
               Modifiez les dates ou les filtres pour afficher des données de suivi. Vérifiez que des entrées de carburant, d'entretien ou de contrôle technique existent pour la période sélectionnée.
             </p>
           </CardBody>
@@ -1352,7 +1352,7 @@ export default function TrackingPage() {
                   {/* Graphique évolution */}
                   {chartsData?.costByPeriod?.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Évolution des coûts</h3>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Évolution des coûts</h3>
                       <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
                           <ComposedChart data={chartsData.costByPeriod}>
@@ -1380,7 +1380,7 @@ export default function TrackingPage() {
                   {/* Coûts par objet */}
                   {chartsData?.costByObject?.length > 0 && (
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900 mb-4">Coûts par objet (Top 10)</h3>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Coûts par objet (Top 10)</h3>
                       <div className="h-80">
                         <ResponsiveContainer width="100%" height="100%">
                           <BarChart data={chartsData.costByObject.slice(0, 10)} layout="vertical">
@@ -1414,32 +1414,32 @@ export default function TrackingPage() {
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <Card className="border-2 border-blue-200">
                           <CardBody className="p-4">
-                            <h4 className="font-semibold text-blue-700 mb-3">
+                            <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-3">
                               Période actuelle
-                              <span className="block text-xs font-normal text-gray-500 mt-1">
+                              <span className="block text-xs font-normal text-gray-500 dark:text-gray-400 mt-1">
                                 {new Date(filters.startDate).toLocaleDateString('fr-FR')} - {new Date(filters.endDate).toLocaleDateString('fr-FR')}
                               </span>
                             </h4>
                             <div className="space-y-2">
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Coût total</span>
+                                <span className="text-gray-600 dark:text-gray-300">Coût total</span>
                                 <span className="font-bold text-lg">{formatCurrency(summary.totalCost)}</span>
                               </div>
                               {filters.dataTypes.includes('fuel') && (
                                 <div className="flex justify-between">
-                                  <span className="text-gray-500">Carburant</span>
+                                  <span className="text-gray-500 dark:text-gray-400">Carburant</span>
                                   <span className="font-medium text-amber-600">{formatCurrency(summary.totalFuelCost)}</span>
                                 </div>
                               )}
                               {filters.dataTypes.includes('maintenance') && (
                                 <div className="flex justify-between">
-                                  <span className="text-gray-500">Entretiens</span>
+                                  <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
                                   <span className="font-medium text-blue-600">{formatCurrency(summary.totalMaintenanceCost)}</span>
                                 </div>
                               )}
                               {filters.dataTypes.includes('technical_control') && (
                                 <div className="flex justify-between">
-                                  <span className="text-gray-500">Contrôles</span>
+                                  <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
                                   <span className="font-medium text-green-600">{formatCurrency(summary.totalControlCost)}</span>
                                 </div>
                               )}
@@ -1451,30 +1451,30 @@ export default function TrackingPage() {
                           <CardBody className="p-4">
                             <h4 className="font-semibold text-indigo-700 mb-3">
                               Période de comparaison
-                              <span className="block text-xs font-normal text-gray-500 mt-1">
+                              <span className="block text-xs font-normal text-gray-500 dark:text-gray-400 mt-1">
                                 {new Date(filters.compareStartDate).toLocaleDateString('fr-FR')} - {new Date(filters.compareEndDate).toLocaleDateString('fr-FR')}
                               </span>
                             </h4>
                             <div className="space-y-2">
                               <div className="flex justify-between">
-                                <span className="text-gray-600">Coût total</span>
+                                <span className="text-gray-600 dark:text-gray-300">Coût total</span>
                                 <span className="font-bold text-lg">{formatCurrency(comparison.summary?.totalCost || 0)}</span>
                               </div>
                               {filters.dataTypes.includes('fuel') && (
                                 <div className="flex justify-between">
-                                  <span className="text-gray-500">Carburant</span>
+                                  <span className="text-gray-500 dark:text-gray-400">Carburant</span>
                                   <span className="font-medium text-amber-600">{formatCurrency(comparison.summary?.totalFuelCost || 0)}</span>
                                 </div>
                               )}
                               {filters.dataTypes.includes('maintenance') && (
                                 <div className="flex justify-between">
-                                  <span className="text-gray-500">Entretiens</span>
+                                  <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
                                   <span className="font-medium text-blue-600">{formatCurrency(comparison.summary?.totalMaintenanceCost || 0)}</span>
                                 </div>
                               )}
                               {filters.dataTypes.includes('technical_control') && (
                                 <div className="flex justify-between">
-                                  <span className="text-gray-500">Contrôles</span>
+                                  <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
                                   <span className="font-medium text-green-600">{formatCurrency(comparison.summary?.totalControlCost || 0)}</span>
                                 </div>
                               )}
@@ -1491,8 +1491,8 @@ export default function TrackingPage() {
                         <CardBody className="p-4">
                           <div className="flex items-center justify-between">
                             <div>
-                              <h4 className="font-semibold text-gray-900">Différence entre périodes</h4>
-                              <p className="text-sm text-gray-500">
+                              <h4 className="font-semibold text-gray-900 dark:text-gray-100">Différence entre périodes</h4>
+                              <p className="text-sm text-gray-500 dark:text-gray-400">
                                 {comparison.difference?.totalCost > 0 
                                   ? `Augmentation de ${comparison.percentageChange?.totalCost || 0}%` 
                                   : `Réduction de ${Math.abs(parseFloat(comparison.percentageChange?.totalCost) || 0).toFixed(1)}%`
@@ -1534,24 +1534,24 @@ export default function TrackingPage() {
                               </h4>
                               <div className="space-y-2">
                                 <div className="flex justify-between">
-                                  <span className="text-gray-600">Coût total</span>
+                                  <span className="text-gray-600 dark:text-gray-300">Coût total</span>
                                   <span className="font-bold text-lg">{formatCurrency(yearlyData.summary.year1.total)}</span>
                                 </div>
                                 {filters.dataTypes.includes('fuel') && (
                                   <div className="flex justify-between">
-                                    <span className="text-gray-500">Carburant</span>
+                                    <span className="text-gray-500 dark:text-gray-400">Carburant</span>
                                     <span className="font-medium text-amber-600">{formatCurrency(yearlyData.summary.year1.fuel)}</span>
                                   </div>
                                 )}
                                 {filters.dataTypes.includes('maintenance') && (
                                   <div className="flex justify-between">
-                                    <span className="text-gray-500">Entretiens</span>
+                                    <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
                                     <span className="font-medium text-blue-600">{formatCurrency(yearlyData.summary.year1.maintenance)}</span>
                                   </div>
                                 )}
                                 {filters.dataTypes.includes('technical_control') && (
                                   <div className="flex justify-between">
-                                    <span className="text-gray-500">Contrôles</span>
+                                    <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
                                     <span className="font-medium text-green-600">{formatCurrency(yearlyData.summary.year1.control)}</span>
                                   </div>
                                 )}
@@ -1569,24 +1569,24 @@ export default function TrackingPage() {
                               </h4>
                               <div className="space-y-2">
                                 <div className="flex justify-between">
-                                  <span className="text-gray-600">Coût total</span>
+                                  <span className="text-gray-600 dark:text-gray-300">Coût total</span>
                                   <span className="font-bold text-lg">{formatCurrency(yearlyData.summary.year2.total)}</span>
                                 </div>
                                 {filters.dataTypes.includes('fuel') && (
                                   <div className="flex justify-between">
-                                    <span className="text-gray-500">Carburant</span>
+                                    <span className="text-gray-500 dark:text-gray-400">Carburant</span>
                                     <span className="font-medium text-amber-600">{formatCurrency(yearlyData.summary.year2.fuel)}</span>
                                   </div>
                                 )}
                                 {filters.dataTypes.includes('maintenance') && (
                                   <div className="flex justify-between">
-                                    <span className="text-gray-500">Entretiens</span>
+                                    <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
                                     <span className="font-medium text-blue-600">{formatCurrency(yearlyData.summary.year2.maintenance)}</span>
                                   </div>
                                 )}
                                 {filters.dataTypes.includes('technical_control') && (
                                   <div className="flex justify-between">
-                                    <span className="text-gray-500">Contrôles</span>
+                                    <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
                                     <span className="font-medium text-green-600">{formatCurrency(yearlyData.summary.year2.control)}</span>
                                   </div>
                                 )}
@@ -1605,13 +1605,13 @@ export default function TrackingPage() {
                           <CardBody className="p-4">
                             <div className="flex items-center justify-between">
                               <div>
-                                <h4 className="font-semibold text-gray-900">
+                                <h4 className="font-semibold text-gray-900 dark:text-gray-100">
                                   Différence {filters.compareMode === 'monthly' 
                                     ? `${MONTHS_SHORT[filters.month1 - 1]} ${filters.year1} vs ${MONTHS_SHORT[filters.month2 - 1]} ${filters.year2}`
                                     : `${filters.year1} vs ${filters.year2}`
                                   }
                                 </h4>
-                                <p className="text-sm text-gray-500">
+                                <p className="text-sm text-gray-500 dark:text-gray-400">
                                   {yearlyData.difference.total > 0 
                                     ? `Augmentation de ${yearlyData.difference.percentage?.toFixed(1)}%` 
                                     : `Réduction de ${Math.abs(yearlyData.difference.percentage || 0).toFixed(1)}%`
@@ -1639,7 +1639,7 @@ export default function TrackingPage() {
                       {/* Graphique comparatif mois par mois (uniquement pour mode yearly) */}
                       {filters.compareMode === 'yearly' && comparisonChartData.length > 0 && (
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                             Comparaison mensuelle : {filters.year1} vs {filters.year2}
                           </h3>
                           <div className="h-96">
@@ -1661,7 +1661,7 @@ export default function TrackingPage() {
                       {/* Graphiques par type (uniquement pour mode yearly) */}
                       {filters.compareMode === 'yearly' && filters.dataTypes.includes('fuel') && comparisonChartData.length > 0 && (
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                             <Fuel className="w-5 h-5 inline-block mr-2 text-amber-500" />
                             Carburant : {filters.year1} vs {filters.year2}
                           </h3>
@@ -1683,7 +1683,7 @@ export default function TrackingPage() {
 
                       {filters.compareMode === 'yearly' && filters.dataTypes.includes('maintenance') && comparisonChartData.length > 0 && (
                         <div>
-                          <h3 className="text-lg font-semibold text-gray-900 mb-4">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
                             <Wrench className="w-5 h-5 inline-block mr-2 text-blue-500" />
                             Entretiens : {filters.year1} vs {filters.year2}
                           </h3>
@@ -1709,7 +1709,7 @@ export default function TrackingPage() {
                   {!comparison && !yearlyData && (
                     <div className="text-center py-12">
                       <Layers className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                      <p className="text-gray-500">Sélectionnez un mode de comparaison et configurez les paramètres pour voir les résultats.</p>
+                      <p className="text-gray-500 dark:text-gray-400">Sélectionnez un mode de comparaison et configurez les paramètres pour voir les résultats.</p>
                     </div>
                   )}
                 </div>
@@ -1741,28 +1741,28 @@ export default function TrackingPage() {
 
               {activeTab === 'green_space' && trackingData?.greenSpace && (
                 <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
+                  <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                    <thead className="bg-gray-50 dark:bg-gray-900/40">
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Espace vert</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Intervenant</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Durée</th>
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Coût</th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prochain</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Espace vert</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Intervenant</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Durée</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Coût</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prochain</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
+                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                       {trackingData.greenSpace.map((g: any) => (
-                        <tr key={g.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 text-sm font-medium text-gray-900">{g.spaceName}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{g.type}{g.title ? ` - ${g.title}` : ''}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{g.date ? new Date(g.date).toLocaleDateString('fr-FR') : '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{g.performer || '-'}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{g.duration ? `${g.duration} min` : '-'}</td>
-                          <td className="px-4 py-3 text-sm text-right font-medium text-gray-900">{formatCurrency(g.cost)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500">{g.nextDate ? new Date(g.nextDate).toLocaleDateString('fr-FR') : '-'}</td>
+                        <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{g.spaceName}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.type}{g.title ? ` - ${g.title}` : ''}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.date ? new Date(g.date).toLocaleDateString('fr-FR') : '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.performer || '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.duration ? `${g.duration} min` : '-'}</td>
+                          <td className="px-4 py-3 text-sm text-right font-medium text-gray-900 dark:text-gray-100">{formatCurrency(g.cost)}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.nextDate ? new Date(g.nextDate).toLocaleDateString('fr-FR') : '-'}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1792,13 +1792,13 @@ export default function TrackingPage() {
       {viewingAttachments && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/50" onClick={() => setViewingAttachments(null)} />
-          <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-auto">
-            <div className="sticky top-0 bg-white border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">
+          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-auto">
+            <div className="sticky top-0 bg-white dark:bg-gray-800 border-b px-4 py-3 flex items-center justify-between">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100">
                 <Paperclip className="w-5 h-5 inline-block mr-2" />
                 Pièces jointes ({viewingAttachments.length})
               </h3>
-              <button onClick={() => setViewingAttachments(null)} className="p-1 hover:bg-gray-100 rounded">
+              <button onClick={() => setViewingAttachments(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -1809,18 +1809,18 @@ export default function TrackingPage() {
                   href={attachment.url || attachment}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50"
+                  className="flex items-center gap-3 p-3 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
-                  <FileText className="w-8 h-8 text-gray-400" />
+                  <FileText className="w-8 h-8 text-gray-600 dark:text-gray-300" />
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 truncate">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                       {attachment.name || `Fichier ${index + 1}`}
                     </div>
                     {attachment.size && (
-                      <div className="text-xs text-gray-500">{attachment.size}</div>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{attachment.size}</div>
                     )}
                   </div>
-                  <Download className="w-4 h-4 text-gray-400" />
+                  <Download className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                 </a>
               ))}
             </div>

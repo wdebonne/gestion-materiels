@@ -363,7 +363,7 @@ export default function WebhooksPage() {
                         </code>
                         <button
                           onClick={() => copyToClipboard(webhook.url)}
-                          className="text-gray-400 hover:text-gray-600"
+                          className="text-gray-600 hover:text-gray-600"
                         >
                           <Copy className="w-4 h-4" />
                         </button>

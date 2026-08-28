@@ -228,8 +228,8 @@ export default function AlertsPage() {
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Alertes</h1>
-          <p className="text-gray-500 mt-1">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Alertes</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             {activeCount > 0 
               ? `${activeCount} alerte(s) active(s)`
               : 'Aucune alerte active'
@@ -262,8 +262,8 @@ export default function AlertsPage() {
         <CardBody>
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex items-center gap-2">
-              <Filter className="w-5 h-5 text-gray-400" />
-              <span className="text-sm text-gray-500">Filtres :</span>
+              <Filter className="w-5 h-5 text-gray-600 dark:text-gray-300" />
+              <span className="text-sm text-gray-500 dark:text-gray-400">Filtres :</span>
             </div>
             <Select
               value={statusFilter}
@@ -296,11 +296,11 @@ export default function AlertsPage() {
       ) : alerts.length === 0 ? (
         <Card>
           <CardBody className="text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Bell className="w-8 h-8 text-gray-400" />
+            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Bell className="w-8 h-8 text-gray-600 dark:text-gray-300" />
             </div>
-            <h3 className="text-lg font-medium text-gray-900">Aucune alerte</h3>
-            <p className="text-gray-500 mt-1">
+            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Aucune alerte</h3>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">
               {statusFilter !== 'all' || typeFilter !== 'all' 
                 ? 'Aucune alerte ne correspond aux filtres sélectionnés'
                 : 'Vous n\'avez aucune alerte pour le moment'
@@ -326,14 +326,14 @@ export default function AlertsPage() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-4">
                       <div>
-                        <h3 className="font-semibold text-gray-900">{alert.title}</h3>
-                        <p className="text-sm text-gray-500 mt-1">{alert.message}</p>
+                        <h3 className="font-semibold text-gray-900 dark:text-gray-100">{alert.title}</h3>
+                        <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{alert.message}</p>
                         
                         {/* Métadonnées */}
                         <div className="flex flex-wrap items-center gap-3 mt-3">
                           {getPriorityBadge(alert.priority)}
                           {getStatusBadge(alert.status)}
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-gray-600 dark:text-gray-300">
                             {getTypeLabel(alert.type)}
                           </span>
                           {alert.dueDate && (
@@ -373,7 +373,7 @@ export default function AlertsPage() {
                             size="sm"
                             onClick={() => acknowledgeMutation.mutate(alert.id)}
                             loading={acknowledgeMutation.isPending}
-                            title="Marquer comme lu"
+                            title="Marquer comme lu" aria-label="Marquer comme lu"
                           >
                             <Check className="w-4 h-4" />
                           </Button>
@@ -384,7 +384,7 @@ export default function AlertsPage() {
                             size="sm"
                             onClick={() => resolveMutation.mutate(alert.id)}
                             loading={resolveMutation.isPending}
-                            title="Résoudre"
+                            title="Résoudre" aria-label="Résoudre"
                           >
                             <CheckCheck className="w-4 h-4" />
                           </Button>
@@ -394,7 +394,7 @@ export default function AlertsPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => setDeleteConfirm(alert)}
-                            title="Supprimer"
+                            title="Supprimer" aria-label="Supprimer"
                           >
                             <Trash2 className="w-4 h-4 text-red-500" />
                           </Button>
@@ -405,7 +405,7 @@ export default function AlertsPage() {
                 </div>
 
                 {/* Date de création */}
-                <p className="text-xs text-gray-400 mt-4 text-right">
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-4 text-right">
                   Créée le {formatDate(alert.createdAt)}
                 </p>
               </CardBody>
@@ -422,7 +422,7 @@ export default function AlertsPage() {
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer cette alerte ?
           </p>
         </ModalBody>
@@ -448,17 +448,17 @@ export default function AlertsPage() {
         size="lg"
       >
         <ModalBody className="space-y-6">
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-gray-500 dark:text-gray-400">
             Configurez le délai d'affichage des alertes avant l'échéance et leur niveau de priorité pour chaque type.
           </p>
 
           {/* Contrôle technique */}
           <div className="border rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+              <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-600">
                 <ClipboardCheck className="w-5 h-5" />
               </div>
-              <h3 className="font-medium text-gray-900">Contrôle technique</h3>
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Contrôle technique</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Input
@@ -494,7 +494,7 @@ export default function AlertsPage() {
               <div className="p-2 rounded-lg bg-orange-100 text-orange-600">
                 <Wrench className="w-5 h-5" />
               </div>
-              <h3 className="font-medium text-gray-900">Entretien / Maintenance</h3>
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Entretien / Maintenance</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Input
@@ -527,10 +527,10 @@ export default function AlertsPage() {
           {/* Carburant */}
           <div className="border rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-green-100 text-green-600">
+              <div className="p-2 rounded-lg bg-green-100 dark:bg-green-900/40 text-green-600">
                 <Fuel className="w-5 h-5" />
               </div>
-              <h3 className="font-medium text-gray-900">Carburant</h3>
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Carburant</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Input
@@ -563,10 +563,10 @@ export default function AlertsPage() {
           {/* Autre */}
           <div className="border rounded-lg p-4 space-y-3">
             <div className="flex items-center gap-2">
-              <div className="p-2 rounded-lg bg-gray-100 text-gray-600">
+              <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300">
                 <AlertTriangle className="w-5 h-5" />
               </div>
-              <h3 className="font-medium text-gray-900">Autres alertes</h3>
+              <h3 className="font-medium text-gray-900 dark:text-gray-100">Autres alertes</h3>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Input

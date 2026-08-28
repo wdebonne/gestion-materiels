@@ -96,6 +96,15 @@ export async function checkAlerts(): Promise<void> {
           ]
         );
 
+        // Notifier les clients connectés en temps réel
+        emitAlert({
+          id: alertResult.lastInsertRowid,
+          title: `Contrôle technique: ${tc.object_name}`,
+          message,
+          alertType: 'technical_control',
+          severity
+        });
+
         // Envoyer l'email d'alerte
         try {
           await sendAlertEmail(alertResult.lastInsertRowid);
@@ -155,6 +164,15 @@ export async function checkAlerts(): Promise<void> {
           ]
         );
 
+        // Notifier les clients connectés en temps réel
+        emitAlert({
+          id: alertResult.lastInsertRowid,
+          title: `Maintenance: ${m.object_name}`,
+          message,
+          alertType: 'maintenance',
+          severity
+        });
+
         try {
           await sendAlertEmail(alertResult.lastInsertRowid);
           await db.execute('UPDATE maintenances SET reminder_sent = 1 WHERE id = ?', [m.id]);
@@ -201,7 +219,7 @@ export async function checkAlerts(): Promise<void> {
         : `Entretien "${gsm.maintenance_type}" prévu le ${gsm.next_maintenance_date}`;
 
       if (!existingAlert) {
-        await db.execute(
+        const alertResult = await db.execute(
           `INSERT INTO alerts (title, message, alert_type, severity, plugin_reference, plugin_reference_id, due_date)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
@@ -214,6 +232,15 @@ export async function checkAlerts(): Promise<void> {
             gsm.next_maintenance_date
           ]
         );
+
+        // Notifier les clients connectés en temps réel
+        emitAlert({
+          id: alertResult.lastInsertRowid,
+          title: `Espace vert - ${gsm.space_name}: ${gsm.maintenance_type}`,
+          message,
+          alertType: 'maintenance',
+          severity
+        });
       } else if (isOverdue) {
         await db.execute(
           'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
@@ -237,19 +264,31 @@ export async function checkAlerts(): Promise<void> {
     );
 
     for (const event of events) {
+      const eventMessage =
+        event.description || `Événement prévu le ${new Date(event.start_date).toLocaleString('fr-FR')}`;
+
       // Créer une alerte pour l'événement
-      await db.execute(
+      const alertResult = await db.execute(
         `INSERT INTO alerts (title, message, alert_type, severity, object_id, due_date)
          VALUES (?, ?, ?, ?, ?, ?)`,
         [
           `Rappel: ${event.title}`,
-          event.description || `Événement prévu le ${new Date(event.start_date).toLocaleString('fr-FR')}`,
+          eventMessage,
           'calendar',
           'info',
           event.object_id,
           event.start_date
         ]
       );
+
+      // Notifier les clients connectés en temps réel
+      emitAlert({
+        id: alertResult.lastInsertRowid,
+        title: `Rappel: ${event.title}`,
+        message: eventMessage,
+        alertType: 'calendar',
+        severity: 'info'
+      });
 
       await db.execute('UPDATE calendar_events SET reminder_sent = 1 WHERE id = ?', [event.id]);
     }
@@ -388,16 +427,26 @@ async function checkOverdueReservations(): Promise<void> {
       );
 
       // Créer une alerte
-      await db.execute(
-        `INSERT INTO alerts (title, message, alert_type, severity, object_id, created_at) 
+      const overdueMessage = `Le matériel "${res.object_name}" emprunté par ${res.first_name} ${res.last_name} n'a pas été retourné.`;
+      const alertResult = await db.execute(
+        `INSERT INTO alerts (title, message, alert_type, severity, object_id, created_at)
          VALUES (?, ?, 'reservation_overdue', 'warning', ?, ?)`,
         [
           `Retour en retard: ${res.object_name}`,
-          `Le matériel "${res.object_name}" emprunté par ${res.first_name} ${res.last_name} n'a pas été retourné.`,
+          overdueMessage,
           res.object_id,
           now
         ]
       );
+
+      // Notifier les clients connectés en temps réel
+      emitAlert({
+        id: alertResult.lastInsertRowid,
+        title: `Retour en retard: ${res.object_name}`,
+        message: overdueMessage,
+        alertType: 'reservation_overdue',
+        severity: 'warning'
+      });
     }
 
     if (overdueReservations.length > 0) {

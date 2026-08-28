@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireSupervisor, requireFieldWrite } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
 
 const router = Router();
@@ -91,10 +91,10 @@ router.get('/availability/:objectId', authenticateToken, async (req: AuthRequest
 // Créer une réservation
 router.post('/',
   authenticateToken,
-  requireSupervisor,
+  requireFieldWrite,
   [
     body('objectId').isInt({ min: 1 }),
-    body('userId').isInt({ min: 1 }),
+    body('userId').optional().isInt({ min: 1 }),
     body('startDate').isISO8601(),
     body('endDate').isISO8601(),
     body('reason').optional().isString().trim(),
@@ -107,7 +107,12 @@ router.post('/',
         return;
       }
 
-      const { objectId, userId, startDate, endDate, reason } = req.body;
+      const { objectId, startDate, endDate, reason } = req.body;
+
+      // Un agent ne réserve que pour lui-même : il ne peut pas engager
+      // le matériel au nom d'un collègue.
+      const isSupervisor = req.user!.role === 'admin' || req.user!.role === 'supervisor';
+      const userId = isSupervisor ? req.body.userId : req.user!.userId;
 
       // Vérifier que l'objet existe
       const object = await db.queryOne('SELECT id, name FROM objects WHERE id = ?', [objectId]);
@@ -130,10 +135,14 @@ router.post('/',
       }
 
       const now = new Date().toISOString();
+      // Une demande d'agent attend la validation d'un superviseur ; celle d'un
+      // superviseur vaut réservation ferme.
+      const status = isSupervisor ? 'reserved' : 'pending';
+
       const result = await db.execute(
         `INSERT INTO reservations (object_id, user_id, start_date, end_date, reason, status, created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, 'reserved', ?, ?, ?)`,
-        [objectId, userId, startDate, endDate, reason || null, req.user!.userId, now, now]
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [objectId, userId, startDate, endDate, reason || null, status, req.user!.userId, now, now]
       );
 
       await logService.info('other', `Réservation créée pour "${object.name}"`, {
@@ -159,7 +168,7 @@ router.post('/',
 router.put('/:id/status',
   authenticateToken,
   requireSupervisor,
-  [body('status').isIn(['reserved', 'borrowed', 'returned', 'cancelled', 'overdue'])],
+  [body('status').isIn(['pending', 'reserved', 'borrowed', 'returned', 'cancelled', 'overdue'])],
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const errors = validationResult(req);

@@ -161,11 +161,11 @@ function DataGridComponent({
               )}
               
               {/* Actions overlay */}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+              <div className="absolute inset-0 bg-black/50 hover-reveal flex items-center justify-center gap-2">
                 {component.actions?.map((action: any, actionIdx: number) => {
                   const Icon = iconMap[action.icon]
                   return (
-                    <button
+                    <button aria-label={action.tooltip}
                       key={actionIdx}
                       onClick={() => onAction(action.action, item)}
                       className="p-2 bg-white rounded-full hover:bg-gray-100 transition-colors"
@@ -304,10 +304,10 @@ function DataTableComponent({
                         {component.actions.map((action: any, actionIdx: number) => {
                           const Icon = iconMap[action.icon]
                           return (
-                            <button
+                            <button aria-label={action.tooltip}
                               key={actionIdx}
                               onClick={() => onAction(action.action, item)}
-                              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded"
+                              className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded touch-target"
                               title={action.tooltip}
                             >
                               {Icon && <Icon className="w-4 h-4" />}

@@ -91,7 +91,7 @@ export function ImageCard({ title, description, image, icon, count, onClick, cla
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : icon ? (
-          <div className="w-full h-full flex items-center justify-center text-gray-400">
+          <div className="w-full h-full flex items-center justify-center text-gray-600 dark:text-gray-300">
             <div className="w-16 h-16">{icon}</div>
           </div>
         ) : null}
@@ -106,11 +106,11 @@ export function ImageCard({ title, description, image, icon, count, onClick, cla
 
       {/* Contenu */}
       <div className="p-4 text-center">
-        <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary-600 transition-colors">
           {title}
         </h3>
         {description && (
-          <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
             {description}
           </p>
         )}
@@ -147,8 +147,8 @@ export function StatCard({ title, value, icon, change, color = 'blue', className
       <CardBody>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-500">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{value}</p>
             {change && (
               <div className={cn(
                 "flex items-center gap-1 text-sm mt-2",
@@ -156,7 +156,7 @@ export function StatCard({ title, value, icon, change, color = 'blue', className
               )}>
                 <span>{change.type === 'increase' ? '↑' : '↓'}</span>
                 <span>{Math.abs(change.value)}%</span>
-                <span className="text-gray-400">vs mois dernier</span>
+                <span className="text-gray-600 dark:text-gray-300">vs mois dernier</span>
               </div>
             )}
           </div>

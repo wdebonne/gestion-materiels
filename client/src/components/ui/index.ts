@@ -1,9 +1,13 @@
 // Export all UI components
 export { default as Modal, ModalBody, ModalFooter } from './Modal'
+export { ConfirmProvider, useConfirm } from './ConfirmDialog'
+export type { ConfirmOptions } from './ConfirmDialog'
 export { default as Button } from './Button'
+export { default as IconButton } from './IconButton'
 export { default as Input } from './Input'
 export { default as Select } from './Select'
 export { default as Autocomplete } from './Autocomplete'
+export { default as ReferenceSelect } from './ReferenceSelect'
 export { default as TextArea } from './TextArea'
 export { default as Card, CardHeader, CardTitle, CardDescription, CardBody, CardFooter, ImageCard, StatCard } from './Card'
 export { default as Badge } from './Badge'

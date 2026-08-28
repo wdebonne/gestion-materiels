@@ -28,12 +28,16 @@ export default function QRCodeDisplay({ objectId, objectName }: QRCodeDisplayPro
     
     const url = data?.url || `${window.location.origin}/objects/${objectId}`
     
+    // L'image vient du serveur (data-URL). L'ancienne version chargeait une
+    // bibliothèque depuis un CDN : imprimer une étiquette dans un atelier sans
+    // internet donnait une page blanche.
     printWindow.document.write(`
       <html>
         <head>
           <title>QR Code - ${objectName}</title>
           <style>
             body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; margin: 0; font-family: Arial, sans-serif; }
+            img { width: 200px; height: 200px; }
             .label { text-align: center; margin-top: 16px; }
             .name { font-size: 18px; font-weight: bold; }
             .ref { font-size: 12px; color: #666; margin-top: 4px; }
@@ -41,18 +45,11 @@ export default function QRCodeDisplay({ objectId, objectName }: QRCodeDisplayPro
           </style>
         </head>
         <body>
-          <div id="qr"></div>
+          <img src="${data?.qrCode ?? ''}" alt="QR code ${objectName}" onload="window.print(); window.close();" />
           <div class="label">
             <div class="name">${objectName}</div>
+            <div class="ref">${url}</div>
           </div>
-          <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"><\/script>
-          <script>
-            QRCode.toCanvas(document.createElement('canvas'), '${url}', { width: 200 }, function(err, canvas) {
-              if (!err) document.getElementById('qr').appendChild(canvas);
-              window.print();
-              window.close();
-            });
-          <\/script>
         </body>
       </html>
     `)
@@ -93,7 +90,7 @@ export default function QRCodeDisplay({ objectId, objectName }: QRCodeDisplayPro
       <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="QR Code du matériel">
         <ModalBody>
           <div className="flex flex-col items-center gap-4">
-            <div className="bg-white p-4 rounded-lg border">
+            <div className="bg-white dark:bg-gray-800 p-4 rounded-lg border">
               <QRCode
                 id="qr-svg-display"
                 value={url}
@@ -102,8 +99,8 @@ export default function QRCodeDisplay({ objectId, objectName }: QRCodeDisplayPro
               />
             </div>
             <div className="text-center">
-              <p className="font-semibold text-gray-900">{objectName}</p>
-              <p className="text-xs text-gray-400 mt-1 break-all">{url}</p>
+              <p className="font-semibold text-gray-900 dark:text-gray-100">{objectName}</p>
+              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 break-all">{url}</p>
             </div>
           </div>
         </ModalBody>

@@ -289,23 +289,23 @@ export default function CustomFieldsPage() {
     <div className="space-y-6">
       {/* Fil d'Ariane */}
       <nav className="flex items-center gap-2 text-sm flex-wrap">
-        <Link to="/categories" className="text-gray-500 hover:text-gray-700">
+        <Link to="/categories" className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
           Catégories
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <Link to={`/categories/${category.slug}`} className="text-gray-500 hover:text-gray-700">
+        <Link to={`/categories/${category.slug}`} className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
           {category.name}
         </Link>
         {subcategory && (
           <>
             <ChevronRight className="w-4 h-4 text-gray-400" />
-            <Link to={`/categories/${category.slug}/${subcategory.slug}`} className="text-gray-500 hover:text-gray-700">
+            <Link to={`/categories/${category.slug}/${subcategory.slug}`} className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
               {subcategory.name}
             </Link>
           </>
         )}
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <span className="text-gray-900 font-medium">Configuration des champs</span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">Configuration des champs</span>
       </nav>
 
       {/* En-tête */}
@@ -315,7 +315,7 @@ export default function CustomFieldsPage() {
             <ArrowLeft className="w-4 h-4" />
           </Button>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
               <Settings2 className="w-6 h-6 text-primary-600" />
               Configuration des champs
               {subcategory ? (
@@ -326,7 +326,7 @@ export default function CustomFieldsPage() {
                 <Badge variant="info" size="sm">Catégorie</Badge>
               )}
             </h1>
-            <p className="text-gray-500 mt-1">
+            <p className="text-gray-500 dark:text-gray-400 mt-1">
               Personnalisez les informations affichées pour : <strong>{targetName}</strong>
               {subcategory && !fieldsConfig?.inherited && (
                 <span className="text-green-600 ml-2">
@@ -388,7 +388,7 @@ export default function CustomFieldsPage() {
           </Button>
         </CardHeader>
         <CardBody className="p-0">
-          <div className="divide-y divide-gray-200">
+          <div className="divide-y divide-gray-200 dark:divide-gray-700">
             {fields.map((field, index) => (
               <div 
                 key={field.fieldName}
@@ -399,14 +399,14 @@ export default function CustomFieldsPage() {
                   <button 
                     onClick={() => handleMoveField(index, 'up')}
                     disabled={index === 0}
-                    className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                    className="p-1 text-gray-600 dark:text-gray-300 hover:text-gray-600 disabled:opacity-30 touch-target"
                   >
                     <GripVertical className="w-4 h-4 rotate-180" />
                   </button>
                   <button 
                     onClick={() => handleMoveField(index, 'down')}
                     disabled={index === fields.length - 1}
-                    className="p-1 text-gray-400 hover:text-gray-600 disabled:opacity-30"
+                    className="p-1 text-gray-600 dark:text-gray-300 hover:text-gray-600 disabled:opacity-30 touch-target"
                   >
                     <GripVertical className="w-4 h-4" />
                   </button>
@@ -415,7 +415,7 @@ export default function CustomFieldsPage() {
                 {/* Info du champ */}
                 <div className="flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-medium text-gray-900">{field.fieldLabel}</span>
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{field.fieldLabel}</span>
                     {field.isSystem && (
                       <Badge variant="default" size="sm">Système</Badge>
                     )}
@@ -432,7 +432,7 @@ export default function CustomFieldsPage() {
                       </Badge>
                     )}
                   </div>
-                  <span className="text-sm text-gray-500">
+                  <span className="text-sm text-gray-500 dark:text-gray-400">
                     {field.isSystem ? 'Champ système' : `Type: ${FIELD_TYPES.find(t => t.value === field.fieldType)?.label || field.fieldType}`}
                     {field.fieldName && !field.isSystem && ` • Nom: ${field.fieldName}`}
                   </span>
@@ -449,7 +449,7 @@ export default function CustomFieldsPage() {
                     {field.isVisible ? (
                       <Eye className="w-4 h-4 text-green-600" />
                     ) : (
-                      <EyeOff className="w-4 h-4 text-gray-400" />
+                      <EyeOff className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                     )}
                   </Button>
                   {!field.isSystem && (
@@ -476,7 +476,7 @@ export default function CustomFieldsPage() {
                         size="sm"
                         onClick={() => handleRemoveField(index)}
                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                        title="Supprimer"
+                        title="Supprimer" aria-label="Supprimer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
@@ -498,15 +498,15 @@ export default function CustomFieldsPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {fields.filter(f => f.isVisible).map((field) => (
               <div key={field.fieldName}>
-                <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
-                <p className="text-gray-900">
+                <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{field.fieldLabel}</h4>
+                <p className="text-gray-900 dark:text-gray-100">
                   {field.isSystem ? (
                     field.fieldName === 'category' ? category.name :
                     field.fieldName === 'subcategory' ? (subcategory?.name || '-') :
                     field.fieldName === 'updatedAt' ? 'Date exemple' :
                     field.fieldName === 'id' ? '#123' : '-'
                   ) : (
-                    <span className="text-gray-400 italic">Valeur personnalisée</span>
+                    <span className="text-gray-600 dark:text-gray-300 italic">Valeur personnalisée</span>
                   )}
                 </p>
               </div>
@@ -552,23 +552,23 @@ export default function CustomFieldsPage() {
                 type="checkbox"
                 checked={newField.isRequired}
                 onChange={(e) => setNewField({ ...newField, isRequired: e.target.checked })}
-                className="rounded border-gray-300"
+                className="rounded border-gray-300 dark:border-gray-600"
               />
-              <span className="text-sm text-gray-700">Champ obligatoire</span>
+              <span className="text-sm text-gray-700 dark:text-gray-200">Champ obligatoire</span>
             </label>
             
             {/* Sélecteur de sous-catégories applicables */}
             {subcategoriesData && subcategoriesData.length > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
                   Appliquer uniquement à certaines sous-catégories
                 </label>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                   Laissez vide pour appliquer à toutes les sous-catégories
                 </p>
-                <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                   {subcategoriesData.map((sub) => (
-                    <label key={sub.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                    <label key={sub.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 p-1 rounded touch-target">
                       <input
                         type="checkbox"
                         checked={newField.applicableSubcategories.includes(sub.id)}
@@ -585,9 +585,9 @@ export default function CustomFieldsPage() {
                             })
                           }
                         }}
-                        className="rounded border-gray-300 text-primary-600"
+                        className="rounded border-gray-300 dark:border-gray-600 text-primary-600"
                       />
-                      <span className="text-sm text-gray-700">{sub.name}</span>
+                      <span className="text-sm text-gray-700 dark:text-gray-200">{sub.name}</span>
                     </label>
                   ))}
                 </div>
@@ -608,7 +608,7 @@ export default function CustomFieldsPage() {
       {/* Modal de confirmation de réinitialisation */}
       <Modal isOpen={resetConfirm} onClose={() => setResetConfirm(false)} title="Réinitialiser la configuration">
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir réinitialiser la configuration des champs ?
             {subcategory ? (
               <span className="block mt-2">
@@ -682,23 +682,23 @@ export default function CustomFieldsPage() {
                     ...editField, 
                     field: { ...editField.field, isRequired: e.target.checked }
                   })}
-                  className="rounded border-gray-300"
+                  className="rounded border-gray-300 dark:border-gray-600"
                 />
-                <span className="text-sm text-gray-700">Champ obligatoire</span>
+                <span className="text-sm text-gray-700 dark:text-gray-200">Champ obligatoire</span>
               </label>
               
               {/* Sélecteur de sous-catégories applicables */}
               {subcategoriesData && subcategoriesData.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
                     Appliquer uniquement à certaines sous-catégories
                   </label>
-                  <p className="text-xs text-gray-500 mb-2">
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
                     Laissez vide pour appliquer à toutes les sous-catégories
                   </p>
-                  <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                  <div className="space-y-2 max-h-40 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-3">
                     {subcategoriesData.map((sub) => (
-                      <label key={sub.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                      <label key={sub.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 p-1 rounded touch-target">
                         <input
                           type="checkbox"
                           checked={(editField.field.applicableSubcategories || []).includes(sub.id)}
@@ -722,9 +722,9 @@ export default function CustomFieldsPage() {
                               })
                             }
                           }}
-                          className="rounded border-gray-300 text-primary-600"
+                          className="rounded border-gray-300 dark:border-gray-600 text-primary-600"
                         />
-                        <span className="text-sm text-gray-700">{sub.name}</span>
+                        <span className="text-sm text-gray-700 dark:text-gray-200">{sub.name}</span>
                       </label>
                     ))}
                   </div>

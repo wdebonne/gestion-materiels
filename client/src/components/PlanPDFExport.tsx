@@ -371,7 +371,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
             <Download className="h-5 w-5 text-green-600" />
             Exporter le plan annoté en PDF
           </h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
         </div>
 
         <div className="p-4 space-y-4">

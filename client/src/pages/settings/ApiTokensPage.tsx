@@ -241,7 +241,7 @@ export default function ApiTokensPage() {
                   <div className="flex items-start justify-between">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3 mb-2">
-                        <Key className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                        <Key className="w-5 h-5 text-gray-600 flex-shrink-0" />
                         <h3 className="text-lg font-semibold text-gray-900 truncate">{token.name}</h3>
                         {token.is_active && !expired ? (
                           <Badge variant="success">Actif</Badge>
@@ -267,7 +267,7 @@ export default function ApiTokensPage() {
                           ))}
                         </div>
 
-                        <div className="flex items-center gap-4 text-xs text-gray-400">
+                        <div className="flex items-center gap-4 text-xs text-gray-600">
                           <span>Créé le {formatDate(token.created_at)}</span>
                           {token.last_used_at && <span>Dernière utilisation : {formatDate(token.last_used_at)}</span>}
                           {token.expires_at && <span>Expire le {formatDate(token.expires_at)}</span>}
@@ -288,7 +288,7 @@ export default function ApiTokensPage() {
                         variant="secondary"
                         size="sm"
                         onClick={() => setRegenerateConfirm(token)}
-                        title="Régénérer le token"
+                        title="Régénérer le token" aria-label="Régénérer le token"
                       >
                         <RefreshCw className="w-4 h-4" />
                       </Button>
@@ -296,7 +296,7 @@ export default function ApiTokensPage() {
                         variant="danger"
                         size="sm"
                         onClick={() => setDeleteConfirm(token)}
-                        title="Supprimer"
+                        title="Supprimer" aria-label="Supprimer"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>

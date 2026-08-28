@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../database';
+import { getJwtSecret } from '../config/secrets';
 
 export interface JwtPayload {
   userId: number;
@@ -32,7 +33,7 @@ export const authenticateToken = async (
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as JwtPayload;
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
     
     // Vérifier que l'utilisateur existe toujours et est actif
     const user = await db.queryOne(
@@ -105,8 +106,15 @@ async function authenticateApiToken(
   }
 }
 
-export const requireRole = (...roles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+/** Garde de rôle, portant la liste des rôles autorisés pour pouvoir être inspectée. */
+export interface RoleGuard {
+  (req: AuthRequest, res: Response, next: NextFunction): void;
+  /** Rôles acceptés. Exposés pour que les tests vérifient le contrat de chaque route. */
+  allowedRoles: readonly string[];
+}
+
+export const requireRole = (...roles: string[]): RoleGuard => {
+  const guard = (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ success: false, message: 'Non authentifié' });
       return;
@@ -119,10 +127,21 @@ export const requireRole = (...roles: string[]) => {
 
     next();
   };
+
+  guard.allowedRoles = roles as readonly string[];
+  return guard;
 };
 
 export const requireAdmin = requireRole('admin');
 export const requireSupervisor = requireRole('admin', 'supervisor');
+
+/**
+ * Saisie de terrain : relever un plein, un entretien, un contrôle, joindre une
+ * photo. Ces gestes sont le quotidien des agents et ne doivent pas exiger le
+ * rôle de superviseur, qui donne au passage la suppression du matériel et la
+ * configuration des seuils d'alerte.
+ */
+export const requireFieldWrite = requireRole('admin', 'supervisor', 'agent');
 
 // ==================== HELPERS PERMISSIONS CATÉGORIES ====================
 

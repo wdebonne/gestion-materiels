@@ -1,6 +1,7 @@
 import swaggerJSDoc from 'swagger-jsdoc';
 import path from 'path';
 import fs from 'fs';
+import { ROLES } from './roles';
 
 function getVersion(): string {
   try {
@@ -77,7 +78,7 @@ const options: swaggerJSDoc.Options = {
             email: { type: 'string' },
             firstName: { type: 'string' },
             lastName: { type: 'string' },
-            role: { type: 'string', enum: ['admin', 'supervisor', 'user'] },
+            role: { type: 'string', enum: [...ROLES] },
             avatar: { type: 'string', nullable: true },
           },
         },

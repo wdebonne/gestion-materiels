@@ -76,6 +76,9 @@ export default function CategoryDetailPage() {
       const params = new URLSearchParams()
       params.append('categoryId', String(category?.id))
       if (search) params.append('search', search)
+      // Le serveur pagine par 20 par défaut et le client n'exploitait pas la
+      // pagination renvoyée : les matériels au-delà du 20e étaient invisibles.
+      params.append('limit', '500')
       const response = await api.get(`/objects?${params}`)
       return response.data
     },
@@ -282,11 +285,11 @@ export default function CategoryDetailPage() {
     <div className="space-y-6">
       {/* Fil d'Ariane */}
       <nav className="flex items-center gap-2 text-sm">
-        <Link to="/categories" className="text-gray-500 hover:text-gray-700">
+        <Link to="/categories" className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
           Catégories
         </Link>
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <span className="text-gray-900 font-medium">{category.name}</span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">{category.name}</span>
       </nav>
 
       {/* En-tête de la catégorie */}
@@ -294,7 +297,7 @@ export default function CategoryDetailPage() {
         <CardBody>
           <div className="flex flex-col md:flex-row md:items-center gap-6">
             {/* Image */}
-            <div className="w-32 h-32 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden">
+            <div className="w-32 h-32 bg-gray-100 dark:bg-gray-700 rounded-xl flex-shrink-0 overflow-hidden">
               {category.image ? (
                 <img 
                   src={category.image} 
@@ -302,7 +305,7 @@ export default function CategoryDetailPage() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                <div className="w-full h-full flex items-center justify-center text-gray-600 dark:text-gray-300">
                   <LayoutGrid className="w-12 h-12" />
                 </div>
               )}
@@ -312,11 +315,11 @@ export default function CategoryDetailPage() {
             <div className="flex-1">
               <div className="flex items-start justify-between">
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{category.name}</h1>
+                  <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{category.name}</h1>
                   {category.description && (
-                    <p className="text-gray-500 mt-1">{category.description}</p>
+                    <p className="text-gray-500 dark:text-gray-400 mt-1">{category.description}</p>
                   )}
-                  <div className="flex items-center gap-4 mt-3 text-sm text-gray-500">
+                  <div className="flex items-center gap-4 mt-3 text-sm text-gray-500 dark:text-gray-400">
                     {category.hasSubcategories ? (
                       <span>{subcategories.length} sous-catégorie(s)</span>
                     ) : (
@@ -381,11 +384,11 @@ export default function CategoryDetailPage() {
         <LoadingInline message="Chargement des sous-catégories..." />
       ) : subcategories.length === 0 ? (
         <div className="text-center py-12">
-          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <FolderOpen className="w-8 h-8 text-gray-400" />
+          <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FolderOpen className="w-8 h-8 text-gray-600 dark:text-gray-300" />
           </div>
-          <h3 className="text-lg font-medium text-gray-900">Aucune sous-catégorie</h3>
-          <p className="text-gray-500 mt-1">
+          <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Aucune sous-catégorie</h3>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">
             {search ? 'Aucun résultat pour cette recherche' : 'Commencez par créer une sous-catégorie'}
           </p>
           {!search && (
@@ -410,15 +413,15 @@ export default function CategoryDetailPage() {
               
               {/* Actions au survol - superviseurs et admins uniquement */}
               {isSupervisor && (
-              <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute top-2 right-2 flex gap-1 hover-reveal">
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
                     openModal(subcategory)
                   }}
-                  className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50"
+                  className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700/50"
                 >
-                  <Edit2 className="w-4 h-4 text-gray-600" />
+                  <Edit2 className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                 </button>
                 {isAdmin && (
                 <button
@@ -426,7 +429,7 @@ export default function CategoryDetailPage() {
                     e.stopPropagation()
                     setDeleteConfirm(subcategory)
                   }}
-                  className="p-2 bg-white rounded-lg shadow-md hover:bg-red-50"
+                  className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-red-50"
                 >
                   <Trash2 className="w-4 h-4 text-red-600" />
                 </button>
@@ -445,11 +448,11 @@ export default function CategoryDetailPage() {
             <LoadingInline message="Chargement des matériels..." />
           ) : objects.length === 0 ? (
             <div className="text-center py-12">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Package className="w-8 h-8 text-gray-400" />
+              <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Package className="w-8 h-8 text-gray-600 dark:text-gray-300" />
               </div>
-              <h3 className="text-lg font-medium text-gray-900">Aucun matériel</h3>
-              <p className="text-gray-500 mt-1">
+              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">Aucun matériel</h3>
+              <p className="text-gray-500 dark:text-gray-400 mt-1">
                 {search ? 'Aucun résultat pour cette recherche' : 'Commencez par ajouter un matériel'}
               </p>
               {!search && (
@@ -473,15 +476,15 @@ export default function CategoryDetailPage() {
                   
                   {/* Actions au survol - superviseurs et admins uniquement */}
                   {isSupervisor && (
-                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <div className="absolute top-2 right-2 flex gap-1 hover-reveal">
                     <button
                       onClick={(e) => {
                         e.stopPropagation()
                         openObjectModal(object)
                       }}
-                      className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50"
+                      className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-gray-50 dark:hover:bg-gray-700/50"
                     >
-                      <Edit2 className="w-4 h-4 text-gray-600" />
+                      <Edit2 className="w-4 h-4 text-gray-600 dark:text-gray-300" />
                     </button>
                     {isAdmin && (
                     <button
@@ -489,7 +492,7 @@ export default function CategoryDetailPage() {
                         e.stopPropagation()
                         setDeleteObjectConfirm(object)
                       }}
-                      className="p-2 bg-white rounded-lg shadow-md hover:bg-red-50"
+                      className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:bg-red-50"
                     >
                       <Trash2 className="w-4 h-4 text-red-600" />
                     </button>
@@ -586,7 +589,7 @@ export default function CategoryDetailPage() {
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer <strong>{deleteConfirm?.name}</strong> ?
           </p>
           <p className="text-sm text-red-600 mt-2">
@@ -656,9 +659,9 @@ export default function CategoryDetailPage() {
                 placeholder="Ex: Garage municipal"
               />
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Statut</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">Statut</label>
                 <select
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                   value={objectFormData.status}
                   onChange={(e) => setObjectFormData({ ...objectFormData, status: e.target.value })}
                 >
@@ -696,7 +699,7 @@ export default function CategoryDetailPage() {
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer <strong>{deleteObjectConfirm?.name}</strong> ?
           </p>
           <p className="text-sm text-red-600 mt-2">

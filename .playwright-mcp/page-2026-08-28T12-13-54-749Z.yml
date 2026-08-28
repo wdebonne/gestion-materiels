@@ -1,0 +1,19 @@
+- generic [ref=f5e4]:
+  - banner [ref=f5e5]:
+    - generic [ref=f5e6]:
+      - button "Ouvrir le menu" [ref=f5e7] [cursor=pointer]
+      - button "AS" [ref=f5e10] [cursor=pointer]
+  - main [ref=f5e14]:
+    - generic [ref=f5e15]:
+      - generic [ref=f5e16]:
+        - generic [ref=f5e17]:
+          - heading "Espaces Verts" [level=1] [ref=f5e18]
+          - paragraph [ref=f5e21]: Gestion des espaces verts, parcs et aménagements urbains
+        - generic [ref=f5e22]:
+          - button "Options (Types & Statuts)" [ref=f5e23] [cursor=pointer]: Options
+          - button "Nouvel espace vert" [ref=f5e27] [cursor=pointer]
+      - generic [ref=f5e29]:
+        - textbox "Rechercher un espace vert..." [ref=f5e34]
+        - combobox [ref=f5e35]:
+          - option "Tous les types" [selected]
+      - paragraph [ref=f5e44]: Sélectionnez un espace vert pour voir ses détails

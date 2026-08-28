@@ -38,6 +38,19 @@ export default {
       fontFamily: {
         sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
       },
+      /*
+       * Échelle typographique relevée d'un cran.
+       *
+       * L'application comptait 716 `text-sm` et 424 `text-xs` pour seulement
+       * 5 `text-base` : l'essentiel du texte était à 12 ou 14 px, illisible
+       * en plein soleil pour un agent de terrain. Remapper l'échelle ici
+       * corrige les 1 140 occurrences d'un coup, sans toucher au balisage.
+       */
+      fontSize: {
+        xs: ['0.875rem', { lineHeight: '1.25rem' }],   // 14 px (était 12)
+        sm: ['0.9375rem', { lineHeight: '1.5rem' }],   // 15 px (était 14)
+        base: ['1.0625rem', { lineHeight: '1.625rem' }], // 17 px (était 16)
+      },
       boxShadow: {
         'soft': '0 2px 10px rgba(0, 0, 0, 0.03)',
         'medium': '0 4px 20px rgba(0, 0, 0, 0.05)',

@@ -1,0 +1,9 @@
+- generic [ref=f5e2]:
+  - generic [ref=f5e33]:
+    - banner [ref=f5e34]:
+      - generic [ref=f5e35]:
+        - button [ref=f5e36] [cursor=pointer]
+        - button "AS" [ref=f5e39] [cursor=pointer]
+    - main [ref=f5e43]:
+      - paragraph [ref=f5e48]: Chargement du matériel...
+  - status [ref=f5e54]: Bienvenue, Admin !

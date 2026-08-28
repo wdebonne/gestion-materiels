@@ -2,12 +2,14 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock, Plus, Check, RotateCcw, X, Search } from 'lucide-react'
 import { Button, Input, Modal, ModalBody, ModalFooter, Card, CardBody, LoadingInline } from '@/components/ui'
-import { useAuthStore } from '@/stores/auth.store'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
+import Can from '@/components/Can'
+import { usePermissions } from '@/lib/permissions'
 
 const statusLabels: Record<string, string> = {
+  pending: 'Demande à valider',
   reserved: 'Réservé',
   borrowed: 'En prêt',
   returned: 'Retourné',
@@ -16,6 +18,7 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
+  pending: 'bg-amber-100 text-amber-800',
   reserved: 'bg-blue-100 text-blue-800',
   borrowed: 'bg-yellow-100 text-yellow-800',
   returned: 'bg-green-100 text-green-800',
@@ -24,9 +27,8 @@ const statusColors: Record<string, string> = {
 }
 
 export default function ReservationsPage() {
-  const { user } = useAuthStore()
   const queryClient = useQueryClient()
-  const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor'
+  const { canManage: isSupervisor } = usePermissions()
   const [showModal, setShowModal] = useState(false)
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
@@ -104,18 +106,18 @@ export default function ReservationsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
             <CalendarClock className="w-7 h-7 text-primary-600" />
             Réservations & Prêts
           </h1>
-          <p className="text-gray-500 mt-1">Gérer les emprunts et réservations de matériel</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Gérer les emprunts et réservations de matériel</p>
         </div>
-        {isSupervisor && (
+        <Can fieldWrite>
           <Button onClick={() => setShowModal(true)}>
             <Plus className="w-4 h-4 mr-2" />
-            Nouvelle réservation
+            {isSupervisor ? 'Nouvelle réservation' : 'Demander du matériel'}
           </Button>
-        )}
+        </Can>
       </div>
 
       {/* Filtres */}
@@ -136,6 +138,7 @@ export default function ReservationsPage() {
           className="px-3 py-2 border rounded-lg text-sm"
         >
           <option value="">Tous les statuts</option>
+          <option value="pending">Demande à valider</option>
           <option value="reserved">Réservé</option>
           <option value="borrowed">En prêt</option>
           <option value="returned">Retourné</option>
@@ -150,7 +153,7 @@ export default function ReservationsPage() {
       ) : filtered.length === 0 ? (
         <Card>
           <CardBody>
-            <p className="text-center text-gray-500 py-8">Aucune réservation trouvée</p>
+            <p className="text-center text-gray-500 dark:text-gray-400 py-8">Aucune réservation trouvée</p>
           </CardBody>
         </Card>
       ) : (
@@ -160,19 +163,29 @@ export default function ReservationsPage() {
               <CardBody>
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex-1 min-w-[200px]">
-                    <h3 className="font-semibold text-gray-900">{r.object_name}</h3>
-                    <p className="text-sm text-gray-500">
+                    <h3 className="font-semibold text-gray-900 dark:text-gray-100">{r.object_name}</h3>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
                       Emprunteur : {r.borrower_first_name} {r.borrower_last_name}
                     </p>
-                    <p className="text-sm text-gray-500">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
                       Du {formatDate(r.start_date)} au {formatDate(r.end_date)}
                     </p>
-                    {r.reason && <p className="text-sm text-gray-400 mt-1">{r.reason}</p>}
+                    {r.reason && <p className="text-sm text-gray-600 dark:text-gray-300 mt-1">{r.reason}</p>}
                   </div>
                   <div className="flex items-center gap-3">
                     <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[r.status]}`}>
                       {statusLabels[r.status]}
                     </span>
+                    {isSupervisor && r.status === 'pending' && (
+                      <Button size="sm" onClick={() => statusMutation.mutate({ id: r.id, status: 'reserved' })}>
+                        <Check className="w-3 h-3 mr-1" /> Valider
+                      </Button>
+                    )}
+                    {isSupervisor && r.status === 'pending' && (
+                      <Button size="sm" variant="ghost" onClick={() => statusMutation.mutate({ id: r.id, status: 'cancelled' })}>
+                        <X className="w-3 h-3 mr-1" /> Refuser
+                      </Button>
+                    )}
                     {isSupervisor && r.status === 'reserved' && (
                       <Button size="sm" variant="outline" onClick={() => statusMutation.mutate({ id: r.id, status: 'borrowed' })}>
                         <Check className="w-3 h-3 mr-1" /> En prêt
@@ -214,20 +227,27 @@ export default function ReservationsPage() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Emprunteur</label>
-              <select
-                value={formData.userId}
-                onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
-                required
-                className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
-              >
-                <option value="">Sélectionner un utilisateur</option>
-                {(Array.isArray(users) ? users : []).map((u: any) => (
-                  <option key={u.id} value={u.id}>{u.firstName || u.first_name} {u.lastName || u.last_name}</option>
-                ))}
-              </select>
-            </div>
+            {isSupervisor ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Emprunteur</label>
+                <select
+                  value={formData.userId}
+                  onChange={(e) => setFormData({ ...formData, userId: e.target.value })}
+                  required
+                  className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                >
+                  <option value="">Sélectionner un utilisateur</option>
+                  {(Array.isArray(users) ? users : []).map((u: any) => (
+                    <option key={u.id} value={u.id}>{u.firstName || u.first_name} {u.lastName || u.last_name}</option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                La demande sera enregistrée à votre nom et transmise à votre responsable
+                pour validation.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Date de début"

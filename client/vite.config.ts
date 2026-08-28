@@ -8,7 +8,9 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt' et non 'autoUpdate' : l'application ne doit pas se recharger
+      // toute seule pendant qu'un agent remplit un formulaire.
+      registerType: 'prompt',
       includeAssets: ['favicon.svg', 'favicon.ico', 'apple-touch-icon.png'],
       manifest: {
         name: 'Gestion Matériels',

@@ -12,8 +12,19 @@ import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import ImageUpload from '@/components/ui/ImageUpload'
 import PlanPDFExport from '@/components/PlanPDFExport'
+import Can from '@/components/Can'
+import { useAuthStore } from '@/stores/auth.store'
+import LocationPicker from '@/components/ui/LocationPicker'
+import toast from 'react-hot-toast'
+import { useConfirm } from '@/components/ui'
 
 /** Normalise un chemin d'image : évite le doublon /uploads//uploads/... */
+/**
+ * Clé Google Maps, fournie par la configuration du déploiement.
+ * Vide par défaut : les vues Street View sont alors simplement masquées.
+ */
+const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
+
 function getImageUrl(path: string): string {
   if (!path) return ''
   if (path.startsWith('http://') || path.startsWith('https://')) return path
@@ -247,6 +258,7 @@ function parseZonePoints(zp: string | null | undefined): { x: number; y: number 
 // ======================== COMPOSANT PRINCIPAL ========================
 
 export default function EspacesVertsPage() {
+  const confirm = useConfirm()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
@@ -304,6 +316,7 @@ export default function EspacesVertsPage() {
   })
 
   const deleteMutation = useMutation({
+    meta: { successMessage: 'Espace vert supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-spaces'] })
@@ -326,21 +339,25 @@ export default function EspacesVertsPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setShowSettings(true)}
-            className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-            title="Options (Types & Statuts)"
-          >
-            <Settings className="h-4 w-4" />
-            Options
-          </button>
-          <button
-            onClick={() => { setEditingSpace(null); setShowForm(true) }}
-            className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-          >
-          <Plus className="h-4 w-4" />
-          Nouvel espace vert
-        </button>
+          <Can admin>
+            <button
+              onClick={() => setShowSettings(true)}
+              className="flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors min-h-[44px]"
+              title="Options (Types & Statuts)" aria-label="Options (Types & Statuts)"
+            >
+              <Settings className="h-4 w-4" />
+              Options
+            </button>
+          </Can>
+          <Can manage>
+            <button
+              onClick={() => { setEditingSpace(null); setShowForm(true) }}
+              className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors min-h-[44px]"
+            >
+              <Plus className="h-4 w-4" />
+              Nouvel espace vert
+            </button>
+          </Can>
         </div>
       </div>
 
@@ -349,7 +366,7 @@ export default function EspacesVertsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+              <div className="h-11 w-11 flex items-center justify-center bg-green-100 dark:bg-green-900 rounded-lg">
                 <TreePine className="h-5 w-5 text-green-600 dark:text-green-400" />
               </div>
               <div>
@@ -360,7 +377,7 @@ export default function EspacesVertsPage() {
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 dark:bg-emerald-900 rounded-lg">
+              <div className="h-11 w-11 flex items-center justify-center bg-emerald-100 dark:bg-emerald-900 rounded-lg">
                 <Tag className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
@@ -371,7 +388,7 @@ export default function EspacesVertsPage() {
           </div>
           <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-teal-100 dark:bg-teal-900 rounded-lg">
+              <div className="h-11 w-11 flex items-center justify-center bg-teal-100 dark:bg-teal-900 rounded-lg">
                 <Ruler className="h-5 w-5 text-teal-600 dark:text-teal-400" />
               </div>
               <div>
@@ -402,7 +419,7 @@ export default function EspacesVertsPage() {
         <select
           value={typeFilter}
           onChange={(e) => setTypeFilter(e.target.value)}
-          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+          className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white min-h-[44px]"
         >
           <option value="">Tous les types</option>
           {activeSpaceTypes.map((t: any) => (
@@ -468,7 +485,7 @@ export default function EspacesVertsPage() {
                           )
                         })()}
                         {(space.element_count ?? 0) > 0 && (
-                          <span className="text-xs text-gray-400">{space.element_count} élém.</span>
+                          <span className="text-xs text-gray-600">{space.element_count} élém.</span>
                         )}
                       </div>
                     </div>
@@ -493,10 +510,12 @@ export default function EspacesVertsPage() {
               activeTab={activeTab}
               setActiveTab={setActiveTab}
               onEdit={() => { setEditingSpace(spaceDetail); setShowForm(true) }}
-              onDelete={() => {
-                if (confirm('Supprimer cet espace vert et tous ses éléments ?')) {
-                  deleteMutation.mutate(spaceDetail.id)
-                }
+              onDelete={async () => {
+                const ok = await confirm({
+                  title: `Supprimer l'espace vert « ${spaceDetail.name} » ?`,
+                  message: "Tous ses éléments, groupes, documents et entretiens seront supprimés. Cette action est définitive.",
+                })
+                if (ok) deleteMutation.mutate(spaceDetail.id)
               }}
               queryClient={queryClient}
               expanded={expanded}
@@ -566,19 +585,23 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
         )}
         <div className="absolute top-3 right-3 flex gap-2">
           {onToggleExpand && (
-            <button onClick={onToggleExpand} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title={expanded ? 'Réduire' : 'Agrandir'}>
+            <button aria-label={expanded ? 'Réduire' : 'Agrandir'} onClick={onToggleExpand} className="h-11 w-11 flex items-center justify-center bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title={expanded ? 'Réduire' : 'Agrandir'}>
               {expanded ? <Minimize2 className="h-4 w-4 text-gray-600 dark:text-gray-300" /> : <Maximize2 className="h-4 w-4 text-gray-600 dark:text-gray-300" />}
             </button>
           )}
-          <button onClick={() => setShowCloneModal(true)} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title="Cloner / Copier">
-            <Copy className="h-4 w-4 text-gray-600 dark:text-gray-300" />
-          </button>
-          <button onClick={onEdit} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title="Modifier">
-            <Edit3 className="h-4 w-4 text-gray-600 dark:text-gray-300" />
-          </button>
-          <button onClick={onDelete} className="p-2 bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/50 transition-colors" title="Supprimer">
-            <Trash2 className="h-4 w-4 text-red-500" />
-          </button>
+          <Can manage>
+            <button onClick={() => setShowCloneModal(true)} aria-label="Cloner cet espace vert" className="h-11 w-11 flex items-center justify-center bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title="Cloner / Copier">
+              <Copy className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+            </button>
+            <button onClick={onEdit} aria-label="Modifier cet espace vert" className="h-11 w-11 flex items-center justify-center bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-white dark:hover:bg-gray-700 transition-colors" title="Modifier">
+              <Edit3 className="h-4 w-4 text-gray-600 dark:text-gray-300" />
+            </button>
+          </Can>
+          <Can admin>
+            <button onClick={onDelete} aria-label="Supprimer cet espace vert" className="h-11 w-11 flex items-center justify-center bg-white/90 dark:bg-gray-800/90 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/50 transition-colors" title="Supprimer">
+              <Trash2 className="h-4 w-4 text-red-500" />
+            </button>
+          </Can>
         </div>
       </div>
 
@@ -672,6 +695,7 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
 // ======================== ONGLET ÉLÉMENTS ========================
 
 function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const confirm = useConfirm()
   const [showForm, setShowForm] = useState(false)
   const [editingElement, setEditingElement] = useState<GreenSpaceElement | null>(null)
   const [viewingElement, setViewingElement] = useState<GreenSpaceElement | null>(null)
@@ -690,6 +714,7 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
   })
 
   const deleteMutation = useMutation({
+    meta: { successMessage: 'Élément supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/elements/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -722,7 +747,7 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="text-sm px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            className="text-sm px-2 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
           >
             <option value="">Tous les types</option>
             {ELEMENT_TYPES.map(t => (
@@ -732,7 +757,7 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
         </div>
         <button
           onClick={() => { setEditingElement(null); setShowForm(true) }}
-          className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+          className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 min-h-[44px]"
         >
           <Plus className="h-4 w-4" /> Ajouter
         </button>
@@ -784,20 +809,28 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                               {CONDITION_STATES.find(c => c.value === el.condition_state)?.label || el.condition_state}
                             </span>
                           )}
-                          {el.quantity > 1 && <span className="text-xs text-gray-400">×{el.quantity}</span>}
-                          {el.purchase_price && <span className="text-xs text-gray-400">{el.purchase_price}€</span>}
+                          {el.quantity > 1 && <span className="text-xs text-gray-600">×{el.quantity}</span>}
+                          {el.purchase_price && <span className="text-xs text-gray-600">{el.purchase_price}€</span>}
                         </div>
                       </div>
                       <div className="flex gap-1">
-                        <button onClick={(e) => { e.stopPropagation(); setReplacingElement(el) }} className="p-1 text-gray-400 hover:text-orange-600" title="Remplacer (avec historique)">
+                        <button onClick={(e) => { e.stopPropagation(); setReplacingElement(el) }} className="p-1 text-gray-600 hover:text-orange-600 touch-target" title="Remplacer (avec historique)" aria-label="Remplacer (avec historique)">
                           <RefreshCw className="h-3.5 w-3.5" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); setEditingElement(el); setShowForm(true) }} className="p-1 text-gray-400 hover:text-green-600" title="Modifier">
+                        <button aria-label="Modifier" onClick={(e) => { e.stopPropagation(); setEditingElement(el); setShowForm(true) }} className="p-1 text-gray-600 hover:text-green-600 touch-target" title="Modifier">
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); if (confirm('Supprimer cet élément ?')) deleteMutation.mutate(el.id) }}
-                          className="p-1 text-gray-400 hover:text-red-600"
+                        <button aria-label="Supprimer"
+                          onClick={async (e) => {
+                            e.stopPropagation()
+                            const ok = await confirm({
+                              title: `Supprimer « ${el.label} » ?`,
+                              message: "L'élément et son historique d'entretien seront perdus.",
+                            })
+                            if (ok) deleteMutation.mutate(el.id)
+                          }}
+                          className="p-1 text-gray-600 hover:text-red-600 touch-target"
+                          title="Supprimer"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </button>
@@ -825,8 +858,12 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
             setViewingElement(null)
             setShowForm(true)
           }}
-          onDelete={() => {
-            if (confirm('Supprimer cet élément ?')) {
+          onDelete={async () => {
+            const ok = await confirm({
+              title: `Supprimer « ${viewingElement.label} » ?`,
+              message: "L'élément et son historique d'entretien seront perdus.",
+            })
+            if (ok) {
               deleteMutation.mutate(viewingElement.id)
               setViewingElement(null)
             }
@@ -883,6 +920,7 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
 // ======================== GROUPES DE COMPOSITION ========================
 
 function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const confirm = useConfirm()
   const [showGroupForm, setShowGroupForm] = useState(false)
   const [editingGroup, setEditingGroup] = useState<CompositionGroup | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
@@ -908,6 +946,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   const elements = space.elements || []
 
   const createGroupMutation = useMutation({
+    meta: { successMessage: 'Groupe créé' },
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/groups`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -916,6 +955,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   })
 
   const updateGroupMutation = useMutation({
+    meta: { successMessage: 'Groupe modifié' },
     mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/groups/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -924,11 +964,13 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   })
 
   const deleteGroupMutation = useMutation({
+    meta: { successMessage: 'Groupe supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/groups/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
 
   const assignElementsMutation = useMutation({
+    meta: { successMessage: 'Éléments du groupe mis à jour' },
     mutationFn: ({ groupId, element_ids }: { groupId: number; element_ids: number[] }) =>
       api.put(`/green-spaces/groups/${groupId}/elements`, { element_ids }),
     onSuccess: () => {
@@ -993,8 +1035,8 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
           <div className="flex items-center gap-1">
             <button
               onClick={() => setShowGroupTypeSettings(true)}
-              className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
-              title="Gérer les types de groupes"
+              className="p-1.5 text-gray-600 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors touch-target"
+              title="Gérer les types de groupes" aria-label="Gérer les types de groupes"
             >
               <Settings className="h-3.5 w-3.5" />
             </button>
@@ -1021,8 +1063,8 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowGroupTypeSettings(true)}
-            className="p-1.5 text-gray-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors"
-            title="Gérer les types de groupes"
+            className="p-1.5 text-gray-600 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/30 rounded-lg transition-colors touch-target"
+            title="Gérer les types de groupes" aria-label="Gérer les types de groupes"
           >
             <Settings className="h-3.5 w-3.5" />
           </button>
@@ -1057,13 +1099,19 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                 </span>
               </div>
               <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                <button onClick={() => openAssign(g)} className="p-1 text-gray-400 hover:text-purple-600" title="Gérer les éléments">
+                <button onClick={() => openAssign(g)} className="p-1 text-gray-600 hover:text-purple-600 touch-target" title="Gérer les éléments" aria-label="Gérer les éléments">
                   <Tag className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => openEditForm(g)} className="p-1 text-gray-400 hover:text-green-600" title="Modifier">
+                <button aria-label="Modifier" onClick={() => openEditForm(g)} className="p-1 text-gray-600 hover:text-green-600 touch-target" title="Modifier">
                   <Edit3 className="h-3.5 w-3.5" />
                 </button>
-                <button onClick={() => { if (confirm('Supprimer ce groupe ?')) deleteGroupMutation.mutate(g.id) }} className="p-1 text-gray-400 hover:text-red-600" title="Supprimer">
+                <button aria-label="Supprimer" onClick={async () => {
+                  const ok = await confirm({
+                    title: `Supprimer le groupe « ${g.name} » ?`,
+                    message: "Les éléments qu'il contient ne sont pas supprimés, ils perdent seulement leur regroupement.",
+                  })
+                  if (ok) deleteGroupMutation.mutate(g.id)
+                }} className="p-1 text-gray-600 hover:text-red-600 touch-target" title="Supprimer">
                   <Trash2 className="h-3.5 w-3.5" />
                 </button>
               </div>
@@ -1072,16 +1120,16 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
               <div className="p-3 space-y-1 border-t border-gray-200 dark:border-gray-600">
                 {g.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{g.description}</p>}
                 {groupElements.length === 0 ? (
-                  <p className="text-xs text-gray-400 italic">Aucun élément dans ce groupe. Cliquez sur <Tag className="h-3 w-3 inline" /> pour en assigner.</p>
+                  <p className="text-xs text-gray-600 italic">Aucun élément dans ce groupe. Cliquez sur <Tag className="h-3 w-3 inline" /> pour en assigner.</p>
                 ) : (
                   groupElements.map(el => {
                     const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
                     return (
-                      <div key={el.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-800 text-sm">
+                      <div key={el.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-800 text-sm min-h-[44px]">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: elType?.color }} />
                         <span className="text-gray-900 dark:text-white truncate">{el.label}</span>
-                        {el.species && <span className="text-xs text-gray-400 italic truncate">{el.species}</span>}
-                        {el.code && <span className="text-xs font-mono text-gray-400">{el.code}</span>}
+                        {el.species && <span className="text-xs text-gray-600 italic truncate">{el.species}</span>}
+                        {el.code && <span className="text-xs font-mono text-gray-600">{el.code}</span>}
                       </div>
                     )
                   })
@@ -1108,7 +1156,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   value={gName}
                   onChange={e => setGName(e.target.value)}
                   placeholder="Ex: Massif central, Haie nord..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -1117,7 +1165,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   <select
                     value={gType}
                     onChange={e => { setGType(e.target.value); setGColor(activeGroupTypes.find((t: any) => t.value === e.target.value)?.color || '#8b5cf6') }}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   >
                     {(activeGroupTypes.length > 0 ? activeGroupTypes : GROUP_TYPES).map((t: any) => (
                       <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
@@ -1141,7 +1189,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   onChange={e => setGDesc(e.target.value)}
                   rows={2}
                   placeholder="Composition, période de floraison..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                 />
               </div>
               <div>
@@ -1153,18 +1201,18 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   value={gArea}
                   onChange={e => setGArea(e.target.value)}
                   placeholder="ex: 150"
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                 />
               </div>
             </div>
             <div className="flex justify-end gap-2 mt-4">
-              <button onClick={resetForm} className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button onClick={resetForm} className="px-3 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg min-h-[44px]">
                 Annuler
               </button>
               <button
                 onClick={handleSaveGroup}
                 disabled={!gName.trim()}
-                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                className="px-4 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 min-h-[44px]"
               >
                 {editingGroup ? 'Enregistrer' : 'Créer'}
               </button>
@@ -1186,7 +1234,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-1">
               {elements.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-4">Aucun élément dans cet espace vert.</p>
+                <p className="text-sm text-gray-600 text-center py-4">Aucun élément dans cet espace vert.</p>
               ) : (
                 elements.map(el => {
                   const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
@@ -1220,13 +1268,13 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
               )}
             </div>
             <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-              <button onClick={() => setAssigningGroup(null)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button onClick={() => setAssigningGroup(null)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg min-h-[44px]">
                 Annuler
               </button>
               <button
                 onClick={() => assignElementsMutation.mutate({ groupId: assigningGroup.id, element_ids: selectedElementIds })}
                 disabled={assignElementsMutation.isPending}
-                className="px-4 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+                className="px-4 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 min-h-[44px]"
               >
                 Enregistrer ({selectedElementIds.length})
               </button>
@@ -1264,6 +1312,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const unplacedGroups = groups.filter(g => g.pos_x == null || g.pos_y == null)
 
   const addAnnotationMutation = useMutation({
+    meta: { successMessage: 'Repère ajouté' },
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/annotations`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -1308,6 +1357,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   })
 
   const saveElementZoneMutation = useMutation({
+    meta: { successMessage: 'Zone enregistrée' },
     mutationFn: ({ elementId, zone_points }: { elementId: number; zone_points: { x: number; y: number }[] }) =>
       api.put(`/green-spaces/elements/${elementId}`, { zone_points }),
     onSuccess: () => {
@@ -1318,6 +1368,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   })
 
   const saveGroupZoneMutation = useMutation({
+    meta: { successMessage: 'Zone enregistrée' },
     mutationFn: ({ groupId, zone_points }: { groupId: number; zone_points: { x: number; y: number }[] }) => {
       const g = groups.find(gr => gr.id === groupId)
       return api.put(`/green-spaces/groups/${groupId}`, {
@@ -1333,6 +1384,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   })
 
   const deleteAnnotationMutation = useMutation({
+    meta: { successMessage: 'Repère supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/annotations/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -1342,6 +1394,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   })
 
   const unplaceElementMutation = useMutation({
+    meta: { successMessage: 'Élément retiré du plan' },
     mutationFn: (elementId: number) => api.put(`/green-spaces/elements/${elementId}`, { pos_x: null, pos_y: null }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -1350,6 +1403,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   })
 
   const unplaceGroupMutation = useMutation({
+    meta: { successMessage: 'Groupe retiré du plan' },
     mutationFn: (groupId: number) => {
       const g = groups.find(gr => gr.id === groupId)
       return api.put(`/green-spaces/groups/${groupId}`, {
@@ -1460,7 +1514,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     <div className="space-y-3">
       {/* Barre de dessin de zone en cours */}
       {drawingZone && (
-        <div className="flex items-center justify-between p-2 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg">
+        <div className="flex items-center justify-between h-11 w-11 flex items-center justify-center bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg">
           <p className="text-sm text-purple-700 dark:text-purple-300 flex items-center gap-2">
             <Pentagon className="h-4 w-4" />
             Dessin de zone : {zonePoints.length} point{zonePoints.length > 1 ? 's' : ''} — Cliquez pour ajouter des points (min. 3)
@@ -1493,7 +1547,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
 
       {/* Barre de déplacement en cours */}
       {dragging && (
-        <div className="flex items-center justify-between p-2 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
+        <div className="flex items-center justify-between h-11 w-11 flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
           <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
             <Move className="h-4 w-4" />
             Cliquez sur le plan pour déplacer le repère
@@ -1512,20 +1566,20 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
         <div className="flex items-center gap-2">
           <button
             onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}
-            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 touch-target"
           >
             <ZoomOut className="h-4 w-4" />
           </button>
           <span className="text-sm text-gray-500">{Math.round(zoom * 100)}%</span>
           <button
             onClick={() => setZoom(z => Math.min(3, z + 0.25))}
-            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 touch-target"
           >
             <ZoomIn className="h-4 w-4" />
           </button>
           <button
             onClick={() => setZoom(1)}
-            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs px-2"
+            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs px-2 touch-target"
           >
             Reset
           </button>
@@ -1543,7 +1597,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
         </button>
         <button
           onClick={() => setShowPDFExport(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 min-h-[44px]"
         >
           <Download className="h-4 w-4" />
           PDF
@@ -1678,15 +1732,15 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   {el.code || el.label}
                 </div>
                 {isSelected && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 h-11 w-11 flex items-center justify-center z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between gap-3 mb-1">
                       <p className="text-xs font-semibold text-gray-900 dark:text-white">{el.label}</p>
-                      <button onClick={() => setSelectedMarker(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
+                      <button onClick={() => setSelectedMarker(null)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
                     </div>
                     {el.code && <p className="text-xs text-gray-500 font-mono">{el.code}</p>}
                     {el.species && <p className="text-xs text-green-600 italic">{el.species}</p>}
-                    <p className="text-xs text-gray-400">{typeInfo?.label} • {CONDITION_STATES.find(c => c.value === el.condition_state)?.label}</p>
-                    {el.area_m2 && <p className="text-xs text-gray-400">{el.area_m2} m²</p>}
+                    <p className="text-xs text-gray-600">{typeInfo?.label} • {CONDITION_STATES.find(c => c.value === el.condition_state)?.label}</p>
+                    {el.area_m2 && <p className="text-xs text-gray-600">{el.area_m2} m²</p>}
                     <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => { setSelectedMarker(null); setDragging({ type: 'element', id: el.id }) }}
@@ -1749,12 +1803,12 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   {ann.label}
                 </div>
                 {isSelected && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 h-11 w-11 flex items-center justify-center z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between gap-3 mb-1">
                       <p className="text-xs font-semibold text-gray-900 dark:text-white">{ann.label}</p>
-                      <button onClick={() => setSelectedMarker(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
+                      <button onClick={() => setSelectedMarker(null)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
                     </div>
-                    <p className="text-xs text-gray-400">Position : {ann.pos_x.toFixed(1)}%, {ann.pos_y.toFixed(1)}%</p>
+                    <p className="text-xs text-gray-600">Position : {ann.pos_x.toFixed(1)}%, {ann.pos_y.toFixed(1)}%</p>
                     <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex items-center gap-2">
                       <button
                         onClick={() => { setSelectedMarker(null); setDragging({ type: 'annotation', id: ann.id }) }}
@@ -1799,17 +1853,17 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   {g.name}
                 </div>
                 {isSelected && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 p-2 z-50 whitespace-nowrap min-w-[120px]" onClick={(e) => e.stopPropagation()}>
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 h-11 w-11 flex items-center justify-center z-50 whitespace-nowrap min-w-[120px]" onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-between gap-3 mb-1">
                       <p className="text-xs font-semibold text-gray-900 dark:text-white">{g.name}</p>
-                      <button onClick={() => setSelectedMarker(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
+                      <button onClick={() => setSelectedMarker(null)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
                     </div>
                     <p className="text-xs text-gray-500">{typeInfo?.label} • {groupElements.length} élém.</p>
-                    {g.area_m2 && <p className="text-xs text-gray-400">{g.area_m2} m²</p>}
+                    {g.area_m2 && <p className="text-xs text-gray-600">{g.area_m2} m²</p>}
                     {groupElements.slice(0, 4).map(el => (
-                      <p key={el.id} className="text-xs text-gray-400 truncate">• {el.label}</p>
+                      <p key={el.id} className="text-xs text-gray-600 truncate">• {el.label}</p>
                     ))}
-                    {groupElements.length > 4 && <p className="text-xs text-gray-400">+ {groupElements.length - 4} autres</p>}
+                    {groupElements.length > 4 && <p className="text-xs text-gray-600">+ {groupElements.length - 4} autres</p>}
                     <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-2">
                       <button
                         onClick={() => { setSelectedMarker(null); setDragging({ type: 'group', id: g.id }) }}
@@ -1860,7 +1914,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
             </div>
 
             {unplacedGroups.length > 0 && (
-              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="h-11 w-11 flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1 flex items-center gap-1"><Layers className="h-3 w-3" /> Groupes</p>
                 <div className="max-h-28 overflow-y-auto space-y-1">
                   {unplacedGroups.map(g => {
@@ -1871,7 +1925,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                         key={g.id}
                         onClick={() => handlePlaceGroup(g)}
                         disabled={updateGroupPosMutation.isPending}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-left transition-colors"
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-left transition-colors min-h-[44px]"
                       >
                         <span className="w-3 h-3 rounded flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: g.color || typeInfo?.color }}>
                           <Layers className="h-2 w-2 text-white" />
@@ -1888,7 +1942,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
             )}
 
             {unplacedElements.length > 0 && (
-              <div className="p-2 border-b border-gray-200 dark:border-gray-700">
+              <div className="h-11 w-11 flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
                 <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1">Éléments liés</p>
                 <div className="max-h-40 overflow-y-auto space-y-1">
                   {unplacedElements.map(el => {
@@ -1898,7 +1952,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                         key={el.id}
                         onClick={() => handlePlaceElement(el)}
                         disabled={updateElementPosMutation.isPending}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-left transition-colors"
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-left transition-colors min-h-[44px]"
                       >
                         <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: typeInfo?.color || '#22c55e' }} />
                         <div className="min-w-0 flex-1">
@@ -1915,7 +1969,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
               </div>
             )}
 
-            <div className="p-2">
+            <div className="h-11 w-11 flex items-center justify-center">
               <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1">Annotation libre</p>
               <div className="flex gap-1">
                 <input
@@ -1924,20 +1978,20 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
                   onChange={e => setFreeLabel(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleAddFreeAnnotation()}
                   placeholder="Libellé..."
-                  className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   autoFocus
                 />
                 <button
                   onClick={handleAddFreeAnnotation}
                   disabled={!freeLabel.trim() || addAnnotationMutation.isPending}
-                  className="px-2 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  className="px-2 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
                 >
                   OK
                 </button>
               </div>
             </div>
 
-            <div className="p-2 border-t border-gray-200 dark:border-gray-700">
+            <div className="h-11 w-11 flex items-center justify-center border-t border-gray-200 dark:border-gray-700">
               <button
                 onClick={() => setClickPos(null)}
                 className="w-full text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 py-1"
@@ -1958,7 +2012,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           </div>
           <button
             onClick={() => deleteAnnotationMutation.mutate(selectedAnnotation.id)}
-            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/50 rounded"
+            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/50 rounded touch-target"
           >
             <Trash2 className="h-4 w-4" />
           </button>
@@ -2022,45 +2076,60 @@ function MapTab({ space }: { space: GreenSpace }) {
 
   const lat = space.latitude!
   const lng = space.longitude!
-  const query = encodeURIComponent(space.address || `${lat},${lng}`)
 
   return (
     <div className="space-y-4">
-      {/* Vue carte */}
+      {/* Vue carte — OpenStreetMap, sans clé ni compte tiers */}
       <div>
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">📍 Localisation sur la carte</h4>
         <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
           <iframe
-            title="Google Maps"
+            title="Carte OpenStreetMap"
             width="100%"
             height="350"
             style={{ border: 0 }}
             loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            src={`https://www.google.com/maps/embed/v1/place?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&q=${query}&zoom=17&maptype=satellite`}
+            src={`https://www.openstreetmap.org/export/embed.html?bbox=${Number(lng) - 0.002}%2C${Number(lat) - 0.001}%2C${Number(lng) + 0.002}%2C${Number(lat) + 0.001}&layer=mapnik&marker=${lat}%2C${lng}`}
           />
         </div>
       </div>
 
-      {/* Vue Street View */}
-      <div>
-        <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">🚶 Street View</h4>
-        <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
-          <iframe
-            title="Google Street View"
-            width="100%"
-            height="350"
-            style={{ border: 0 }}
-            loading="lazy"
-            referrerPolicy="no-referrer-when-downgrade"
-            src={`https://www.google.com/maps/embed/v1/streetview?key=AIzaSyBFw0Qbyq9zTFTd-tUY6dZWTgaQzuU17R8&location=${lat},${lng}&heading=0&pitch=0&fov=90`}
-          />
+      {/*
+        Street View n'est affiché que si une clé Google est fournie par la
+        configuration. Une clé publique était auparavant codée en dur dans le
+        source : n'importe qui pouvait la relever et la consommer au nom de la
+        collectivité.
+      */}
+      {GOOGLE_MAPS_KEY && (
+        <div>
+          <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">🚶 Street View</h4>
+          <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700">
+            <iframe
+              title="Google Street View"
+              width="100%"
+              height="350"
+              style={{ border: 0 }}
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+              src={`https://www.google.com/maps/embed/v1/streetview?key=${GOOGLE_MAPS_KEY}&location=${lat},${lng}&heading=0&pitch=0&fov=90`}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="text-xs text-gray-400 dark:text-gray-500 text-center">
-        Coordonnées : {lat}, {lng}
-        {space.address && ` • ${space.address}`}
+      <div className="flex flex-col items-center gap-2">
+        <a
+          href={`https://www.openstreetmap.org/?mlat=${lat}&mlon=${lng}#map=18/${lat}/${lng}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex min-h-[44px] items-center gap-1.5 text-sm text-primary-600 hover:text-primary-700 dark:text-primary-400"
+        >
+          <Globe className="h-4 w-4" />
+          Ouvrir la carte en grand
+        </a>
+        <p className="text-xs text-gray-600 dark:text-gray-400 text-center">
+          {space.address || `${lat}, ${lng}`}
+        </p>
       </div>
     </div>
   )
@@ -2069,10 +2138,12 @@ function MapTab({ space }: { space: GreenSpace }) {
 // ======================== ONGLET SAISONS ========================
 
 function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const confirm = useConfirm()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ season: 'printemps', year: new Date().getFullYear(), notes: '', actions_done: '', actions_planned: '' })
 
   const addMutation = useMutation({
+    meta: { successMessage: 'Suivi saisonnier enregistré' },
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/seasons`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -2082,6 +2153,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
   })
 
   const deleteMutation = useMutation({
+    meta: { successMessage: 'Suivi saisonnier supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/seasons/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
@@ -2094,7 +2166,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
         <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Suivi saisonnier</h4>
         <button
           onClick={() => setShowForm(!showForm)}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 min-h-[44px]"
         >
           <Plus className="h-4 w-4" /> Ajouter
         </button>
@@ -2109,7 +2181,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
               <select
                 value={form.season}
                 onChange={(e) => setForm({ ...form, season: e.target.value })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               >
                 {SEASONS_LIST.map(s => (
                   <option key={s.value} value={s.value}>{s.icon} {s.label}</option>
@@ -2122,7 +2194,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
                 type="number"
                 value={form.year}
                 onChange={(e) => setForm({ ...form, year: parseInt(e.target.value) })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
           </div>
@@ -2133,7 +2205,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
               onChange={(e) => setForm({ ...form, actions_done: e.target.value })}
               placeholder="Taille des haies, tonte, plantation..."
               rows={2}
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             />
           </div>
           <div>
@@ -2143,7 +2215,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
               onChange={(e) => setForm({ ...form, actions_planned: e.target.value })}
               placeholder="Élagage prévu, remplacement de plants..."
               rows={2}
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             />
           </div>
           <div>
@@ -2152,16 +2224,16 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={2}
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             />
           </div>
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 min-h-[44px]">
               Annuler
             </button>
             <button
               onClick={() => addMutation.mutate(form)}
-              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700"
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 min-h-[44px]"
             >
               Enregistrer
             </button>
@@ -2186,9 +2258,16 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
                     <span>{seasonInfo?.icon}</span>
                     {seasonInfo?.label || s.season} {s.year}
                   </h5>
-                  <button
-                    onClick={() => { if (confirm('Supprimer cette entrée ?')) deleteMutation.mutate(s.id) }}
-                    className="p-1 text-gray-400 hover:text-red-500"
+                  <button aria-label="Supprimer"
+                    onClick={async () => {
+                      const ok = await confirm({
+                        title: `Supprimer le suivi ${seasonInfo?.label || s.season} ${s.year} ?`,
+                        message: "Les actions et observations saisies pour cette saison seront perdues.",
+                      })
+                      if (ok) deleteMutation.mutate(s.id)
+                    }}
+                    className="p-1 text-gray-600 hover:text-red-500 touch-target"
+                    title="Supprimer"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -2220,6 +2299,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
 // ======================== ONGLET DOCUMENTS ========================
 
 function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const confirm = useConfirm()
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState({ name: '', doc_type: 'autre', file_path: '', expiry_date: '', notes: '', element_ids: [] as number[] })
   const [searchDoc, setSearchDoc] = useState('')
@@ -2241,6 +2321,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
   const allDocTypes = (allDocTypesRaw as any[]).filter((t: any) => !t.disabled).map((t: any) => ({ value: t.value, label: t.label }))
 
   const addMutation = useMutation({
+    meta: { successMessage: 'Document ajouté' },
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/documents`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -2250,16 +2331,19 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
   })
 
   const updateDocMutation = useMutation({
+    meta: { successMessage: 'Document modifié' },
     mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/documents/${id}`, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
 
   const deleteMutation = useMutation({
+    meta: { successMessage: 'Document supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/documents/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
 
   const addDocTypeMutation = useMutation({
+    meta: { successMessage: 'Type de document ajouté' },
     mutationFn: (data: any) => api.post('/green-spaces/doc-types', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space-doc-types'] })
@@ -2268,6 +2352,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
   })
 
   const updateDocTypeMutation = useMutation({
+    meta: { successMessage: 'Type de document modifié' },
     mutationFn: ({ id, ...data }: { id: number, label?: string, disabled?: boolean }) => api.put(`/green-spaces/doc-types/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space-doc-types'] })
@@ -2276,6 +2361,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
   })
 
   const deleteDocTypeMutation = useMutation({
+    meta: { successMessage: 'Type de document supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/doc-types/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-doc-types'] })
   })
@@ -2314,14 +2400,14 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowDocTypeManager(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-            title="Gérer les types de documents"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 min-h-[44px]"
+            title="Gérer les types de documents" aria-label="Gérer les types de documents"
           >
             <Settings className="h-4 w-4" /> Types
           </button>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 min-h-[44px]"
           >
             <Plus className="h-4 w-4" /> Ajouter
           </button>
@@ -2349,7 +2435,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div>
@@ -2357,7 +2443,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               <select
                 value={form.doc_type}
                 onChange={(e) => setForm({ ...form, doc_type: e.target.value })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               >
                 {allDocTypes.map(d => (
                   <option key={d.value} value={d.value}>{d.label}</option>
@@ -2370,7 +2456,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fichier</label>
               <div className="flex items-center gap-2">
                 <label className={`flex-1 flex items-center gap-2 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-600 transition-colors ${uploadingDoc ? 'opacity-50' : ''}`}>
-                  <Upload className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                  <Upload className="h-4 w-4 text-gray-600 flex-shrink-0" />
                   <span className="text-sm text-gray-500 dark:text-gray-400 truncate">
                     {uploadingDoc ? 'Envoi en cours...' : form.file_path ? form.file_path.split('/').pop() : 'Choisir un fichier...'}
                   </span>
@@ -2384,7 +2470,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                   />
                 </label>
                 {form.file_path && (
-                  <button onClick={() => setForm({ ...form, file_path: '' })} className="p-1 text-gray-400 hover:text-red-500">
+                  <button onClick={() => setForm({ ...form, file_path: '' })} className="p-1 text-gray-600 hover:text-red-500 touch-target">
                     <X className="h-4 w-4" />
                   </button>
                 )}
@@ -2396,7 +2482,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                 type="date"
                 value={form.expiry_date}
                 onChange={(e) => setForm({ ...form, expiry_date: e.target.value })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
           </div>
@@ -2406,7 +2492,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               value={form.notes}
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={2}
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             />
           </div>
           {elements.length > 0 && (
@@ -2442,11 +2528,11 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
             </div>
           )}
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400">Annuler</button>
+            <button onClick={() => setShowForm(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 min-h-[44px]">Annuler</button>
             <button
               onClick={() => { if (form.name) addMutation.mutate(form) }}
               disabled={!form.name || addMutation.isPending}
-              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
             >
               {addMutation.isPending ? 'Enregistrement...' : 'Enregistrer'}
             </button>
@@ -2473,7 +2559,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               }`}>
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-3">
-                    <FileText className={`h-5 w-5 mt-0.5 ${isExpired ? 'text-red-500' : 'text-gray-400'}`} />
+                    <FileText className={`h-5 w-5 mt-0.5 ${isExpired ? 'text-red-500' : 'text-gray-600'}`} />
                     <div>
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{doc.name}</p>
                       <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -2485,7 +2571,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                         )}
                       </p>
                       {doc.file_path && <p className="text-xs text-blue-500 mt-0.5">{doc.file_path.split('/').pop()}</p>}
-                      {doc.notes && <p className="text-xs text-gray-400 mt-1">{doc.notes}</p>}
+                      {doc.notes && <p className="text-xs text-gray-600 mt-1">{doc.notes}</p>}
                       {doc.element_ids && doc.element_ids.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">
                           {doc.element_ids.map((elId: number) => {
@@ -2506,15 +2592,22 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                         href={getImageUrl(doc.file_path)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-1 text-gray-400 hover:text-blue-600"
+                        className="p-1 text-gray-600 hover:text-blue-600 touch-target"
                         title="Télécharger"
                       >
                         <Download className="h-3.5 w-3.5" />
                       </a>
                     )}
-                    <button
-                      onClick={() => { if (confirm('Supprimer ce document ?')) deleteMutation.mutate(doc.id) }}
-                      className="p-1 text-gray-400 hover:text-red-600"
+                    <button aria-label="Supprimer"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: `Supprimer le document « ${doc.name} » ?`,
+                          message: "Le fichier ne sera plus accessible depuis l'application.",
+                        })
+                        if (ok) deleteMutation.mutate(doc.id)
+                      }}
+                      className="p-1 text-gray-600 hover:text-red-600 touch-target"
+                      title="Supprimer"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
@@ -2534,7 +2627,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <Settings className="h-4 w-4 text-green-600" /> Gérer les types de documents
               </h3>
-              <button onClick={() => setShowDocTypeManager(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-4 w-4" /></button>
+              <button onClick={() => setShowDocTypeManager(false)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-4 w-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div className="space-y-1">
@@ -2550,18 +2643,18 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                         autoFocus
                       />
                     ) : (
-                      <span className={`text-sm ${dt.disabled ? 'text-gray-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{dt.label}</span>
+                      <span className={`text-sm ${dt.disabled ? 'text-gray-600 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{dt.label}</span>
                     )}
                     <div className="flex items-center gap-1">
                       {editingDocType?.id === dt.id ? (
                         <>
-                          <button onClick={() => { if (editingDocType.label) updateDocTypeMutation.mutate({ id: editingDocType.id, label: editingDocType.label }) }} className="p-1 text-green-600 hover:text-green-800"><Check className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => setEditingDocType(null)} className="p-1 text-gray-400 hover:text-gray-600"><X className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => { if (editingDocType.label) updateDocTypeMutation.mutate({ id: editingDocType.id, label: editingDocType.label }) }} className="p-1 text-green-600 hover:text-green-800 touch-target"><Check className="h-3.5 w-3.5" /></button>
+                          <button onClick={() => setEditingDocType(null)} className="p-1 text-gray-600 hover:text-gray-600 touch-target"><X className="h-3.5 w-3.5" /></button>
                         </>
                       ) : (
                         <>
-                          <button onClick={() => setEditingDocType({ id: dt.id, label: dt.label })} className="p-1 text-gray-400 hover:text-blue-600" title="Modifier"><Edit3 className="h-3.5 w-3.5" /></button>
-                          <button
+                          <button onClick={() => setEditingDocType({ id: dt.id, label: dt.label })} className="p-1 text-gray-600 hover:text-blue-600 touch-target" title="Modifier" aria-label="Modifier"><Edit3 className="h-3.5 w-3.5" /></button>
+                          <button aria-label={dt.disabled ? 'Réactiver' : 'Désactiver'}
                             onClick={() => updateDocTypeMutation.mutate({ id: dt.id, disabled: !dt.disabled })}
                             className={`p-1 ${dt.disabled ? 'text-green-500 hover:text-green-700' : 'text-yellow-500 hover:text-yellow-700'}`}
                             title={dt.disabled ? 'Réactiver' : 'Désactiver'}
@@ -2569,7 +2662,13 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                             {dt.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
                           </button>
                           {!dt.is_default && (
-                            <button onClick={() => { if (confirm('Supprimer ce type ?')) deleteDocTypeMutation.mutate(dt.id) }} className="p-1 text-gray-400 hover:text-red-600" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
+                            <button aria-label="Supprimer" onClick={async () => {
+                              const ok = await confirm({
+                                title: `Supprimer le type de document « ${dt.label} » ?`,
+                                message: "Les documents déjà classés dans ce type ne sont pas supprimés.",
+                              })
+                              if (ok) deleteDocTypeMutation.mutate(dt.id)
+                            }} className="p-1 text-gray-600 hover:text-red-600 touch-target" title="Supprimer"><Trash2 className="h-3.5 w-3.5" /></button>
                           )}
                         </>
                       )}
@@ -2587,14 +2686,14 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                     value={newDocType.label}
                     onChange={(e) => setNewDocType({ value: e.target.value.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, ''), label: e.target.value })}
                     placeholder="Ex: Plan de gestion"
-                    className="w-full text-sm px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full text-sm px-3 py-1.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                     onKeyDown={(e) => { if (e.key === 'Enter' && newDocType.label && newDocType.value) addDocTypeMutation.mutate(newDocType) }}
                   />
                 </div>
                 <button
                   onClick={() => { if (newDocType.label && newDocType.value) addDocTypeMutation.mutate(newDocType) }}
                   disabled={!newDocType.label || addDocTypeMutation.isPending}
-                  className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                  className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
                 >
                   <Plus className="h-4 w-4" />
                 </button>
@@ -2626,6 +2725,10 @@ const DEFAULT_MAINTENANCE_TYPES = [
 ]
 
 function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const confirm = useConfirm()
+  // La session connaît l'agent : inutile de lui faire taper son propre nom.
+  const { user: utilisateur } = useAuthStore()
+  const nomUtilisateur = [utilisateur?.firstName, utilisateur?.lastName].filter(Boolean).join(' ')
   const [showForm, setShowForm] = useState(false)
   const [editingMaintenance, setEditingMaintenance] = useState<Maintenance | null>(null)
   const [form, setForm] = useState({
@@ -2634,7 +2737,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
     description: '',
     performed_date: new Date().toISOString().split('T')[0],
     next_maintenance_date: '',
-    performed_by: '',
+    performed_by: nomUtilisateur,
     duration_minutes: '',
     cost: '',
     notes: '',
@@ -2684,6 +2787,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   })
 
   const addMaintTypeMutation = useMutation({
+    meta: { successMessage: "Type d'entretien ajouté" },
     mutationFn: (data: any) => api.post('/green-spaces/custom-maintenance-types', data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
@@ -2692,6 +2796,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   })
 
   const updateMaintTypeMutation = useMutation({
+    meta: { successMessage: "Type d'entretien modifié" },
     mutationFn: ({ id, ...data }: { id: number, label?: string, icon?: string, disabled?: boolean }) => api.put(`/green-spaces/custom-maintenance-types/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
@@ -2700,11 +2805,13 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   })
 
   const deleteMaintTypeMutation = useMutation({
+    meta: { successMessage: "Type d'entretien supprimé" },
     mutationFn: (id: number) => api.delete(`/green-spaces/custom-maintenance-types/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-maintenance-types'] })
   })
 
   const addMutation = useMutation({
+    meta: { successMessage: 'Entretien enregistré' },
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/maintenances`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -2714,6 +2821,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   })
 
   const updateMutation = useMutation({
+    meta: { successMessage: 'Entretien modifié' },
     mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/maintenances/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -2723,6 +2831,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   })
 
   const deleteMutation = useMutation({
+    meta: { successMessage: 'Entretien supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/maintenances/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
@@ -2733,7 +2842,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
     setForm({
       maintenance_type: 'tonte', title: '', description: '',
       performed_date: new Date().toISOString().split('T')[0],
-      next_maintenance_date: '', performed_by: '', duration_minutes: '', cost: '', notes: '',
+      next_maintenance_date: '', performed_by: nomUtilisateur, duration_minutes: '', cost: '', notes: '',
       element_ids: [], document_ids: [],
     })
     setTypeSearch('')
@@ -2840,17 +2949,19 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
         <div className="flex items-center gap-2">
           <button
             onClick={() => setShowMaintenanceTypeManager(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700"
-            title="Gérer les types d'entretien"
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 min-h-[44px]"
+            title="Gérer les types d'entretien" aria-label="Gérer les types d'entretien"
           >
             <Settings className="h-4 w-4" /> Types
           </button>
-          <button
-            onClick={() => { resetForm(); setShowForm(true) }}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700"
-          >
-            <Plus className="h-4 w-4" /> Nouvel entretien
-          </button>
+          <Can fieldWrite>
+            <button
+              onClick={() => { resetForm(); setShowForm(true) }}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 min-h-[44px]"
+            >
+              <Plus className="h-4 w-4" /> Nouvel entretien
+            </button>
+          </Can>
         </div>
       </div>
 
@@ -2883,7 +2994,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 onChange={(e) => { setTypeSearch(e.target.value); setShowTypeDropdown(true) }}
                 onFocus={() => setShowTypeDropdown(true)}
                 placeholder="Type d'entretien..."
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
               {showTypeDropdown && (
                 <div className="absolute z-20 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -2910,7 +3021,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                   {typeSearch.trim() && !filteredTypes.some(t => getTypeLabel(t).label.toLowerCase() === typeSearch.trim().toLowerCase()) && (
                     <button
                       onClick={addCustomType}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-purple-600 dark:text-purple-400 flex items-center gap-2"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-600 text-purple-600 dark:text-purple-400 flex items-center gap-2 min-h-[44px]"
                     >
                       <Plus className="h-3 w-3" />
                       Ajouter « {typeSearch.trim()} »
@@ -2927,7 +3038,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 value={form.title}
                 onChange={(e) => setForm({ ...form, title: e.target.value })}
                 placeholder="Ex: Tonte pelouse secteur nord"
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
           </div>
@@ -2939,7 +3050,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 type="date"
                 value={form.performed_date}
                 onChange={(e) => setForm({ ...form, performed_date: e.target.value })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div>
@@ -2948,7 +3059,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 type="date"
                 value={form.next_maintenance_date}
                 onChange={(e) => setForm({ ...form, next_maintenance_date: e.target.value })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div>
@@ -2958,8 +3069,11 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 value={form.performed_by}
                 onChange={(e) => setForm({ ...form, performed_by: e.target.value })}
                 placeholder="Nom ou équipe"
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
+              <p className="mt-1 text-xs text-gray-600 dark:text-gray-400">
+                Pré-rempli à votre nom. Modifiez-le si l'entretien a été fait par quelqu'un d'autre.
+              </p>
             </div>
           </div>
 
@@ -2972,7 +3086,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 value={form.duration_minutes}
                 onChange={(e) => setForm({ ...form, duration_minutes: e.target.value })}
                 placeholder="Ex: 120"
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div>
@@ -2983,7 +3097,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 min="0"
                 value={form.cost}
                 onChange={(e) => setForm({ ...form, cost: e.target.value })}
-                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
           </div>
@@ -2994,7 +3108,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Éléments concernés ({form.element_ids.length} sélectionné{form.element_ids.length > 1 ? 's' : ''})
               </label>
-              <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-1 space-y-0.5">
+              <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-1 space-y-0.5 touch-target">
                 {elements.map(el => {
                   const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
                   const isChecked = form.element_ids.includes(el.id)
@@ -3013,7 +3127,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                       />
                       <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: elType?.color }} />
                       <span className="text-sm text-gray-900 dark:text-white truncate">{el.label}</span>
-                      {el.code && <span className="text-xs font-mono text-gray-400">{el.code}</span>}
+                      {el.code && <span className="text-xs font-mono text-gray-600">{el.code}</span>}
                     </label>
                   )
                 })}
@@ -3027,7 +3141,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300">
                 Documents liés ({form.document_ids.length} sélectionné{form.document_ids.length > 1 ? 's' : ''})
               </label>
-              <label className={`flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded-lg transition-colors ${uploadingFile ? 'text-gray-400' : 'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30'}`}>
+              <label className={`flex items-center gap-1 text-xs cursor-pointer px-2 py-1 rounded-lg transition-colors ${uploadingFile ? 'text-gray-600' : 'text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30'}`}>
                 <Plus className="h-3 w-3" />
                 {uploadingFile ? 'Envoi...' : 'Joindre un fichier'}
                 <input
@@ -3041,7 +3155,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               </label>
             </div>
             {documents.length > 0 ? (
-              <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-1 space-y-0.5">
+              <div className="max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600 rounded-lg p-1 space-y-0.5 touch-target">
                 {documents.map((doc: GreenSpaceDocument) => {
                   const isChecked = form.document_ids.includes(doc.id)
                   return (
@@ -3057,14 +3171,14 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                         onChange={() => toggleDocumentId(doc.id)}
                         className="rounded text-blue-600"
                       />
-                      <FileText className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                      <FileText className="h-3.5 w-3.5 text-gray-600 flex-shrink-0" />
                       <span className="text-sm text-gray-900 dark:text-white truncate">{doc.name}</span>
                     </label>
                   )
                 })}
               </div>
             ) : (
-              <p className="text-xs text-gray-400 dark:text-gray-500 italic py-2">Aucun document existant. Utilisez "Joindre un fichier" pour en ajouter.</p>
+              <p className="text-xs text-gray-600 dark:text-gray-400 italic py-2">Aucun document existant. Utilisez "Joindre un fichier" pour en ajouter.</p>
             )}
           </div>
 
@@ -3075,7 +3189,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               onChange={(e) => setForm({ ...form, description: e.target.value })}
               rows={2}
               placeholder="Détails de l'intervention..."
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             />
           </div>
 
@@ -3086,16 +3200,16 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               onChange={(e) => setForm({ ...form, notes: e.target.value })}
               rows={2}
               placeholder="Observations, recommandations..."
-              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             />
           </div>
 
           <div className="flex justify-end gap-2">
-            <button onClick={resetForm} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400">Annuler</button>
+            <button onClick={resetForm} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 min-h-[44px]">Annuler</button>
             <button
               onClick={handleSave}
               disabled={!form.maintenance_type || addMutation.isPending || updateMutation.isPending}
-              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
             >
               {addMutation.isPending || updateMutation.isPending ? 'Enregistrement...' : (editingMaintenance ? 'Modifier' : 'Enregistrer')}
             </button>
@@ -3158,17 +3272,17 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                         {m.cost && <span>{m.cost} €</span>}
                       </div>
                       {m.next_maintenance_date && (
-                        <p className={`text-xs mt-1 ${isOverdue ? 'text-red-600 font-medium' : isSoon ? 'text-yellow-600 font-medium' : 'text-gray-400'}`}>
+                        <p className={`text-xs mt-1 ${isOverdue ? 'text-red-600 font-medium' : isSoon ? 'text-yellow-600 font-medium' : 'text-gray-600'}`}>
                           {isOverdue ? '⚠️ En retard — ' : '📅 '}Prochain : {formatDate(m.next_maintenance_date)}
                         </p>
                       )}
                       {m.description && <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">{m.description}</p>}
-                      {m.notes && <p className="text-xs text-gray-400 italic mt-1">{m.notes}</p>}
+                      {m.notes && <p className="text-xs text-gray-600 italic mt-1">{m.notes}</p>}
 
                       {/* Éléments liés */}
                       {linkedElements.length > 0 && (
                         <div className="flex items-center gap-1 mt-2 flex-wrap">
-                          <Tag className="h-3 w-3 text-gray-400" />
+                          <Tag className="h-3 w-3 text-gray-600" />
                           {linkedElements.map(el => {
                             const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
                             return (
@@ -3184,7 +3298,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                       {/* Documents liés */}
                       {linkedDocs.length > 0 && (
                         <div className="flex items-center gap-1 mt-1 flex-wrap">
-                          <FileText className="h-3 w-3 text-gray-400" />
+                          <FileText className="h-3 w-3 text-gray-600" />
                           {linkedDocs.map((doc: GreenSpaceDocument) => (
                             <span key={doc.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
                               {doc.name}
@@ -3197,14 +3311,20 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                   <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                     <button
                       onClick={() => openEdit(m)}
-                      className="p-1 text-gray-400 hover:text-green-600"
-                      title="Modifier"
+                      className="p-1 text-gray-600 hover:text-green-600 touch-target"
+                      title="Modifier" aria-label="Modifier"
                     >
                       <Edit3 className="h-3.5 w-3.5" />
                     </button>
                     <button
-                      onClick={() => { if (confirm('Supprimer cet entretien ?')) deleteMutation.mutate(m.id) }}
-                      className="p-1 text-gray-400 hover:text-red-600"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: `Supprimer l'entretien « ${m.title || m.maintenance_type} » ?`,
+                          message: "L'historique, le coût et l'événement de calendrier associés seront supprimés.",
+                        })
+                        if (ok) deleteMutation.mutate(m.id)
+                      }}
+                      className="p-1 text-gray-600 hover:text-red-600 touch-target"
                       title="Supprimer"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -3224,7 +3344,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Gérer les types d'entretien</h3>
-              <button onClick={() => setShowMaintenanceTypeManager(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+              <button onClick={() => setShowMaintenanceTypeManager(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -3235,7 +3355,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                 value={newMaintType}
                 onChange={e => setNewMaintType(e.target.value)}
                 placeholder="Nouveau type..."
-                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[44px]"
               />
               <button
                 onClick={() => {
@@ -3245,7 +3365,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                   }
                 }}
                 disabled={!newMaintType.trim() || addMaintTypeMutation.isPending}
-                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -3268,28 +3388,28 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                             updateMaintTypeMutation.mutate({ id: t.id, label: editingMaintType.label.trim() })
                           }
                         }}
-                        className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                        className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded touch-target"
                       >
                         <Check className="h-4 w-4" />
                       </button>
-                      <button onClick={() => setEditingMaintType(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                      <button onClick={() => setEditingMaintType(null)} className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                         <X className="h-4 w-4" />
                       </button>
                     </>
                   ) : (
                     <>
-                      <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                      <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-600' : 'text-gray-900 dark:text-white'}`}>
                         {t.label}
-                        {t.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                        {t.is_default ? <span className="ml-1 text-xs text-gray-600">(défaut)</span> : ''}
                       </span>
                       <button
                         onClick={() => setEditingMaintType({ id: t.id, label: t.label })}
-                        className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                        title="Modifier"
+                        className="p-1 text-gray-600 hover:text-blue-600 rounded touch-target"
+                        title="Modifier" aria-label="Modifier"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
                       </button>
-                      <button
+                      <button aria-label={t.disabled ? 'Réactiver' : 'Désactiver'}
                         onClick={() => updateMaintTypeMutation.mutate({ id: t.id, disabled: t.disabled ? 0 : 1 })}
                         className={`p-1 rounded ${t.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
                         title={t.disabled ? 'Réactiver' : 'Désactiver'}
@@ -3298,8 +3418,14 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                       </button>
                       {!t.is_default && (
                         <button
-                          onClick={() => { if (confirm('Supprimer ce type ?')) deleteMaintTypeMutation.mutate(t.id) }}
-                          className="p-1 text-gray-400 hover:text-red-600 rounded"
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: `Supprimer le type d'entretien « ${t.label} » ?`,
+                              message: "Les entretiens déjà enregistrés avec ce type ne sont pas supprimés.",
+                            })
+                            if (ok) deleteMaintTypeMutation.mutate(t.id)
+                          }}
+                          className="p-1 text-gray-600 hover:text-red-600 rounded touch-target"
                           title="Supprimer"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -3328,6 +3454,7 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
   )
 
   const cloneMutation = useMutation({
+    meta: { successMessage: 'Espace vert cloné' },
     mutationFn: () => api.post(`/green-spaces/${space.id}/clone`, {
       name,
       status,
@@ -3362,7 +3489,7 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
             <Copy className="h-5 w-5 text-green-600" />
             Cloner l'espace vert
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
             <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
@@ -3379,7 +3506,7 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             />
           </div>
 
@@ -3389,14 +3516,14 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
             <select
               value={status}
               onChange={e => setStatus(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+              className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
             >
               <option value="projet">🟡 En projet</option>
               <option value="travaux">🟠 Travaux</option>
               <option value="actif">🟢 Actif</option>
               <option value="inactif">⚪ Inactif</option>
             </select>
-            <p className="text-xs text-gray-400 mt-1">Workflow typique : En projet → Travaux → Actif</p>
+            <p className="text-xs text-gray-600 mt-1">Workflow typique : En projet → Travaux → Actif</p>
           </div>
 
           {/* Copier les éléments */}
@@ -3441,7 +3568,7 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
                       {el.label || el.code || `Élément #${el.id}`}
                     </span>
                     {el.element_type && (
-                      <span className="text-xs text-gray-400 ml-auto">{el.element_type}</span>
+                      <span className="text-xs text-gray-600 ml-auto">{el.element_type}</span>
                     )}
                   </label>
                 ))}
@@ -3453,14 +3580,14 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
         <div className="flex justify-end gap-3 p-5 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+            className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg min-h-[44px]"
           >
             Annuler
           </button>
           <button
             onClick={() => cloneMutation.mutate()}
             disabled={cloneMutation.isPending || !name.trim()}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-2 min-h-[44px]"
           >
             {cloneMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}
             Cloner
@@ -3496,6 +3623,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
 
   // Créer un snapshot
   const createSnapshotMutation = useMutation({
+    meta: { successMessage: 'Archive créée' },
     mutationFn: () => api.post(`/green-spaces/${space.id}/snapshots`, {
       label: snapshotLabel || undefined,
       notes: snapshotNotes || undefined
@@ -3511,6 +3639,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
 
   // Supprimer un snapshot
   const deleteSnapshotMutation = useMutation({
+    meta: { successMessage: 'Archive supprimée' },
     mutationFn: (id: number) => api.delete(`/green-spaces/snapshots/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['green-spaces'] })
@@ -3548,7 +3677,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
           )}
           <button
             onClick={() => setShowCreateSnapshot(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white rounded-lg text-sm font-medium hover:bg-green-700 min-h-[44px]"
           >
             <Camera className="h-4 w-4" />
             Créer un snapshot
@@ -3578,23 +3707,23 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
             placeholder="Label (ex: Avant travaux printemps 2025)"
             value={snapshotLabel}
             onChange={e => setSnapshotLabel(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm min-h-[44px]"
           />
           <textarea
             placeholder="Notes (optionnel)"
             value={snapshotNotes}
             onChange={e => setSnapshotNotes(e.target.value)}
-            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm min-h-[44px]"
             rows={2}
           />
           <div className="flex justify-end gap-2">
-            <button onClick={() => setShowCreateSnapshot(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg">
+            <button onClick={() => setShowCreateSnapshot(false)} className="px-3 py-1.5 text-sm text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-lg min-h-[44px]">
               Annuler
             </button>
             <button
               onClick={() => createSnapshotMutation.mutate()}
               disabled={createSnapshotMutation.isPending}
-              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1"
+              className="px-3 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 flex items-center gap-1 min-h-[44px]"
             >
               {createSnapshotMutation.isPending && <Loader2 className="h-3 w-3 animate-spin" />}
               Capturer
@@ -3611,7 +3740,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
             Snapshots ({allSnapshots.length})
           </h4>
           {allSnapshots.length === 0 ? (
-            <p className="text-sm text-gray-400 italic py-4 text-center">Aucun snapshot</p>
+            <p className="text-sm text-gray-600 italic py-4 text-center">Aucun snapshot</p>
           ) : (
             <div className="space-y-1 max-h-[400px] overflow-y-auto">
               {allSnapshots.map((snap: any) => (
@@ -3643,15 +3772,15 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                     {!snap.fromSource && (
                       <button
                         onClick={e => { e.stopPropagation(); deleteSnapshotMutation.mutate(snap.id) }}
-                        className="p-1 text-gray-400 hover:text-red-500 rounded"
-                        title="Supprimer"
+                        className="p-1 text-gray-600 hover:text-red-500 rounded touch-target"
+                        title="Supprimer" aria-label="Supprimer"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     )}
                   </div>
                   {snap.notes && (
-                    <p className="text-xs text-gray-400 mt-1 truncate">{snap.notes}</p>
+                    <p className="text-xs text-gray-600 mt-1 truncate">{snap.notes}</p>
                   )}
                 </div>
               ))}
@@ -3665,7 +3794,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
           {selectedSnapshotId && snapshotDetail ? (
             <>
               <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
-                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600 flex items-center justify-between">
+                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-2 border-b border-gray-200 dark:border-gray-600 flex items-center justify-between min-h-[44px]">
                   <div>
                     <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 flex items-center gap-1.5">
                       <Camera className="h-4 w-4" />
@@ -3676,8 +3805,8 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                   {snapshotDetail.plan_image && (
                     <button
                       onClick={() => setShowArchivedPDF(true)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
-                      title="Exporter le plan archivé en PDF"
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors min-h-[44px]"
+                      title="Exporter le plan archivé en PDF" aria-label="Exporter le plan archivé en PDF"
                     >
                       <Download className="h-3.5 w-3.5" />
                       Export PDF
@@ -3763,9 +3892,9 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                   <div className="space-y-1 max-h-[200px] overflow-y-auto">
                     {(snapshotDetail.elements_data || []).map((el: any, i: number) => (
                       <div key={i} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
-                        <Tag className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                        <Tag className="h-3.5 w-3.5 text-gray-600 flex-shrink-0" />
                         <span className="truncate">{el.label || el.code || `Élément #${el.id}`}</span>
-                        <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{el.element_type}</span>
+                        <span className="text-xs text-gray-600 ml-auto flex-shrink-0">{el.element_type}</span>
                       </div>
                     ))}
                   </div>
@@ -3781,7 +3910,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                           <div key={i} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
                             <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: g.color || '#ccc' }} />
                             <span className="truncate">{g.name}</span>
-                            <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{g.group_type}</span>
+                            <span className="text-xs text-gray-600 ml-auto flex-shrink-0">{g.group_type}</span>
                           </div>
                         ))}
                       </div>
@@ -3789,7 +3918,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                   )}
 
                   {snapshotDetail.notes && (
-                    <div className="mt-3 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded text-xs text-gray-600 dark:text-gray-400">
+                    <div className="mt-3 h-11 w-11 flex items-center justify-center bg-yellow-50 dark:bg-yellow-900/20 rounded text-xs text-gray-600 dark:text-gray-400">
                       {snapshotDetail.notes}
                     </div>
                   )}
@@ -3799,7 +3928,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
               {/* État actuel (mode comparaison) */}
               {compareMode && (
                 <div className="border border-gray-200 dark:border-gray-600 rounded-lg overflow-hidden">
-                  <div className="bg-green-50 dark:bg-green-900/30 px-4 py-2 border-b border-gray-200 dark:border-gray-600">
+                  <div className="bg-green-50 dark:bg-green-900/30 px-4 py-2 border-b border-gray-200 dark:border-gray-600 min-h-[44px]">
                     <h5 className="text-sm font-semibold text-green-700 dark:text-green-300 flex items-center gap-1.5">
                       <Eye className="h-4 w-4" />
                       État actuel — {space.name}
@@ -3884,9 +4013,9 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                     <div className="space-y-1 max-h-[200px] overflow-y-auto">
                       {(space.elements || []).map(el => (
                         <div key={el.id} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
-                          <Tag className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                          <Tag className="h-3.5 w-3.5 text-gray-600 flex-shrink-0" />
                           <span className="truncate">{el.label || el.code || `Élément #${el.id}`}</span>
-                          <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{el.element_type}</span>
+                          <span className="text-xs text-gray-600 ml-auto flex-shrink-0">{el.element_type}</span>
                         </div>
                       ))}
                     </div>
@@ -3901,7 +4030,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                             <div key={g.id} className="flex items-center gap-2 py-1 text-sm text-gray-700 dark:text-gray-300">
                               <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: g.color || '#ccc' }} />
                               <span className="truncate">{g.name}</span>
-                              <span className="text-xs text-gray-400 ml-auto flex-shrink-0">{g.group_type}</span>
+                              <span className="text-xs text-gray-600 ml-auto flex-shrink-0">{g.group_type}</span>
                             </div>
                           ))}
                         </div>
@@ -3936,7 +4065,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
               )}
             </>
           ) : (
-            <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+            <div className="flex flex-col items-center justify-center py-12 text-gray-600">
               <Camera className="h-12 w-12 mb-3" />
               <p className="text-sm">Sélectionnez un snapshot pour voir les détails</p>
               {allSnapshots.length === 0 && (
@@ -3968,7 +4097,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                     <FileText className="h-5 w-5 text-blue-500 flex-shrink-0" />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate">{doc.name}</p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-600">
                         {doc.doc_type} • {formatDate(doc.created_at)}
                       </p>
                     </div>
@@ -3977,7 +4106,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                         href={getImageUrl(doc.file_path)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded"
+                        className="p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded touch-target"
                         title="Télécharger"
                       >
                         <Download className="h-4 w-4" />
@@ -3999,12 +4128,12 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
               <div className="space-y-2">
                 {archives.source_maintenances.map((m: any) => (
                   <div key={m.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
-                    <div className="p-1.5 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex-shrink-0">
+                    <div className="p-1.5 bg-orange-100 dark:bg-orange-900/30 rounded-lg flex-shrink-0 touch-target">
                       <Wrench className="h-4 w-4 text-orange-600" />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{m.title}</p>
-                      <p className="text-xs text-gray-400">
+                      <p className="text-xs text-gray-600">
                         {m.maintenance_type} • {formatDate(m.performed_date)} • {m.performed_by || 'N/A'}
                       </p>
                       {m.notes && <p className="text-xs text-gray-500 mt-1">{m.notes}</p>}
@@ -4058,6 +4187,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
   })
 
   const mutation = useMutation({
+    meta: { successMessage: 'Espace vert enregistré' },
     mutationFn: (data: any) =>
       space ? api.put(`/green-spaces/${space.id}`, data) : api.post('/green-spaces', data),
     onSuccess: () => onSaved()
@@ -4080,7 +4210,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">
             {space ? 'Modifier l\'espace vert' : 'Nouvel espace vert'}
           </h3>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -4093,7 +4223,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
                 type="text"
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div>
@@ -4101,7 +4231,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
               <select
                 value={form.space_type}
                 onChange={(e) => setForm({ ...form, space_type: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               >
                 {(spaceTypes.length > 0 ? spaceTypes : SPACE_TYPES).map((t: any) => (
                   <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
@@ -4113,7 +4243,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
               <select
                 value={form.status}
                 onChange={(e) => setForm({ ...form, status: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               >
                 {statuses.length > 0 ? statuses.map((s: any) => (
                   <option key={s.value} value={s.value}>{s.label}</option>
@@ -4133,7 +4263,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div className="col-span-2">
@@ -4142,27 +4272,15 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
                 type="text"
                 value={form.address}
                 onChange={(e) => setForm({ ...form, address: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Latitude</label>
-              <input
-                type="text"
-                value={form.latitude}
-                onChange={(e) => setForm({ ...form, latitude: e.target.value })}
-                placeholder="ex: 48.8566"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Longitude</label>
-              <input
-                type="text"
-                value={form.longitude}
-                onChange={(e) => setForm({ ...form, longitude: e.target.value })}
-                placeholder="ex: 2.3522"
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+            <div className="col-span-2">
+              <LocationPicker
+                label="Position"
+                latitude={form.latitude}
+                longitude={form.longitude}
+                onChange={(latitude, longitude) => setForm({ ...form, latitude, longitude })}
               />
             </div>
             <div>
@@ -4171,7 +4289,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
                 type="number"
                 value={form.area_m2}
                 onChange={(e) => setForm({ ...form, area_m2: e.target.value })}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div>
@@ -4181,7 +4299,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
                 value={form.soil_type}
                 onChange={(e) => setForm({ ...form, soil_type: e.target.value })}
                 placeholder="Terre végétale, gravier, béton..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
             <div>
@@ -4202,13 +4320,13 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
         </div>
 
         <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200">
+          <button onClick={onClose} className="px-4 py-2 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 min-h-[44px]">
             Annuler
           </button>
           <button
             onClick={handleSubmit}
             disabled={!form.name.trim() || mutation.isPending}
-            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+            className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
           >
             {mutation.isPending ? 'Enregistrement...' : (space ? 'Modifier' : 'Créer')}
           </button>
@@ -4242,22 +4360,22 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace
           </div>
           <div className="flex items-center gap-1">
             {onHistory && (
-              <button onClick={onHistory} className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-gray-500 hover:text-blue-600" title="Historique des remplacements">
+              <button aria-label="Historique des remplacements" onClick={onHistory} className="h-11 w-11 flex items-center justify-center hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg text-gray-500 hover:text-blue-600" title="Historique des remplacements">
                 <History className="h-5 w-5" />
               </button>
             )}
             {onReplace && (
-              <button onClick={onReplace} className="p-2 hover:bg-orange-50 dark:hover:bg-orange-900/30 rounded-lg text-gray-500 hover:text-orange-600" title="Remplacer (avec historique)">
+              <button aria-label="Remplacer (avec historique)" onClick={onReplace} className="h-11 w-11 flex items-center justify-center hover:bg-orange-50 dark:hover:bg-orange-900/30 rounded-lg text-gray-500 hover:text-orange-600" title="Remplacer (avec historique)">
                 <RefreshCw className="h-5 w-5" />
               </button>
             )}
-            <button onClick={onEdit} className="p-2 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg text-gray-500 hover:text-green-600" title="Modifier">
+            <button aria-label="Modifier" onClick={onEdit} className="h-11 w-11 flex items-center justify-center hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg text-gray-500 hover:text-green-600" title="Modifier">
               <Edit3 className="h-5 w-5" />
             </button>
-            <button onClick={onDelete} className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-gray-500 hover:text-red-600" title="Supprimer">
+            <button aria-label="Supprimer" onClick={onDelete} className="h-11 w-11 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-gray-500 hover:text-red-600" title="Supprimer">
               <Trash2 className="h-5 w-5" />
             </button>
-            <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -4373,7 +4491,7 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace
                 {relatedMaintenances.map(m => {
                   const mtLabel = DEFAULT_MAINTENANCE_TYPES.find(t => t.value === m.maintenance_type)
                   return (
-                    <div key={m.id} className="p-2 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-sm">
+                    <div key={m.id} className="h-11 w-11 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-gray-900 dark:text-white">
                           {mtLabel?.icon || '🔧'} {m.title || mtLabel?.label || m.maintenance_type}
@@ -4470,6 +4588,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
   })
 
   const mutation = useMutation({
+    meta: { successMessage: 'Élément enregistré' },
     mutationFn: async (data: any) => {
       const res = element
         ? await api.put(`/green-spaces/elements/${element.id}`, data)
@@ -4515,7 +4634,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">
             {element ? 'Modifier l\'élément' : 'Ajouter un élément'}
           </h3>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -4535,13 +4654,13 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   value={form.label}
                   onChange={(e) => setForm({ ...form, label: e.target.value })}
                   placeholder="ex: Chêne centenaire, Banc n°3..."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Code / Identifiant</label>
                 <div className="relative">
-                  <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Hash className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600" />
                   <input
                     type="text"
                     value={form.code}
@@ -4556,7 +4675,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 <select
                   value={form.element_type}
                   onChange={(e) => setForm({ ...form, element_type: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 >
                   {ELEMENT_TYPES.map(t => (
                     <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
@@ -4568,7 +4687,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 <select
                   value={form.condition_state}
                   onChange={(e) => setForm({ ...form, condition_state: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 >
                   {CONDITION_STATES.map(c => (
                     <option key={c.value} value={c.value}>{c.label}</option>
@@ -4590,7 +4709,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 onChange={(e) => { setObjectSearch(e.target.value); setShowObjectResults(true) }}
                 onFocus={() => setShowObjectResults(true)}
                 placeholder="Rechercher un objet par nom ou référence..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
               />
               {showObjectResults && objectResults.length > 0 && (
                 <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg shadow-lg max-h-48 overflow-y-auto">
@@ -4622,7 +4741,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                         setObjectSearch(`${obj.name} (${obj.reference || 'N/A'})`)
                         setShowObjectResults(false)
                       }}
-                      className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-sm"
+                      className="w-full text-left px-3 py-2 hover:bg-gray-100 dark:hover:bg-gray-600 text-sm min-h-[44px]"
                     >
                       <span className="font-medium text-gray-900 dark:text-white">{obj.name}</span>
                       <span className="text-gray-500 dark:text-gray-400 ml-2">{obj.category_name}{obj.subcategory_name ? ` > ${obj.subcategory_name}` : ''}</span>
@@ -4633,7 +4752,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
               {form.object_id && (
                 <button
                   onClick={() => { setForm({ ...form, object_id: '' }); setObjectSearch('') }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-600 hover:text-red-500"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -4654,7 +4773,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   value={form.species}
                   onChange={(e) => setForm({ ...form, species: e.target.value })}
                   placeholder="ex: Quercus robur..."
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
               <div>
@@ -4664,13 +4783,13 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   min="1"
                   value={form.quantity}
                   onChange={(e) => setForm({ ...form, quantity: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Superficie (m²)</label>
                 <div className="relative">
-                  <Ruler className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Ruler className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600" />
                   <input
                     type="number"
                     step="0.01"
@@ -4685,7 +4804,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Prix d'achat (€)</label>
                 <div className="relative">
-                  <Euro className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <Euro className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600" />
                   <input
                     type="number"
                     step="0.01"
@@ -4710,7 +4829,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   type="date"
                   value={form.planting_date}
                   onChange={(e) => setForm({ ...form, planting_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
               <div>
@@ -4719,7 +4838,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   type="date"
                   value={form.last_maintenance_date}
                   onChange={(e) => setForm({ ...form, last_maintenance_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
               <div>
@@ -4728,7 +4847,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   type="date"
                   value={form.next_maintenance_date}
                   onChange={(e) => setForm({ ...form, next_maintenance_date: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
             </div>
@@ -4739,30 +4858,13 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Navigation className="h-3.5 w-3.5" /> Coordonnées GPS
             </h4>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Latitude</label>
-                <input
-                  type="number"
-                  step="0.0000001"
-                  value={form.latitude}
-                  onChange={(e) => setForm({ ...form, latitude: e.target.value })}
-                  placeholder="ex: 43.6047"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Longitude</label>
-                <input
-                  type="number"
-                  step="0.0000001"
-                  value={form.longitude}
-                  onChange={(e) => setForm({ ...form, longitude: e.target.value })}
-                  placeholder="ex: 1.4442"
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
-                />
-              </div>
-            </div>
+            <LocationPicker
+              label="Position de l'élément"
+              compact
+              latitude={form.latitude}
+              longitude={form.longitude}
+              onChange={(latitude, longitude) => setForm({ ...form, latitude, longitude })}
+            />
             {form.latitude && form.longitude && (() => {
               const streetViewUrl = `https://www.google.com/maps/@${form.latitude},${form.longitude},3a,75y,90h,90t`
               return (
@@ -4772,7 +4874,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                       href={streetViewUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                      className="flex-1 flex items-center gap-2 px-3 py-2 text-sm font-medium text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors min-h-[44px]"
                     >
                       <Globe className="h-4 w-4 flex-shrink-0" />
                       Ouvrir dans Google Street View
@@ -4780,24 +4882,28 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                     <button
                       type="button"
                       onClick={() => setShowStreetView(true)}
-                      className="p-2 text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
-                      title="Aperçu Street View"
+                      className="h-11 w-11 flex items-center justify-center text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/50 transition-colors"
+                      title="Aperçu Street View" aria-label="Aperçu Street View"
                     >
                       <MapPin className="h-4 w-4" />
                     </button>
                   </div>
-                  <div className="flex items-center gap-1.5 bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 rounded-lg px-3 py-1.5">
-                    <Globe className="h-3 w-3 text-gray-400 flex-shrink-0" />
-                    <span className="flex-1 text-xs text-gray-500 dark:text-gray-400 truncate font-mono select-all">{streetViewUrl}</span>
-                    <button
-                      type="button"
-                      onClick={() => navigator.clipboard.writeText(streetViewUrl)}
-                      className="p-1 text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 rounded transition-colors"
-                      title="Copier l'URL"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
+                  {/*
+                    L'URL brute était affichée en monospace sous les deux
+                    boutons : illisible et sans usage pour un agent. Le lien de
+                    copie reste disponible, mais sans étaler l'adresse.
+                  */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(streetViewUrl)
+                      toast.success('Lien copié')
+                    }}
+                    className="inline-flex min-h-[44px] items-center gap-1.5 text-sm text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
+                  >
+                    <Copy className="h-4 w-4" />
+                    Copier le lien
+                  </button>
                 </div>
               )
             })()}
@@ -4824,11 +4930,11 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 {(existingDocs as any[]).length > 0 && (
                   <div className="mb-2 space-y-1">
                     {(existingDocs as any[]).map((doc: any) => (
-                      <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs">
+                      <div key={doc.id} className="flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs min-h-[44px]">
                         <FileText className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
                         <span className="flex-1 text-gray-700 dark:text-gray-300 truncate">{doc.name}</span>
                         {doc.file_path && (
-                          <a href={`${api.defaults.baseURL?.replace('/api', '')}${doc.file_path}`} target="_blank" rel="noopener noreferrer" className="p-0.5 text-blue-500 hover:text-blue-700">
+                          <a href={`${api.defaults.baseURL?.replace('/api', '')}${doc.file_path}`} target="_blank" rel="noopener noreferrer" className="p-0.5 text-blue-500 hover:text-blue-700 touch-target">
                             <Download className="h-3.5 w-3.5" />
                           </a>
                         )}
@@ -4838,7 +4944,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 )}
 
                 {attachments.map((att, idx) => (
-                  <div key={idx} className="flex items-center gap-2 mb-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs">
+                  <div key={idx} className="flex items-center gap-2 mb-1.5 px-3 py-1.5 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs min-h-[44px]">
                     <FileText className="h-3.5 w-3.5 text-green-600 flex-shrink-0" />
                     <input
                       value={att.name}
@@ -4867,7 +4973,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                     </select>
                     <button
                       onClick={() => setAttachments(prev => prev.filter((_, i) => i !== idx))}
-                      className="p-0.5 text-gray-400 hover:text-red-500"
+                      className="p-0.5 text-gray-600 hover:text-red-500 touch-target"
                     >
                       <X className="h-3.5 w-3.5" />
                     </button>
@@ -4875,7 +4981,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 ))}
 
                 <label className={`flex items-center gap-2 px-3 py-2 border border-dashed border-gray-300 dark:border-gray-600 rounded-lg cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors ${uploadingAttachment ? 'opacity-50 pointer-events-none' : ''}`}>
-                  {uploadingAttachment ? <Loader2 className="h-4 w-4 text-gray-400 animate-spin" /> : <Upload className="h-4 w-4 text-gray-400" />}
+                  {uploadingAttachment ? <Loader2 className="h-4 w-4 text-gray-600 animate-spin" /> : <Upload className="h-4 w-4 text-gray-600" />}
                   <span className="text-xs text-gray-500 dark:text-gray-400">
                     {uploadingAttachment ? 'Envoi...' : 'Joindre un document'}
                   </span>
@@ -4904,7 +5010,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
               <div>
@@ -4914,7 +5020,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   onChange={(e) => setForm({ ...form, maintenance_notes: e.target.value })}
                   placeholder="Arrosage hebdomadaire, taille annuelle..."
                   rows={2}
-                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors min-h-[44px]"
                 />
               </div>
             </div>
@@ -4923,13 +5029,13 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
         </div>
 
         <div className="p-6 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors min-h-[44px]">
             Annuler
           </button>
           <button
             onClick={handleSubmit}
             disabled={!form.label.trim() || mutation.isPending}
-            className="px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors"
+            className="px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium transition-colors min-h-[44px]"
           >
             {mutation.isPending ? 'Enregistrement...' : (element ? 'Modifier' : 'Ajouter')}
           </button>
@@ -4946,7 +5052,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 </h4>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{form.latitude}, {form.longitude}</span>
-                  <button onClick={() => setShowStreetView(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                  <button onClick={() => setShowStreetView(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
@@ -4964,7 +5070,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   sandbox="allow-scripts allow-same-origin allow-popups"
                 />
               </div>
-              <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center">
+              <div className="px-4 py-2 border-t border-gray-200 dark:border-gray-700 flex justify-between items-center min-h-[44px]">
                 <a
                   href={`https://www.google.com/maps/@${encodeURIComponent(form.latitude)},${encodeURIComponent(form.longitude)},18z`}
                   target="_blank"
@@ -4996,6 +5102,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
 // ======================== MODAL OPTIONS (TYPES & STATUTS) ========================
 
 function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
+  const confirm = useConfirm()
   const queryClient = useQueryClient()
   const [settingsTab, setSettingsTab] = useState<'types' | 'statuts'>('types')
 
@@ -5008,14 +5115,17 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
   const [editingType, setEditingType] = useState<{ id: number, label: string, icon: string } | null>(null)
 
   const addTypeMutation = useMutation({
+    meta: { successMessage: "Type d'espace ajouté" },
     mutationFn: (data: any) => api.post('/green-spaces/space-types', data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-types'] }); setNewType({ label: '', icon: '🌳' }) }
   })
   const updateTypeMutation = useMutation({
+    meta: { successMessage: "Type d'espace modifié" },
     mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/space-types/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-types'] }); setEditingType(null) }
   })
   const deleteTypeMutation = useMutation({
+    meta: { successMessage: "Type d'espace supprimé" },
     mutationFn: (id: number) => api.delete(`/green-spaces/space-types/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-types'] })
   })
@@ -5029,14 +5139,17 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
   const [editingStatus, setEditingStatus] = useState<{ id: number, label: string, color: string } | null>(null)
 
   const addStatusMutation = useMutation({
+    meta: { successMessage: 'Statut ajouté' },
     mutationFn: (data: any) => api.post('/green-spaces/space-statuses', data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-statuses'] }); setNewStatus({ label: '', color: 'gray' }) }
   })
   const updateStatusMutation = useMutation({
+    meta: { successMessage: 'Statut modifié' },
     mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/space-statuses/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-statuses'] }); setEditingStatus(null) }
   })
   const deleteStatusMutation = useMutation({
+    meta: { successMessage: 'Statut supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/space-statuses/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-statuses'] })
   })
@@ -5059,13 +5172,13 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
             <Settings className="h-5 w-5" />
             Options Espaces Verts
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+        <div className="flex gap-1 mb-4 bg-gray-100 dark:bg-gray-700 rounded-lg p-1 touch-target">
           <button
             onClick={() => setSettingsTab('types')}
             className={`flex-1 px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
@@ -5091,14 +5204,14 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
               <input
                 value={newType.icon}
                 onChange={e => setNewType({ ...newType, icon: e.target.value })}
-                className="w-12 px-2 py-2 text-sm text-center border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+                className="w-12 px-2 py-2 text-sm text-center border rounded-lg dark:bg-gray-700 dark:border-gray-600 min-h-[44px]"
                 title="Icône emoji"
               />
               <input
                 value={newType.label}
                 onChange={e => setNewType({ ...newType, label: e.target.value })}
                 placeholder="Nouveau type..."
-                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[44px]"
               />
               <button
                 onClick={() => {
@@ -5108,7 +5221,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                   }
                 }}
                 disabled={!newType.label.trim() || addTypeMutation.isPending}
-                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -5135,29 +5248,29 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                             updateTypeMutation.mutate({ id: t.id, label: editingType.label.trim(), icon: editingType.icon })
                           }
                         }}
-                        className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                        className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded touch-target"
                       >
                         <Check className="h-4 w-4" />
                       </button>
-                      <button onClick={() => setEditingType(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                      <button onClick={() => setEditingType(null)} className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                         <X className="h-4 w-4" />
                       </button>
                     </>
                   ) : (
                     <>
                       <span className="text-lg">{t.icon}</span>
-                      <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                      <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-600' : 'text-gray-900 dark:text-white'}`}>
                         {t.label}
-                        {t.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                        {t.is_default ? <span className="ml-1 text-xs text-gray-600">(défaut)</span> : ''}
                       </span>
                       <button
                         onClick={() => setEditingType({ id: t.id, label: t.label, icon: t.icon || '🌳' })}
-                        className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                        title="Modifier"
+                        className="p-1 text-gray-600 hover:text-blue-600 rounded touch-target"
+                        title="Modifier" aria-label="Modifier"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
                       </button>
-                      <button
+                      <button aria-label={t.disabled ? 'Réactiver' : 'Désactiver'}
                         onClick={() => updateTypeMutation.mutate({ id: t.id, disabled: t.disabled ? 0 : 1 })}
                         className={`p-1 rounded ${t.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
                         title={t.disabled ? 'Réactiver' : 'Désactiver'}
@@ -5166,8 +5279,14 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                       </button>
                       {!t.is_default && (
                         <button
-                          onClick={() => { if (confirm('Supprimer ce type ?')) deleteTypeMutation.mutate(t.id) }}
-                          className="p-1 text-gray-400 hover:text-red-600 rounded"
+                          onClick={async () => {
+                            const ok = await confirm({
+                              title: `Supprimer le type d'espace « ${t.label} » ?`,
+                              message: "Les espaces verts déjà classés dans ce type ne sont pas supprimés.",
+                            })
+                            if (ok) deleteTypeMutation.mutate(t.id)
+                          }}
+                          className="p-1 text-gray-600 hover:text-red-600 rounded touch-target"
                           title="Supprimer"
                         >
                           <Trash2 className="h-3.5 w-3.5" />
@@ -5188,7 +5307,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
               <select
                 value={newStatus.color}
                 onChange={e => setNewStatus({ ...newStatus, color: e.target.value })}
-                className="w-24 px-2 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                className="w-24 px-2 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[44px]"
               >
                 {colorOptions.map(c => (
                   <option key={c.value} value={c.value}>{c.label}</option>
@@ -5198,7 +5317,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                 value={newStatus.label}
                 onChange={e => setNewStatus({ ...newStatus, label: e.target.value })}
                 placeholder="Nouveau statut..."
-                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+                className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[44px]"
               />
               <button
                 onClick={() => {
@@ -5208,7 +5327,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                   }
                 }}
                 disabled={!newStatus.label.trim() || addStatusMutation.isPending}
-                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50"
+                className="px-3 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
               >
                 <Plus className="h-4 w-4" />
               </button>
@@ -5241,29 +5360,29 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                               updateStatusMutation.mutate({ id: s.id, label: editingStatus.label.trim(), color: editingStatus.color })
                             }
                           }}
-                          className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                          className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded touch-target"
                         >
                           <Check className="h-4 w-4" />
                         </button>
-                        <button onClick={() => setEditingStatus(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                        <button onClick={() => setEditingStatus(null)} className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                           <X className="h-4 w-4" />
                         </button>
                       </>
                     ) : (
                       <>
                         <span className={`w-3 h-3 rounded-full ${colorCss}`} />
-                        <span className={`flex-1 text-sm ${s.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                        <span className={`flex-1 text-sm ${s.disabled ? 'line-through text-gray-600' : 'text-gray-900 dark:text-white'}`}>
                           {s.label}
-                          {s.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                          {s.is_default ? <span className="ml-1 text-xs text-gray-600">(défaut)</span> : ''}
                         </span>
                         <button
                           onClick={() => setEditingStatus({ id: s.id, label: s.label, color: s.color || 'gray' })}
-                          className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                          title="Modifier"
+                          className="p-1 text-gray-600 hover:text-blue-600 rounded touch-target"
+                          title="Modifier" aria-label="Modifier"
                         >
                           <Edit3 className="h-3.5 w-3.5" />
                         </button>
-                        <button
+                        <button aria-label={s.disabled ? 'Réactiver' : 'Désactiver'}
                           onClick={() => updateStatusMutation.mutate({ id: s.id, disabled: s.disabled ? 0 : 1 })}
                           className={`p-1 rounded ${s.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
                           title={s.disabled ? 'Réactiver' : 'Désactiver'}
@@ -5271,9 +5390,15 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                           {s.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
                         </button>
                         {!s.is_default && (
-                          <button
-                            onClick={() => { if (confirm('Supprimer ce statut ?')) deleteStatusMutation.mutate(s.id) }}
-                            className="p-1 text-gray-400 hover:text-red-600 rounded"
+                          <button aria-label="Supprimer"
+                            onClick={async () => {
+                              const ok = await confirm({
+                                title: `Supprimer le statut « ${s.label} » ?`,
+                                message: "Les espaces verts portant ce statut ne sont pas supprimés.",
+                              })
+                              if (ok) deleteStatusMutation.mutate(s.id)
+                            }}
+                            className="p-1 text-gray-600 hover:text-red-600 rounded touch-target"
                             title="Supprimer"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
@@ -5295,6 +5420,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
 // ======================== MODAL TYPES DE GROUPES ========================
 
 function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
+  const confirm = useConfirm()
   const queryClient = useQueryClient()
 
   const { data: allGroupTypes = [] } = useQuery({
@@ -5305,14 +5431,17 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
   const [editingGT, setEditingGT] = useState<{ id: number, label: string, icon: string, color: string } | null>(null)
 
   const addMutation = useMutation({
+    meta: { successMessage: 'Type de groupe ajouté' },
     mutationFn: (data: any) => api.post('/green-spaces/group-types', data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-group-types'] }); setNewGT({ label: '', icon: '🌺', color: '#8b5cf6' }) }
   })
   const updateMutation = useMutation({
+    meta: { successMessage: 'Type de groupe modifié' },
     mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/group-types/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['green-space-group-types'] }); setEditingGT(null) }
   })
   const deleteMutation = useMutation({
+    meta: { successMessage: 'Type de groupe supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/group-types/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space-group-types'] })
   })
@@ -5325,7 +5454,7 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
             <Layers className="h-5 w-5 text-purple-600" />
             Types de groupes de composition
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -5335,21 +5464,21 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
           <input
             value={newGT.icon}
             onChange={e => setNewGT({ ...newGT, icon: e.target.value })}
-            className="w-12 px-2 py-2 text-sm text-center border rounded-lg dark:bg-gray-700 dark:border-gray-600"
+            className="w-12 px-2 py-2 text-sm text-center border rounded-lg dark:bg-gray-700 dark:border-gray-600 min-h-[44px]"
             title="Icône emoji"
           />
           <input
             value={newGT.label}
             onChange={e => setNewGT({ ...newGT, label: e.target.value })}
             placeholder="Nouveau type de groupe..."
-            className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            className="flex-1 px-3 py-2 text-sm border rounded-lg dark:bg-gray-700 dark:border-gray-600 dark:text-white min-h-[44px]"
           />
           <input
             type="color"
             value={newGT.color}
             onChange={e => setNewGT({ ...newGT, color: e.target.value })}
             className="w-10 h-9 rounded-lg border border-gray-300 dark:border-gray-600 cursor-pointer"
-            title="Couleur"
+            title="Couleur" aria-label="Couleur"
           />
           <button
             onClick={() => {
@@ -5359,7 +5488,7 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
               }
             }}
             disabled={!newGT.label.trim() || addMutation.isPending}
-            className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
+            className="px-3 py-2 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 min-h-[44px]"
           >
             <Plus className="h-4 w-4" />
           </button>
@@ -5393,11 +5522,11 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
                         updateMutation.mutate({ id: t.id, label: editingGT.label.trim(), icon: editingGT.icon, color: editingGT.color })
                       }
                     }}
-                    className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded"
+                    className="p-1 text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30 rounded touch-target"
                   >
                     <Check className="h-4 w-4" />
                   </button>
-                  <button onClick={() => setEditingGT(null)} className="p-1 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded">
+                  <button onClick={() => setEditingGT(null)} className="p-1 text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                     <X className="h-4 w-4" />
                   </button>
                 </>
@@ -5405,18 +5534,18 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
                 <>
                   <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: t.color || '#8b5cf6' }} />
                   <span className="text-lg">{t.icon}</span>
-                  <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-400' : 'text-gray-900 dark:text-white'}`}>
+                  <span className={`flex-1 text-sm ${t.disabled ? 'line-through text-gray-600' : 'text-gray-900 dark:text-white'}`}>
                     {t.label}
-                    {t.is_default ? <span className="ml-1 text-xs text-gray-400">(défaut)</span> : ''}
+                    {t.is_default ? <span className="ml-1 text-xs text-gray-600">(défaut)</span> : ''}
                   </span>
                   <button
                     onClick={() => setEditingGT({ id: t.id, label: t.label, icon: t.icon || '🌺', color: t.color || '#8b5cf6' })}
-                    className="p-1 text-gray-400 hover:text-blue-600 rounded"
-                    title="Modifier"
+                    className="p-1 text-gray-600 hover:text-blue-600 rounded touch-target"
+                    title="Modifier" aria-label="Modifier"
                   >
                     <Edit3 className="h-3.5 w-3.5" />
                   </button>
-                  <button
+                  <button aria-label={t.disabled ? 'Réactiver' : 'Désactiver'}
                     onClick={() => updateMutation.mutate({ id: t.id, disabled: t.disabled ? 0 : 1 })}
                     className={`p-1 rounded ${t.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
                     title={t.disabled ? 'Réactiver' : 'Désactiver'}
@@ -5424,9 +5553,15 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
                     {t.disabled ? <Check className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
                   </button>
                   {!t.is_default && (
-                    <button
-                      onClick={() => { if (confirm('Supprimer ce type de groupe ?')) deleteMutation.mutate(t.id) }}
-                      className="p-1 text-gray-400 hover:text-red-600 rounded"
+                    <button aria-label="Supprimer"
+                      onClick={async () => {
+                        const ok = await confirm({
+                          title: `Supprimer le type de groupe « ${t.label} » ?`,
+                          message: "Les groupes de composition existants ne sont pas supprimés.",
+                        })
+                        if (ok) deleteMutation.mutate(t.id)
+                      }}
+                      className="p-1 text-gray-600 hover:text-red-600 rounded touch-target"
                       title="Supprimer"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -5473,6 +5608,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
   })
 
   const replaceMutation = useMutation({
+    meta: { successMessage: 'Élément remplacé' },
     mutationFn: (data: any) => api.post(`/green-spaces/elements/${element.id}/replace`, data),
     onSuccess: () => onReplaced()
   })
@@ -5500,7 +5636,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                 <select
                   value={form.season}
                   onChange={e => setForm({ ...form, season: e.target.value })}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                 >
                   {SEASONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                 </select>
@@ -5512,7 +5648,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                   value={form.year}
                   onChange={e => setForm({ ...form, year: parseInt(e.target.value) })}
                   min={2020} max={2050}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                 />
               </div>
             </div>
@@ -5523,7 +5659,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                 value={form.reason}
                 onChange={e => setForm({ ...form, reason: e.target.value })}
                 placeholder="Ex: Changement saisonnier, fin de vie, dégât..."
-                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
             </div>
           </div>
@@ -5539,7 +5675,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                     type="text"
                     value={form.new_label}
                     onChange={e => setForm({ ...form, new_label: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   />
                 </div>
                 <div>
@@ -5549,7 +5685,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                     value={form.new_species}
                     onChange={e => setForm({ ...form, new_species: e.target.value })}
                     placeholder="Ex: Pensée, Tulipe..."
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   />
                 </div>
               </div>
@@ -5559,7 +5695,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                   <select
                     value={form.new_element_type}
                     onChange={e => setForm({ ...form, new_element_type: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   >
                     {ELEMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.icon} {t.label}</option>)}
                   </select>
@@ -5571,7 +5707,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                     min={1}
                     value={form.new_quantity}
                     onChange={e => setForm({ ...form, new_quantity: parseInt(e.target.value) || 1 })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   />
                 </div>
                 <div>
@@ -5580,7 +5716,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                     type="date"
                     value={form.new_planting_date}
                     onChange={e => setForm({ ...form, new_planting_date: e.target.value })}
-                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   />
                 </div>
               </div>
@@ -5591,7 +5727,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                   onChange={e => setForm({ ...form, notes: e.target.value })}
                   rows={2}
                   placeholder="Notes sur le remplacement..."
-                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                  className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                 />
               </div>
             </div>
@@ -5599,13 +5735,13 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
         </div>
 
         <div className="p-5 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg min-h-[44px]">
             Annuler
           </button>
           <button
             onClick={() => replaceMutation.mutate(form)}
             disabled={!form.new_label.trim() || replaceMutation.isPending}
-            className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2"
+            className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:opacity-50 flex items-center gap-2 min-h-[44px]"
           >
             {replaceMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             Remplacer et archiver
@@ -5642,7 +5778,7 @@ function ElementHistoryModal({ element, onClose }: { element: GreenSpaceElement,
             <History className="h-5 w-5 text-blue-600" />
             Historique des remplacements — {element.label}
           </h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -5656,9 +5792,9 @@ function ElementHistoryModal({ element, onClose }: { element: GreenSpaceElement,
 
           {!isLoading && history.length === 0 && (
             <div className="text-center py-10">
-              <History className="h-10 w-10 text-gray-300 mx-auto mb-3" />
+              <History className="h-10 w-10 text-gray-600 mx-auto mb-3" />
               <p className="text-sm text-gray-500 dark:text-gray-400">Aucun remplacement enregistré pour cet élément.</p>
-              <p className="text-xs text-gray-400 mt-1">L'historique apparaîtra ici lorsque vous utiliserez la fonction « Remplacer ».</p>
+              <p className="text-xs text-gray-600 mt-1">L'historique apparaîtra ici lorsque vous utiliserez la fonction « Remplacer ».</p>
             </div>
           )}
 
@@ -5671,7 +5807,7 @@ function ElementHistoryModal({ element, onClose }: { element: GreenSpaceElement,
                 </div>
                 <p className="text-sm font-medium text-gray-900 dark:text-white">{element.label}</p>
                 {element.species && <p className="text-xs text-gray-500 italic">{element.species}</p>}
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-xs text-gray-600 mt-1">
                   {ELEMENT_TYPES.find(t => t.value === element.element_type)?.icon} {ELEMENT_TYPES.find(t => t.value === element.element_type)?.label}
                   {element.quantity > 1 ? ` × ${element.quantity}` : ''}
                 </p>
@@ -5690,11 +5826,11 @@ function ElementHistoryModal({ element, onClose }: { element: GreenSpaceElement,
                           </span>
                           {idx === 0 && <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded">Dernier remplacement</span>}
                         </div>
-                        <span className="text-xs text-gray-400">{h.replaced_at ? new Date(h.replaced_at).toLocaleDateString('fr-FR') : ''}</span>
+                        <span className="text-xs text-gray-600">{h.replaced_at ? new Date(h.replaced_at).toLocaleDateString('fr-FR') : ''}</span>
                       </div>
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{h.previous_label}</p>
                       {h.previous_species && <p className="text-xs text-gray-500 italic">{h.previous_species}</p>}
-                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-400">
+                      <div className="flex items-center gap-3 mt-1 text-xs text-gray-600">
                         <span>{ELEMENT_TYPES.find(t => t.value === h.previous_element_type)?.icon} {ELEMENT_TYPES.find(t => t.value === h.previous_element_type)?.label}</span>
                         {h.previous_quantity > 1 && <span>× {h.previous_quantity}</span>}
                         {h.previous_condition_state && <span>État: {CONDITION_STATES.find(c => c.value === h.previous_condition_state)?.label || h.previous_condition_state}</span>}

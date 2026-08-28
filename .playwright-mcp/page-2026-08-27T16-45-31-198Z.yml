@@ -1,0 +1,23 @@
+- generic [ref=e4]:
+  - generic [ref=e5]:
+    - generic [ref=e6]: G
+    - heading "Gestion Matériels" [level=1] [ref=e8]
+    - paragraph [ref=e9]: Connectez-vous à votre compte
+  - generic [ref=e11]:
+    - generic [ref=e12]: Le serveur a rencontré un problème. Réessayez dans un instant.
+    - generic [ref=e19]:
+      - generic [ref=e20]: Adresse email
+      - textbox "vous@exemple.fr" [ref=e22]: agent@pavilly.fr
+    - generic [ref=e23]:
+      - generic [ref=e24]: Mot de passe
+      - generic [ref=e25]:
+        - textbox "••••••••" [ref=e26]: motdepasse
+        - button [ref=e28] [cursor=pointer]
+    - generic [ref=e32]:
+      - generic [ref=e33] [cursor=pointer]:
+        - checkbox "Se souvenir de moi" [ref=e34]
+        - generic [ref=e35]: Se souvenir de moi
+      - link "Mot de passe oublié ?" [ref=e36] [cursor=pointer]:
+        - /url: /forgot-password
+    - button "Se connecter" [ref=e37] [cursor=pointer]
+  - paragraph [ref=e38]: "- Version 1.0.0"

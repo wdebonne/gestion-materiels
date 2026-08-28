@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireSupervisor, requireFieldWrite } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
 
 const router = Router();
@@ -1105,7 +1105,7 @@ router.put('/groups/:groupId/elements', authenticateToken, requireSupervisor, as
 // ======================== ENTRETIENS ========================
 
 // POST /:id/maintenances - Créer un entretien
-router.post('/:id/maintenances', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/:id/maintenances', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
     const { maintenance_type, title, description, performed_date, next_maintenance_date, performed_by, duration_minutes, cost, notes, element_ids, document_ids } = req.body;
     if (!maintenance_type) return res.status(400).json({ success: false, message: 'Le type d\'entretien est requis' });

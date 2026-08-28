@@ -1,0 +1,50 @@
+- generic [ref=f3e4]:
+  - banner [ref=f3e5]:
+    - generic [ref=f3e6]:
+      - button "Ouvrir le menu" [ref=f3e7] [cursor=pointer]
+      - button "AS" [ref=f3e10] [cursor=pointer]
+  - main [ref=f3e14]:
+    - generic [ref=f3e15]:
+      - generic [ref=f3e16]:
+        - heading "Tableau de bord" [level=1] [ref=f3e17]
+        - paragraph [ref=f3e18]: Vue d'ensemble de votre gestion de matériels
+      - generic [ref=f3e19]:
+        - generic [ref=f3e23]:
+          - paragraph [ref=f3e24]: Catégories
+          - paragraph [ref=f3e25]: "0"
+        - generic [ref=f3e35]:
+          - paragraph [ref=f3e36]: Matériels
+          - paragraph [ref=f3e37]: "0"
+        - generic [ref=f3e46]:
+          - paragraph [ref=f3e47]: Valeur du parc
+          - paragraph [ref=f3e48]: 0 €
+        - generic [ref=f3e55]:
+          - paragraph [ref=f3e56]: Alertes actives
+          - paragraph [ref=f3e57]: "0"
+        - generic [ref=f3e64]:
+          - paragraph [ref=f3e65]: Événements ce mois
+          - paragraph [ref=f3e66]: "0"
+      - generic [ref=f3e70]:
+        - generic [ref=f3e73]:
+          - heading "Catégories" [level=3] [ref=f3e74]
+          - button "Voir tout →" [ref=f3e75] [cursor=pointer]
+        - generic [ref=f3e83]:
+          - heading "Alertes récentes" [level=3] [ref=f3e84]
+          - button "Voir tout →" [ref=f3e85] [cursor=pointer]
+      - generic [ref=f3e92]:
+        - generic [ref=f3e94]:
+          - heading "Événements à venir" [level=3] [ref=f3e95]
+          - button "Voir calendrier →" [ref=f3e96] [cursor=pointer]
+        - heading "Activité récente" [level=3] [ref=f3e105]
+      - generic [ref=f3e112]:
+        - heading "Statistiques des modules" [level=3] [ref=f3e114]
+        - generic [ref=f3e116]:
+          - generic [ref=f3e122]:
+            - paragraph [ref=f3e123]: Carburant ce mois
+            - paragraph [ref=f3e124]: 0 L
+          - generic [ref=f3e131]:
+            - paragraph [ref=f3e132]: Contrôles à venir
+            - paragraph [ref=f3e133]: "0"
+          - generic [ref=f3e138]:
+            - paragraph [ref=f3e139]: Entretiens à prévoir
+            - paragraph [ref=f3e140]: "0"

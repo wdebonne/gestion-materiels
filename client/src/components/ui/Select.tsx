@@ -31,7 +31,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
         )}
         <div className="relative">
           {icon && (
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400 z-10">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-600 dark:text-gray-300 z-10">
               {icon}
             </div>
           )}
@@ -61,7 +61,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ))}
           </select>
           {/* Chevron icon */}
-          <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-400">
+          <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none text-gray-600 dark:text-gray-300">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7" />
             </svg>
@@ -71,7 +71,7 @@ const Select = forwardRef<HTMLSelectElement, SelectProps>(
           <p className="mt-1.5 text-sm text-red-600">{error}</p>
         )}
         {hint && !error && (
-          <p className="mt-1.5 text-sm text-gray-500">{hint}</p>
+          <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{hint}</p>
         )}
       </div>
     )

@@ -10,6 +10,7 @@ import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
 import swaggerUi from 'swagger-ui-express';
 import { swaggerSpec } from './config/swagger';
+import { getJwtSecret, assertSecretsConfigured } from './config/secrets';
 
 // Import des middlewares de sécurité avancés
 import { globalLimiter, authLimiter, sensitiveOpsLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter.middleware';
@@ -17,6 +18,9 @@ import { httpsRedirect, httpsStatus } from './middleware/https.middleware';
 
 // Charger les variables d'environnement
 dotenv.config();
+
+// Refuser de démarrer en production avec un secret JWT absent ou d'exemple
+assertSecretsConfigured();
 
 // Import des routes
 import authRoutes from './routes/auth.routes';
@@ -97,7 +101,8 @@ async function syncVersionToDatabase() {
 }
 
 const app: Application = express();
-const PORT = Number(process.env.PORT) || 3000;
+// 3001 partout ailleurs : Dockerfile, docker-compose.yml, nginx.conf et le proxy Vite
+const PORT = Number(process.env.PORT) || 3001;
 
 // Middleware de redirection HTTPS (production uniquement)
 app.use(httpsRedirect);
@@ -147,7 +152,7 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
   }
 
   try {
-    jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    jwt.verify(token, getJwtSecret());
     next();
   } catch (error) {
     res.status(403).json({ success: false, message: 'Token invalide ou expiré' });
@@ -156,8 +161,9 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
 
 // Servir les fichiers statiques (uploads) avec protection
 app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../uploads')));
-// Plugins restent publics (contiennent uniquement du code/config)
-app.use('/plugins', express.static(path.join(__dirname, '../plugins')));
+// Les fichiers de plugins portent leur configuration (dont des requêtes SQL) :
+// ils ne doivent pas être servis publiquement.
+app.use('/plugins', verifyUploadAccess, express.static(path.join(__dirname, '../plugins')));
 
 // Route de vérification HTTPS (utile pour le debugging)
 app.get('/api/https-status', httpsStatus);

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { db } from '../database';
 import { logService } from './log.service';
+import { getJwtSecret } from '../config/secrets';
 
 /**
  * Service de rotation des secrets JWT
@@ -198,7 +199,7 @@ class JwtRotationService {
       return secrets.map((s: { secret: string }) => s.secret);
     } catch (error) {
       // Fallback sur le secret de l'environnement
-      return [process.env.JWT_SECRET || 'secret'];
+      return [getJwtSecret()];
     }
   }
 

@@ -84,7 +84,7 @@ export default function ObjectTimeline({ objectId }: TimelineProps) {
 
   if (allEvents.length === 0) {
     return (
-      <div className="text-center py-8 text-gray-400">
+      <div className="text-center py-8 text-gray-600 dark:text-gray-300">
         <Clock className="w-10 h-10 mx-auto mb-2 opacity-50" />
         <p>Aucun événement enregistré</p>
       </div>
@@ -110,19 +110,19 @@ export default function ObjectTimeline({ objectId }: TimelineProps) {
 
               {/* Contenu */}
               <div className="flex-1 pb-4">
-                <div className="bg-white border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
+                <div className="bg-white dark:bg-gray-800 border rounded-lg p-3 shadow-sm hover:shadow-md transition-shadow">
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-xs font-medium text-gray-400 uppercase">{config.label}</span>
-                      <h4 className="font-medium text-gray-900 text-sm">{event.title}</h4>
+                      <span className="text-xs font-medium text-gray-600 dark:text-gray-300 uppercase">{config.label}</span>
+                      <h4 className="font-medium text-gray-900 dark:text-gray-100 text-sm">{event.title}</h4>
                       {event.description && (
-                        <p className="text-xs text-gray-500 mt-0.5">{event.description}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{event.description}</p>
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="text-xs text-gray-400">{formatDate(event.date)}</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-300">{formatDate(event.date)}</p>
                       {event.cost != null && event.cost > 0 && (
-                        <p className="text-sm font-semibold text-gray-700">{formatCurrency(event.cost)}</p>
+                        <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{formatCurrency(event.cost)}</p>
                       )}
                     </div>
                   </div>

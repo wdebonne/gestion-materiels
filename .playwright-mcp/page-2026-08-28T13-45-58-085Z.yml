@@ -1,0 +1,20 @@
+- generic [ref=f2e3]:
+  - generic [ref=f2e4]:
+    - banner [ref=f2e5]:
+      - generic [ref=f2e6]:
+        - button "Ouvrir le menu" [ref=f2e7] [cursor=pointer]
+        - link "Scanner une étiquette" [ref=f2e9] [cursor=pointer]:
+          - /url: /scan
+        - button "LJ" [ref=f2e17] [cursor=pointer]
+    - main [ref=f2e21]:
+      - paragraph [ref=f2e26]: Chargement du matériel...
+  - navigation "Navigation principale" [ref=f2e27]:
+    - link "Accueil" [ref=f2e28] [cursor=pointer]:
+      - /url: /
+    - link "Scanner" [ref=f2e32] [cursor=pointer]:
+      - /url: /scan
+    - button "Chercher" [ref=f2e39] [cursor=pointer]
+    - link [ref=f2e43] [cursor=pointer]:
+      - /url: /alerts
+    - link "Profil" [ref=f2e48] [cursor=pointer]:
+      - /url: /profile

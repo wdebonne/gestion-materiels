@@ -1,6 +1,7 @@
 import { Server as HTTPServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../config/secrets';
 
 let io: Server | null = null;
 
@@ -21,7 +22,7 @@ export function initWebSocket(server: HTTPServer): Server {
     }
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+      const decoded = jwt.verify(token, getJwtSecret());
       (socket as any).user = decoded;
       next();
     } catch {

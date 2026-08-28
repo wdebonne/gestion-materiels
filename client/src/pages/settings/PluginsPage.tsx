@@ -477,7 +477,7 @@ export default function PluginsPage() {
                       <h3 className="font-semibold text-gray-900">{plugin.name}</h3>
                       <p className="text-sm text-gray-500 mt-1">{plugin.description}</p>
                       <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-gray-400">v{plugin.version}</span>
+                        <span className="text-xs text-gray-600">v{plugin.version}</span>
                         {hasDatabase && (
                           <span className="inline-flex items-center gap-1 text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
                             <Database className="w-3 h-3" />
@@ -511,7 +511,7 @@ export default function PluginsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => openSettings(plugin)}
-                        title="Paramètres"
+                        title="Paramètres" aria-label="Paramètres"
                       >
                         <Settings className="w-4 h-4" />
                       </Button>
@@ -520,7 +520,7 @@ export default function PluginsPage() {
                       variant="ghost"
                       size="sm"
                       onClick={() => handleExport(plugin)}
-                      title="Exporter"
+                      title="Exporter" aria-label="Exporter"
                     >
                       <Download className="w-4 h-4" />
                     </Button>
@@ -529,13 +529,13 @@ export default function PluginsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => setDeleteConfirm(plugin)}
-                        title="Supprimer"
+                        title="Supprimer" aria-label="Supprimer"
                         className="text-red-600 hover:text-red-700 hover:bg-red-50"
                       >
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     )}
-                    <button
+                    <button aria-label={plugin.isActive ? 'Désactiver' : 'Activer'}
                       onClick={() => toggleMutation.mutate({ id: plugin.id })}
                       disabled={toggleMutation.isPending}
                       className="text-gray-500 hover:text-primary-600 transition-colors"
@@ -756,7 +756,7 @@ export default function PluginsPage() {
                         
                         <span className="text-sm font-medium text-gray-900">{category.name}</span>
                         {category.hasSubcategories && category.subcategories && (
-                          <span className="text-xs text-gray-400">
+                          <span className="text-xs text-gray-600">
                             ({category.subcategories.length} sous-catégories)
                           </span>
                         )}

@@ -14,35 +14,35 @@ export default function Alert({ type = 'info', title, children, onClose, classNa
   const config = {
     info: {
       icon: Info,
-      bgColor: 'bg-blue-50',
-      borderColor: 'border-blue-200',
-      iconColor: 'text-blue-600',
-      titleColor: 'text-blue-800',
-      textColor: 'text-blue-700'
+      bgColor: 'bg-blue-50 dark:bg-blue-900/25',
+      borderColor: 'border-blue-200 dark:border-blue-800',
+      iconColor: 'text-blue-600 dark:text-blue-400',
+      titleColor: 'text-blue-800 dark:text-blue-200',
+      textColor: 'text-blue-700 dark:text-blue-300'
     },
     success: {
       icon: CheckCircle2,
-      bgColor: 'bg-green-50',
-      borderColor: 'border-green-200',
-      iconColor: 'text-green-600',
-      titleColor: 'text-green-800',
-      textColor: 'text-green-700'
+      bgColor: 'bg-green-50 dark:bg-green-900/25',
+      borderColor: 'border-green-200 dark:border-green-800',
+      iconColor: 'text-green-600 dark:text-green-400',
+      titleColor: 'text-green-800 dark:text-green-200',
+      textColor: 'text-green-700 dark:text-green-300'
     },
     warning: {
       icon: AlertCircle,
-      bgColor: 'bg-yellow-50',
-      borderColor: 'border-yellow-200',
-      iconColor: 'text-yellow-600',
-      titleColor: 'text-yellow-800',
-      textColor: 'text-yellow-700'
+      bgColor: 'bg-yellow-50 dark:bg-yellow-900/25',
+      borderColor: 'border-yellow-200 dark:border-yellow-800',
+      iconColor: 'text-yellow-600 dark:text-yellow-400',
+      titleColor: 'text-yellow-800 dark:text-yellow-200',
+      textColor: 'text-yellow-700 dark:text-yellow-300'
     },
     error: {
       icon: XCircle,
-      bgColor: 'bg-red-50',
-      borderColor: 'border-red-200',
-      iconColor: 'text-red-600',
-      titleColor: 'text-red-800',
-      textColor: 'text-red-700'
+      bgColor: 'bg-red-50 dark:bg-red-900/25',
+      borderColor: 'border-red-200 dark:border-red-800',
+      iconColor: 'text-red-600 dark:text-red-400',
+      titleColor: 'text-red-800 dark:text-red-200',
+      textColor: 'text-red-700 dark:text-red-300'
     }
   }
 
@@ -67,7 +67,7 @@ export default function Alert({ type = 'info', title, children, onClose, classNa
       {onClose && (
         <button
           onClick={onClose}
-          className={cn("p-1 rounded hover:bg-black/5 transition-colors", iconColor)}
+          className={cn("p-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors", iconColor)}
         >
           <X className="w-4 h-4" />
         </button>

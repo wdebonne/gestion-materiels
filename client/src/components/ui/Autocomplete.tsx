@@ -82,7 +82,7 @@ export default function Autocomplete({
   return (
     <div className={cn("w-full", className)} ref={containerRef}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1.5">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
           {label}
         </label>
       )}
@@ -103,7 +103,7 @@ export default function Autocomplete({
           )}
         >
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            {icon && <span className="text-gray-400 flex-shrink-0">{icon}</span>}
+            {icon && <span className="text-gray-600 dark:text-gray-300 flex-shrink-0">{icon}</span>}
             <span className={cn(
               "truncate",
               selectedOption ? "text-gray-900" : "text-gray-500"
@@ -116,13 +116,13 @@ export default function Autocomplete({
               <button
                 type="button"
                 onClick={handleClear}
-                className="p-1 hover:bg-gray-100 rounded text-gray-400 hover:text-gray-600"
+                className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded text-gray-600 dark:text-gray-300 hover:text-gray-600"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             )}
             <ChevronDown className={cn(
-              "w-4 h-4 text-gray-400 transition-transform",
+              "w-4 h-4 text-gray-600 transition-transform",
               isOpen && "rotate-180"
             )} />
           </div>
@@ -130,9 +130,9 @@ export default function Autocomplete({
 
         {/* Dropdown */}
         {isOpen && (
-          <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden">
+          <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden">
             {/* Champ de recherche */}
-            <div className="p-2 border-b border-gray-100">
+            <div className="p-2 border-b border-gray-100 dark:border-gray-700">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
@@ -141,7 +141,7 @@ export default function Autocomplete({
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="Rechercher..."
-                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-md focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20"
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 dark:border-gray-700 rounded-md focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500/20"
                 />
               </div>
             </div>
@@ -149,7 +149,7 @@ export default function Autocomplete({
             {/* Liste des options */}
             <div className="max-h-60 overflow-y-auto">
               {filteredOptions.length === 0 ? (
-                <div className="px-3 py-6 text-sm text-gray-500 text-center">
+                <div className="px-3 py-6 text-sm text-gray-500 dark:text-gray-400 text-center">
                   {emptyMessage}
                 </div>
               ) : (
@@ -177,7 +177,7 @@ export default function Autocomplete({
         <p className="mt-1.5 text-sm text-red-600">{error}</p>
       )}
       {hint && !error && (
-        <p className="mt-1.5 text-sm text-gray-500">{hint}</p>
+        <p className="mt-1.5 text-sm text-gray-500 dark:text-gray-400">{hint}</p>
       )}
     </div>
   )

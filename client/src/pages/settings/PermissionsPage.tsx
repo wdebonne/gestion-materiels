@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
-  Shield, Users, User,  
+  Shield, Users, User, HardHat,
   Eye, Edit2, Trash2, Save, Search, FolderOpen,
   BarChart3, Download, ArrowRightLeft, Plug
 } from 'lucide-react'
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui'
 import api, { User as UserType, Category } from '@/lib/api'
 import toast from 'react-hot-toast'
+import { ROLE_LABELS, type Role } from '@/lib/permissions'
 
 interface Permission {
   categoryId: number
@@ -52,7 +53,7 @@ function CategoryPermissionRow({
             <img src={category.image} alt="" className="w-8 h-8 rounded object-cover" />
           ) : (
             <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-              <FolderOpen className="w-4 h-4 text-gray-400" />
+              <FolderOpen className="w-4 h-4 text-gray-600" />
             </div>
           )}
           <span className="font-medium text-gray-900">{category.name}</span>
@@ -494,7 +495,7 @@ function UserPermissionsTab() {
                 <Alert type="info" className="m-4">
                   <span className="text-sm">
                     Les permissions individuelles s'ajoutent aux permissions du groupe 
-                    ({selectedUser.role === 'supervisor' ? 'Superviseurs' : 'Utilisateurs'}).
+                    ({ROLE_LABELS[selectedUser.role as Role] ?? 'Utilisateurs'}).
                     Cochez les catégories que cet utilisateur peut voir en plus.
                   </span>
                 </Alert>
@@ -628,7 +629,7 @@ function ModulePermissionsTab() {
     }
   })
 
-  const handleChange = (role: 'supervisor' | 'user', moduleName: string, field: string, value: boolean) => {
+  const handleChange = (role: Role, moduleName: string, field: string, value: boolean) => {
     if (role === 'supervisor') {
       setSupervisorPerms(prev => ({
         ...prev,
@@ -944,6 +945,12 @@ function PluginPermissionsTab() {
                     </th>
                     <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
                       <div className="flex items-center justify-center gap-1">
+                        <HardHat className="w-4 h-4 text-emerald-600" />
+                        <span>Agents</span>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      <div className="flex items-center justify-center gap-1">
                         <Users className="w-4 h-4 text-blue-600" />
                         <span>Utilisateurs</span>
                       </div>
@@ -980,6 +987,18 @@ function PluginPermissionsTab() {
                       <td className="px-4 py-3 text-center">
                         <input
                           type="checkbox"
+                          aria-label={`Accès au plugin ${p.name} pour les agents de terrain`}
+                          checked={!!p.permissions.agent}
+                          onChange={(e) => toggleRoleMutation.mutate({
+                            pluginId: p.id, role: 'agent', canAccess: e.target.checked
+                          })}
+                          className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Accès au plugin ${p.name} pour les utilisateurs`}
                           checked={p.permissions.user}
                           onChange={(e) => toggleRoleMutation.mutate({
                             pluginId: p.id, role: 'user', canAccess: e.target.checked
@@ -1121,6 +1140,7 @@ export default function PermissionsPage() {
           <ul className="text-sm space-y-1 list-disc list-inside">
             <li><strong>Administrateurs</strong> : Accès complet à toutes les catégories et modules (non configurable)</li>
             <li><strong>Superviseurs</strong> : Permissions définies dans l'onglet "Superviseurs"</li>
+            <li><strong>Agents de terrain</strong> : Saisissent pleins, entretiens, contrôles et photos sur les catégories cochées dans l'onglet "Agents de terrain"</li>
             <li><strong>Utilisateurs</strong> : Permissions définies dans l'onglet "Utilisateurs"</li>
             <li><strong>Permissions individuelles</strong> : S'ajoutent aux permissions du groupe de l'utilisateur</li>
             <li><strong>Modules</strong> : Permissions spécifiques pour les modules comme le Suivi des coûts</li>
@@ -1133,6 +1153,7 @@ export default function PermissionsPage() {
         <CardBody>
           <Tabs value={activeTab} onChange={setActiveTab}>
             <Tab value="supervisors" label="Superviseurs" icon={<Shield className="w-4 h-4" />} />
+            <Tab value="agents" label="Agents de terrain" icon={<HardHat className="w-4 h-4" />} />
             <Tab value="users" label="Utilisateurs" icon={<Users className="w-4 h-4" />} />
             <Tab value="individual" label="Permissions individuelles" icon={<User className="w-4 h-4" />} />
             <Tab value="modules" label="Modules" icon={<BarChart3 className="w-4 h-4" />} />
@@ -1142,6 +1163,9 @@ export default function PermissionsPage() {
           <div className="mt-6">
             {activeTab === 'supervisors' && (
               <GroupPermissionsTab role="supervisor" title="Groupe Superviseurs" icon={Shield} />
+            )}
+            {activeTab === 'agents' && (
+              <GroupPermissionsTab role="agent" title="Groupe Agents de terrain" icon={HardHat} />
             )}
             {activeTab === 'users' && (
               <GroupPermissionsTab role="user" title="Groupe Utilisateurs" icon={Users} />

@@ -1,5 +1,7 @@
 import axios from 'axios'
+import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth.store'
+import { getErrorMessage, isNetworkError } from '@/lib/errors'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -19,6 +21,23 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+/**
+ * Signale une session expirée SANS recharger la page ni effacer l'utilisateur :
+ * l'application affiche une modale de reconnexion par-dessus l'écran courant,
+ * ce qui évite de perdre un formulaire en cours de saisie.
+ */
+function handleExpiredSession() {
+  const { isAuthenticated, setSessionExpired } = useAuthStore.getState()
+
+  // Au démarrage (token périmé en localStorage), l'utilisateur n'est pas encore
+  // authentifié : `checkAuth` gère le cas, inutile d'afficher la modale.
+  if (isAuthenticated) {
+    setSessionExpired(true)
+  } else {
+    useAuthStore.getState().logout()
+  }
+}
+
 // Intercepteur pour gérer les erreurs
 api.interceptors.response.use(
   (response) => response,
@@ -26,7 +45,7 @@ api.interceptors.response.use(
     const originalRequest = error.config
 
     // Si erreur 401 et pas déjà tenté de refresh
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest?._retry) {
       originalRequest._retry = true
 
       const refreshToken = useAuthStore.getState().refreshToken
@@ -34,20 +53,30 @@ api.interceptors.response.use(
         try {
           const response = await axios.post(`${API_URL}/auth/refresh`, { refreshToken })
           const { accessToken, refreshToken: newRefreshToken } = response.data
-          
+
           useAuthStore.getState().setTokens(accessToken, newRefreshToken)
           originalRequest.headers.Authorization = `Bearer ${accessToken}`
-          
+
           return api(originalRequest)
         } catch (refreshError) {
-          useAuthStore.getState().logout()
-          window.location.href = '/login'
+          handleExpiredSession()
           return Promise.reject(refreshError)
         }
       } else {
-        useAuthStore.getState().logout()
-        window.location.href = '/login'
+        handleExpiredSession()
       }
+    }
+
+    // 403 : le serveur refuse l'action. Sans ce message, l'utilisateur remplit
+    // un formulaire, appuie sur « Ajouter », et rien ne se passe.
+    if (error.response?.status === 403) {
+      toast.error(getErrorMessage(error))
+    }
+
+    // Aucune réponse : le réseau est coupé. C'est le cas le plus fréquent
+    // en extérieur, et il était jusqu'ici totalement silencieux.
+    if (isNetworkError(error)) {
+      toast.error(getErrorMessage(error), { id: 'network-offline' })
     }
 
     return Promise.reject(error)
@@ -62,7 +91,7 @@ export interface User {
   email: string
   firstName?: string
   lastName?: string
-  role: 'admin' | 'supervisor' | 'user'
+  role: 'admin' | 'supervisor' | 'agent' | 'user'
   avatar?: string
   isActive: boolean
   createdAt: string

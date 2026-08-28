@@ -72,7 +72,7 @@ export default function Modal({
               {showCloseButton && (
                 <button
                   onClick={onClose}
-                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-gray-700 dark:hover:text-gray-300"
+                  className="p-2 text-gray-600 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-gray-700 dark:hover:text-gray-300"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -101,7 +101,7 @@ export function ModalBody({ children, className }: { children: ReactNode; classN
 
 export function ModalFooter({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200", className)}>
+    <div className={cn("flex items-center justify-end gap-3 px-6 py-4 bg-gray-50 border-t border-gray-200 dark:bg-gray-900/40 dark:border-gray-700", className)}>
       {children}
     </div>
   )

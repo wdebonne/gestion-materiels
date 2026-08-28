@@ -1,14 +1,14 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { useSettingsStore } from '@/stores/settings.store'
 import { Button, Input, Alert } from '@/components/ui'
+import { getErrorMessage } from '@/lib/errors'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
-  const navigate = useNavigate()
   const { setAuth } = useAuthStore()
   const { settings } = useSettingsStore()
   const [email, setEmail] = useState('')
@@ -26,12 +26,13 @@ export default function LoginPage() {
       const response = await api.post('/auth/login', { email, password })
       const { user, accessToken, refreshToken } = response.data
 
+      // La redirection est assurée par PublicRoute, qui reprend la main dès que
+      // `isAuthenticated` passe à true et renvoie vers la page initialement
+      // demandée (ex. la fiche d'un matériel ouverte via un QR code).
       setAuth(user, accessToken, refreshToken)
       toast.success(`Bienvenue, ${user.firstName} !`)
-      navigate('/')
     } catch (err: any) {
-      const message = err.response?.data?.error || 'Identifiants incorrects'
-      setError(message)
+      setError(err.response?.status === 401 ? 'Identifiants incorrects' : getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -64,7 +65,7 @@ export default function LoginPage() {
         </div>
 
         {/* Formulaire */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <Alert type="error">
@@ -110,9 +111,9 @@ export default function LoginPage() {
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                 />
-                <span className="text-sm text-gray-600">Se souvenir de moi</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">Se souvenir de moi</span>
               </label>
 
               <Link

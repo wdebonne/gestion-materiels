@@ -8,7 +8,13 @@ interface AuthState {
   refreshToken: string | null
   isAuthenticated: boolean
   isLoading: boolean
-  
+  /**
+   * Session expirée mais page conservée : on n'efface pas l'utilisateur et on
+   * ne recharge pas la page, pour que le formulaire en cours de saisie survive
+   * à la reconnexion.
+   */
+  sessionExpired: boolean
+
   // Actions
   login: (email: string, password: string) => Promise<void>
   logout: () => void
@@ -16,6 +22,7 @@ interface AuthState {
   setAuth: (user: User, token: string, refreshToken: string) => void
   setTokens: (token: string, refreshToken: string) => void
   updateUser: (user: Partial<User>) => void
+  setSessionExpired: (expired: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -26,17 +33,19 @@ export const useAuthStore = create<AuthState>()(
       refreshToken: null,
       isAuthenticated: false,
       isLoading: true,
+      sessionExpired: false,
 
       login: async (email: string, password: string) => {
         const response = await api.post('/auth/login', { email, password })
         const { user, accessToken, refreshToken } = response.data
-        
+
         set({
           user,
           token: accessToken,
           refreshToken,
           isAuthenticated: true,
-          isLoading: false
+          isLoading: false,
+          sessionExpired: false
         })
       },
 
@@ -47,7 +56,8 @@ export const useAuthStore = create<AuthState>()(
           token: null,
           refreshToken: null,
           isAuthenticated: false,
-          isLoading: false
+          isLoading: false,
+          sessionExpired: false
         })
       },
 
@@ -86,7 +96,8 @@ export const useAuthStore = create<AuthState>()(
           token,
           refreshToken,
           isAuthenticated: true,
-          isLoading: false
+          isLoading: false,
+          sessionExpired: false
         })
       },
 
@@ -95,6 +106,10 @@ export const useAuthStore = create<AuthState>()(
         if (currentUser) {
           set({ user: { ...currentUser, ...userData } })
         }
+      },
+
+      setSessionExpired: (expired: boolean) => {
+        set({ sessionExpired: expired })
       }
     }),
     {
