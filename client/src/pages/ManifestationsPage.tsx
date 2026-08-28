@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import {
   Button, Input, Select, Modal, ModalBody, ModalFooter,
-  Card, CardBody, CardHeader, CardTitle, Badge, Alert, Tabs, Tab, TextArea
+  Card, CardBody, CardHeader, CardTitle, Badge, Alert, Tabs, Tab
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
 import api from '@/lib/api'

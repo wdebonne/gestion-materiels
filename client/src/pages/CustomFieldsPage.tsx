@@ -118,7 +118,7 @@ export default function CustomFieldsPage() {
       const systemFields = ['category', 'subcategory', 'updatedAt', 'id']
       const existingFieldNames = fieldsConfig.fields.map((f: CustomField) => f.fieldName)
       
-      let allFields = [...fieldsConfig.fields]
+      const allFields = [...fieldsConfig.fields]
       
       // Ajouter les champs système manquants
       systemFields.forEach((name, index) => {

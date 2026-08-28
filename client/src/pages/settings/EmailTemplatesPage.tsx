@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Mail, Edit2, Eye, Code, Save } from 'lucide-react'
+import { Mail, Edit2, Eye, Save } from 'lucide-react'
 import { 
-  Card, CardBody, CardHeader, CardTitle, Button, Input, TextArea,
+  Card, CardBody, Button, Input, TextArea,
   Modal, ModalBody, ModalFooter, Badge, LoadingInline, Alert, Tabs
 } from '@/components/ui'
 import api from '@/lib/api'

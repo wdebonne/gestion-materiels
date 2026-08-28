@@ -206,12 +206,15 @@ router.put('/:provider', authenticateToken, requireAdmin, async (req: AuthReques
       );
     }
 
-    await logService.log({
-      action: 'update',
-      category: 'other',
-      userId: req.user!.userId,
-      details: `Configuration ${provider} mise à jour (${is_active ? 'activé' : 'désactivé'})`
-    });
+    // L'appel précédent passait `action` et omettait `level` : `log()` filtre sur
+    // les niveaux activés, `includes(undefined)` est faux, et l'entrée était
+    // jetée. Aucun changement de configuration d'authentification n'était tracé.
+    await logService.info(
+      'security',
+      `Configuration ${provider} mise à jour (${is_active ? 'activé' : 'désactivé'})`,
+      undefined,
+      { userId: req.user!.userId }
+    );
 
     res.json({ success: true, message: `Configuration ${provider} mise à jour` });
   } catch (error: any) {

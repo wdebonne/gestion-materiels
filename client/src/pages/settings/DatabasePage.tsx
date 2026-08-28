@@ -1,12 +1,12 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { 
-  Database, Server, ArrowRight, CheckCircle, AlertTriangle, 
+  Database, Server, ArrowRight, CheckCircle, 
   RefreshCw, Play, XCircle
 } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, CardTitle, Button, Input, Select,
-  Modal, ModalBody, ModalFooter, Badge, LoadingInline, Alert
+  Modal, ModalBody, ModalFooter, LoadingInline, Alert
 } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'

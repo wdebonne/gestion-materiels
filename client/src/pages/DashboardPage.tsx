@@ -12,7 +12,7 @@ import {
   Euro,
   Clock
 } from 'lucide-react'
-import { StatCard, Card, CardBody, CardHeader, CardTitle, ImageCard, LoadingInline, Alert } from '@/components/ui'
+import { StatCard, Card, CardBody, CardHeader, CardTitle, ImageCard, LoadingInline } from '@/components/ui'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import QuickActions from '@/components/QuickActions'
@@ -24,7 +24,7 @@ export default function DashboardPage() {
   const navigate = useNavigate()
 
   // Récupérer les statistiques
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
       const response = await api.get('/dashboard/stats')

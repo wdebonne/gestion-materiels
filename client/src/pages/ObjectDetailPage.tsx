@@ -2601,7 +2601,7 @@ export default function ObjectDetailPage() {
             } else {
               addControlCenterMutation.mutate(data)
             }
-            ;(e.target as HTMLFormElement).reset()
+            (e.target as HTMLFormElement).reset()
           }} className="mb-6 p-4 bg-gray-50 dark:bg-gray-900/40 rounded-lg">
             <h4 className="font-medium mb-3">
               {controlCenterEditData?.id ? 'Modifier le centre' : 'Ajouter un centre de contrôle'}

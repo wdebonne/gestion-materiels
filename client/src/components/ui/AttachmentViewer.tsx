@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Paperclip, FileText, Image as ImageIcon, Eye, Download, X } from 'lucide-react'
+import { Paperclip, FileText, Image as ImageIcon, Download, X } from 'lucide-react'
 import type { UploadedFile } from './FileUpload'
 
 interface AttachmentViewerProps {

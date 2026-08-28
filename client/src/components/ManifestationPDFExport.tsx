@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Download, FileText, Loader2 } from 'lucide-react'
+import { Download, Loader2 } from 'lucide-react'
 import { Button, Modal, ModalBody, ModalFooter } from '@/components/ui'
 import { formatDate } from '@/lib/utils'
 import toast from 'react-hot-toast'

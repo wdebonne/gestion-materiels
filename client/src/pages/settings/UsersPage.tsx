@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, User, Shield, UserCheck, HardHat, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, User, Search } from 'lucide-react'
 import { 
-  Card, CardBody, CardHeader, CardTitle, Button, Input, Select,
-  Modal, ModalBody, ModalFooter, Badge, LoadingInline, Alert
+  Card, CardBody, Button, Input, Select,
+  Modal, ModalBody, ModalFooter, Badge, LoadingInline
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
 import api, { User as UserType } from '@/lib/api'
@@ -119,19 +119,6 @@ export default function UsersPage() {
       return
     }
     saveMutation.mutate(formData)
-  }
-
-  const getRoleIcon = (role: string) => {
-    switch (role) {
-      case 'admin':
-        return <Shield className="w-4 h-4" />
-      case 'supervisor':
-        return <UserCheck className="w-4 h-4" />
-      case 'agent':
-        return <HardHat className="w-4 h-4" />
-      default:
-        return <User className="w-4 h-4" />
-    }
   }
 
   const getRoleBadge = (role: string) => {

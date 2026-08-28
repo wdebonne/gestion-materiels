@@ -6,7 +6,7 @@ import {
   Download, Image, Tag, Ruler, CloudSun,
   Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
   Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight,
-  Navigation, Globe, Hash, Leaf, Euro, SquareAsterisk, RefreshCw
+  Navigation, Globe, Hash, Leaf, Euro, RefreshCw
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -221,19 +221,6 @@ const SEASONS_LIST = [
   { value: 'ete', label: 'Été', icon: '☀️', color: 'bg-yellow-50 border-yellow-200 dark:bg-yellow-950 dark:border-yellow-800' },
   { value: 'automne', label: 'Automne', icon: '🍂', color: 'bg-orange-50 border-orange-200 dark:bg-orange-950 dark:border-orange-800' },
   { value: 'hiver', label: 'Hiver', icon: '❄️', color: 'bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' },
-]
-
-const DOC_TYPES = [
-  { value: 'plan', label: 'Plan / Cadastre' },
-  { value: 'permis', label: 'Permis / Autorisation' },
-  { value: 'diagnostic', label: 'Diagnostic phytosanitaire' },
-  { value: 'conformite', label: 'Certificat de conformité' },
-  { value: 'securite', label: 'Rapport de sécurité' },
-  { value: 'accessibilite', label: 'Accessibilité PMR' },
-  { value: 'contrat', label: 'Contrat d\'entretien' },
-  { value: 'facture', label: 'Facture' },
-  { value: 'photo', label: 'Photo / Relevé' },
-  { value: 'autre', label: 'Autre' },
 ]
 
 const GROUP_TYPES = [
@@ -2343,12 +2330,6 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
       setShowForm(false)
       setForm({ name: '', doc_type: 'autre', file_path: '', expiry_date: '', notes: '', element_ids: [] })
     }
-  })
-
-  const updateDocMutation = useMutation({
-    meta: { successMessage: 'Document modifié' },
-    mutationFn: ({ id, ...data }: any) => api.put(`/green-spaces/documents/${id}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
   })
 
   const deleteMutation = useMutation({
@@ -5600,7 +5581,7 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
 
 // ======================== MODAL REMPLACEMENT D'ÉLÉMENT ========================
 
-function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
+function ReplaceElementModal({ element, onClose, onReplaced }: {
   element: GreenSpaceElement, spaceId: number, onClose: () => void, onReplaced: () => void
 }) {
   const SEASONS = [

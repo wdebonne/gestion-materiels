@@ -24,7 +24,7 @@ interface TabProps {
 }
 
 // Composant Tab individuel (utilisé comme enfant de Tabs)
-export function Tab({ value, label, icon, count }: TabProps) {
+export function Tab(_props: TabProps) {
   // Ce composant est juste pour la déclaration, le rendu est fait par Tabs
   return null
 }

@@ -7,7 +7,7 @@ import {
   Filter, CheckCheck, Trash2, Settings, Save
 } from 'lucide-react'
 import { 
-  Button, Card, CardBody, CardHeader, CardTitle, Badge, 
+  Button, Card, CardBody, Badge, 
   LoadingInline, Select, Modal, ModalBody, ModalFooter, Input
 } from '@/components/ui'
 import api from '@/lib/api'

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Download, Loader2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
