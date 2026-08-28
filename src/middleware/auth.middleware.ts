@@ -56,6 +56,58 @@ export const authenticateToken = async (
 /**
  * Authentifie une requête via un token API (header X-API-Token)
  */
+/** Permissions qu'un token API peut porter, telles que proposées à l'administrateur. */
+export const PERMISSIONS_TOKEN = ['read', 'write', 'delete'] as const;
+export type PermissionToken = (typeof PERMISSIONS_TOKEN)[number];
+
+const LIBELLE_PERMISSION: Record<PermissionToken, string> = {
+  read: 'Lecture',
+  write: 'Écriture',
+  delete: 'Suppression',
+};
+
+/**
+ * Permission exigée par une méthode HTTP.
+ *
+ * Le découpage est celui affiché dans l'écran des tokens : lecture pour GET,
+ * écriture pour POST/PUT/PATCH, suppression pour DELETE. Une méthode inconnue
+ * est traitée comme une écriture, pour ne jamais élargir par défaut.
+ */
+export function permissionRequise(methode: string): PermissionToken {
+  switch (methode.toUpperCase()) {
+    case 'GET':
+    case 'HEAD':
+    case 'OPTIONS':
+      return 'read';
+    case 'DELETE':
+      return 'delete';
+    default:
+      return 'write';
+  }
+}
+
+/**
+ * Permissions stockées sur un token, ramenées à une liste sûre.
+ *
+ * Colonne absente, JSON corrompu ou valeur inconnue : on retombe sur la lecture
+ * seule plutôt que d'ouvrir des droits qu'un administrateur n'a pas accordés.
+ */
+export function lirePermissions(brut: unknown): PermissionToken[] {
+  let valeurs: unknown;
+  try {
+    valeurs = typeof brut === 'string' ? JSON.parse(brut) : brut;
+  } catch {
+    return ['read'];
+  }
+
+  if (!Array.isArray(valeurs)) return ['read'];
+
+  const retenues = valeurs.filter((v): v is PermissionToken =>
+    PERMISSIONS_TOKEN.includes(v as PermissionToken)
+  );
+  return retenues.length > 0 ? retenues : ['read'];
+}
+
 async function authenticateApiToken(
   rawToken: string,
   req: AuthRequest,
@@ -97,8 +149,20 @@ async function authenticateApiToken(
       role: apiToken.role
     };
 
-    // Stocker les permissions du token pour usage ultérieur
-    (req as any).apiTokenPermissions = JSON.parse(apiToken.permissions || '["read"]');
+    // Les permissions du token limitent ce qu'il peut faire, en plus du rôle
+    // hérité de son créateur. Elles étaient lues puis ignorées : un token
+    // « lecture seule » pouvait supprimer autant que son créateur.
+    const permissions = lirePermissions(apiToken.permissions);
+    (req as any).apiTokenPermissions = permissions;
+
+    const requise = permissionRequise(req.method);
+    if (!permissions.includes(requise)) {
+      res.status(403).json({
+        success: false,
+        message: `Ce token API n'a pas la permission « ${LIBELLE_PERMISSION[requise]} »`
+      });
+      return;
+    }
 
     next();
   } catch (error) {
