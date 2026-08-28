@@ -35,7 +35,9 @@ export default defineConfig({
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',
-              expiration: { maxEntries: 100, maxAgeSeconds: 300 }
+              // 24 h et non 5 min : une fiche consultée le matin doit encore
+              // s'ouvrir l'après-midi dans une zone sans réseau.
+              expiration: { maxEntries: 300, maxAgeSeconds: 86400 }
             }
           }
         ]

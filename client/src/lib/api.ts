@@ -2,6 +2,7 @@ import axios from 'axios'
 import toast from 'react-hot-toast'
 import { useAuthStore } from '@/stores/auth.store'
 import { getErrorMessage, isNetworkError } from '@/lib/errors'
+import { offlineQueue, estDifferable } from '@/lib/offlineQueue'
 
 const API_URL = import.meta.env.VITE_API_URL || '/api'
 
@@ -20,6 +21,15 @@ api.interceptors.request.use((config) => {
   }
   return config
 })
+
+/** Décrit une saisie en attente dans les termes de l'agent, pas de l'API. */
+function decrireSaisie(url: string): string {
+  if (/\/fuel$/.test(url)) return 'Plein de carburant'
+  if (/\/technical-control$/.test(url)) return 'Contrôle technique'
+  if (/green-spaces\/\d+\/maintenances$/.test(url)) return "Entretien d'espace vert"
+  if (/\/maintenance$/.test(url)) return 'Entretien'
+  return 'Saisie'
+}
 
 /**
  * Signale une session expirée SANS recharger la page ni effacer l'utilisateur :
@@ -76,6 +86,29 @@ api.interceptors.response.use(
     // Aucune réponse : le réseau est coupé. C'est le cas le plus fréquent
     // en extérieur, et il était jusqu'ici totalement silencieux.
     if (isNetworkError(error)) {
+      const url: string = originalRequest?.url ?? ''
+      const methode: string = originalRequest?.method ?? ''
+
+      // Relevé de terrain sur une URL explicitement autorisée : on le conserve
+      // pour l'envoyer au retour du réseau, et on laisse l'écran avancer.
+      if (estDifferable(url, methode)) {
+        const saisie = await offlineQueue.enqueue({
+          url,
+          method: methode.toUpperCase() as 'POST' | 'PUT',
+          body: originalRequest.data ? JSON.parse(originalRequest.data) : undefined,
+          label: decrireSaisie(url),
+        })
+
+        toast.success('Saisie conservée. Elle partira au retour du réseau.', {
+          id: 'file-hors-ligne',
+        })
+        window.dispatchEvent(new CustomEvent('file-hors-ligne:changement'))
+
+        // On résout au lieu de rejeter : le formulaire se ferme, et le
+        // bandeau permanent rappelle que l'envoi reste à faire.
+        return { data: { success: true, queued: true, id: saisie.id }, status: 202 }
+      }
+
       toast.error(getErrorMessage(error), { id: 'network-offline' })
     }
 
