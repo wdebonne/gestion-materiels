@@ -3,6 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor, requireFieldWrite } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
+import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 
 const router = Router();
 
@@ -518,10 +519,13 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       'SELECT * FROM green_space_documents WHERE green_space_id = ? ORDER BY created_at DESC',
       [req.params.id]
     );
+    const elementsParDocument = await grouperEnfants(
+      (marqueurs) => `SELECT document_id, element_id FROM green_space_document_elements WHERE document_id IN (${marqueurs})`,
+      (documents as any[]).map((d) => d.id),
+      'document_id'
+    );
     for (const doc of documents as any[]) {
-      doc.element_ids = (await db.query(
-        'SELECT element_id FROM green_space_document_elements WHERE document_id = ?', [doc.id]
-      )).map((r: any) => r.element_id);
+      doc.element_ids = enfantsDe(elementsParDocument, doc.id).map((r: any) => r.element_id);
     }
 
     // Récupérer les groupes de composition
@@ -535,13 +539,22 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       'SELECT * FROM green_space_maintenances WHERE green_space_id = ? ORDER BY performed_date DESC, created_at DESC',
       [req.params.id]
     );
+    const idsEntretiens = (maintenances as any[]).map((m) => m.id);
+    const [elementsParEntretien, documentsParEntretien] = await Promise.all([
+      grouperEnfants(
+        (marqueurs) => `SELECT maintenance_id, element_id FROM green_space_maintenance_elements WHERE maintenance_id IN (${marqueurs})`,
+        idsEntretiens,
+        'maintenance_id'
+      ),
+      grouperEnfants(
+        (marqueurs) => `SELECT maintenance_id, document_id FROM green_space_maintenance_documents WHERE maintenance_id IN (${marqueurs})`,
+        idsEntretiens,
+        'maintenance_id'
+      ),
+    ]);
     for (const m of maintenances as any[]) {
-      m.element_ids = (await db.query(
-        'SELECT element_id FROM green_space_maintenance_elements WHERE maintenance_id = ?', [m.id]
-      )).map((r: any) => r.element_id);
-      m.document_ids = (await db.query(
-        'SELECT document_id FROM green_space_maintenance_documents WHERE maintenance_id = ?', [m.id]
-      )).map((r: any) => r.document_id);
+      m.element_ids = enfantsDe(elementsParEntretien, m.id).map((r: any) => r.element_id);
+      m.document_ids = enfantsDe(documentsParEntretien, m.id).map((r: any) => r.document_id);
     }
 
     // Récupérer les snapshots

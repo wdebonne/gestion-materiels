@@ -3,6 +3,7 @@ import { body, query, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
+import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 
 const router = Router();
 
@@ -54,31 +55,47 @@ router.get('/stock', authenticateToken, async (req: AuthRequest, res: Response) 
 
     const stock = await db.query(sql, params);
 
-    // Pour chaque article, calculer les quantités engagées et prévisionnelles
-    const enriched = await Promise.all(stock.map(async (item: any) => {
-      // Quantité actuellement en prêt (livrée mais pas encore récupérée) pour manifs validées/livrées
-      const lent = await db.queryOne(`
-        SELECT COALESCE(SUM(mm.quantity_delivered - mm.quantity_recovered), 0) as qty
+    // Quantités engagées et prévisionnelles, agrégées en deux requêtes pour
+    // tout le stock plutôt qu'en deux requêtes par article.
+    const idsStock = stock.map((item: any) => item.id);
+    const [pretParArticle, reserveParArticle] = await Promise.all([
+      // En prêt : livré mais pas encore récupéré, sur les manifs validées ou livrées
+      grouperEnfants(
+        (marqueurs) => `
+        SELECT mm.stock_id, COALESCE(SUM(mm.quantity_delivered - mm.quantity_recovered), 0) as qty
         FROM manifestation_materials mm
         JOIN manifestations m ON m.id = mm.manifestation_id
-        WHERE mm.stock_id = ? AND m.status IN ('validated', 'delivered')
-      `, [item.id]);
+        WHERE mm.stock_id IN (${marqueurs}) AND m.status IN ('validated', 'delivered')
+        GROUP BY mm.stock_id
+      `,
+        idsStock,
+        'stock_id'
+      ),
+      // Réservé pour des manifs futures (brouillon ou validé, date_start >= aujourd'hui)
+      grouperEnfants(
+        (marqueurs) => `
+        SELECT mm.stock_id, COALESCE(SUM(mm.quantity_requested), 0) as qty
+        FROM manifestation_materials mm
+        JOIN manifestations m ON m.id = mm.manifestation_id
+        WHERE mm.stock_id IN (${marqueurs}) AND m.status IN ('draft', 'validated') AND m.date_start >= date('now')
+        GROUP BY mm.stock_id
+      `,
+        idsStock,
+        'stock_id'
+      ),
+    ]);
 
-      // Quantité réservée pour des manifs futures (brouillon ou validé, date_start >= aujourd'hui)
-      const reserved = await db.queryOne(`
-        SELECT COALESCE(SUM(mm.quantity_requested), 0) as qty
-        FROM manifestation_materials mm
-        JOIN manifestations m ON m.id = mm.manifestation_id
-        WHERE mm.stock_id = ? AND m.status IN ('draft', 'validated') AND m.date_start >= date('now')
-      `, [item.id]);
+    const enriched = stock.map((item: any) => {
+      const lent = enfantsDe<any>(pretParArticle, item.id)[0]?.qty || 0;
+      const reserved = enfantsDe<any>(reserveParArticle, item.id)[0]?.qty || 0;
 
       return {
         ...item,
-        quantity_available: item.quantity_total - (lent?.qty || 0),
-        quantity_lent: lent?.qty || 0,
-        quantity_reserved_future: reserved?.qty || 0
+        quantity_available: item.quantity_total - lent,
+        quantity_lent: lent,
+        quantity_reserved_future: reserved
       };
-    }));
+    });
 
     res.json({ success: true, data: enriched });
   } catch (error: any) {
@@ -199,21 +216,29 @@ router.get('/stock/availability', authenticateToken, async (req: AuthRequest, re
     const targetDate = date || new Date().toISOString().split('T')[0];
 
     const stock = await db.query('SELECT * FROM manifestation_stock ORDER BY category, name');
-    const enriched = await Promise.all(stock.map(async (item: any) => {
-      const engaged = await db.queryOne(`
-        SELECT COALESCE(SUM(mm.quantity_delivered), 0) as qty
+    const engageParArticle = await grouperEnfants(
+      (marqueurs) => `
+        SELECT mm.stock_id, COALESCE(SUM(mm.quantity_delivered), 0) as qty
         FROM manifestation_materials mm
         JOIN manifestations m ON m.id = mm.manifestation_id
-        WHERE mm.stock_id = ? AND m.status IN ('validated', 'delivered')
+        WHERE mm.stock_id IN (${marqueurs}) AND m.status IN ('validated', 'delivered')
           AND m.date_start <= ? AND (m.date_end >= ? OR m.date_end IS NULL)
-      `, [item.id, targetDate, targetDate]);
+        GROUP BY mm.stock_id
+      `,
+      stock.map((item: any) => item.id),
+      'stock_id',
+      (tranche) => [...tranche, targetDate, targetDate]
+    );
+
+    const enriched = stock.map((item: any) => {
+      const engaged = enfantsDe<any>(engageParArticle, item.id)[0]?.qty || 0;
 
       return {
         ...item,
-        quantity_engaged: engaged?.qty || 0,
-        quantity_available: item.quantity_total - (engaged?.qty || 0)
+        quantity_engaged: engaged,
+        quantity_available: item.quantity_total - engaged
       };
-    }));
+    });
 
     res.json({ success: true, data: enriched });
   } catch (error: any) {
@@ -287,15 +312,21 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     const manifestations = await db.query(sql, params);
 
-    // Ajouter les matériaux pour chaque manifestation
-    const enriched = await Promise.all(manifestations.map(async (m: any) => {
-      const materials = await db.query(`
+    // Matériaux de toutes les manifestations en une requête
+    const materiauxParManifestation = await grouperEnfants(
+      (marqueurs) => `
         SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category
         FROM manifestation_materials mm
         JOIN manifestation_stock ms ON ms.id = mm.stock_id
-        WHERE mm.manifestation_id = ?
-      `, [m.id]);
-      return { ...m, materials };
+        WHERE mm.manifestation_id IN (${marqueurs})
+      `,
+      manifestations.map((m: any) => m.id),
+      'manifestation_id'
+    );
+
+    const enriched = manifestations.map((m: any) => ({
+      ...m,
+      materials: enfantsDe(materiauxParManifestation, m.id)
     }));
 
     res.json({ success: true, data: enriched });
