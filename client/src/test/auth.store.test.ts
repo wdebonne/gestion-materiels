@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useAuthStore } from '@/stores/auth.store'
+import { useAuthStore, seSouvenirDeMoi, definirSouvenir } from '@/stores/auth.store'
 
 /**
  * Contrat du magasin d'authentification.
@@ -68,5 +68,66 @@ describe('Mise à jour de l’utilisateur', () => {
   it('ne fait rien sans utilisateur connecté', () => {
     useAuthStore.getState().updateUser({ firstName: 'Personne' })
     expect(useAuthStore.getState().user).toBeNull()
+  })
+})
+
+describe('« Rester connecté »', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    sessionStorage.clear()
+  })
+
+  it('est actif par défaut', () => {
+    // Le cas courant est l'agent sur son propre téléphone : lui redemander son
+    // mot de passe dix fois par jour est le meilleur moyen qu'il note le mot
+    // de passe sur un papier collé à l'écran.
+    expect(seSouvenirDeMoi()).toBe(true)
+  })
+
+  it('retient le choix d’une visite à l’autre', () => {
+    definirSouvenir(false)
+    expect(seSouvenirDeMoi()).toBe(false)
+    definirSouvenir(true)
+    expect(seSouvenirDeMoi()).toBe(true)
+  })
+
+  it('écrit la session dans localStorage quand il est actif', () => {
+    definirSouvenir(true)
+    useAuthStore.getState().setAuth(utilisateur, 'jeton-acces', 'jeton-rafraichissement')
+
+    expect(localStorage.getItem('auth-storage')).toContain('jeton-acces')
+    expect(sessionStorage.getItem('auth-storage')).toBeNull()
+  })
+
+  it('écrit la session dans sessionStorage quand il est inactif', () => {
+    // Poste partagé de l'atelier : la session doit disparaître avec le
+    // navigateur, pour que l'agent suivant n'hérite pas de la précédente.
+    definirSouvenir(false)
+    useAuthStore.getState().setAuth(utilisateur, 'jeton-acces', 'jeton-rafraichissement')
+
+    expect(sessionStorage.getItem('auth-storage')).toContain('jeton-acces')
+    expect(localStorage.getItem('auth-storage')).toBeNull()
+  })
+
+  it('ne laisse pas la session dans le stockage abandonné après un changement d’avis', () => {
+    definirSouvenir(true)
+    useAuthStore.getState().setAuth(utilisateur, 'jeton-acces', 'jeton-rafraichissement')
+    expect(localStorage.getItem('auth-storage')).toContain('jeton-acces')
+
+    definirSouvenir(false)
+    useAuthStore.getState().setAuth(utilisateur, 'autre-jeton', 'autre-rafraichissement')
+
+    expect(sessionStorage.getItem('auth-storage')).toContain('autre-jeton')
+    expect(localStorage.getItem('auth-storage')).toBeNull()
+  })
+
+  it('ne conserve aucun jeton après déconnexion', () => {
+    definirSouvenir(true)
+    useAuthStore.getState().setAuth(utilisateur, 'jeton-acces', 'jeton-rafraichissement')
+    useAuthStore.getState().logout()
+
+    expect(localStorage.getItem('auth-storage') ?? '').not.toContain('jeton-acces')
+    expect(sessionStorage.getItem('auth-storage') ?? '').not.toContain('jeton-acces')
+    expect(useAuthStore.getState().isAuthenticated).toBe(false)
   })
 })

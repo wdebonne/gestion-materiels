@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
-import { useAuthStore } from '@/stores/auth.store'
+import { useAuthStore, seSouvenirDeMoi, definirSouvenir } from '@/stores/auth.store'
 import { useSettingsStore } from '@/stores/settings.store'
 import { Button, Input, Alert } from '@/components/ui'
 import { getErrorMessage } from '@/lib/errors'
@@ -16,6 +16,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [souvenir, setSouvenir] = useState(seSouvenirDeMoi)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,6 +30,7 @@ export default function LoginPage() {
       // La redirection est assurée par PublicRoute, qui reprend la main dès que
       // `isAuthenticated` passe à true et renvoie vers la page initialement
       // demandée (ex. la fiche d'un matériel ouverte via un QR code).
+      definirSouvenir(souvenir)
       setAuth(user, accessToken, refreshToken)
       toast.success(`Bienvenue, ${user.firstName} !`)
     } catch (err: any) {
@@ -108,12 +110,14 @@ export default function LoginPage() {
             />
 
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer touch-target">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+                  checked={souvenir}
+                  onChange={(e) => setSouvenir(e.target.checked)}
+                  className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                 />
-                <span className="text-sm text-gray-600 dark:text-gray-300">Se souvenir de moi</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">Rester connecté</span>
               </label>
 
               <Link
@@ -123,6 +127,12 @@ export default function LoginPage() {
                 Mot de passe oublié ?
               </Link>
             </div>
+
+            {!souvenir && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 -mt-2">
+                La session se fermera à la fermeture du navigateur — à garder décoché sur un poste partagé.
+              </p>
+            )}
 
             <Button
               type="submit"

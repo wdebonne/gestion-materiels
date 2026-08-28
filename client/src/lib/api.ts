@@ -48,6 +48,21 @@ function handleExpiredSession() {
   }
 }
 
+/**
+ * Routes dont un 401 ne décrit pas une session à récupérer.
+ *
+ * Sans cette exclusion, un 401 sur `/auth/logout` appelait `handleExpiredSession`,
+ * qui appelait `logout()`, qui rappelait `/auth/logout` : une dizaine de
+ * requêtes en cascade, jusqu'au 429 du limiteur. Comme celui-ci couvre tout
+ * `/api/auth` à 10 requêtes par quart d'heure, se déconnecter — ou simplement
+ * se tromper de mot de passe — interdisait de se reconnecter pendant 15 minutes.
+ */
+const ROUTES_SANS_REPRISE_DE_SESSION = ['/auth/logout', '/auth/refresh', '/auth/login']
+
+function estUneRouteDAuthentification(url: string): boolean {
+  return ROUTES_SANS_REPRISE_DE_SESSION.some((route) => url.includes(route))
+}
+
 // Intercepteur pour gérer les erreurs
 api.interceptors.response.use(
   (response) => response,
@@ -55,7 +70,11 @@ api.interceptors.response.use(
     const originalRequest = error.config
 
     // Si erreur 401 et pas déjà tenté de refresh
-    if (error.response?.status === 401 && !originalRequest?._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest?._retry &&
+      !estUneRouteDAuthentification(originalRequest?.url ?? '')
+    ) {
       originalRequest._retry = true
 
       const refreshToken = useAuthStore.getState().refreshToken
