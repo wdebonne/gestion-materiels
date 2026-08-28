@@ -214,7 +214,7 @@ export default function DatabasePage() {
             ]}
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Hôte"
               value={migrationConfig.host}
@@ -237,7 +237,7 @@ export default function DatabasePage() {
             hint="La base de données doit être créée au préalable"
           />
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label="Utilisateur"
               value={migrationConfig.username}

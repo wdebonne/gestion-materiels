@@ -13,6 +13,7 @@ import {
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
+import HelpSheet from '@/components/HelpSheet'
 
 interface Alert {
   id: number
@@ -227,14 +228,26 @@ export default function AlertsPage() {
     <div className="space-y-6">
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Alertes</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
-            {activeCount > 0 
-              ? `${activeCount} alerte(s) active(s)`
-              : 'Aucune alerte active'
-            }
-          </p>
+        <div className="flex items-start gap-2">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Alertes</h1>
+            <p className="text-gray-500 dark:text-gray-400 mt-1">
+              {activeCount > 0 
+                ? `${activeCount} alerte(s) active(s)`
+                : 'Aucune alerte active'
+              }
+            </p>
+          </div>
+          <HelpSheet
+            titre="Les alertes"
+            points={[
+              "Les alertes sont créées automatiquement chaque heure par l'application.",
+              "Elles signalent les contrôles techniques qui expirent et les entretiens à prévoir.",
+              "Un entretien n'apparaît ici que si sa date de prochain passage a été renseignée.",
+              "« Marquer comme lu » n'efface rien : l'alerte reste consultable.",
+              "Les seuils de déclenchement se règlent dans les paramètres, par un responsable.",
+            ]}
+          />
         </div>
         {activeCount > 0 && (
           <Button 
@@ -460,10 +473,11 @@ export default function AlertsPage() {
               </div>
               <h3 className="font-medium text-gray-900 dark:text-gray-100">Contrôle technique</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Jours avant l'échéance"
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={365}
                 value={alertSettings.technical_control.days}
@@ -496,10 +510,11 @@ export default function AlertsPage() {
               </div>
               <h3 className="font-medium text-gray-900 dark:text-gray-100">Entretien / Maintenance</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Jours avant l'échéance"
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={365}
                 value={alertSettings.maintenance.days}
@@ -532,10 +547,11 @@ export default function AlertsPage() {
               </div>
               <h3 className="font-medium text-gray-900 dark:text-gray-100">Carburant</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Jours avant l'échéance"
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={365}
                 value={alertSettings.fuel.days}
@@ -568,10 +584,11 @@ export default function AlertsPage() {
               </div>
               <h3 className="font-medium text-gray-900 dark:text-gray-100">Autres alertes</h3>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Jours avant l'échéance"
                 type="number"
+                inputMode="numeric"
                 min={1}
                 max={365}
                 value={alertSettings.custom.days}

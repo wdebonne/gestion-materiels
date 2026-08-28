@@ -384,7 +384,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
           </div>
 
           {/* Options */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
               <input type="checkbox" checked={includeElements} onChange={e => setIncludeElements(e.target.checked)} className="rounded text-green-600" />
               Éléments positionnés

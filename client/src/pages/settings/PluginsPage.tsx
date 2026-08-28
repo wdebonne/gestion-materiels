@@ -683,6 +683,7 @@ export default function PluginsPage() {
                   ) : field.type === 'number' ? (
                     <Input
                       type="number"
+                inputMode="numeric"
                       label={field.label}
                       value={pluginSettings[field.key] || ''}
                       onChange={(e) => setPluginSettings({ ...pluginSettings, [field.key]: parseInt(e.target.value) })}

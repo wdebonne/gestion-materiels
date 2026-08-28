@@ -442,6 +442,26 @@ class DatabaseManager {
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
       )`,
 
+      /*
+       * État de lecture des alertes, par utilisateur.
+       *
+       * La colonne alerts.is_read est globale : « tout marquer comme lu »
+       * vidait la pastille de toute la collectivité. Une ligne ici signifie
+       * « cet agent a vu cette alerte », sans effet pour les autres.
+       *
+       * `is_dismissed` reste global : ignorer une alerte, c'est déclarer que
+       * la situation est traitée — ce qui vaut pour tout le monde.
+       */
+      `CREATE TABLE IF NOT EXISTS alert_reads (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        alert_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        read_at DATETIME ${timestampDefault},
+        UNIQUE (alert_id, user_id),
+        FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
       // Table des sauvegardes
       `CREATE TABLE IF NOT EXISTS backups (
         id INTEGER PRIMARY KEY ${autoIncrement},

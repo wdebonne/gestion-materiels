@@ -1076,7 +1076,7 @@ export default function TrackingPage() {
                       <label className="block text-sm font-medium text-green-700 dark:text-green-300">
                         Mois 1
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <select
                           value={filters.month1}
                           onChange={(e) => setFilters(f => ({ ...f, month1: parseInt(e.target.value) }))}
@@ -1101,7 +1101,7 @@ export default function TrackingPage() {
                       <label className="block text-sm font-medium text-green-700 dark:text-green-300">
                         Mois 2
                       </label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                         <select
                           value={filters.month2}
                           onChange={(e) => setFilters(f => ({ ...f, month2: parseInt(e.target.value) }))}
@@ -1802,7 +1802,7 @@ export default function TrackingPage() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-4 grid grid-cols-2 gap-4">
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
               {viewingAttachments.map((attachment: any, index: number) => (
                 <a
                   key={index}

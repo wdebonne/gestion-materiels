@@ -271,7 +271,7 @@ export default function ProfilePage() {
           </CardHeader>
           <CardBody>
             <form onSubmit={handleProfileSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Prénom"
                   value={profileData.firstName}

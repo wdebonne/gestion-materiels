@@ -17,6 +17,7 @@ import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
 import QuickActions from '@/components/QuickActions'
 import GlobalSearch from '@/components/GlobalSearch'
+import HelpSheet from '@/components/HelpSheet'
 
 export default function DashboardPage() {
   const [rechercheOuverte, setRechercheOuverte] = useState(false)
@@ -72,9 +73,21 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* En-tête */}
+<div className="flex items-start justify-between gap-2">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Tableau de bord</h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">Vue d'ensemble de votre gestion de matériels</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Tableau de bord</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Vue d'ensemble de votre gestion de matériels</p>
+        </div>
+        <HelpSheet
+          titre="Le tableau de bord"
+          points={[
+              "Les quatre tuiles du haut sont les gestes du quotidien : scanner une étiquette, faire un plein, chercher un matériel.",
+              "« Faire un plein » vous emmène directement sur votre matériel épinglé, formulaire ouvert.",
+              "Pour épingler un matériel, ouvrez sa fiche et touchez l'étoile.",
+              "Les chiffres en dessous donnent l'état du parc : catégories, matériels, alertes en cours.",
+              "La pastille rouge sur « Alertes » compte les contrôles et entretiens à prévoir.",
+          ]}
+        />
       </div>
 
       {/* Ce que l'agent vient faire, avant les chiffres */}

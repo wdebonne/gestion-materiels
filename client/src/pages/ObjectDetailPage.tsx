@@ -11,6 +11,7 @@ import QRCodeDisplay from '@/components/QRCodeDisplay'
 import ObjectTimeline from '@/components/ObjectTimeline'
 import Can from '@/components/Can'
 import { useFavoritesStore } from '@/stores/favorites.store'
+import { useValidation, schemaPlein, schemaEntretien, schemaControle } from '@/lib/validation'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select,
   LoadingInline, Alert, Card, CardBody, CardHeader, CardTitle, Tabs, Badge,
@@ -25,6 +26,9 @@ export default function ObjectDetailPage() {
   const { objectId: id } = useParams<{ objectId: string }>()
   const [parametres, setParametres] = useSearchParams()
   const { enregistrerConsultation, basculerFavori, estFavori } = useFavoritesStore()
+  const validationPlein = useValidation<typeof fuelData>(schemaPlein)
+  const validationEntretien = useValidation<typeof maintenanceData>(schemaEntretien)
+  const validationControle = useValidation<typeof controlData>(schemaControle)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -1603,38 +1607,51 @@ export default function ObjectDetailPage() {
 
       {/* Modal Carburant */}
       <Modal isOpen={fuelModal} onClose={() => setFuelModal(false)} title="Ajouter un plein">
-        <form onSubmit={(e) => { e.preventDefault(); addFuelMutation.mutate(fuelData); }}>
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (!validationPlein.valider(fuelData)) return
+          addFuelMutation.mutate(fuelData)
+        }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
                 value={fuelData.date}
-                onChange={(e) => setFuelData({ ...fuelData, date: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, date: e.target.value }); validationPlein.effacer('date') }}
+                error={validationPlein.erreurs.date}
                 required
               />
               <Input
                 label="Quantité (L)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={fuelData.quantity}
-                onChange={(e) => setFuelData({ ...fuelData, quantity: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, quantity: e.target.value }); validationPlein.effacer('quantity') }}
+                error={validationPlein.erreurs.quantity}
                 required
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={fuelData.cost}
-                onChange={(e) => setFuelData({ ...fuelData, cost: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, cost: e.target.value }); validationPlein.effacer('cost') }}
+                error={validationPlein.erreurs.cost}
+                hint="Montant total payé. Le prix au litre est calculé tout seul."
               />
               <Input
                 label="Kilométrage"
                 type="number"
+                inputMode="numeric"
                 value={fuelData.mileage}
-                onChange={(e) => setFuelData({ ...fuelData, mileage: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, mileage: e.target.value }); validationPlein.effacer('mileage') }}
+                error={validationPlein.erreurs.mileage}
+                hint="Relevé au compteur. Met à jour la fiche s'il est plus élevé."
               />
             </div>
             <ReferenceSelect
@@ -1690,7 +1707,7 @@ export default function ObjectDetailPage() {
             }); 
           }}>
             <ModalBody className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Date"
                   type="date"
@@ -1705,10 +1722,11 @@ export default function ObjectDetailPage() {
                   placeholder="Ex: Diesel, SP95..."
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Quantité (L)"
                   type="number"
+                inputMode="decimal"
                   step="0.01"
                   value={fuelEditModal.quantity}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, quantity: e.target.value })}
@@ -1717,15 +1735,17 @@ export default function ObjectDetailPage() {
                 <Input
                   label="Coût total (€)"
                   type="number"
+                inputMode="decimal"
                   step="0.01"
                   value={fuelEditModal.cost}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, cost: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Kilométrage"
                   type="number"
+                inputMode="numeric"
                   value={fuelEditModal.mileage}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, mileage: e.target.value })}
                 />
@@ -1903,8 +1923,9 @@ export default function ObjectDetailPage() {
 
       {/* Modal Entretien */}
       <Modal isOpen={maintenanceModal} onClose={() => setMaintenanceModal(false)} title="Ajouter un entretien">
-        <form onSubmit={(e) => { 
-          e.preventDefault(); 
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (!validationEntretien.valider(maintenanceData)) return
           addMaintenanceMutation.mutate({
             maintenanceDate: maintenanceData.date,
             maintenanceType: maintenanceData.type,
@@ -1917,18 +1938,20 @@ export default function ObjectDetailPage() {
           }); 
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
                 value={maintenanceData.date}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, date: e.target.value })}
+                onChange={(e) => { setMaintenanceData({ ...maintenanceData, date: e.target.value }); validationEntretien.effacer('date') }}
+                error={validationEntretien.erreurs.date}
                 required
               />
               <ReferenceSelect
                 label="Type d'entretien"
+                erreur={validationEntretien.erreurs.type}
                 value={maintenanceData.type}
-                onChange={(valeur) => setMaintenanceData({ ...maintenanceData, type: valeur })}
+                onChange={(valeur) => { setMaintenanceData({ ...maintenanceData, type: valeur }); validationEntretien.effacer('type') }}
                 options={maintenanceTypes}
                 nomSingulier="un type"
                 placeholder="Choisir un type"
@@ -1942,22 +1965,26 @@ export default function ObjectDetailPage() {
               onChange={(e) => setMaintenanceData({ ...maintenanceData, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={maintenanceData.cost}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, cost: e.target.value })}
+                onChange={(e) => { setMaintenanceData({ ...maintenanceData, cost: e.target.value }); validationEntretien.effacer('cost') }}
+                error={validationEntretien.erreurs.cost}
               />
               <Input
                 label="Kilométrage"
                 type="number"
+                inputMode="numeric"
                 value={maintenanceData.mileage}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, mileage: e.target.value })}
+                onChange={(e) => { setMaintenanceData({ ...maintenanceData, mileage: e.target.value }); validationEntretien.effacer('mileage') }}
+                error={validationEntretien.erreurs.mileage}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ReferenceSelect
                 label="Prestataire"
                 value={maintenanceData.provider}
@@ -1972,7 +1999,7 @@ export default function ObjectDetailPage() {
                 type="date"
                 value={maintenanceData.nextDate}
                 onChange={(e) => setMaintenanceData({ ...maintenanceData, nextDate: e.target.value })}
-                hint="Date du prochain passage prévu"
+                hint="C'est cette date qui déclenche le rappel"
               />
             </div>
             {!maintenanceData.nextDate && (
@@ -2020,7 +2047,7 @@ export default function ObjectDetailPage() {
           }
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
@@ -2045,10 +2072,11 @@ export default function ObjectDetailPage() {
               onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={maintenanceEditModal?.cost || ''}
                 onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, cost: e.target.value })}
@@ -2056,11 +2084,12 @@ export default function ObjectDetailPage() {
               <Input
                 label="Kilométrage"
                 type="number"
+                inputMode="numeric"
                 value={maintenanceEditModal?.mileage || ''}
                 onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, mileage: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ReferenceSelect
                 label="Prestataire"
                 value={maintenanceEditModal?.provider || ''}
@@ -2230,7 +2259,7 @@ export default function ObjectDetailPage() {
                   value={maintenanceProviderEditData.name}
                   onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, name: e.target.value })}
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Input
                     placeholder="Adresse (optionnel)"
                     value={maintenanceProviderEditData.address}
@@ -2266,7 +2295,7 @@ export default function ObjectDetailPage() {
                           onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, name: e.target.value })}
                           placeholder="Nom"
                         />
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <Input
                             placeholder="Adresse"
                             value={maintenanceProviderEditData.address}
@@ -2340,9 +2369,13 @@ export default function ObjectDetailPage() {
 
       {/* Modal Contrôle technique */}
       <Modal isOpen={controlModal} onClose={() => setControlModal(false)} title="Ajouter un contrôle technique">
-        <form onSubmit={(e) => { e.preventDefault(); addControlMutation.mutate(controlData); }}>
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (!validationControle.valider(controlData)) return
+          addControlMutation.mutate(controlData)
+        }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date du contrôle"
                 type="date"
@@ -2357,7 +2390,10 @@ export default function ObjectDetailPage() {
                     expirationDate = expDate.toISOString().split('T')[0]
                   }
                   setControlData({ ...controlData, date: newDate, expirationDate })
+                  validationControle.effacer('date')
+                  validationControle.effacer('expirationDate')
                 }}
+                error={validationControle.erreurs.date}
                 required
               />
               <Input
@@ -2378,7 +2414,7 @@ export default function ObjectDetailPage() {
                 { value: 'failed', label: 'Défavorable' }
               ]}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ReferenceSelect
                 label="Centre de contrôle"
                 value={controlData.center}
@@ -2391,6 +2427,7 @@ export default function ObjectDetailPage() {
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={controlData.cost}
                 onChange={(e) => setControlData({ ...controlData, cost: e.target.value })}
@@ -2399,6 +2436,7 @@ export default function ObjectDetailPage() {
             <Input
               label="Kilométrage"
               type="number"
+                inputMode="numeric"
               value={controlData.mileage}
               onChange={(e) => setControlData({ ...controlData, mileage: e.target.value })}
             />
@@ -2439,7 +2477,7 @@ export default function ObjectDetailPage() {
           setCustomPluginModal(null)
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
@@ -2478,10 +2516,11 @@ export default function ObjectDetailPage() {
               onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={customMaintenanceData.cost}
                 onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, cost: e.target.value })}
@@ -2491,6 +2530,7 @@ export default function ObjectDetailPage() {
                 <Input
                   label="Kilométrage"
                   type="number"
+                inputMode="numeric"
                   value={customMaintenanceData.mileage}
                   onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, mileage: e.target.value })}
                 />
@@ -2697,7 +2737,7 @@ export default function ObjectDetailPage() {
           }
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date du contrôle"
                 type="date"
@@ -2733,7 +2773,7 @@ export default function ObjectDetailPage() {
                 { value: 'failed', label: 'Défavorable' }
               ]}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ReferenceSelect
                 label="Centre de contrôle"
                 value={controlEditModal?.center || ''}
@@ -2746,6 +2786,7 @@ export default function ObjectDetailPage() {
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={controlEditModal?.cost || ''}
                 onChange={(e) => setControlEditModal({ ...controlEditModal, cost: e.target.value })}
@@ -2754,6 +2795,7 @@ export default function ObjectDetailPage() {
             <Input
               label="Kilométrage"
               type="number"
+                inputMode="numeric"
               value={controlEditModal?.mileage || ''}
               onChange={(e) => setControlEditModal({ ...controlEditModal, mileage: e.target.value })}
             />

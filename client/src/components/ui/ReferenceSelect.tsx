@@ -11,6 +11,8 @@ interface Entree {
 interface ReferenceSelectProps {
   label?: string
   hint?: string
+  /** Message affiché sous le champ quand la saisie est refusée. */
+  erreur?: string
   /** Nom retenu. On stocke le libellé, pas l'identifiant, par compatibilité. */
   value: string
   onChange: (value: string) => void
@@ -34,6 +36,7 @@ interface ReferenceSelectProps {
 export default function ReferenceSelect({
   label,
   hint,
+  erreur,
   value,
   onChange,
   options,
@@ -109,7 +112,9 @@ export default function ReferenceSelect({
         aria-expanded={ouvert}
         className={cn(
           'flex min-h-[44px] w-full items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors',
-          'border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white',
+          erreur
+            ? 'border-red-300 bg-white text-gray-900 dark:border-red-500 dark:bg-gray-700 dark:text-white'
+            : 'border-gray-300 bg-white text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white',
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500'
         )}
       >
@@ -143,7 +148,8 @@ export default function ReferenceSelect({
         </span>
       </button>
 
-      {hint && <p className="mt-1.5 text-sm text-gray-600 dark:text-gray-400">{hint}</p>}
+      {erreur && <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{erreur}</p>}
+      {hint && !erreur && <p className="mt-1.5 text-sm text-gray-600 dark:text-gray-400">{hint}</p>}
 
       {ouvert && (
         <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">

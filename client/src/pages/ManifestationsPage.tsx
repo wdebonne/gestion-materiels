@@ -457,7 +457,7 @@ export default function ManifestationsPage() {
               onChange={e => setManifForm({ ...manifForm, title: e.target.value })} placeholder="Ex: Fête de la musique" />
 
             {/* Dates */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Date début *" type="date" value={manifForm.date_start}
                 onChange={e => setManifForm({ ...manifForm, date_start: e.target.value })} />
               <Input label="Date fin" type="date" value={manifForm.date_end}
@@ -471,7 +471,8 @@ export default function ManifestationsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Input label="Nom du contact" value={manifForm.contact_name}
                     onChange={e => setManifForm({ ...manifForm, contact_name: e.target.value })} />
-                  <Input label="Téléphone" value={manifForm.contact_phone}
+                  <Input
+                type="tel" label="Téléphone" value={manifForm.contact_phone}
                     onChange={e => setManifForm({ ...manifForm, contact_phone: e.target.value })} />
                 </div>
                 <Input label="Email" type="email" value={manifForm.contact_email}
@@ -529,11 +530,13 @@ export default function ManifestationsPage() {
                           )}
                         </div>
                         <div className="w-24">
-                          <Input label="Qté" type="number" value={String(mat.quantity_requested)}
+                          <Input label="Qté" type="number"
+                inputMode="numeric" value={String(mat.quantity_requested)}
                             onChange={e => updateMaterial(idx, 'quantity_requested', parseInt(e.target.value) || 0)} />
                         </div>
                         <div className="w-28">
-                          <Input label="Val. unit. TTC" type="number" value={String(mat.unit_value)}
+                          <Input label="Val. unit. TTC" type="number"
+                inputMode="numeric" value={String(mat.unit_value)}
                             onChange={e => updateMaterial(idx, 'unit_value', parseFloat(e.target.value) || 0)} />
                         </div>
                         <Button size="sm" variant="ghost" onClick={() => removeMaterial(idx)}>
@@ -566,7 +569,7 @@ export default function ManifestationsPage() {
             <Input label="Description" value={stockForm.description}
               onChange={e => setStockForm({ ...stockForm, description: e.target.value })} />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Catégorie (stock)" value={stockForm.category}
                 onChange={e => setStockForm({ ...stockForm, category: e.target.value })} placeholder="Ex: Mobilier"
                 list="stock-categories" />
@@ -577,10 +580,12 @@ export default function ManifestationsPage() {
               {stockCategories.map((c: string) => <option key={c} value={c} />)}
             </datalist>
 
-            <div className="grid grid-cols-2 gap-4">
-              <Input label="Quantité totale *" type="number" value={String(stockForm.quantity_total)}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label="Quantité totale *" type="number"
+                inputMode="numeric" value={String(stockForm.quantity_total)}
                 onChange={e => setStockForm({ ...stockForm, quantity_total: parseInt(e.target.value) || 0 })} />
-              <Input label="Prix unitaire (€)" type="number" value={String(stockForm.price)}
+              <Input label="Prix unitaire (€)" type="number"
+                inputMode="numeric" value={String(stockForm.price)}
                 onChange={e => setStockForm({ ...stockForm, price: parseFloat(e.target.value) || 0 })}
                 placeholder="0.00" />
             </div>
@@ -589,7 +594,7 @@ export default function ManifestationsPage() {
             <Card>
               <CardHeader><CardTitle className="text-sm">Propriétés de l'article</CardTitle></CardHeader>
               <CardBody className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="État" value={stockForm.etat || 'bon'}
                     onChange={e => setStockForm({ ...stockForm, etat: e.target.value })}
                     options={etatOptions} />
@@ -618,7 +623,7 @@ export default function ManifestationsPage() {
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Associer cet article à une catégorie ou sous-catégorie existante pour filtrer le matériel disponible.
                 </p>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Catégorie" value={String(stockForm.category_id || '')}
                     onChange={e => {
                       const val = e.target.value ? parseInt(e.target.value) : null
@@ -1095,7 +1100,7 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
           <Card>
             <CardHeader><CardTitle className="text-sm">Contact livraison</CardTitle></CardHeader>
             <CardBody>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><span className="text-gray-500 dark:text-gray-400">Nom:</span> {m.contact_name || '-'}</div>
                 <div><span className="text-gray-500 dark:text-gray-400">Tél:</span> {m.contact_phone || '-'}</div>
                 <div><span className="text-gray-500 dark:text-gray-400">Email:</span> {m.contact_email || '-'}</div>
@@ -1206,11 +1211,13 @@ function DeliveryModal({ manif, onClose, onSave, loading }: {
                 <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">(demandé: {m.quantity_requested} {m.unit})</span>
               </div>
               <div className="w-28">
-                <Input label="Livré" type="number" size="sm" value={String(m.quantity_delivered)}
+                <Input label="Livré" type="number"
+                inputMode="numeric" size="sm" value={String(m.quantity_delivered)}
                   onChange={e => update(i, 'quantity_delivered', parseInt(e.target.value) || 0)} />
               </div>
               <div className="w-28">
-                <Input label="Récupéré" type="number" size="sm" value={String(m.quantity_recovered)}
+                <Input label="Récupéré" type="number"
+                inputMode="numeric" size="sm" value={String(m.quantity_recovered)}
                   onChange={e => update(i, 'quantity_recovered', parseInt(e.target.value) || 0)} />
               </div>
             </div>

@@ -492,7 +492,7 @@ export default function WebhooksPage() {
                 Événements à écouter
               </label>
               <div className="border rounded-lg p-4 max-h-48 overflow-y-auto">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {AVAILABLE_EVENTS.map((event) => (
                     <label key={event.value} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
                       <input

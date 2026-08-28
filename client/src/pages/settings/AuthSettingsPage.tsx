@@ -172,6 +172,7 @@ function GeneralAuthSection({ config, queryClient }: { config: any; queryClient:
             <Input
               label="Timeout session (minutes)"
               type="number"
+                inputMode="numeric"
               value={String(formData.session_timeout_minutes)}
               onChange={(e) => setFormData({ ...formData, session_timeout_minutes: parseInt(e.target.value) || 480 })}
               hint="0 = pas d'expiration"
@@ -179,12 +180,14 @@ function GeneralAuthSection({ config, queryClient }: { config: any; queryClient:
             <Input
               label="Tentatives max avant blocage"
               type="number"
+                inputMode="numeric"
               value={String(formData.max_login_attempts)}
               onChange={(e) => setFormData({ ...formData, max_login_attempts: parseInt(e.target.value) || 5 })}
             />
             <Input
               label="Durée du blocage (minutes)"
               type="number"
+                inputMode="numeric"
               value={String(formData.lockout_duration_minutes)}
               onChange={(e) => setFormData({ ...formData, lockout_duration_minutes: parseInt(e.target.value) || 15 })}
             />
@@ -204,6 +207,7 @@ function GeneralAuthSection({ config, queryClient }: { config: any; queryClient:
             <Input
               label="Longueur minimale"
               type="number"
+                inputMode="numeric"
               value={String(formData.password_min_length)}
               onChange={(e) => setFormData({ ...formData, password_min_length: parseInt(e.target.value) || 8 })}
               hint="Minimum recommandé : 8 caractères"
@@ -211,6 +215,7 @@ function GeneralAuthSection({ config, queryClient }: { config: any; queryClient:
             <Input
               label="Expiration (jours)"
               type="number"
+                inputMode="numeric"
               value={String(formData.password_expiry_days)}
               onChange={(e) => setFormData({ ...formData, password_expiry_days: parseInt(e.target.value) || 0 })}
               hint="0 = jamais"
@@ -347,6 +352,7 @@ function LdapSection({ config, queryClient }: { config: any; queryClient: any })
             <Input
               label="Port"
               type="number"
+                inputMode="numeric"
               value={String(formData.port)}
               onChange={(e) => setFormData({ ...formData, port: parseInt(e.target.value) || 389 })}
               hint="389 (LDAP) ou 636 (LDAPS)"
@@ -1104,6 +1110,7 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
             <Input
               label="Timeout (millisecondes)"
               type="number"
+                inputMode="numeric"
               value={String(formData.timeout)}
               onChange={(e) => setFormData({ ...formData, timeout: parseInt(e.target.value) || 60000 })}
               hint="Délai max pour la validation biométrique"

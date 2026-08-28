@@ -17,6 +17,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import LocationPicker from '@/components/ui/LocationPicker'
 import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/ui'
+import HelpSheet from '@/components/HelpSheet'
 
 /** Normalise un chemin d'image : évite le doublon /uploads//uploads/... */
 /**
@@ -330,10 +331,22 @@ export default function EspacesVertsPage() {
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
+<div className="flex items-start justify-between gap-2">
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-            <TreePine className="h-7 w-7 text-green-600" />
-            Espaces Verts
-          </h1>
+              <TreePine className="h-7 w-7 text-green-600" />
+              Espaces Verts
+            </h1>
+        <HelpSheet
+          titre="Les espaces verts"
+          points={[
+              "Un espace vert regroupe un lieu : parc, square, rond-point, avec son plan et ses éléments.",
+              "Les éléments sont ce qui compose l'espace : arbres, massifs, haies, mobilier.",
+              "L'onglet Entretien enregistre chaque passage : type, durée, coût, éléments concernés.",
+              "Renseignez « Prochain entretien » : sans cette date, aucun rappel ne sera envoyé.",
+              "Le bouton « Utiliser ma position » relève les coordonnées GPS sans rien taper.",
+          ]}
+        />
+      </div>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
             Gestion des espaces verts, parcs et aménagements urbains
           </p>
@@ -1159,7 +1172,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
                   <select
@@ -1196,6 +1209,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Superficie (m²)</label>
                 <input
                   type="number"
+                inputMode="decimal"
                   step="0.01"
                   min="0"
                   value={gArea}
@@ -2175,7 +2189,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
       {/* Formulaire d'ajout */}
       {showForm && (
         <div className="p-4 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/30 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Saison</label>
               <select
@@ -2192,6 +2206,7 @@ function SeasonsTab({ space, queryClient }: { space: GreenSpace, queryClient: an
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Année</label>
               <input
                 type="number"
+                inputMode="numeric"
                 value={form.year}
                 onChange={(e) => setForm({ ...form, year: parseInt(e.target.value) })}
                 className="w-full text-sm px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
@@ -2428,7 +2443,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
 
       {showForm && (
         <div className="p-4 rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/30 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Nom du document *</label>
               <input
@@ -2451,7 +2466,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Fichier</label>
               <div className="flex items-center gap-2">
@@ -2984,7 +2999,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
             {editingMaintenance ? 'Modifier l\'entretien' : 'Nouvel entretien'}
           </h5>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Type d'entretien : autocomplete éditable */}
             <div className="relative">
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Type d'entretien *</label>
@@ -3043,7 +3058,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Date de réalisation</label>
               <input
@@ -3077,11 +3092,12 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Durée (minutes)</label>
               <input
                 type="number"
+                inputMode="numeric"
                 min="0"
                 value={form.duration_minutes}
                 onChange={(e) => setForm({ ...form, duration_minutes: e.target.value })}
@@ -3093,6 +3109,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
               <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Coût (€)</label>
               <input
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 min="0"
                 value={form.cost}
@@ -4216,7 +4233,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
         </div>
 
         <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Nom *</label>
               <input
@@ -4287,6 +4304,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
               <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Superficie (m²)</label>
               <input
                 type="number"
+                inputMode="numeric"
                 value={form.area_m2}
                 onChange={(e) => setForm({ ...form, area_m2: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
@@ -4390,7 +4408,7 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace
           )}
 
           {/* Infos principales */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Type</span>
               <p className="text-sm text-gray-900 dark:text-white">{typeInfo?.icon} {typeInfo?.label || element.element_type}</p>
@@ -4646,7 +4664,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Tag className="h-3.5 w-3.5" /> Identification
             </h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Libellé *</label>
                 <input
@@ -4765,7 +4783,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Leaf className="h-3.5 w-3.5" /> Caractéristiques
             </h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Espèce / Variété</label>
                 <input
@@ -4780,6 +4798,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Quantité</label>
                 <input
                   type="number"
+                inputMode="numeric"
                   min="1"
                   value={form.quantity}
                   onChange={(e) => setForm({ ...form, quantity: e.target.value })}
@@ -4792,6 +4811,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   <Ruler className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600" />
                   <input
                     type="number"
+                inputMode="decimal"
                     step="0.01"
                     min="0"
                     value={form.area_m2}
@@ -4807,6 +4827,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                   <Euro className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600" />
                   <input
                     type="number"
+                inputMode="decimal"
                     step="0.01"
                     value={form.purchase_price}
                     onChange={(e) => setForm({ ...form, purchase_price: e.target.value })}
@@ -4822,7 +4843,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Calendar className="h-3.5 w-3.5" /> Dates
             </h4>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Date de plantation</label>
                 <input
@@ -4914,7 +4935,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
             <h4 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
               <Image className="h-3.5 w-3.5" /> Image & Documents
             </h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <ImageUpload
                   label="Image"
@@ -5630,7 +5651,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
           {/* Contexte du remplacement */}
           <div className="bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-3">
             <h4 className="text-xs font-semibold text-orange-700 dark:text-orange-300 uppercase tracking-wider mb-2">Contexte du remplacement</h4>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Saison</label>
                 <select
@@ -5645,6 +5666,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                 <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Année</label>
                 <input
                   type="number"
+                inputMode="numeric"
                   value={form.year}
                   onChange={e => setForm({ ...form, year: parseInt(e.target.value) })}
                   min={2020} max={2050}
@@ -5668,7 +5690,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
           <div>
             <h4 className="text-xs font-semibold text-green-700 dark:text-green-300 uppercase tracking-wider mb-2">Nouveau contenu</h4>
             <div className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Nom *</label>
                   <input
@@ -5689,7 +5711,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Type</label>
                   <select
@@ -5704,6 +5726,7 @@ function ReplaceElementModal({ element, spaceId, onClose, onReplaced }: {
                   <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Quantité</label>
                   <input
                     type="number"
+                inputMode="numeric"
                     min={1}
                     value={form.new_quantity}
                     onChange={e => setForm({ ...form, new_quantity: parseInt(e.target.value) || 1 })}

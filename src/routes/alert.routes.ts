@@ -16,9 +16,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     // Filtrage par statut (active / acknowledged / resolved)
     if (status) {
       if (status === 'active') {
-        whereClause += ' AND a.is_read = 0 AND a.is_dismissed = 0';
+        whereClause += ' AND ar.id IS NULL AND a.is_dismissed = 0';
       } else if (status === 'acknowledged') {
-        whereClause += ' AND a.is_read = 1 AND a.is_dismissed = 0';
+        whereClause += ' AND ar.id IS NOT NULL AND a.is_dismissed = 0';
       } else if (status === 'resolved') {
         whereClause += ' AND a.is_dismissed = 1';
       }
@@ -54,8 +54,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     }
 
     const alerts = await db.query(
-      `SELECT a.*, o.name as object_name, o.category_id
+      `SELECT a.*, o.name as object_name, o.category_id, ar.id as lu_par_moi
        FROM alerts a
+       LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
        LEFT JOIN objects o ON o.id = a.object_id
        WHERE ${whereClause}
        ORDER BY 
@@ -67,7 +68,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
          END,
          a.due_date ASC,
          a.created_at DESC`,
-      params
+      // L'utilisateur alimente la jointure de lecture, placée avant le WHERE.
+      [req.user!.userId, ...params]
     );
 
     res.json({
@@ -82,13 +84,13 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         objectName: a.object_name,
         pluginReference: a.plugin_reference,
         pluginReferenceId: a.plugin_reference_id,
-        isRead: !!a.is_read,
+        isRead: !!a.lu_par_moi,
         isDismissed: !!a.is_dismissed,
         dueDate: a.due_date,
         createdAt: a.created_at,
         // Champs calculés pour compatibilité frontend
         type: a.alert_type,
-        status: a.is_dismissed ? 'resolved' : a.is_read ? 'acknowledged' : 'active',
+        status: a.is_dismissed ? 'resolved' : a.lu_par_moi ? 'acknowledged' : 'active',
         priority: a.severity === 'critical' ? 'high' : a.severity === 'warning' ? 'medium' : 'low',
       }))
     });
@@ -115,18 +117,32 @@ router.get('/count', authenticateToken, async (req: AuthRequest, res: Response) 
 
     const result = accessibleCategoryIds !== null
       ? await db.queryOne(
-          `SELECT COUNT(*) as count FROM alerts a LEFT JOIN objects o ON o.id = a.object_id WHERE a.is_dismissed = 0 AND a.is_read = 0${categoryFilter}`,
-          categoryParams
+          `SELECT COUNT(*) as count FROM alerts a
+           LEFT JOIN objects o ON o.id = a.object_id
+           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
+           WHERE a.is_dismissed = 0 AND ar.id IS NULL${categoryFilter}`,
+          [req.user!.userId, ...categoryParams]
         )
-      : await db.queryOne('SELECT COUNT(*) as count FROM alerts WHERE is_dismissed = 0 AND is_read = 0');
+      : await db.queryOne(
+          `SELECT COUNT(*) as count FROM alerts a
+           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
+           WHERE a.is_dismissed = 0 AND ar.id IS NULL`,
+          [req.user!.userId]
+        );
 
     const bySeverity = accessibleCategoryIds !== null
       ? await db.query(
-          `SELECT a.severity, COUNT(*) as count FROM alerts a LEFT JOIN objects o ON o.id = a.object_id WHERE a.is_dismissed = 0 AND a.is_read = 0${categoryFilter} GROUP BY a.severity`,
-          categoryParams
+          `SELECT a.severity, COUNT(*) as count FROM alerts a
+           LEFT JOIN objects o ON o.id = a.object_id
+           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
+           WHERE a.is_dismissed = 0 AND ar.id IS NULL${categoryFilter} GROUP BY a.severity`,
+          [req.user!.userId, ...categoryParams]
         )
       : await db.query(
-          `SELECT severity, COUNT(*) as count FROM alerts WHERE is_dismissed = 0 AND is_read = 0 GROUP BY severity`
+          `SELECT a.severity, COUNT(*) as count FROM alerts a
+           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
+           WHERE a.is_dismissed = 0 AND ar.id IS NULL GROUP BY a.severity`,
+          [req.user!.userId]
         );
 
     res.json({
@@ -243,7 +259,11 @@ router.put('/:id/read', authenticateToken, async (req: AuthRequest, res: Respons
   try {
     const { id } = req.params;
 
-    await db.execute('UPDATE alerts SET is_read = 1 WHERE id = ?', [id]);
+    // Lecture personnelle : sans effet pour les autres agents.
+    await db.execute(
+      'INSERT OR IGNORE INTO alert_reads (alert_id, user_id) VALUES (?, ?)',
+      [id, req.user!.userId]
+    );
 
     res.json({ success: true, message: 'Alerte marquée comme lue' });
   } catch (error: any) {
@@ -269,7 +289,12 @@ router.put('/:id/dismiss', authenticateToken, async (req: AuthRequest, res: Resp
 // PUT /api/alerts/read-all - Marquer toutes les alertes comme lues
 router.put('/read-all', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    await db.execute('UPDATE alerts SET is_read = 1 WHERE is_dismissed = 0');
+    // Marquage personnel : la pastille des autres agents n'est pas touchée.
+    await db.execute(
+      `INSERT OR IGNORE INTO alert_reads (alert_id, user_id)
+       SELECT id, ? FROM alerts WHERE is_dismissed = 0`,
+      [req.user!.userId]
+    );
 
     res.json({ success: true, message: 'Toutes les alertes marquées comme lues' });
   } catch (error: any) {
