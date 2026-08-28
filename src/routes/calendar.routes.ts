@@ -444,10 +444,10 @@ router.get('/sync/status', authenticateToken, async (req: AuthRequest, res: Resp
 
     try {
       const outlookConfig = await db.queryOne(
-        "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+        "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
       );
-      if (outlookConfig && outlookConfig.value) {
-        outlookData = JSON.parse(outlookConfig.value);
+      if (outlookConfig && outlookConfig.setting_value) {
+        outlookData = JSON.parse(outlookConfig.setting_value);
       }
     } catch (e) {
       // Si le parsing échoue ou si la table n'existe pas, on continue avec les valeurs par défaut
@@ -455,10 +455,10 @@ router.get('/sync/status', authenticateToken, async (req: AuthRequest, res: Resp
 
     try {
       const caldavConfig = await db.queryOne(
-        "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+        "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
       );
-      if (caldavConfig && caldavConfig.value) {
-        caldavData = JSON.parse(caldavConfig.value);
+      if (caldavConfig && caldavConfig.setting_value) {
+        caldavData = JSON.parse(caldavConfig.setting_value);
       }
     } catch (e) {
       // Si le parsing échoue ou si la table n'existe pas, on continue avec les valeurs par défaut
@@ -490,14 +490,14 @@ router.get('/sync/status', authenticateToken, async (req: AuthRequest, res: Resp
 router.get('/sync/config', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const outlookConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
     );
     const caldavConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
     );
 
-    const outlookData = outlookConfig ? JSON.parse(outlookConfig.value || '{}') : {};
-    const caldavData = caldavConfig ? JSON.parse(caldavConfig.value || '{}') : {};
+    const outlookData = outlookConfig ? JSON.parse(outlookConfig.setting_value || '{}') : {};
+    const caldavData = caldavConfig ? JSON.parse(caldavConfig.setting_value || '{}') : {};
 
     // Ne pas renvoyer les secrets complets
     res.json({
@@ -528,9 +528,9 @@ router.post('/sync/outlook/config', authenticateToken, requireSupervisor, async 
 
     // Récupérer la config existante pour ne pas écraser le secret si non modifié
     const existingConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
     );
-    const existingData = existingConfig ? JSON.parse(existingConfig.value || '{}') : {};
+    const existingData = existingConfig ? JSON.parse(existingConfig.setting_value || '{}') : {};
 
     const newConfig = {
       clientId: clientId || existingData.clientId,
@@ -542,13 +542,13 @@ router.post('/sync/outlook/config', authenticateToken, requireSupervisor, async 
 
     if (existingConfig) {
       await db.execute(
-        "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_outlook_config'",
+        "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_outlook_config'",
         [JSON.stringify(newConfig), new Date().toISOString()]
       );
     } else {
       const now = new Date().toISOString();
       await db.execute(
-        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_outlook_config', ?, ?, ?)",
+        "INSERT INTO settings (setting_key, setting_value, created_at, updated_at) VALUES ('calendar_outlook_config', ?, ?, ?)",
         [JSON.stringify(newConfig), now, now]
       );
     }
@@ -567,9 +567,9 @@ router.post('/sync/caldav/config', authenticateToken, requireSupervisor, async (
 
     // Récupérer la config existante pour ne pas écraser le mot de passe si non modifié
     const existingConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
     );
-    const existingData = existingConfig ? JSON.parse(existingConfig.value || '{}') : {};
+    const existingData = existingConfig ? JSON.parse(existingConfig.setting_value || '{}') : {};
 
     const newConfig = {
       serverUrl: serverUrl || existingData.serverUrl,
@@ -582,13 +582,13 @@ router.post('/sync/caldav/config', authenticateToken, requireSupervisor, async (
 
     if (existingConfig) {
       await db.execute(
-        "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_caldav_config'",
+        "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_caldav_config'",
         [JSON.stringify(newConfig), new Date().toISOString()]
       );
     } else {
       const now = new Date().toISOString();
       await db.execute(
-        "INSERT INTO settings (key, value, created_at, updated_at) VALUES ('calendar_caldav_config', ?, ?, ?)",
+        "INSERT INTO settings (setting_key, setting_value, created_at, updated_at) VALUES ('calendar_caldav_config', ?, ?, ?)",
         [JSON.stringify(newConfig), now, now]
       );
     }
@@ -604,14 +604,14 @@ router.post('/sync/caldav/config', authenticateToken, requireSupervisor, async (
 router.post('/sync/outlook/test', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const config = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
     );
     
     if (!config) {
       return res.status(400).json({ success: false, error: 'Configuration Outlook non trouvée' });
     }
 
-    const data = JSON.parse(config.value || '{}');
+    const data = JSON.parse(config.setting_value || '{}');
     
     if (!data.clientId || !data.clientSecret || !data.tenantId) {
       return res.status(400).json({ success: false, error: 'Configuration incomplète' });
@@ -658,14 +658,14 @@ router.post('/sync/outlook/test', authenticateToken, requireSupervisor, async (r
 router.post('/sync/caldav/test', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const config = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
     );
     
     if (!config) {
       return res.status(400).json({ success: false, error: 'Configuration CalDAV non trouvée' });
     }
 
-    const data = JSON.parse(config.value || '{}');
+    const data = JSON.parse(config.setting_value || '{}');
     
     if (!data.serverUrl || !data.username || !data.password) {
       return res.status(400).json({ success: false, error: 'Configuration incomplète' });
@@ -716,10 +716,10 @@ router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) 
 
     // Synchroniser Outlook
     const outlookConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_outlook_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
     );
     if (outlookConfig) {
-      const data = JSON.parse(outlookConfig.value || '{}');
+      const data = JSON.parse(outlookConfig.setting_value || '{}');
       if (data.enabled && data.clientId && data.clientSecret) {
         try {
           const syncResult = await syncOutlookCalendar(data);
@@ -728,7 +728,7 @@ router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) 
           // Mettre à jour lastSync
           data.lastSync = new Date().toISOString();
           await db.execute(
-            "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_outlook_config'",
+            "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_outlook_config'",
             [JSON.stringify(data), new Date().toISOString()]
           );
         } catch (err: any) {
@@ -739,10 +739,10 @@ router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) 
 
     // Synchroniser CalDAV
     const caldavConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE key = 'calendar_caldav_config'"
+      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
     );
     if (caldavConfig) {
-      const data = JSON.parse(caldavConfig.value || '{}');
+      const data = JSON.parse(caldavConfig.setting_value || '{}');
       if (data.enabled && data.serverUrl && data.username) {
         try {
           const syncResult = await syncCaldavCalendar(data);
@@ -751,7 +751,7 @@ router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) 
           // Mettre à jour lastSync
           data.lastSync = new Date().toISOString();
           await db.execute(
-            "UPDATE settings SET value = ?, updated_at = ? WHERE key = 'calendar_caldav_config'",
+            "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_caldav_config'",
             [JSON.stringify(data), new Date().toISOString()]
           );
         } catch (err: any) {
@@ -777,7 +777,7 @@ router.delete('/sync/outlook', authenticateToken, requireSupervisor, async (req:
     
     // Désactiver la config
     await db.execute(
-      "UPDATE settings SET value = '{}', updated_at = ? WHERE key = 'calendar_outlook_config'",
+      "UPDATE settings SET setting_value = '{}', updated_at = ? WHERE setting_key = 'calendar_outlook_config'",
       [new Date().toISOString()]
     );
 
@@ -798,7 +798,7 @@ router.delete('/sync/caldav', authenticateToken, requireSupervisor, async (req: 
     
     // Désactiver la config
     await db.execute(
-      "UPDATE settings SET value = '{}', updated_at = ? WHERE key = 'calendar_caldav_config'",
+      "UPDATE settings SET setting_value = '{}', updated_at = ? WHERE setting_key = 'calendar_caldav_config'",
       [new Date().toISOString()]
     );
 
