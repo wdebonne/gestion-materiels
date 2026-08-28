@@ -78,8 +78,8 @@ export default function UsersPage() {
     if (user) {
       setEditingUser(user)
       setFormData({
-        firstName: user.firstName,
-        lastName: user.lastName,
+        firstName: user.firstName ?? '',
+        lastName: user.lastName ?? '',
         email: user.email,
         password: '',
         role: user.role,

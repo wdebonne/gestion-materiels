@@ -7,7 +7,7 @@ import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
 export default function ProfilePage() {
-  const { user, setAuth } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState<'info' | 'password'>('info')
   
   // État du formulaire profil
@@ -41,8 +41,7 @@ export default function ProfilePage() {
       })
     },
     onSuccess: (response) => {
-      const updatedUser = response.data.user
-      setAuth(updatedUser, useAuthStore.getState().accessToken!, useAuthStore.getState().refreshToken!)
+      updateUser(response.data.user)
       toast.success('Avatar mis à jour')
     },
     onError: (err: any) => {
@@ -56,14 +55,7 @@ export default function ProfilePage() {
       return api.delete('/auth/avatar')
     },
     onSuccess: () => {
-      const currentUser = useAuthStore.getState().user
-      if (currentUser) {
-        setAuth(
-          { ...currentUser, avatar: undefined },
-          useAuthStore.getState().accessToken!,
-          useAuthStore.getState().refreshToken!
-        )
-      }
+      updateUser({ avatar: undefined })
       toast.success('Avatar supprimé')
     },
     onError: (err: any) => {
@@ -99,8 +91,7 @@ export default function ProfilePage() {
       return api.put('/users/me', data)
     },
     onSuccess: (response) => {
-      const updatedUser = response.data
-      setAuth(updatedUser, useAuthStore.getState().accessToken!, useAuthStore.getState().refreshToken!)
+      updateUser(response.data)
       toast.success('Profil mis à jour')
     },
     onError: (err: any) => {

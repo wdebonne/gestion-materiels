@@ -12,8 +12,10 @@ RUN npm install --legacy-peer-deps
 # Copy client source
 COPY client/ ./
 
-# Build client
-RUN npm run build
+# Build client with type checking. `vite build` transpile sans vérifier les
+# types : le client compte désormais 0 erreur, donc une régression de typage
+# doit arrêter la construction de l'image plutôt que de passer en production.
+RUN npm run build:check
 
 # Build stage for server
 FROM node:20-alpine AS server-builder

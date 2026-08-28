@@ -781,8 +781,8 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                 {items.map(el => (
                   <div key={el.id} onClick={() => setViewingElement(el)} className="p-3 rounded-lg border border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:border-green-300 dark:hover:border-green-700 transition-colors cursor-pointer">
                     <div className="flex items-start gap-3">
-                      {el.image || el.object_image ? (
-                        <img src={getImageUrl(el.image || el.object_image)} alt="" className="w-12 h-12 rounded-lg object-cover" />
+                      {(el.image || el.object_image) ? (
+                        <img src={getImageUrl((el.image || el.object_image)!)} alt="" className="w-12 h-12 rounded-lg object-cover" />
                       ) : (
                         <div className="w-12 h-12 rounded-lg flex items-center justify-center text-xl" style={{ backgroundColor: (typeInfo?.color || '#6b7280') + '20' }}>
                           {typeInfo?.icon || '📌'}
@@ -2629,7 +2629,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
               <div className="space-y-1">
                 {(allDocTypesRaw as any[]).map((dt: any) => (
                   <div key={dt.id} className={`flex items-center justify-between px-3 py-1.5 rounded ${dt.disabled ? 'bg-gray-100 dark:bg-gray-800 opacity-50' : 'bg-gray-50 dark:bg-gray-700/50'}`}>
-                    {editingDocType?.id === dt.id ? (
+                    {editingDocType !== null && editingDocType.id === dt.id ? (
                       <input
                         type="text"
                         value={editingDocType.label}
@@ -2642,7 +2642,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                       <span className={`text-sm ${dt.disabled ? 'text-gray-600 line-through' : 'text-gray-700 dark:text-gray-300'}`}>{dt.label}</span>
                     )}
                     <div className="flex items-center gap-1">
-                      {editingDocType?.id === dt.id ? (
+                      {editingDocType !== null && editingDocType.id === dt.id ? (
                         <>
                           <button onClick={() => { if (editingDocType.label) updateDocTypeMutation.mutate({ id: editingDocType.id, label: editingDocType.label }) }} className="p-1 text-green-600 hover:text-green-800 touch-target"><Check className="h-3.5 w-3.5" /></button>
                           <button onClick={() => setEditingDocType(null)} className="p-1 text-gray-600 hover:text-gray-600 touch-target"><X className="h-3.5 w-3.5" /></button>
@@ -3373,7 +3373,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
             <div className="space-y-1">
               {(allMaintTypesRaw || []).map((t: any) => (
                 <div key={t.id} className={`flex items-center gap-2 p-2 rounded-lg border ${t.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
-                  {editingMaintType?.id === t.id ? (
+                  {editingMaintType !== null && editingMaintType.id === t.id ? (
                     <>
                       <input
                         value={editingMaintType.label}
@@ -3408,7 +3408,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
                         <Edit3 className="h-3.5 w-3.5" />
                       </button>
                       <button aria-label={t.disabled ? 'Réactiver' : 'Désactiver'}
-                        onClick={() => updateMaintTypeMutation.mutate({ id: t.id, disabled: t.disabled ? 0 : 1 })}
+                        onClick={() => updateMaintTypeMutation.mutate({ id: t.id, disabled: !t.disabled })}
                         className={`p-1 rounded ${t.disabled ? 'text-green-500 hover:bg-green-50 dark:hover:bg-green-900/30' : 'text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/30'}`}
                         title={t.disabled ? 'Réactiver' : 'Désactiver'}
                       >
@@ -5232,7 +5232,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
             <div className="space-y-1">
               {(allTypes as any[]).map((t: any) => (
                 <div key={t.id} className={`flex items-center gap-2 p-2 rounded-lg border ${t.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
-                  {editingType?.id === t.id ? (
+                  {editingType !== null && editingType.id === t.id ? (
                     <>
                       <input
                         value={editingType.icon}
@@ -5340,7 +5340,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
                 const colorCss = colorOptions.find(c => c.value === s.color)?.css || 'bg-gray-500'
                 return (
                   <div key={s.id} className={`flex items-center gap-2 p-2 rounded-lg border ${s.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
-                    {editingStatus?.id === s.id ? (
+                    {editingStatus !== null && editingStatus.id === s.id ? (
                       <>
                         <select
                           value={editingStatus.color}
@@ -5500,7 +5500,7 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
         <div className="space-y-1">
           {(allGroupTypes as any[]).map((t: any) => (
             <div key={t.id} className={`flex items-center gap-2 p-2 rounded-lg border ${t.disabled ? 'opacity-50 border-gray-200 dark:border-gray-700' : 'border-gray-200 dark:border-gray-600'}`}>
-              {editingGT?.id === t.id ? (
+              {editingGT !== null && editingGT.id === t.id ? (
                 <>
                   <input
                     value={editingGT.icon}

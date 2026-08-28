@@ -702,7 +702,7 @@ export default function TrackingPage() {
   })
   const [showFilters, setShowFilters] = useState(true)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'fuel' | 'maintenance' | 'control'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'fuel' | 'maintenance' | 'control' | 'green_space'>('overview')
   const [showPDFExport, setShowPDFExport] = useState(false)
   const [viewingAttachments, setViewingAttachments] = useState<any[] | null>(null)
 

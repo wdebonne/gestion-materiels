@@ -9,7 +9,7 @@ import {
   Button, Input, Modal, ModalBody, ModalFooter, ImageCard, 
   LoadingInline, Alert, TextArea, Card, CardBody, Select, ImageUpload
 } from '@/components/ui'
-import api, { Subcategory, EquipmentObject } from '@/lib/api'
+import api, { Subcategory, GestionObject as EquipmentObject } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import toast from 'react-hot-toast'
 import Can from '@/components/Can'
@@ -187,9 +187,6 @@ export default function SubcategoryDetailPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">{subcategory.name}</h1>
-                  {subcategory.description && (
-                    <p className="text-gray-500 dark:text-gray-400 mt-1">{subcategory.description}</p>
-                  )}
                   <div className="flex items-center gap-4 mt-3 text-sm text-gray-500 dark:text-gray-400">
                     <span>{objects.length} matériel(s)</span>
                   </div>

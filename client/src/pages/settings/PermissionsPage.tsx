@@ -965,7 +965,7 @@ function PluginPermissionsTab() {
                         <div className="text-xs text-gray-500">{p.slug}</div>
                       </td>
                       <td className="px-4 py-3 text-center">
-                        <Badge variant={p.pluginType === 'menu' ? 'primary' : 'default'}>
+                        <Badge variant={p.pluginType === 'menu' ? 'info' : 'default'}>
                           {p.pluginType === 'menu' ? 'Menu' : 'Objet'}
                         </Badge>
                       </td>

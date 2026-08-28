@@ -1,7 +1,9 @@
 import { InputHTMLAttributes, forwardRef, ReactNode } from 'react'
 import { cn } from '@/lib/utils'
 
-interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
+// `size` est redéfini en gabarit visuel ; celui de l'attribut HTML (un nombre
+// de caractères) est écarté pour éviter la collision de types.
+interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
   label?: string
   error?: string
   hint?: string

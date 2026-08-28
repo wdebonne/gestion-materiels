@@ -9,7 +9,7 @@ import {
   Button, Input, Modal, ModalBody, ModalFooter, ImageCard, 
   LoadingInline, Alert, TextArea, Card, CardBody, ImageUpload
 } from '@/components/ui'
-import api, { Category, Subcategory, Object as ObjectType } from '@/lib/api'
+import api, { Category, Subcategory, GestionObject as ObjectType } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import { useAuthStore } from '@/stores/auth.store'
 import toast from 'react-hot-toast'
@@ -402,7 +402,6 @@ export default function CategoryDetailPage() {
             <div key={subcategory.id} className="relative group">
               <ImageCard
                 title={subcategory.name}
-                description={subcategory.description}
                 image={subcategory.image}
                 icon={<FolderOpen className="w-full h-full" />}
                 count={subcategory.objectCount}

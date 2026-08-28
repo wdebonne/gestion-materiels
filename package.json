@@ -10,7 +10,7 @@
     "build": "npm run version:sync && npm run build:server && npm run build:client",
     "build:server": "tsc",
     "build:server:fast": "node build-server.js",
-    "build:client": "cd client && npm run build",
+    "build:client": "cd client && npm run build:check",
     "start": "node dist/server.js",
     "db:migrate": "ts-node src/database/migrate.ts",
     "db:seed": "ts-node src/database/seed.ts",
