@@ -10,6 +10,7 @@ import {
   LoadingInline, Alert, TextArea, Card, CardBody, ImageUpload
 } from '@/components/ui'
 import api, { Category, Subcategory, Object as ObjectType } from '@/lib/api'
+import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import { useAuthStore } from '@/stores/auth.store'
 import toast from 'react-hot-toast'
 
@@ -69,20 +70,18 @@ export default function CategoryDetailPage() {
     enabled: !!category?.id && category?.hasSubcategories
   })
 
-  // Récupérer les objets (si pas de sous-catégories)
-  const { data: objectsData, isLoading: objectsLoading } = useQuery({
-    queryKey: ['objects', 'category', category?.id, search],
-    queryFn: async () => {
-      const params = new URLSearchParams()
-      params.append('categoryId', String(category?.id))
-      if (search) params.append('search', search)
-      // Le serveur pagine par 20 par défaut et le client n'exploitait pas la
-      // pagination renvoyée : les matériels au-delà du 20e étaient invisibles.
-      params.append('limit', '500')
-      const response = await api.get(`/objects?${params}`)
-      return response.data
-    },
-    enabled: !!category?.id && !category?.hasSubcategories
+  // Récupérer les objets (si pas de sous-catégories), page par page
+  const {
+    objets: objects,
+    total: totalObjets,
+    resteAPager,
+    chargerSuite,
+    chargementSuite,
+    isLoading: objectsLoading,
+  } = usePaginatedObjects({
+    categoryId: category?.id,
+    search,
+    enabled: !!category?.id && !category?.hasSubcategories,
   })
 
   // Mutation pour créer/modifier une sous-catégorie
@@ -279,7 +278,6 @@ export default function CategoryDetailPage() {
   }
 
   const subcategories = subcategoriesData?.subcategories || []
-  const objects = objectsData?.objects || []
 
   return (
     <div className="space-y-6">
@@ -501,6 +499,19 @@ export default function CategoryDetailPage() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {resteAPager && (
+            <div className="mt-6 flex justify-center">
+              <Button
+                variant="secondary"
+                size="lg"
+                onClick={() => chargerSuite()}
+                loading={chargementSuite}
+              >
+                Afficher plus de matériels ({objects.length} sur {totalObjets})
+              </Button>
             </div>
           )}
         </>

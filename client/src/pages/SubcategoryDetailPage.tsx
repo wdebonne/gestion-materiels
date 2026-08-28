@@ -10,6 +10,7 @@ import {
   LoadingInline, Alert, TextArea, Card, CardBody, Select, ImageUpload
 } from '@/components/ui'
 import api, { Subcategory, EquipmentObject } from '@/lib/api'
+import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import toast from 'react-hot-toast'
 import Can from '@/components/Can'
 
@@ -48,20 +49,18 @@ export default function SubcategoryDetailPage() {
     enabled: !!subcategorySlug
   })
 
-  // Récupérer les objets de la sous-catégorie
-  const { data: objectsData, isLoading: objectsLoading } = useQuery({
-    queryKey: ['objects', subcategory?.id, search],
-    queryFn: async () => {
-      const params = new URLSearchParams()
-      if (search) params.append('search', search)
-      params.append('subcategoryId', String(subcategory?.id))
-      // Le serveur pagine par 20 par défaut et le client n'exploitait pas la
-      // pagination renvoyée : les matériels au-delà du 20e étaient invisibles.
-      params.append('limit', '500')
-      const response = await api.get(`/objects?${params}`)
-      return response.data
-    },
-    enabled: !!subcategory?.id
+  // Récupérer les objets de la sous-catégorie, page par page
+  const {
+    objets: objects,
+    total: totalObjets,
+    resteAPager,
+    chargerSuite,
+    chargementSuite,
+    isLoading: objectsLoading,
+  } = usePaginatedObjects({
+    subcategoryId: subcategory?.id,
+    search,
+    enabled: !!subcategory?.id,
   })
 
   // Mutation pour créer/modifier un objet
@@ -141,7 +140,6 @@ export default function SubcategoryDetailPage() {
     )
   }
 
-  const objects = objectsData?.objects || []
 
   const statusOptions = [
     { value: 'active', label: 'Actif' },
@@ -305,6 +303,19 @@ export default function SubcategoryDetailPage() {
               </Can>
             </div>
           ))}
+        </div>
+      )}
+
+      {resteAPager && (
+        <div className="mt-6 flex justify-center">
+          <Button
+            variant="secondary"
+            size="lg"
+            onClick={() => chargerSuite()}
+            loading={chargementSuite}
+          >
+            Afficher plus de matériels ({objects.length} sur {totalObjets})
+          </Button>
         </div>
       )}
 

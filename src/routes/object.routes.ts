@@ -530,8 +530,18 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
 // === PLUGIN: CARBURANT ===
 
 // POST /api/objects/:id/fuel - Ajouter une entrée carburant
-router.post('/:id/fuel', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+router.post('/:id/fuel', authenticateToken, requireFieldWrite, [
+  body('quantity').notEmpty().withMessage('La quantité est obligatoire')
+    .isFloat({ gt: 0 }).withMessage('La quantité doit être un nombre supérieur à 0'),
+  body('cost').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Le coût doit être un nombre positif'),
+  body('mileage').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Le kilométrage doit être un entier positif'),
+], async (req: AuthRequest, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+    }
+
     const { id } = req.params;
     // Support des noms de champs du frontend (date, cost) et backend (entryDate, unitPrice)
     const { fuelType, quantity, cost, mileage, station, entryDate, date, notes, attachments } = req.body;
@@ -1053,8 +1063,20 @@ router.delete('/control-centers/:centerId', authenticateToken, requireAdmin, asy
 // === PLUGIN: CONTRÔLE TECHNIQUE ===
 
 // POST /api/objects/:id/technical-control - Ajouter un contrôle technique
-router.post('/:id/technical-control', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+router.post('/:id/technical-control', authenticateToken, requireFieldWrite, [
+  // La route lit `controlDate` / `expiryDate` : c'est ce que le client envoie
+  // après mappage. Valider `date` rejetterait toutes les saisies légitimes.
+  body('controlDate').notEmpty().withMessage('La date du contrôle est obligatoire'),
+  body('expiryDate').notEmpty().withMessage("La date d'expiration est obligatoire"),
+  body('cost').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Le coût doit être un nombre positif'),
+  body('mileage').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Le kilométrage doit être un entier positif'),
+], async (req: AuthRequest, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+    }
+
     const { id } = req.params;
     const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments } = req.body;
 
@@ -1216,8 +1238,18 @@ router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin,
 // === PLUGIN: MAINTENANCE ===
 
 // POST /api/objects/:id/maintenance - Ajouter une maintenance
-router.post('/:id/maintenance', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+router.post('/:id/maintenance', authenticateToken, requireFieldWrite, [
+  body('maintenanceType').notEmpty().trim().withMessage("Le type d'entretien est obligatoire"),
+  body('maintenanceDate').notEmpty().withMessage("La date de l'entretien est obligatoire"),
+  body('cost').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Le coût doit être un nombre positif'),
+  body('mileage').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Le kilométrage doit être un entier positif'),
+], async (req: AuthRequest, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+    }
+
     const { id } = req.params;
     const { 
       maintenanceType, maintenanceDate, nextDate, mileage, nextMileage,
