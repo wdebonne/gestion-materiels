@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import mysql, { Pool, PoolConnection } from 'mysql2/promise';
 import path from 'path';
 import fs from 'fs';
+import { appliquerMigrations } from './migrationRunner';
 
 export type DatabaseType = 'sqlite' | 'mysql';
 
@@ -48,13 +49,18 @@ class DatabaseManager {
     return DatabaseManager.instance;
   }
 
-  public async init(): Promise<void> {
+  /**
+   * `migrationsAuto: false` ouvre la connexion et crée les tables sans appliquer
+   * les migrations versionnées. La commande `db:migrate --dry-run` en a besoin :
+   * inspecter ce qui reste à faire ne doit rien modifier.
+   */
+  public async init(options: { migrationsAuto?: boolean } = {}): Promise<void> {
     if (this.config.type === 'sqlite') {
       await this.initSQLite();
     } else {
       await this.initMySQL();
     }
-    await this.createTables();
+    await this.createTables(options.migrationsAuto ?? true);
   }
 
   private async initSQLite(): Promise<void> {
@@ -99,6 +105,11 @@ class DatabaseManager {
 
   public getType(): DatabaseType {
     return this.config.type;
+  }
+
+  /** Chemin du fichier SQLite, `null` sur MySQL. */
+  public getSQLitePath(): string | null {
+    return this.config.type === 'sqlite' ? this.config.sqlite!.path : null;
   }
 
   public getSQLiteDb(): Database.Database {
@@ -149,7 +160,7 @@ class DatabaseManager {
     }
   }
 
-  private async createTables(): Promise<void> {
+  private async createTables(migrationsAuto = true): Promise<void> {
     const isSQLite = this.config.type === 'sqlite';
     const autoIncrement = isSQLite ? 'AUTOINCREMENT' : 'AUTO_INCREMENT';
     const textType = isSQLite ? 'TEXT' : 'LONGTEXT';
@@ -972,6 +983,19 @@ class DatabaseManager {
     await this.runMigrations();
 
     await this.createIndexes();
+
+    // Migrations versionnées. Elles s'exécutent au démarrage parce que le
+    // conteneur ne lance que `node dist/server.js` : une évolution de schéma
+    // qui dépendrait d'une commande manuelle ne serait jamais appliquée.
+    if (!migrationsAuto) return;
+
+    const resultat = await appliquerMigrations(this, {
+      cheminSqlite: this.getSQLitePath() ?? undefined,
+      journaliser: (message) => console.log(`[migration] ${message}`),
+    });
+    if (resultat.appliquees.length > 0) {
+      console.log(`[migration] ${resultat.appliquees.length} migration(s) appliquée(s)`);
+    }
   }
 
   /**
