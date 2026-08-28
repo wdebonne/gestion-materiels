@@ -1,43 +1,55 @@
+import { lazy, Suspense } from 'react'
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import Layout from '@/components/Layout'
 import SessionExpiredModal from '@/components/SessionExpiredModal'
 import NotFoundPage from '@/pages/NotFoundPage'
-import ScanPage from '@/pages/ScanPage'
+import { LoadingScreen } from '@/components/ui'
 import LoginPage from '@/pages/LoginPage'
-import ForgotPasswordPage from '@/pages/ForgotPasswordPage'
-import ResetPasswordPage from '@/pages/ResetPasswordPage'
 import DashboardPage from '@/pages/DashboardPage'
-import CategoriesPage from '@/pages/CategoriesPage'
-import CategoryDetailPage from '@/pages/CategoryDetailPage'
-import SubcategoryDetailPage from '@/pages/SubcategoryDetailPage'
-import ObjectDetailPage from '@/pages/ObjectDetailPage'
-import CalendarPage from '@/pages/CalendarPage'
-import AlertsPage from '@/pages/AlertsPage'
-import SettingsPage from '@/pages/settings/SettingsPage'
-import GeneralSettingsPage from '@/pages/settings/GeneralSettingsPage'
-import UsersPage from '@/pages/settings/UsersPage'
-import PermissionsPage from '@/pages/settings/PermissionsPage'
-import SmtpSettingsPage from '@/pages/settings/SmtpSettingsPage'
-import EmailTemplatesPage from '@/pages/settings/EmailTemplatesPage'
-import PluginsPage from '@/pages/settings/PluginsPage'
-import BackupPage from '@/pages/settings/BackupPage'
-import DatabasePage from '@/pages/settings/DatabasePage'
-import LogsPage from '@/pages/settings/LogsPage'
-import WebhooksPage from '@/pages/settings/WebhooksPage'
-import ApiPage from '@/pages/settings/ApiPage'
-import ApiTokensPage from '@/pages/settings/ApiTokensPage'
-import AuthSettingsPage from '@/pages/settings/AuthSettingsPage'
-import ProfilePage from '@/pages/ProfilePage'
-import PluginPage from '@/pages/PluginPage'
-import CustomFieldsPage from '@/pages/CustomFieldsPage'
-import TrackingPage from '@/pages/TrackingPage'
-import ReservationsPage from '@/pages/ReservationsPage'
-import DepreciationPage from '@/pages/DepreciationPage'
-import ImportExportPage from '@/pages/ImportExportPage'
-import MapPage from '@/pages/MapPage'
-import ManifestationsPage from '@/pages/ManifestationsPage'
-import EspacesVertsPage from '@/pages/EspacesVertsPage'
+
+
+/*
+ * Chargement à la demande.
+ *
+ * Les 37 pages étaient importées en dur : le navigateur téléchargeait
+ * leaflet, fullcalendar, recharts et jsPDF avant même d'afficher l'écran
+ * de connexion. Seuls la connexion, le tableau de bord et la page 404
+ * restent en direct ; le reste arrive quand on y va.
+ */
+const ScanPage = lazy(() => import('@/pages/ScanPage'))
+const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
+const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
+const CategoriesPage = lazy(() => import('@/pages/CategoriesPage'))
+const CategoryDetailPage = lazy(() => import('@/pages/CategoryDetailPage'))
+const SubcategoryDetailPage = lazy(() => import('@/pages/SubcategoryDetailPage'))
+const ObjectDetailPage = lazy(() => import('@/pages/ObjectDetailPage'))
+const CalendarPage = lazy(() => import('@/pages/CalendarPage'))
+const AlertsPage = lazy(() => import('@/pages/AlertsPage'))
+const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
+const GeneralSettingsPage = lazy(() => import('@/pages/settings/GeneralSettingsPage'))
+const UsersPage = lazy(() => import('@/pages/settings/UsersPage'))
+const PermissionsPage = lazy(() => import('@/pages/settings/PermissionsPage'))
+const SmtpSettingsPage = lazy(() => import('@/pages/settings/SmtpSettingsPage'))
+const EmailTemplatesPage = lazy(() => import('@/pages/settings/EmailTemplatesPage'))
+const PluginsPage = lazy(() => import('@/pages/settings/PluginsPage'))
+const BackupPage = lazy(() => import('@/pages/settings/BackupPage'))
+const DatabasePage = lazy(() => import('@/pages/settings/DatabasePage'))
+const LogsPage = lazy(() => import('@/pages/settings/LogsPage'))
+const WebhooksPage = lazy(() => import('@/pages/settings/WebhooksPage'))
+const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
+const ApiTokensPage = lazy(() => import('@/pages/settings/ApiTokensPage'))
+const AuthSettingsPage = lazy(() => import('@/pages/settings/AuthSettingsPage'))
+const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
+const PluginPage = lazy(() => import('@/pages/PluginPage'))
+const CustomFieldsPage = lazy(() => import('@/pages/CustomFieldsPage'))
+const TrackingPage = lazy(() => import('@/pages/TrackingPage'))
+const ReservationsPage = lazy(() => import('@/pages/ReservationsPage'))
+const DepreciationPage = lazy(() => import('@/pages/DepreciationPage'))
+const ImportExportPage = lazy(() => import('@/pages/ImportExportPage'))
+const MapPage = lazy(() => import('@/pages/MapPage'))
+const ManifestationsPage = lazy(() => import('@/pages/ManifestationsPage'))
+const EspacesVertsPage = lazy(() => import('@/pages/EspacesVertsPage'))
 
 /** Page mémorisée par ProtectedRoute avant de renvoyer vers la connexion. */
 export function getRedirectTarget(location: { state?: unknown }): string {
@@ -95,6 +107,7 @@ function App() {
   return (
     <>
       <SessionExpiredModal />
+      <Suspense fallback={<LoadingScreen message="Chargement…" />}>
       <Routes>
         {/* Routes publiques */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
@@ -148,6 +161,7 @@ function App() {
         {/* 404 — on explique au lieu de rediriger silencieusement vers l'accueil */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </Suspense>
     </>
   )
 }

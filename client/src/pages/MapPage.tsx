@@ -31,7 +31,10 @@ export default function MapPage() {
     queryKey: ['map-objects'],
     queryFn: async () => {
       const res = await api.get('/objects?limit=1000')
-      return (res.data.data || res.data).filter((o: any) => o.location && o.location.trim())
+      // L'API renvoie { success, objects } : `res.data.data` n'existe pas
+      // et l'objet entier remontait, d'où un plantage au premier .filter().
+      const liste = res.data.objects ?? res.data.data ?? []
+      return liste.filter((o: any) => o.location && o.location.trim())
     }
   })
 
@@ -39,7 +42,7 @@ export default function MapPage() {
     queryKey: ['categories-for-map'],
     queryFn: async () => {
       const res = await api.get('/categories')
-      return res.data.data || res.data
+      return res.data.categories ?? res.data.data ?? []
     }
   })
 

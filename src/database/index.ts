@@ -970,6 +970,78 @@ class DatabaseManager {
 
     // Exécuter les migrations pour ajouter les colonnes manquantes
     await this.runMigrations();
+
+    await this.createIndexes();
+  }
+
+  /**
+   * Index de recherche.
+   *
+   * Le schéma n'en déclarait aucun sur ses 54 tables : chaque lecture par clé
+   * étrangère balayait la table entière. Le coût se voyait surtout à
+   * l'ouverture d'une fiche matériel et lors de la vérification horaire des
+   * alertes, qui parcourt `technical_controls` et `maintenances` en entier.
+   *
+   * `IF NOT EXISTS` est accepté par SQLite comme par MySQL 8 : la méthode est
+   * rejouable à chaque démarrage, comme `createTables`.
+   */
+  private async createIndexes(): Promise<void> {
+    const indexes: Array<[string, string, string]> = [
+      // [nom, table, colonnes]
+
+      // Relevés de terrain — lus à chaque ouverture de fiche
+      ['idx_fuel_object', 'fuel_entries', 'object_id, entry_date'],
+      ['idx_maintenance_object', 'maintenances', 'object_id'],
+      ['idx_control_object', 'technical_controls', 'object_id'],
+
+      // Échéances — parcourues chaque heure par le cron
+      ['idx_maintenance_next', 'maintenances', 'next_date'],
+      ['idx_control_expiry', 'technical_controls', 'expiry_date'],
+      ['idx_greenspace_maint_next', 'green_space_maintenances', 'next_maintenance_date'],
+      ['idx_calendar_start', 'calendar_events', 'start_date'],
+
+      // Navigation dans le parc
+      ['idx_objects_category', 'objects', 'category_id'],
+      ['idx_objects_subcategory', 'objects', 'subcategory_id'],
+      ['idx_objects_status', 'objects', 'status'],
+      ['idx_subcategories_category', 'subcategories', 'category_id'],
+
+      // Alertes et pastille
+      ['idx_alerts_etat', 'alerts', 'is_dismissed, is_read'],
+      ['idx_alerts_reference', 'alerts', 'plugin_reference, plugin_reference_id'],
+      ['idx_alerts_object', 'alerts', 'object_id'],
+      ['idx_alert_reads_user', 'alert_reads', 'user_id'],
+      ['idx_alert_reads_alert', 'alert_reads', 'alert_id'],
+
+      // Espaces verts
+      ['idx_gs_elements_space', 'green_space_elements', 'green_space_id'],
+      ['idx_gs_maint_space', 'green_space_maintenances', 'green_space_id'],
+      ['idx_gs_documents_space', 'green_space_documents', 'green_space_id'],
+
+      // Manifestations
+      ['idx_manif_materials', 'manifestation_materials', 'manifestation_id'],
+
+      // Droits — consultés à chaque requête filtrée par catégorie
+      ['idx_user_permissions_user', 'user_permissions', 'user_id'],
+      ['idx_group_permissions_role', 'group_permissions', 'role'],
+
+      // Authentification par jeton API
+      ['idx_api_tokens_hash', 'api_tokens', 'token_hash'],
+
+      // Réservations
+      ['idx_reservations_object', 'reservations', 'object_id'],
+      ['idx_reservations_status', 'reservations', 'status'],
+    ];
+
+    for (const [nom, table, colonnes] of indexes) {
+      try {
+        await this.execute(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`);
+      } catch (error: any) {
+        // Une table absente (module non déployé) ne doit pas empêcher le
+        // démarrage : on note et on continue.
+        console.warn(`Index ${nom} non créé : ${error.message}`);
+      }
+    }
   }
 
   // Méthode pour ajouter les colonnes manquantes aux tables existantes

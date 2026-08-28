@@ -111,10 +111,54 @@ export async function sendTestEmail(to: string): Promise<{ success: boolean; err
 }
 
 // Envoyer une alerte par email
+/**
+ * Destinataires d'une alerte.
+ *
+ * Les responsables reçoivent tout, comme avant. S'y ajoutent les agents dont
+ * le périmètre couvre la catégorie du matériel concerné : ce sont eux qui
+ * feront le geste. Le périmètre est celui accordé dans l'écran Droits, seul
+ * rattachement explicite dont dispose l'application (les interventions
+ * n'enregistrent pas leur auteur).
+ */
+async function destinatairesAlerte(categorieId: number | null): Promise<string[]> {
+  // Sans matériel rattaché (alerte manuelle, rappel de calendrier), il n'y a
+  // pas de périmètre à déduire : on s'en tient aux responsables.
+  if (categorieId === null || categorieId === undefined) {
+    const responsables = await db.query(
+      "SELECT email FROM users WHERE role IN ('admin', 'supervisor') AND is_active = 1"
+    );
+    return responsables.map((u: any) => u.email);
+  }
+
+  const users = await db.query(
+    `SELECT DISTINCT u.email FROM users u
+     WHERE u.is_active = 1
+       AND u.email IS NOT NULL
+       AND (
+         u.role IN ('admin', 'supervisor')
+         OR EXISTS (
+           SELECT 1 FROM group_permissions gp
+           WHERE gp.role = u.role AND gp.category_id = ? AND gp.can_view = 1
+         )
+         OR EXISTS (
+           SELECT 1 FROM user_permissions up
+           WHERE up.user_id = u.id AND up.category_id = ? AND up.can_view = 1
+         )
+       )`,
+    [categorieId, categorieId]
+  );
+
+  return users.map((u: any) => u.email);
+}
+
+// Envoyer une alerte par email
 export async function sendAlertEmail(alertId: number): Promise<void> {
   const alert = await db.queryOne(
-    `SELECT a.*, o.name as object_name FROM alerts a
+    `SELECT a.*, o.name as object_name,
+            COALESCE(o.category_id, sc.category_id) as categorie_id
+     FROM alerts a
      LEFT JOIN objects o ON o.id = a.object_id
+     LEFT JOIN subcategories sc ON sc.id = o.subcategory_id
      WHERE a.id = ?`,
     [alertId]
   );
@@ -123,24 +167,40 @@ export async function sendAlertEmail(alertId: number): Promise<void> {
     throw new Error('Alerte non trouvée');
   }
 
-  // Récupérer les utilisateurs admin et superviseurs
-  const users = await db.query(
-    "SELECT email FROM users WHERE role IN ('admin', 'supervisor') AND is_active = 1"
-  );
+  const emails = await destinatairesAlerte(alert.categorie_id ?? null);
 
-  for (const user of users) {
+  if (emails.length === 0) {
+    console.warn(`Alerte ${alertId} : aucun destinataire — vérifiez les droits de catégorie.`);
+    return;
+  }
+
+  let envoyes = 0;
+  for (const email of emails) {
     try {
-      await sendEmail('alert_notification', user.email, {
+      await sendEmail('alert_notification', email, {
         alert_title: alert.title,
         alert_message: alert.message,
         object_name: alert.object_name || 'N/A',
         object_id: alert.object_id || '',
         due_date: alert.due_date ? new Date(alert.due_date).toLocaleDateString('fr-FR') : 'N/A'
       });
-    } catch (error) {
-      console.error(`Erreur envoi email alerte à ${user.email}:`, error);
+      envoyes++;
+    } catch (error: any) {
+      // SMTP non configuré : le dire une fois, clairement, plutôt que de
+      // répéter la même erreur pour chaque destinataire. Sans ce message,
+      // l'absence d'e-mail passe totalement inaperçue.
+      if (/SMTP/i.test(error?.message ?? '')) {
+        console.warn(
+          `Alerte ${alertId} : aucun e-mail envoyé — le serveur SMTP n'est pas configuré ` +
+          `(Paramètres › SMTP). ${emails.length} destinataire(s) concerné(s).`
+        );
+        return;
+      }
+      console.error(`Erreur envoi email alerte à ${email}:`, error);
     }
   }
+
+  console.log(`Alerte ${alertId} : ${envoyes}/${emails.length} e-mail(s) envoyé(s)`);
 }
 
 // Envoyer une sauvegarde par email avec pièce jointe

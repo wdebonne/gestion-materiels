@@ -56,7 +56,7 @@ export default function ReservationsPage() {
     queryKey: ['all-objects-for-reservation'],
     queryFn: async () => {
       const res = await api.get('/objects?limit=1000')
-      return res.data.data || res.data
+      return res.data.objects ?? res.data.data ?? []
     },
     enabled: showModal
   })
@@ -66,7 +66,7 @@ export default function ReservationsPage() {
     queryKey: ['all-users-for-reservation'],
     queryFn: async () => {
       const res = await api.get('/users')
-      return res.data.data || res.data
+      return res.data.users ?? res.data.data ?? []
     },
     enabled: showModal && isSupervisor
   })
