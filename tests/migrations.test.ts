@@ -59,6 +59,16 @@ async function schemaManifestations(cible: BaseMigration): Promise<void> {
     )
   `);
   await cible.execute(`
+    CREATE TABLE manifestation_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manifestation_id INTEGER NOT NULL,
+      object_id INTEGER NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      quantity_delivered INTEGER DEFAULT 0,
+      quantity_returned INTEGER DEFAULT 0
+    )
+  `);
+  await cible.execute(`
     CREATE TABLE manifestation_materials (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       manifestation_id INTEGER NOT NULL,

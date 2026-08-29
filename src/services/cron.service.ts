@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { db } from '../database';
 import { sendAlertEmail, sendEmail, sendEmailRaw } from './email.service';
 import { emitAlert } from './websocket.service';
-import { destinatairesManifestation } from './manifestationServices.service';
+import { destinatairesPour } from './manifestationNotify.service';
 import { genererClasseur, TYPE_MIME_XLSX } from './manifestationExport.service';
 import { deposerFichier, lireConfiguration } from './webdav.service';
 
@@ -455,7 +455,7 @@ export async function verifierManifestations(): Promise<void> {
     );
 
     for (const manifestation of livraisons) {
-      const destinataires = await destinatairesManifestation(manifestation.id, 'status_change');
+      const destinataires = await destinatairesPour(manifestation.id, 'delivery_reminder');
       for (const adresse of destinataires) {
         try {
           await sendEmail('manifestation_delivery_reminder', adresse, {
@@ -506,7 +506,7 @@ export async function verifierManifestations(): Promise<void> {
           severity: 'warning',
         });
 
-        for (const adresse of await destinatairesManifestation(manifestation.id, 'status_change')) {
+        for (const adresse of await destinatairesPour(manifestation.id, 'recovery_overdue')) {
           try {
             await sendEmail('manifestation_recovery_overdue', adresse, {
               manifestation_title: manifestation.title,

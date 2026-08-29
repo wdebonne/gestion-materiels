@@ -671,7 +671,10 @@ class DatabaseManager {
         quantity INTEGER DEFAULT 1,
         quantity_delivered INTEGER DEFAULT 0,
         quantity_returned INTEGER DEFAULT 0,
+        return_state VARCHAR(20),
+        notes ${textType},
         created_at DATETIME ${timestampDefault},
+        updated_at DATETIME,
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
       )`,
@@ -830,6 +833,20 @@ class DatabaseManager {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
         FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Préférences de notification, une ligne par compte et par événement.
+      // L'absence de ligne vaut « suivre le réglage par défaut ». Voir la
+      // migration 006.
+      `CREATE TABLE IF NOT EXISTS notification_preferences (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        user_id INTEGER NOT NULL,
+        event VARCHAR(50) NOT NULL,
+        enabled ${boolType} NOT NULL DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        UNIQUE(user_id, event),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )`,
 
       // Profils d'export des manifestations. Voir la migration 005 : quelles
@@ -1218,6 +1235,9 @@ class DatabaseManager {
       ['idx_manif_watchers', 'manifestation_watchers', 'manifestation_id'],
       ['idx_service_categories', 'service_categories', 'category_id'],
       ['idx_service_members_user', 'service_members', 'user_id'],
+      ['idx_manif_items', 'manifestation_items', 'manifestation_id'],
+      ['idx_manif_items_object', 'manifestation_items', 'object_id'],
+      ['idx_notif_prefs_user', 'notification_preferences', 'user_id'],
 
       // Droits — consultés à chaque requête filtrée par catégorie
       ['idx_user_permissions_user', 'user_permissions', 'user_id'],

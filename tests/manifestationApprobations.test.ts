@@ -243,39 +243,42 @@ describe('Qui peut décider', () => {
   });
 });
 
+/** Adresses seules, pour comparer sans se soucier du compte porteur. */
+const adresses = (destinataires: Array<{ email: string }>) => destinataires.map((d) => d.email);
+
 describe('Destinataires', () => {
   it('préfère la boîte partagée et y ajoute les membres', async () => {
     // Une boîte partagée survit aux départs, contrairement à l'adresse d'un agent.
-    expect((await destinatairesDuService(1)).sort()).toEqual(['festif@ville.fr', 'fetes@ville.fr']);
+    expect(adresses(await destinatairesDuService(1)).sort()).toEqual(['festif@ville.fr', 'fetes@ville.fr']);
   });
 
   it('retombe sur les membres quand le service n’a pas de boîte', async () => {
-    expect(await destinatairesDuService(2)).toEqual(['info@ville.fr']);
+    expect(adresses(await destinatairesDuService(2))).toEqual(['info@ville.fr']);
   });
 
   it('n’écrit pas à un service non sollicité', async () => {
     await creerApprobationsManquantes(100, 1);
-    const adresses = await destinatairesManifestation(100, 'status_change');
+    const destinataires = adresses(await destinatairesManifestation(100, 'approval_decided'));
 
-    expect(adresses).not.toContain('info@ville.fr');
-    expect(adresses).toContain('festif@ville.fr');
+    expect(destinataires).not.toContain('info@ville.fr');
+    expect(destinataires).toContain('festif@ville.fr');
   });
 
   it('écrit toujours aux observateurs', async () => {
     await creerApprobationsManquantes(100, 1);
-    expect(await destinatairesManifestation(100, 'status_change')).toContain('dgs@ville.fr');
+    expect(adresses(await destinatairesManifestation(100, 'approval_decided'))).toContain('dgs@ville.fr');
   });
 
   it('respecte un service qui a coupé ce type d’avis', async () => {
     await creerApprobationsManquantes(100, 1);
     base.exec('UPDATE services SET notify_status_change = 0 WHERE id = 1');
 
-    expect(await destinatairesManifestation(100, 'status_change')).not.toContain('festif@ville.fr');
+    expect(adresses(await destinatairesManifestation(100, 'approval_decided'))).not.toContain('festif@ville.fr');
   });
 
   it('inclut une personne mise en copie à titre individuel', async () => {
     base.exec('INSERT INTO manifestation_watchers (manifestation_id, user_id) VALUES (100, 5)');
-    expect(await destinatairesManifestation(100, 'status_change')).toContain('orphelin@ville.fr');
+    expect(adresses(await destinatairesManifestation(100, 'approval_decided'))).toContain('orphelin@ville.fr');
   });
 });
 

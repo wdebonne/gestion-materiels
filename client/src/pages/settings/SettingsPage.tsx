@@ -12,7 +12,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, Inbox, Building2, FileSpreadsheet
+  ShieldCheck, Inbox, Building2, FileSpreadsheet, Bell
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -99,6 +99,12 @@ const settingsNavItems = [
     to: '/settings/manifestations-export', 
     icon: FileSpreadsheet, 
     label: 'Export manifestations',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/notifications', 
+    icon: Bell, 
+    label: 'Notifications',
     adminOnly: true
   },
   { 

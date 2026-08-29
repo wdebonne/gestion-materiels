@@ -192,6 +192,32 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **`fetch` échoue avec un laconique « fetch failed »** et range la vraie cause dans `error.cause` : un administrateur qui lit cela ne sait pas s'il s'est trompé d'adresse, si le serveur est éteint ou si le certificat est refusé, et n'a aucune piste pour corriger. Les erreurs réseau sont désormais traduites — connexion refusée, domaine introuvable, certificat expiré ou auto-signé
 - **Un mot de passe erroné se manifestait en « Création du dossier refusée (HTTP 401) »**, puisque le premier appel au serveur est un `MKCOL`. Le refus dit maintenant ce qu'il faut vérifier
 
+### Manifestations — matériel unique, et notifications réglables par chacun
+
+> Une manifestation ne savait demander que des **quantités** : « 50 tables ». Un véhicule n'est pas une quantité — c'est un exemplaire identifié, qui ne peut pas être à deux endroits le même jour, et dont l'histoire (entretiens, pleins, contrôles) est déjà tenue dans le parc. Par ailleurs, les réglages de notification n'existaient qu'au niveau du service : un agent noyé sous les messages ne pouvait rien y faire sans couper aussi ses collègues.
+
+#### Ajouté
+
+- **Matériel unique du parc rattaché aux manifestations.** Une demande porte désormais deux natures de matériel : des quantités — 50 tables d'un même modèle, qu'il serait absurde de saisir une par une — et des exemplaires identifiés, choisis dans le parc où ils vivent déjà. Le véhicule garde son numéro de série, ses entretiens et ses pleins au même endroit ; le recopier dans le stock des manifestations aurait créé deux vérités
+  - La table `manifestation_items`, créée à l'origine du projet et **jamais ni lue ni écrite**, est enfin en service. Le README annonçait une « recherche d'objets du parc pour ajout aux manifestations » et l'API une route `GET /api/manifestations/search/objects` : ni l'une ni l'autre n'existaient
+  - **Un conflit est ici toujours réel** : deux manifestations peuvent se partager cent chaises sur cinquante chacune, elles ne peuvent pas se partager le camion. Le conflit est signalé avec *qui* retient le matériel et *sur quelles dates*
+  - Les **réservations** sont lues au passage : les deux circuits engagent le même parc sans se connaître, et se seraient promis le même véhicule chacun de son côté
+  - Le sélecteur montre les matériels déjà pris **sans les masquer** : savoir que le camion est sur la brocante permet de demander un décalage, ce qu'une liste amputée ne permettrait pas
+  - Suivi propre à l'unique : sorti / revenu / état constaté au retour — intact, abîmé, perdu — plutôt que des quantités, puisque « 0,5 camion livré » n'a aucun sens
+  - La portée par catégorie est appliquée **dans le service**, pas laissée à l'appelant : une recherche libre sur tout le parc est exactement la fuite fermée sur `GET /green-spaces/search/objects`
+- **Réglages de notification à trois niveaux**, du plus général au plus précis :
+  1. **le défaut de la collectivité** (Réglages › Notifications) — pour chacun des huit événements, quels rôles sont destinataires et si les services concernés le reçoivent ;
+  2. **le réglage de chaque service**, déjà en place ;
+  3. **le choix de chaque compte** (Mon profil), qui l'emporte sur tout
+  - Une seule exception, et elle est nécessaire : **ce qui engage son destinataire part toujours**. Une approbation qu'on attend de vous bloque la manifestation tant que vous n'avez pas répondu ; vous laisser la couper, c'est vous laisser bloquer une manifestation sans jamais le savoir. L'écran le dit et la case est verrouillée, plutôt que d'afficher un réglage qui ne ferait rien
+  - Le catalogue des événements est **servi par l'API** au lieu d'être recopié dans l'interface : une liste tenue des deux côtés finirait par diverger, et un événement à moitié déclaré serait proposé sans jamais partir
+  - Un événement absent du réglage enregistré prend ses valeurs du catalogue : ajouter un événement au code ne doit ni obliger à rouvrir l'écran, ni le laisser muet sans que personne le remarque
+  - Une boîte partagée de service n'a pas de compte, donc pas de préférence : elle suit le seul réglage du service, ce qui la rend insensible aux départs
+
+#### Corrigé
+
+- **`objectScope.test.ts` a rattrapé une fuite pendant l'écriture** : le nouveau service lisait `objects` sans porter la règle de portée. Plutôt que de l'exempter, la règle a été déplacée à l'intérieur — un appelant ne peut plus l'oublier
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

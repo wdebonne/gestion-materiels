@@ -40,6 +40,7 @@ const WebhooksPage = lazy(() => import('@/pages/settings/WebhooksPage'))
 const ManifestationIntakePage = lazy(() => import('@/pages/settings/ManifestationIntakePage'))
 const ServicesPage = lazy(() => import('@/pages/settings/ServicesPage'))
 const ManifestationExportPage = lazy(() => import('@/pages/settings/ManifestationExportPage'))
+const NotificationsPage = lazy(() => import('@/pages/settings/NotificationsPage'))
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
 const ApiTokensPage = lazy(() => import('@/pages/settings/ApiTokensPage'))
 const AuthSettingsPage = lazy(() => import('@/pages/settings/AuthSettingsPage'))
@@ -159,6 +160,7 @@ function App() {
             <Route path="manifestations-reception" element={<ManifestationIntakePage />} />
             <Route path="services" element={<ServicesPage />} />
             <Route path="manifestations-export" element={<ManifestationExportPage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
             <Route path="api" element={<ApiPage />} />
             <Route path="api-tokens" element={<ApiTokensPage />} />
           </Route>

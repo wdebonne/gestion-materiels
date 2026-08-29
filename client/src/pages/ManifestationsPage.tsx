@@ -11,6 +11,9 @@ import {
 import { useAuthStore } from '@/stores/auth.store'
 import ManifestationPDFExport from '@/components/ManifestationPDFExport'
 import ManifestationSuivi from '@/components/ManifestationSuivi'
+import ManifestationObjetsParc, { type ObjetChoisi } from '@/components/ManifestationObjetsParc'
+import { objetManifestationApi } from '@/lib/api'
+import { usePermissions } from '@/lib/permissions'
 import api from '@/lib/api'
 import {
   manifestationApi,
@@ -76,7 +79,8 @@ const emptyForm = {
   start_time: '', end_time: '', expected_people: 0,
   contact_name: '', contact_phone: '', contact_email: '',
   delivery_address: '', delivery_date: '', recovery_date: '',
-  notes_interior: '', notes_exterior: '', materials: [] as ManifMaterial[]
+  notes_interior: '', notes_exterior: '', materials: [] as ManifMaterial[],
+  objects: [] as ObjetChoisi[]
 }
 
 const emptyStockForm = { name: '', description: '', category: '', quantity_total: 0, unit: 'unité', etat: 'bon', lieu: '', stock_type: '', price: 0, category_id: null as number | null, subcategory_id: null as number | null }
@@ -234,6 +238,16 @@ export default function ManifestationsPage() {
           { icon: '⚠️', duration: 8000 }
         )
       }
+
+      // Un conflit sur du matériel unique est toujours réel : deux
+      // manifestations ne peuvent pas se partager le même camion.
+      const conflitsObjets = res.data.conflits_objets ?? []
+      if (conflitsObjets.length > 0) {
+        toast(
+          `Matériel déjà retenu : ${[...new Set(conflitsObjets.map(c => c.object_name))].join(', ')}`,
+          { icon: '⚠️', duration: 8000 }
+        )
+      }
     },
     onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
   })
@@ -322,6 +336,9 @@ export default function ManifestationsPage() {
         quantity_lost: mat.quantity_lost ?? 0, loss_reason: mat.loss_reason ?? null,
         unit_value: mat.unit_value, notes: mat.notes || '',
         stock_name: mat.stock_name, unit: mat.unit
+      })) || [],
+      objects: m.objects?.map(o => ({
+        object_id: o.object_id, object_name: o.object_name, reference: o.reference, notes: o.notes
       })) || []
     })
     setShowManifModal(true)
@@ -587,6 +604,15 @@ export default function ManifestationsPage() {
                 )}
               </CardBody>
             </Card>
+
+            {/* Matériel unique : un véhicule ne se demande pas en quantité. */}
+            <ManifestationObjetsParc
+              choisis={manifForm.objects}
+              onChange={(objects) => setManifForm({ ...manifForm, objects })}
+              dateDebut={manifForm.delivery_date || manifForm.date_start}
+              dateFin={manifForm.recovery_date || manifForm.date_end || manifForm.date_start}
+              exclure={editingManif?.id}
+            />
           </div>
         </ModalBody>
         <ModalFooter>
@@ -1192,6 +1218,9 @@ function HistoriqueManifestation({ manifestationId }: { manifestationId: number 
 }
 
 function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose: () => void }) {
+  // Le serveur refuse de toute façon ; masquer les cases évite de laisser croire
+  // qu'un simple lecteur peut constater un retour.
+  const { canManage } = usePermissions()
   const formatD = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR') : '-'
   const totalValue = m.materials?.reduce((s, mat) => s + (mat.unit_value * mat.quantity_requested), 0) || 0
   const [exportPDF, setExportPDF] = useState(false)
@@ -1289,6 +1318,8 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
               </CardBody>
             </Card>
           )}
+          <SuiviObjetsParc manifestationId={m.id} modifiable={canManage} />
+
           {/* Approbations, échanges et copies : le suivi partagé entre services. */}
           <ManifestationSuivi manifestationId={m.id} />
 
@@ -1386,6 +1417,108 @@ function AliasArticle({ stockId, nom }: { stockId: number; nom: string }) {
             Ajouter
           </Button>
         </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+/**
+ * Suivi du matériel unique d'une manifestation.
+ *
+ * Un véhicule ne se compte pas : il est sorti ou non, revenu ou non, et son état
+ * au retour se constate — intact, abîmé, perdu. Trois cases plutôt que quatre
+ * champs de quantité, parce que « 0,5 camion livré » n'a aucun sens.
+ */
+function SuiviObjetsParc({ manifestationId, modifiable }: {
+  manifestationId: number
+  modifiable: boolean
+}) {
+  const queryClient = useQueryClient()
+
+  const { data: objets = [] } = useQuery({
+    queryKey: ['manifestation-objects', manifestationId],
+    queryFn: async () => (await objetManifestationApi.lister(manifestationId)).data.data
+  })
+
+  const suivi = useMutation({
+    mutationFn: ({ itemId, ...data }: { itemId: number } & Record<string, any>) =>
+      objetManifestationApi.suivre(manifestationId, itemId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['manifestation-objects', manifestationId] })
+      queryClient.invalidateQueries({ queryKey: ['manifestation-history', manifestationId] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
+  })
+
+  if (objets.length === 0) return null
+
+  const LIBELLES_ETAT: Record<string, string> = {
+    intact: 'Intact',
+    abime: 'Abîmé',
+    perdu: 'Perdu'
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Matériel unique du parc</CardTitle></CardHeader>
+      <CardBody className="space-y-2">
+        {objets.map(objet => (
+          <div key={objet.id} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{objet.object_name}</span>
+                {objet.reference && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{objet.reference}</span>
+                )}
+                {objet.serial_number && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">n° {objet.serial_number}</span>
+                )}
+              </div>
+              {objet.return_state && (
+                <Badge variant={objet.return_state === 'intact' ? 'success' : 'danger'}>
+                  {LIBELLES_ETAT[objet.return_state]}
+                </Badge>
+              )}
+            </div>
+
+            {modifiable ? (
+              <div className="flex flex-wrap items-center gap-4 mt-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={objet.quantity_delivered > 0}
+                    onChange={e => suivi.mutate({ itemId: objet.id, delivered: e.target.checked })} />
+                  Sorti
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={objet.quantity_returned > 0}
+                    onChange={e => suivi.mutate({ itemId: objet.id, returned: e.target.checked })} />
+                  Revenu
+                </label>
+                {objet.quantity_returned > 0 && (
+                  <div className="w-40">
+                    <Select value={objet.return_state ?? ''}
+                      onChange={e => suivi.mutate({ itemId: objet.id, return_state: e.target.value })}
+                      options={[
+                        { value: '', label: '— État au retour —' },
+                        { value: 'intact', label: 'Intact' },
+                        { value: 'abime', label: 'Abîmé' },
+                        { value: 'perdu', label: 'Perdu' }
+                      ]} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                {objet.quantity_delivered > 0 ? 'Sorti' : 'Non sorti'}
+                {' · '}
+                {objet.quantity_returned > 0 ? 'revenu' : 'non revenu'}
+              </p>
+            )}
+
+            {objet.notes && (
+              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 italic">{objet.notes}</p>
+            )}
+          </div>
+        ))}
       </CardBody>
     </Card>
   )

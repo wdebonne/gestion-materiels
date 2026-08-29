@@ -3,6 +3,12 @@ import { sendEmail } from './email.service';
 import { logService } from './log.service';
 import { notifierWebhooks } from './webhook.service';
 import { destinatairesDuService, destinatairesManifestation } from './manifestationServices.service';
+import {
+  destinatairesParRole,
+  filtrerSelonPreferences,
+  servicesNotifies,
+  type Destinataire,
+} from './notificationPreferences.service';
 
 /**
  * Notifications du module Manifestations.
@@ -40,6 +46,7 @@ async function envoyer(
 ): Promise<void> {
   if (adresses.length === 0) return;
 
+
   let envoyes = 0;
   for (const adresse of adresses) {
     try {
@@ -60,6 +67,31 @@ async function envoyer(
   if (envoyes > 0) {
     await logService.info('email', `Manifestation : ${envoyes} message(s) « ${gabarit} » envoyé(s)`);
   }
+}
+
+/**
+ * Qui reçoit cet événement, tous niveaux confondus.
+ *
+ * Trois sources se rejoignent ici : les services rattachés à la manifestation,
+ * les comptes visés par la grille de l'administrateur au titre de leur rôle, et
+ * les personnes mises en copie. Le filtre des préférences individuelles est
+ * appliqué en dernier — sauf pour un événement engageant, qui part toujours.
+ *
+ * Écrit une seule fois : sans cela, chaque notification redécouvrirait la règle
+ * et l'une d'elles finirait par oublier un niveau.
+ */
+export async function destinatairesPour(
+  manifestationId: number | string,
+  evenement: string
+): Promise<string[]> {
+  const destinataires: Destinataire[] = [];
+
+  if (await servicesNotifies(evenement)) {
+    destinataires.push(...(await destinatairesManifestation(manifestationId, evenement)));
+  }
+  destinataires.push(...(await destinatairesParRole(evenement)));
+
+  return filtrerSelonPreferences(destinataires, evenement);
 }
 
 /** Lance un envoi sans faire attendre l'appelant ni risquer de le faire échouer. */
@@ -90,7 +122,15 @@ export function notifierServicesConcernes(
       // Le service qui a coupé les demandes ne doit pas en recevoir.
       if (!service.notify_new_request) continue;
 
-      await envoyer('manifestation_approval_request', await destinatairesDuService(service.id), {
+      // Une approbation attendue engage son destinataire : elle part quelles que
+      // soient ses préférences personnelles, sinon il bloquerait une
+      // manifestation sans jamais le savoir.
+      const adresses = await filtrerSelonPreferences(
+        await destinatairesDuService(service.id),
+        'approval_requested'
+      );
+
+      await envoyer('manifestation_approval_request', adresses, {
         manifestation_title: titre,
         service_name: service.name,
         manifestation_url: lien,
@@ -122,13 +162,17 @@ export function notifierSollicitation(
     );
     if (!sollicitation) return;
 
-    const adresses = sollicitation.service_id
+    const destinataires: Destinataire[] = sollicitation.service_id
       ? sollicitation.notify_new_request
         ? await destinatairesDuService(sollicitation.service_id)
         : []
       : sollicitation.user_email
-        ? [sollicitation.user_email]
+        ? [{ email: sollicitation.user_email, userId: sollicitation.user_id }]
         : [];
+
+    const evenement =
+      sollicitation.kind === 'information' ? 'message' : 'approval_requested';
+    const adresses = await filtrerSelonPreferences(destinataires, evenement);
 
     const gabarit =
       sollicitation.kind === 'information'
@@ -159,7 +203,7 @@ export function notifierDecision(
   commentaire: string | null
 ): void {
   sansAttendre(async () => {
-    const adresses = await destinatairesManifestation(manifestationId, 'status_change');
+    const adresses = await destinatairesPour(manifestationId, 'approval_decided');
 
     await envoyer('manifestation_decision', adresses, {
       manifestation_title: titre,
@@ -185,7 +229,7 @@ export function notifierMessage(
   corps: string
 ): void {
   sansAttendre(async () => {
-    const adresses = await destinatairesManifestation(manifestationId, 'message');
+    const adresses = await destinatairesPour(manifestationId, 'message');
 
     await envoyer('manifestation_message', adresses, {
       manifestation_title: titre,
@@ -219,7 +263,7 @@ export function notifierChangementDates(
   if (changements.length === 0) return;
 
   sansAttendre(async () => {
-    const adresses = await destinatairesManifestation(manifestationId, 'status_change');
+    const adresses = await destinatairesPour(manifestationId, 'dates_changed');
 
     await envoyer('manifestation_date_changed', adresses, {
       manifestation_title: titre,
@@ -242,7 +286,7 @@ export function notifierChangementMateriel(
   resume: string
 ): void {
   sansAttendre(async () => {
-    const adresses = await destinatairesManifestation(manifestationId, 'material_change');
+    const adresses = await destinatairesPour(manifestationId, 'material_changed');
 
     await envoyer('manifestation_material_changed', adresses, {
       manifestation_title: titre,

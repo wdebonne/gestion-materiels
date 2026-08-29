@@ -66,7 +66,10 @@ describe('Écriture de l’historique', () => {
 describe('Lecture de l’historique', () => {
   it('est joint au détail et disponible seul', () => {
     expect(ROUTES).toContain("router.get('/:id/history'");
-    expect(ROUTES).toMatch(/data: \{ \.\.\.m, materials, history \}/);
+    // Le détail rend aussi le matériel unique du parc depuis qu'une
+    // manifestation peut en demander : ce qui compte ici est que l'historique
+    // et le matériel accompagnent la fiche, pas l'ordre exact des clés.
+    expect(ROUTES).toMatch(/data: \{ \.\.\.m, materials,[^}]*history \}/);
   });
 
   it('rend le nom de l’auteur, pas seulement son identifiant', () => {

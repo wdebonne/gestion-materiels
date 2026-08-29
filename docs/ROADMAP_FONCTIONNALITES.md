@@ -207,10 +207,11 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Matériel par manifestation** : Quantités demandées, livrées, récupérées et perdues, avec suivi unitaire
   - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue, une perte le diminue
   - **Réception de demandes** : dépôt signé depuis une application de formulaires, correspondance des champs configurable
+  - **Matériel unique** : un véhicule ou un matériel identifié du parc se rattache à une manifestation, sans passer par une quantité
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
   - **Filtres** : Par statut, dates, recherche textuelle
   - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
-- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`, `manifestation_export_profiles`
+- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`, `manifestation_export_profiles`, `manifestation_items`, `notification_preferences`
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
 - **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
@@ -237,7 +238,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > ✅ **Export et dépôt Nextcloud, août 2026 :** 24 colonnes disponibles, dont l'état de chaque approbation et les services encore attendus. Les profils disent quelles colonnes, dans quel ordre et sous quel intitulé — une donnée, pas du code. Le dépôt WebDAV est à sens unique : l'application reste la source de vérité. La vérification de configuration dépose réellement un fichier témoin plutôt que de valider la forme des champs, et le redépôt automatique est regroupé sur une minute.
 >
-> ⏳ **Reste à faire :** la table `manifestation_items` reste inutilisée.
+> ✅ **Matériel unique et notifications réglables, août 2026 :** une demande porte désormais deux natures de matériel — des quantités et des exemplaires identifiés choisis dans le parc. `manifestation_items`, créée à l'origine et jamais utilisée, est en service : un conflit y est toujours réel, et les réservations sont lues au passage puisque les deux circuits engagent le même parc.
+>
+> Les notifications se règlent à trois niveaux : défaut de la collectivité par événement et par rôle, réglage de chaque service, choix de chaque compte. Ce qui engage son destinataire — une approbation attendue — part toujours.
 >
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 

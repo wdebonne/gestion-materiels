@@ -123,6 +123,8 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - ✅ **Approbations** : chaque service concerné approuve sa part, avec ses propres dates de livraison et de récupération. La validation reste bloquée tant qu'un service n'a pas répondu
 - 💬 **Conversation** : les services échangent dans le fil de la manifestation ; tout est consigné dans l'historique et dans l'archive
 - 👀 **Mise en copie** : une direction générale, un maire ou un élu suit l'intégralité des échanges sans rien approuver
+- 🚚 **Deux natures de matériel** : des **quantités** (50 tables d'un même modèle, sans les saisir une par une) et des **exemplaires uniques** choisis dans le parc (un véhicule, un vidéoprojecteur identifié). Deux manifestations peuvent se partager cent chaises ; elles ne peuvent pas se partager le camion, et le conflit est signalé avec qui le retient et quand
+- 🔔 **Notifications réglables à trois niveaux** : défaut de la collectivité par événement et par rôle, réglage de chaque service, puis choix de chaque compte. Une approbation attendue de vous part toujours — sans quoi vous bloqueriez une manifestation sans le savoir
 - 📊 **Export configurable** : choisissez vos colonnes, leur ordre et leurs intitulés, et déposez le suivi sur un **Nextcloud** automatiquement à chaque changement
 - 🎨 **Indicateurs visuels** : Cartes colorées par statut (bordure, fond, badge) avec barre de progression du workflow
 - ✅ **Modales de changement de statut** :
@@ -563,6 +565,25 @@ POST   /api/manifestations/stock/:id/aliases   # Ajouter un alias
 DELETE /api/manifestations/stock/aliases/:id   # Retirer un alias
 ```
 
+**Matériel unique du parc**
+
+```
+GET    /api/manifestations/objects/search   # Parc sur une période, avec ce qui retient chaque matériel
+GET    /api/manifestations/:id/objects      # Matériels uniques demandés
+PUT    /api/manifestations/:id/objects      # Remplace la liste (rend les conflits)
+PUT    /api/manifestations/:id/objects/:itemId  # Sortie, retour, état constaté
+```
+
+**Notifications**
+
+```
+GET    /api/notifications/events        # Catalogue des événements et des rôles
+GET    /api/notifications/defaults      # Défauts de la collectivité (admin)
+PUT    /api/notifications/defaults      # Qui reçoit quoi par défaut (admin)
+GET    /api/notifications/preferences   # Mes choix, et ce que je peux couper
+PUT    /api/notifications/preferences   # Couper ou rétablir un avis pour moi seul
+```
+
 **Services, approbations et suivi**
 
 ```
@@ -787,7 +808,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - Les requêtes du cron encadrent leurs colonnes de dates dans `date()`, ce qui empêche les index `idx_control_expiry` et `idx_maintenance_next` de servir. Sans effet visible au volume actuel
 - `JWT_REFRESH_SECRET` est déclaré dans `docker-compose.yml` mais n'est lu par personne : les deux jetons sont signés avec `JWT_SECRET`
 - `PUT /api/manifestations/:id` ne lit pas le champ `status` : le statut se change uniquement via `PUT /:id/status`
-- La table `manifestation_items`, qui rattacherait à une manifestation un matériel du parc identifié individuellement — plutôt qu'une quantité — existe depuis l'origine et n'est ni lue ni écrite. Le README annonçait jusqu'ici une « recherche d'objets du parc pour ajout aux manifestations » et l'API une route `GET /api/manifestations/search/objects` : ni l'une ni l'autre n'existent
 - La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
 - Un service ne peut être mis en copie que globalement ; il n'existe pas encore de mise en copie d'une personne depuis l'écran (l'API l'accepte : `POST /:id/watchers` avec `user_id`)
 - Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`

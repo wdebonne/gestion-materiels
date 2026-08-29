@@ -416,6 +416,8 @@ export interface Manifestation {
   created_at: string
   updated_at: string
   materials: ManifestationMaterial[]
+  /** Matériels uniques du parc : un véhicule, un vidéoprojecteur identifié. */
+  objects?: ObjetManifestation[]
   /** Lignes reçues d'un formulaire qu'aucun article du stock n'a permis de rattacher. */
   intake_unmatched?: string | null
 }
@@ -454,6 +456,8 @@ export interface ManifestationFormData {
   notes_interior?: string
   notes_exterior?: string
   materials?: Omit<ManifestationMaterial, 'id' | 'stock_name' | 'unit' | 'stock_category' | 'stock_total'>[]
+  /** Matériels uniques demandés, par identifiant de fiche parc. */
+  objects?: Array<{ object_id: number; notes?: string | null }>
 }
 
 export interface StockFormData {
@@ -486,9 +490,17 @@ export const manifestationApi = {
   getById: (id: number) =>
     api.get<{ success: boolean; data: Manifestation }>(`/manifestations/${id}`),
   create: (data: ManifestationFormData) =>
-    api.post<{ success: boolean; data: Manifestation; conflits: ConflitStock[] }>('/manifestations', data),
+    api.post<{
+      success: boolean
+      data: Manifestation
+      conflits: ConflitStock[]
+      conflits_objets: IndisponibiliteObjet[]
+    }>('/manifestations', data),
   update: (id: number, data: ManifestationFormData) =>
-    api.put<{ success: boolean; conflits: ConflitStock[] }>(`/manifestations/${id}`, data),
+    api.put<{ success: boolean; conflits: ConflitStock[]; conflits_objets: IndisponibiliteObjet[] }>(
+      `/manifestations/${id}`,
+      data
+    ),
   delete: (id: number) =>
     api.delete<{ success: boolean }>(`/manifestations/${id}`),
   // Le serveur accepte un commentaire de transition et le consigne dans
@@ -817,4 +829,117 @@ export const exportManifestationApi = {
     api.put<{ success: boolean }>('/manifestations/export/nextcloud', data),
   testNextcloud: (data: { url?: string; username?: string; password?: string; folder?: string }) =>
     api.post<{ success: boolean; message: string }>('/manifestations/export/nextcloud/test', data),
+}
+
+
+// ======================== MATÉRIEL UNIQUE DU PARC ========================
+
+/** Ce qui retient un matériel du parc sur une période. */
+export interface IndisponibiliteObjet {
+  object_id: number
+  object_name: string
+  origine: 'manifestation' | 'reservation'
+  detail: string
+  debut: string
+  fin: string
+}
+
+export interface ObjetParc {
+  id: number
+  name: string
+  reference: string | null
+  serial_number: string | null
+  status: string
+  category_id: number | null
+  category_name: string | null
+  disponible: boolean
+  indisponibilites: IndisponibiliteObjet[]
+}
+
+export type EtatRetour = 'intact' | 'abime' | 'perdu'
+
+/** Matériel unique rattaché à une manifestation. */
+export interface ObjetManifestation {
+  id: number
+  manifestation_id: number
+  object_id: number
+  object_name: string
+  reference: string | null
+  serial_number: string | null
+  category_name: string | null
+  quantity_delivered: number
+  quantity_returned: number
+  return_state: EtatRetour | null
+  notes: string | null
+}
+
+export const objetManifestationApi = {
+  /** Parc consultable sur une période, chaque ligne disant ce qui la retient. */
+  rechercher: (params: { q?: string; date_from?: string; date_to?: string; exclude?: number }) => {
+    const p = new URLSearchParams()
+    if (params.q) p.append('q', params.q)
+    if (params.date_from) p.append('date_from', params.date_from)
+    if (params.date_to) p.append('date_to', params.date_to)
+    if (params.exclude) p.append('exclude', String(params.exclude))
+    return api.get<{ success: boolean; data: ObjetParc[] }>(
+      `/manifestations/objects/search?${p.toString()}`
+    )
+  },
+  lister: (manifestationId: number) =>
+    api.get<{ success: boolean; data: ObjetManifestation[] }>(`/manifestations/${manifestationId}/objects`),
+  remplacer: (manifestationId: number, objects: Array<{ object_id: number; notes?: string | null }>) =>
+    api.put<{ success: boolean; data: ObjetManifestation[]; conflits: IndisponibiliteObjet[] }>(
+      `/manifestations/${manifestationId}/objects`,
+      { objects }
+    ),
+  suivre: (
+    manifestationId: number,
+    itemId: number,
+    data: { delivered?: boolean; returned?: boolean; return_state?: EtatRetour; notes?: string }
+  ) =>
+    api.put<{ success: boolean; data: ObjetManifestation[] }>(
+      `/manifestations/${manifestationId}/objects/${itemId}`,
+      data
+    ),
+}
+
+// ======================== NOTIFICATIONS ========================
+
+export interface EvenementNotification {
+  evenement: string
+  libelle: string
+  description: string
+  /** Engage son destinataire : ne peut pas être coupé individuellement. */
+  engageant: boolean
+  rolesParDefaut: string[]
+  servicesParDefaut: boolean
+}
+
+export interface PreferenceNotification extends EvenementNotification {
+  /** `null` quand aucun choix explicite n'a été fait : le défaut s'applique. */
+  choix: boolean | null
+  actif: boolean
+}
+
+export interface ReglageEvenement {
+  roles: string[]
+  services: boolean
+}
+
+export const notificationApi = {
+  getEvents: () =>
+    api.get<{
+      success: boolean
+      data: { events: EvenementNotification[]; roles: Array<{ role: string; label: string }> }
+    }>('/notifications/events'),
+  getDefaults: () =>
+    api.get<{ success: boolean; data: Record<string, ReglageEvenement> }>('/notifications/defaults'),
+  saveDefaults: (defaults: Record<string, ReglageEvenement>) =>
+    api.put<{ success: boolean; data: Record<string, ReglageEvenement> }>('/notifications/defaults', {
+      defaults,
+    }),
+  getPreferences: () =>
+    api.get<{ success: boolean; data: PreferenceNotification[] }>('/notifications/preferences'),
+  savePreference: (event: string, enabled: boolean) =>
+    api.put<{ success: boolean }>('/notifications/preferences', { event, enabled }),
 }

@@ -1,4 +1,5 @@
 import { db } from '../database';
+import type { Destinataire } from './notificationPreferences.service';
 
 /**
  * Qui est concerné par une manifestation — et donc qui est sollicité et alerté.
@@ -159,27 +160,52 @@ export async function peutDeciderPour(
 }
 
 /**
- * Destinataires d'une notification, adresses dédupliquées.
+ * Destinataires d'une notification pour un service.
  *
  * L'adresse du service prime quand elle existe : une boîte partagée survit aux
  * départs, contrairement à l'adresse d'un agent. Les membres la reçoivent aussi,
  * sinon un service sans boîte partagée ne recevrait rien du tout.
+ *
+ * Chaque destinataire porte son compte quand il en a un, pour que ses
+ * préférences personnelles puissent être respectées ensuite. La boîte partagée
+ * n'appartient à personne : elle n'en a pas, et suit le seul réglage du service.
  */
-export async function destinatairesDuService(serviceId: number): Promise<string[]> {
+export async function destinatairesDuService(serviceId: number): Promise<Destinataire[]> {
   const service = await db.queryOne('SELECT email FROM services WHERE id = ?', [serviceId]);
   const membres = await db.query(
-    `SELECT u.email FROM users u
+    `SELECT u.id, u.email, u.role FROM users u
      JOIN service_members sm ON sm.user_id = u.id
      WHERE sm.service_id = ? AND u.is_active = 1 AND u.email IS NOT NULL`,
     [serviceId]
   );
 
-  const adresses = new Set<string>();
-  if (service?.email) adresses.add(service.email);
-  for (const membre of membres) adresses.add(membre.email);
+  const destinataires: Destinataire[] = [];
+  if (service?.email) destinataires.push({ email: service.email });
+  for (const membre of membres) {
+    destinataires.push({ email: membre.email, userId: membre.id, role: membre.role });
+  }
 
-  return [...adresses];
+  return destinataires;
 }
+
+/**
+ * Colonne de réglage du service correspondant à un événement.
+ *
+ * Les services portent quatre interrupteurs, le catalogue compte huit
+ * événements : cette table dit lequel gouverne lequel. Un événement inconnu
+ * retombe sur le suivi de statut, le plus général — mieux vaut une notification
+ * de trop qu'un silence sur un événement qu'on vient d'ajouter.
+ */
+const COLONNE_SERVICE: Record<string, string> = {
+  new_request: 'notify_new_request',
+  approval_requested: 'notify_new_request',
+  approval_decided: 'notify_status_change',
+  message: 'notify_message',
+  dates_changed: 'notify_status_change',
+  material_changed: 'notify_material_change',
+  delivery_reminder: 'notify_status_change',
+  recovery_overdue: 'notify_status_change',
+};
 
 /**
  * Tous ceux qui suivent une manifestation : services sollicités, observateurs,
@@ -191,9 +217,9 @@ export async function destinatairesDuService(serviceId: number): Promise<string[
  */
 export async function destinatairesManifestation(
   manifestationId: number | string,
-  evenement: 'new_request' | 'status_change' | 'material_change' | 'message'
-): Promise<string[]> {
-  const colonne = `notify_${evenement}`;
+  evenement: string
+): Promise<Destinataire[]> {
+  const colonne = COLONNE_SERVICE[evenement] ?? 'notify_status_change';
 
   const services = await db.query(
     `SELECT DISTINCT s.id
@@ -213,30 +239,34 @@ export async function destinatairesManifestation(
     [manifestationId, manifestationId]
   );
 
-  const adresses = new Set<string>();
+  const destinataires: Destinataire[] = [];
   for (const service of services) {
-    for (const adresse of await destinatairesDuService(service.id)) adresses.add(adresse);
+    destinataires.push(...(await destinatairesDuService(service.id)));
   }
 
   // Personnes mises en copie à titre individuel : un DGS, un élu.
   const suiveurs = await db.query(
-    `SELECT u.email FROM manifestation_watchers w
+    `SELECT u.id, u.email, u.role FROM manifestation_watchers w
      JOIN users u ON u.id = w.user_id
      WHERE w.manifestation_id = ? AND u.is_active = 1 AND u.email IS NOT NULL`,
     [manifestationId]
   );
-  for (const suiveur of suiveurs) adresses.add(suiveur.email);
+  for (const suiveur of suiveurs) {
+    destinataires.push({ email: suiveur.email, userId: suiveur.id, role: suiveur.role });
+  }
 
   // Personnes sollicitées nommément.
   const sollicites = await db.query(
-    `SELECT u.email FROM manifestation_approvals a
+    `SELECT u.id, u.email, u.role FROM manifestation_approvals a
      JOIN users u ON u.id = a.user_id
      WHERE a.manifestation_id = ? AND u.is_active = 1 AND u.email IS NOT NULL`,
     [manifestationId]
   );
-  for (const sollicite of sollicites) adresses.add(sollicite.email);
+  for (const sollicite of sollicites) {
+    destinataires.push({ email: sollicite.email, userId: sollicite.id, role: sollicite.role });
+  }
 
-  return [...adresses];
+  return destinataires;
 }
 
 /**

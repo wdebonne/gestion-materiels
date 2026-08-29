@@ -44,6 +44,10 @@ const CHEMINS_AUTORISES: ReadonlyArray<{ prefixe: string; lectureSeule?: boolean
   // autres dans le fil d'échange. La composition détaillée reste gardée par
   // `requireAdmin` sur la route elle-même.
   { prefixe: '/api/services', lectureSeule: true },
+  // Chacun règle ses propres notifications, y compris un compte cloisonné :
+  // les lui refuser reviendrait à le laisser subir ce qu'il reçoit. Les défauts
+  // de la collectivité restent gardés par `requireAdmin` sur la route.
+  { prefixe: '/api/notifications' },
 ];
 
 const METHODES_LECTURE = new Set(['GET', 'HEAD', 'OPTIONS']);

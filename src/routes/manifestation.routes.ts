@@ -8,6 +8,14 @@ import {
   peutVoirManifestation,
   REFUS_PORTEE_MANIFESTATION,
 } from '../middleware/manifestationScope';
+import { peutVoirObjet, REFUS_PORTEE } from '../middleware/objectScope';
+import {
+  ETATS_RETOUR,
+  indisponibilites,
+  objetsDe,
+  parcAvecDisponibilite,
+  remplacerObjets,
+} from '../services/manifestationObjets.service';
 import { logService } from '../services/log.service';
 import {
   approbationsDe,
@@ -539,8 +547,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     `, [m.id]);
 
     const history = await lireHistorique(m.id);
+    // Deux natures de matériel : des quantités (`materials`) et des exemplaires
+    // identifiés du parc (`objects`).
+    const objects = await objetsDe(m.id);
 
-    res.json({ success: true, data: { ...m, materials, history } });
+    res.json({ success: true, data: { ...m, materials, objects, history } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -574,7 +585,7 @@ router.post('/', authenticateToken, requireSupervisor,
       const {
         title, date_start, date_end, start_time, end_time, expected_people,
         contact_name, contact_phone, contact_email, delivery_address, delivery_date,
-        recovery_date, notes_interior, notes_exterior, materials
+        recovery_date, notes_interior, notes_exterior, materials, objects
       } = req.body;
 
       const result = await db.execute(`
@@ -601,6 +612,11 @@ router.post('/', authenticateToken, requireSupervisor,
         }
       }
 
+      // Matériels uniques du parc : un véhicule, un vidéoprojecteur identifié.
+      if (Array.isArray(objects) && objects.length > 0) {
+        await remplacerObjets(manifestationId, objects);
+      }
+
       await consignerHistorique(manifestationId, req.user!.userId, 'Création', { toStatus: 'draft' });
       await logService.info('other', `Manifestation créée: ${title}`, { userId: req.user!.userId });
       const created = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [manifestationId]);
@@ -614,6 +630,12 @@ router.post('/', authenticateToken, requireSupervisor,
         periode.fin,
         manifestationId
       );
+      const conflitsObjets = await indisponibilites(
+        Array.isArray(objects) ? objects.map((o: any) => o.object_id) : [],
+        periode.debut,
+        periode.fin,
+        manifestationId
+      );
 
       // Les services concernés sont sollicités dès la création : c'est ce qui
       // rend le tableau des approbations lisible avant même la validation.
@@ -621,7 +643,7 @@ router.post('/', authenticateToken, requireSupervisor,
       notifierServicesConcernes(manifestationId, title, sollicites);
 
       notifierWebhooks('manifestation.created', { id: manifestationId, title, status: 'draft' });
-      res.status(201).json({ success: true, data: created, conflits });
+      res.status(201).json({ success: true, data: created, conflits, conflits_objets: conflitsObjets });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -638,7 +660,7 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     const {
       title, date_start, date_end, start_time, end_time, expected_people,
       contact_name, contact_phone, contact_email, delivery_address, delivery_date,
-      recovery_date, notes_interior, notes_exterior, materials
+      recovery_date, notes_interior, notes_exterior, materials, objects
     } = req.body;
 
     await db.execute(`
@@ -684,6 +706,10 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       }
     }
 
+    if (Array.isArray(objects)) {
+      await remplacerObjets(req.params.id, objects);
+    }
+
     await consignerHistorique(req.params.id, req.user!.userId, 'Modification');
     await logService.info('other', `Manifestation modifiée: ${title}`, { userId: req.user!.userId });
 
@@ -712,9 +738,15 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       periode.fin,
       req.params.id
     );
+    const conflitsObjets = await indisponibilites(
+      Array.isArray(objects) ? objects.map((o: any) => o.object_id) : [],
+      periode.debut,
+      periode.fin,
+      req.params.id
+    );
 
     notifierWebhooks('manifestation.updated', { id: Number(req.params.id), title });
-    res.json({ success: true, conflits });
+    res.json({ success: true, conflits, conflits_objets: conflitsObjets });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -932,6 +964,173 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
     redeposerSuivi();
 
     res.json({ success: true, updated: modifiees });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== MATÉRIEL UNIQUE DU PARC ========================
+//
+// Une manifestation ne savait demander que des quantités : « 50 tables ». Un
+// véhicule n'est pas une quantité — c'est un exemplaire identifié, qui ne peut
+// pas être à deux endroits le même jour, et dont l'histoire (entretiens, pleins,
+// contrôles) est déjà tenue dans le parc. On l'y rattache plutôt que de le
+// recopier dans le stock des manifestations, ce qui créerait deux vérités.
+
+/**
+ * GET /objects/search - Parc consultable pour une période, avec ce qui le retient.
+ *
+ * Les matériels pris restent visibles, en disant *qui* les retient : savoir que
+ * le camion est sur la brocante permet de demander un décalage, ce qu'une liste
+ * amputée ne permet pas.
+ */
+router.get('/objects/search', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { q, date_from, date_to, exclude } = req.query;
+    const debut = String(date_from || aujourdHui());
+    const fin = String(date_to || debut);
+
+    const parc = await parcAvecDisponibilite(
+      req,
+      q ? String(q) : undefined,
+      debut,
+      fin,
+      exclude ? String(exclude) : null
+    );
+
+    if (parc === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    res.json({ success: true, data: parc, periode: { debut, fin } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** GET /:id/objects - Matériels uniques demandés par une manifestation. */
+router.get('/:id/objects', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+    res.json({ success: true, data: await objetsDe(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /:id/objects - Remplace la liste des matériels uniques.
+ *
+ * Les conflits sont rendus mais ne bloquent pas : comme pour le stock, une
+ * commune arbitre, décale ou emprunte ailleurs. La différence est qu'ici un
+ * conflit est toujours réel — deux manifestations ne peuvent pas se partager le
+ * même camion, alors qu'elles peuvent se partager cent chaises.
+ */
+router.put('/:id/objects', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { objects } = req.body;
+    if (!Array.isArray(objects)) {
+      return res.status(400).json({ success: false, message: 'Liste de matériels requise' });
+    }
+
+    const m = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [req.params.id]);
+    if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
+    if (m.status === 'archived') {
+      return res.status(400).json({ success: false, message: 'Manifestation archivée' });
+    }
+
+    // Un compte ne peut engager que le matériel qu'il a le droit de voir : sans
+    // ce contrôle, il suffirait de connaître un identifiant pour réserver un
+    // véhicule d'une catégorie qui lui est fermée.
+    for (const objet of objects) {
+      if (!(await peutVoirObjet(req, objet.object_id))) {
+        return res.status(403).json({ success: false, message: REFUS_PORTEE });
+      }
+    }
+
+    await remplacerObjets(req.params.id, objects);
+
+    const periode = periodeDe(m);
+    const conflits = await indisponibilites(
+      objects.map((o: any) => o.object_id),
+      periode.debut,
+      periode.fin,
+      req.params.id
+    );
+
+    await consignerHistorique(req.params.id, req.user!.userId, 'Matériel unique mis à jour', {
+      comment: `${objects.length} matériel(s) du parc`,
+    });
+    notifierChangementMateriel(req.params.id, m.title, `${objects.length} matériel(s) du parc`);
+    redeposerSuivi();
+
+    res.json({ success: true, data: await objetsDe(req.params.id), conflits });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /:id/objects/:itemId - Sortie et retour d'un matériel unique.
+ *
+ * Un véhicule ne se compte pas : il est sorti ou non, revenu ou non, et son état
+ * au retour se constate — intact, abîmé, perdu. C'est ce constat qui manquait
+ * pour que le suivi d'un prêt de véhicule vaille celui d'un prêt de chaises.
+ */
+router.put('/:id/objects/:itemId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { delivered, returned, return_state, notes } = req.body;
+
+    if (return_state && !ETATS_RETOUR.includes(return_state)) {
+      return res.status(400).json({
+        success: false,
+        message: `État de retour invalide (attendu : ${ETATS_RETOUR.join(', ')})`,
+      });
+    }
+
+    const ligne = await db.queryOne(
+      `SELECT mi.*, o.name as object_name FROM manifestation_items mi
+       JOIN objects o ON o.id = mi.object_id
+       WHERE mi.id = ? AND mi.manifestation_id = ?`,
+      [req.params.itemId, req.params.id]
+    );
+    if (!ligne) {
+      return res.status(404).json({ success: false, message: 'Matériel non trouvé sur cette manifestation' });
+    }
+
+    const sorti = delivered === undefined ? ligne.quantity_delivered : delivered ? 1 : 0;
+    const revenu = returned === undefined ? ligne.quantity_returned : returned ? 1 : 0;
+
+    await db.execute(
+      `UPDATE manifestation_items
+       SET quantity_delivered = ?, quantity_returned = ?, return_state = ?, notes = ?, updated_at = ?
+       WHERE id = ?`,
+      [
+        sorti,
+        revenu,
+        return_state ?? ligne.return_state ?? null,
+        notes ?? ligne.notes ?? null,
+        new Date().toISOString(),
+        req.params.itemId,
+      ]
+    );
+
+    const etat = return_state ?? ligne.return_state;
+    const resume = [
+      ligne.object_name,
+      sorti ? 'sorti' : 'non sorti',
+      revenu ? 'revenu' : 'non revenu',
+      etat ? `état : ${etat}` : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    await consignerHistorique(req.params.id, req.user!.userId, 'Matériel unique suivi', { comment: resume });
+    redeposerSuivi();
+
+    res.json({ success: true, data: await objetsDe(req.params.id) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

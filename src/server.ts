@@ -49,6 +49,7 @@ import authSettingsRoutes from './routes/authSettings.routes';
 import manifestationRoutes from './routes/manifestation.routes';
 import manifestationIntakeRoutes from './routes/manifestationIntake.routes';
 import serviceRoutes from './routes/service.routes';
+import notificationRoutes from './routes/notification.routes';
 import manifestationExportRoutes from './routes/manifestationExport.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
 
@@ -278,6 +279,7 @@ app.use('/api/manifestations/intake', intakeLimiter, manifestationIntakeRoutes);
 app.use('/api/manifestations/export', manifestationExportRoutes);
 app.use('/api/manifestations', manifestationRoutes);
 app.use('/api/services', serviceRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
 
 // Servir le frontend en production

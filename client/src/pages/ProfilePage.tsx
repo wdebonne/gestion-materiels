@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { Card, CardBody, CardHeader, CardTitle, Input, Button, Alert } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
+import PreferencesNotification from '@/components/PreferencesNotification'
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuthStore()
@@ -382,6 +383,9 @@ export default function ProfilePage() {
           </CardBody>
         </Card>
       )}
+
+      {/* Ce que je reçois : réglable pour moi seul, sans toucher à mes collègues. */}
+      <PreferencesNotification />
     </div>
   )
 }
