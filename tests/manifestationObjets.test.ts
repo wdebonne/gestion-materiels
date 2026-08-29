@@ -52,14 +52,20 @@ const requete = (userId: number, role: string): AuthRequest =>
 
 beforeAll(() => {
   base.exec(`
-    CREATE TABLE categories (id INTEGER PRIMARY KEY, name VARCHAR(255));
-    CREATE TABLE subcategories (id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255));
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY, name VARCHAR(255), available_for_manifestations INTEGER DEFAULT 1
+    );
+    CREATE TABLE subcategories (
+      id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255),
+      available_for_manifestations INTEGER
+    );
     CREATE TABLE group_permissions (role VARCHAR(50), category_id INTEGER, can_view INTEGER);
     CREATE TABLE user_permissions (user_id INTEGER, category_id INTEGER, can_view INTEGER);
     CREATE TABLE objects (
       id INTEGER PRIMARY KEY, name VARCHAR(255), reference VARCHAR(100),
       serial_number VARCHAR(100), status VARCHAR(50),
-      category_id INTEGER, subcategory_id INTEGER
+      category_id INTEGER, subcategory_id INTEGER,
+      available_for_manifestations INTEGER
     );
     CREATE TABLE manifestations (
       id INTEGER PRIMARY KEY, title VARCHAR(255), status VARCHAR(20),

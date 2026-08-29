@@ -2,6 +2,7 @@ import { db } from '../database';
 import { filtreObjets } from '../middleware/objectScope';
 import type { AuthRequest } from '../middleware/auth.middleware';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
+import { expressionDisponibilite, jointuresDisponibilite } from './materielPretable.service';
 
 /**
  * Matériel **unique** rattaché à une manifestation.
@@ -203,12 +204,15 @@ export async function parcAvecDisponibilite(
   const filtre = await filtreObjets(req, 'o');
   if (filtre === null) return null;
 
+  // Seul le matériel déclaré prêtable est proposé : une catégorie ne se prête
+  // pas d'un bloc — le réfrigérateur part pour la brocante, le grill non.
   let sql = `
     SELECT o.id, o.name, o.reference, o.serial_number, o.status,
-           o.category_id, o.subcategory_id, c.name as category_name
+           o.category_id, o.subcategory_id, COALESCE(c.name, pc.name) as category_name
     FROM objects o
     LEFT JOIN categories c ON c.id = o.category_id
-    WHERE 1=1
+    ${jointuresDisponibilite()}
+    WHERE ${expressionDisponibilite()} = 1
   `;
   const params: any[] = [];
 

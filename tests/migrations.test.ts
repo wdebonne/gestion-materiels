@@ -42,6 +42,28 @@ function baseEnMemoire(): BaseMigration & { fermer(): void; sql: Database.Databa
  */
 async function schemaManifestations(cible: BaseMigration): Promise<void> {
   await cible.execute(`
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name VARCHAR(255) NOT NULL,
+      slug VARCHAR(255)
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE subcategories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      name VARCHAR(255) NOT NULL
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE objects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name VARCHAR(255) NOT NULL,
+      category_id INTEGER,
+      subcategory_id INTEGER
+    )
+  `);
+  await cible.execute(`
     CREATE TABLE manifestations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       title VARCHAR(255) NOT NULL,

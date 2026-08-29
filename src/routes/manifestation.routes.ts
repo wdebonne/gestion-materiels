@@ -16,6 +16,13 @@ import {
   parcAvecDisponibilite,
   remplacerObjets,
 } from '../services/manifestationObjets.service';
+import {
+  arbreDisponibilite,
+  estPretable,
+  lireDisponibilite,
+  objetsDeLaCategorie,
+  versColonne,
+} from '../services/materielPretable.service';
 import { logService } from '../services/log.service';
 import {
   approbationsDe,
@@ -972,6 +979,94 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
   }
 });
 
+// ======================== MATÉRIEL PRÊTABLE ========================
+//
+// Une catégorie ne se prête pas d'un bloc : un réfrigérateur de la catégorie
+// Électroménager part volontiers pour une brocante, le grill de la même
+// catégorie non. Trois niveaux de réglage, le plus précis l'emporte.
+
+/** GET /availability/tree - Catégories et sous-catégories, avec leur réglage. */
+router.get('/availability/tree', authenticateToken, requireSupervisor, async (_req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, data: await arbreDisponibilite() });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /availability/objects - Matériels d'une catégorie et leur disponibilité.
+ *
+ * Rend à la fois le réglage propre au matériel et le résultat effectif : sans
+ * les deux, on ne saurait pas pourquoi un matériel est exclu alors qu'on n'a
+ * rien coché dessus.
+ */
+router.get('/availability/objects', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { category_id } = req.query;
+    if (!category_id) {
+      return res.status(400).json({ success: false, message: 'Catégorie requise' });
+    }
+    const objets = await objetsDeLaCategorie(req, String(category_id));
+    if (objets === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+    res.json({ success: true, data: objets });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /availability/:niveau/:id - Régler un niveau.
+ *
+ * Une catégorie ne peut pas hériter : c'est elle la valeur de référence, et lui
+ * permettre `null` laisserait la résolution sans point de départ.
+ */
+router.put('/availability/:niveau/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const TABLES: Record<string, string> = {
+      category: 'categories',
+      subcategory: 'subcategories',
+      object: 'objects',
+    };
+    const table = TABLES[req.params.niveau];
+    if (!table) {
+      return res.status(400).json({
+        success: false,
+        message: 'Niveau inconnu (attendu : category, subcategory ou object)',
+      });
+    }
+
+    const valeur = lireDisponibilite(req.body.available);
+    if (table === 'categories' && valeur === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Une catégorie ne peut pas hériter : c'est elle qui donne le ton",
+      });
+    }
+
+    const resultat = await db.execute(
+      `UPDATE ${table} SET available_for_manifestations = ? WHERE id = ?`,
+      [versColonne(valeur), req.params.id]
+    );
+    if (resultat.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Élément non trouvé' });
+    }
+
+    await logService.info(
+      'other',
+      `Disponibilité manifestation modifiée (${req.params.niveau} ${req.params.id})`,
+      { available: valeur },
+      { userId: req.user?.userId }
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ======================== MATÉRIEL UNIQUE DU PARC ========================
 //
 // Une manifestation ne savait demander que des quantités : « 50 tables ». Un
@@ -1050,6 +1145,14 @@ router.put('/:id/objects', authenticateToken, requireSupervisor, async (req: Aut
     for (const objet of objects) {
       if (!(await peutVoirObjet(req, objet.object_id))) {
         return res.status(403).json({ success: false, message: REFUS_PORTEE });
+      }
+      // Le sélecteur ne le propose pas, mais rien n'empêche d'envoyer un
+      // identifiant à la main : le refus doit vivre ici aussi.
+      if (!(await estPretable(objet.object_id))) {
+        return res.status(400).json({
+          success: false,
+          message: "Ce matériel n'est pas déclaré prêtable pour les manifestations",
+        });
       }
     }
 

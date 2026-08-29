@@ -1003,3 +1003,49 @@ export const compteApi = {
   anonymiser: (userId: number) =>
     api.post<{ success: boolean; message: string }>(`/users/${userId}/anonymize`, {}),
 }
+
+// ======================== MATÉRIEL PRÊTABLE ========================
+
+/** Trois états : 1 prêtable, 0 exclu, null hérite du niveau au-dessus. */
+export type Disponibilite = 1 | 0 | null
+
+export interface SousCategoriePretable {
+  id: number
+  category_id: number
+  name: string
+  available_for_manifestations: Disponibilite
+  objets: number
+}
+
+export interface CategoriePretable {
+  id: number
+  name: string
+  /** Une catégorie ne peut pas hériter : c'est elle la valeur de référence. */
+  available_for_manifestations: 1 | 0
+  objets_directs: number
+  subcategories: SousCategoriePretable[]
+}
+
+export interface ObjetPretable {
+  id: number
+  name: string
+  reference: string | null
+  serial_number: string | null
+  subcategory_id: number | null
+  subcategory_name: string | null
+  /** Le choix fait sur ce matériel : `null` = il hérite. */
+  available_for_manifestations: Disponibilite
+  /** Ce qui s'applique réellement, une fois la résolution faite. */
+  pretable: number
+}
+
+export const materielPretableApi = {
+  getTree: () =>
+    api.get<{ success: boolean; data: CategoriePretable[] }>('/manifestations/availability/tree'),
+  getObjects: (categoryId: number) =>
+    api.get<{ success: boolean; data: ObjetPretable[] }>(
+      `/manifestations/availability/objects?category_id=${categoryId}`
+    ),
+  regler: (niveau: 'category' | 'subcategory' | 'object', id: number, available: Disponibilite) =>
+    api.put<{ success: boolean }>(`/manifestations/availability/${niveau}/${id}`, { available }),
+}

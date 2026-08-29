@@ -244,6 +244,8 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > ✅ **Responsables, délégations et coordination, août 2026 :** `is_manager` était enregistré sans entrer dans aucune décision ; seul le responsable d'un service approuve désormais en son nom, et lui seul délègue. Un **service coordinateur** pilote toutes les manifestations : sollicité sur chacune, destinataire de tout, son approbation prononce la validation — mais seulement une fois les services concernés ont répondu.
 >
+> ✅ **Matériel prêtable, août 2026 :** le sélecteur proposait tout le parc. Le réglage existe désormais à trois niveaux — catégorie, sous-catégorie, matériel — avec trois états, le plus précis l'emportant. Un compte à deux casquettes (service technique et service communication) voit enfin les manifestations dont son service est l'approbateur : les deux portées s'additionnent au lieu de s'ignorer.
+>
 > ⚠️ **Traçabilité préservée :** supprimer un compte effaçait la ligne, et chaque `ON DELETE SET NULL` vidait l'auteur des décisions, des messages et de l'historique. Un compte qui a laissé des traces est désormais désactivé, jamais effacé ; l'anonymisation retire l'identité en conservant les liens, ce que le RGPD demande sans détruire la traçabilité.
 >
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.

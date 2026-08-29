@@ -125,6 +125,7 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 👑 **Service coordinateur** : le service qui pilote toutes les manifestations — sollicité sur chacune, destinataire de tout, et son approbation **prononce la validation**
 - 💬 **Conversation** : les services échangent dans le fil de la manifestation ; tout est consigné dans l'historique et dans l'archive
 - 👀 **Mise en copie** : une direction générale, un maire ou un élu suit l'intégralité des échanges sans rien approuver
+- 🎯 **Matériel prêtable au choix** : par catégorie, par sous-catégorie, ou matériel par matériel — le réglage le plus précis l'emporte. Le réfrigérateur part pour la brocante, le grill de la même catégorie reste à la cuisine
 - 🚚 **Deux natures de matériel** : des **quantités** (50 tables d'un même modèle, sans les saisir une par une) et des **exemplaires uniques** choisis dans le parc (un véhicule, un vidéoprojecteur identifié). Deux manifestations peuvent se partager cent chaises ; elles ne peuvent pas se partager le camion, et le conflit est signalé avec qui le retient et quand
 - 🔔 **Notifications réglables à trois niveaux** : défaut de la collectivité par événement et par rôle, réglage de chaque service, puis choix de chaque compte. Une approbation attendue de vous part toujours — sans quoi vous bloqueriez une manifestation sans le savoir
 - 📊 **Export configurable** : choisissez vos colonnes, leur ordre et leurs intitulés, et déposez le suivi sur un **Nextcloud** automatiquement à chaque changement
@@ -588,6 +589,17 @@ GET    /api/users/:id/traces      # Ce qu'un compte laisserait derrière lui
 POST   /api/users/:id/anonymize   # Retire l'identité, conserve les liens (RGPD)
 DELETE /api/users/:id             # Supprime, ou désactive si le compte a des traces
 ```
+
+**Matériel prêtable**
+
+```
+GET /api/manifestations/availability/tree     # Catégories et sous-catégories, avec leur réglage
+GET /api/manifestations/availability/objects  # Matériels d'une catégorie (?category_id=)
+PUT /api/manifestations/availability/:niveau/:id  # niveau : category | subcategory | object
+```
+
+`available` vaut `true` (prêtable), `false` (exclu) ou `null` (hérite du niveau au-dessus).
+Une catégorie n'accepte pas `null` : c'est elle qui donne le ton.
 
 **Notifications**
 

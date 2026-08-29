@@ -72,6 +72,20 @@ beforeAll(() => {
       manifestation_id INTEGER,
       stock_id INTEGER
     );
+    -- Un compte peut être membre d'un service en plus d'avoir un périmètre de
+    -- catégories : les deux portées s'additionnent.
+    CREATE TABLE services (
+      id INTEGER PRIMARY KEY, name VARCHAR(255), is_observer INTEGER DEFAULT 0,
+      is_coordinator INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1
+    );
+    CREATE TABLE service_members (id INTEGER PRIMARY KEY, service_id INTEGER, user_id INTEGER, is_manager INTEGER DEFAULT 0);
+    CREATE TABLE manifestation_approvals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, manifestation_id INTEGER, service_id INTEGER,
+      user_id INTEGER, kind VARCHAR(20), status VARCHAR(20)
+    );
+    CREATE TABLE manifestation_watchers (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, manifestation_id INTEGER, user_id INTEGER, service_id INTEGER
+    );
   `);
 
   // Deux catégories : « Festif » (1) et « Informatique » (2).
@@ -98,6 +112,13 @@ beforeAll(() => {
     -- l'informatique par une permission individuelle.
     INSERT INTO group_permissions (role, category_id, can_view) VALUES ('agent', 1, 1);
     INSERT INTO user_permissions (user_id, category_id, can_view) VALUES (9, 2, 1);
+
+    -- L'agent 7 est au service technique (catégorie festive) ET membre du
+    -- service communication, sollicité sur « Conseil municipal ».
+    INSERT INTO services (id, name) VALUES (1, 'Communication');
+    INSERT INTO service_members (service_id, user_id) VALUES (1, 7);
+    INSERT INTO manifestation_approvals (manifestation_id, service_id, kind, status)
+      VALUES (200, 1, 'approbation', 'pending');
   `);
 });
 
@@ -169,6 +190,13 @@ describe('Manifestations', () => {
 
   it('la voit dès qu’une seule de ses lignes est accessible', async () => {
     expect(await manifestationsVisibles(requete(9, 'agent'))).toEqual([100, 200, 300]);
+  });
+
+  it('additionne les catégories et les services du compte', async () => {
+    // Un agent du service technique peut aussi être membre du service
+    // communication. S'en tenir à ses catégories lui cachait les manifestations
+    // dont son service est pourtant l'approbateur.
+    expect(await manifestationsVisibles(requete(7, 'agent'))).toEqual([100, 200, 300]);
   });
 });
 

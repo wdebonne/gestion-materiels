@@ -243,6 +243,25 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Le cloisonnement interdisait à un responsable de gérer ses délégations** : `/api/services` était ouvert en lecture seule, et déléguer est une écriture. Le seul geste qui lui revient en propre lui était refusé
 - **Le refus opposé à un membre non responsable était trompeur** — « vous ne pouvez répondre que pour votre service », alors qu'il en fait partie. Les deux cas sont distingués : ils n'appellent pas la même action
 
+### Manifestations — matériel prêtable, et comptes à deux casquettes
+
+> Le sélecteur de matériel unique proposait **tout le parc**. Or une catégorie ne se prête pas d'un bloc : un réfrigérateur de la catégorie Électroménager part volontiers pour une brocante, le grill de la même catégorie non. Par ailleurs, un agent du service technique membre du service communication ne voyait pas les manifestations dont son service était pourtant l'approbateur.
+
+#### Ajouté
+
+- **Réglage du matériel prêtable**, à trois niveaux, **le plus précis l'emporte** : la catégorie donne le ton, la sous-catégorie l'affine, un matériel fait exception. Écran Réglages › Matériel prêtable
+  - **Trois états** — prêtable, exclu, hérite — et non deux. Sans le troisième, ouvrir une catégorie obligerait à recocher chacun de ses matériels, et personne ne le ferait. Seule la catégorie n'hérite pas : c'est elle la valeur de référence
+  - Les catégories partent à « prêtable » : c'est le comportement actuel, et fermer le parc d'un coup ferait disparaître sans prévenir du matériel que quelqu'un était en train de demander. On retire ce qu'on ne prête pas
+  - L'écran affiche **le réglage propre et le résultat effectif** de chaque matériel : sans les deux, on ne saurait pas pourquoi un matériel est exclu alors qu'on n'a rien coché dessus
+  - Le refus vit aussi côté serveur : le sélecteur ne propose pas un matériel exclu, mais rien n'empêche d'envoyer un identifiant à la main
+  - Ne concerne pas le stock dédié aux manifestations — tables, chaises — qui est prêtable par définition
+
+#### Corrigé
+
+- **Un compte à deux casquettes ne voyait qu'une moitié de son travail.** Un agent du service technique peut aussi être membre du service communication : sa portée par catégorie décrit la première fonction, elle ne dit rien de la seconde. S'en tenir aux catégories lui cachait les manifestations dont son service est l'approbateur, dès lors qu'elles portaient du matériel hors de son périmètre technique. Les deux portées s'additionnent désormais — ce qu'il voit par ses catégories, **plus** ce que ses services suivent
+- **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
+- **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

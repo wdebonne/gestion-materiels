@@ -41,6 +41,7 @@ const ManifestationIntakePage = lazy(() => import('@/pages/settings/Manifestatio
 const ServicesPage = lazy(() => import('@/pages/settings/ServicesPage'))
 const ManifestationExportPage = lazy(() => import('@/pages/settings/ManifestationExportPage'))
 const NotificationsPage = lazy(() => import('@/pages/settings/NotificationsPage'))
+const MaterielPretablePage = lazy(() => import('@/pages/settings/MaterielPretablePage'))
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
 const ApiTokensPage = lazy(() => import('@/pages/settings/ApiTokensPage'))
 const AuthSettingsPage = lazy(() => import('@/pages/settings/AuthSettingsPage'))
@@ -161,6 +162,7 @@ function App() {
             <Route path="services" element={<ServicesPage />} />
             <Route path="manifestations-export" element={<ManifestationExportPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
+            <Route path="materiel-pretable" element={<MaterielPretablePage />} />
             <Route path="api" element={<ApiPage />} />
             <Route path="api-tokens" element={<ApiTokensPage />} />
           </Route>

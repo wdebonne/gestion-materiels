@@ -12,7 +12,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, Inbox, Building2, FileSpreadsheet, Bell
+  ShieldCheck, Inbox, Building2, FileSpreadsheet, Bell, PackageCheck
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -93,6 +93,12 @@ const settingsNavItems = [
     to: '/settings/services', 
     icon: Building2, 
     label: 'Services',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/materiel-pretable', 
+    icon: PackageCheck, 
+    label: 'Matériel prêtable',
     adminOnly: true
   },
   { 

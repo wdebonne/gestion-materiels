@@ -108,11 +108,27 @@ export async function filtreManifestations(
   const accessibles = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
   if (accessibles === null) return { sql: '', params: [] };
 
+  /**
+   * Un compte peut porter deux casquettes : agent du service technique, et
+   * membre du service communication. Sa portée par catégorie décrit la
+   * première ; elle ne dit rien de la seconde.
+   *
+   * Ne s'en tenir qu'aux catégories lui cachait les manifestations dont son
+   * service est pourtant l'approbateur, dès lors qu'elles portaient du matériel
+   * hors de son périmètre technique. Les deux portées s'additionnent : ce qu'il
+   * voit par ses catégories, **plus** ce que ses services suivent.
+   */
+  const parServices = await manifestationsVisiblesParService(req.user!.userId);
+  const clauseServices = parServices.length
+    ? ` OR ${prefixe}id IN (${parServices.map(() => '?').join(',')})`
+    : '';
+
   if (accessibles.length === 0) {
-    // Aucune catégorie : seules les manifestations sans matériel subsistent.
+    // Aucune catégorie : restent les manifestations sans matériel, et celles que
+    // ses services suivent.
     return {
-      sql: ` AND NOT EXISTS (SELECT 1 FROM manifestation_materials mmp WHERE mmp.manifestation_id = ${prefixe}id)`,
-      params: [],
+      sql: ` AND (NOT EXISTS (SELECT 1 FROM manifestation_materials mmp WHERE mmp.manifestation_id = ${prefixe}id)${clauseServices})`,
+      params: [...parServices],
     };
   }
 
@@ -126,9 +142,9 @@ export async function filtreManifestations(
         WHERE mma.manifestation_id = ${prefixe}id
           AND ((msa.category_id IS NULL AND msa.subcategory_id IS NULL) OR msa.category_id IN (${marqueurs})
                OR EXISTS (SELECT 1 FROM subcategories sc WHERE sc.id = msa.subcategory_id AND sc.category_id IN (${marqueurs})))
-      )
+      )${clauseServices}
     )`,
-    params: [...accessibles, ...accessibles],
+    params: [...accessibles, ...accessibles, ...parServices],
   };
 }
 
