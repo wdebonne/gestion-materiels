@@ -206,7 +206,8 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 
 #### 📥 Import / Export
 - 📥 **Import CSV/Excel** : Import massif avec validation des données
-- 📤 **Export** : Export filtrable par catégorie au format CSV ou XLSX
+- 📤 **Export** : filtrable par catégorie, sous-catégorie et statut, au format CSV ou XLSX. Le nombre de matériels concernés est annoncé avant le téléchargement
+- 🔐 **Export cloisonné** : un compte n'exporte que les catégories qu'il a le droit de consulter
 - 📋 Template d'import téléchargeable
 
 ### 📧 Reporting automatique
@@ -659,6 +660,7 @@ POST   /api/backup/migrate    # Migrer vers MySQL
 - `JWT_SECRET` obligatoire : plus de secret de repli, démarrage refusé en production s'il est absent, trop court ou laissé à sa valeur d'exemple
 - Rate limiting : 10 tentatives / 15 min sur `/api/auth`, 1000 req / 15 min globalement, quotas dédiés pour les uploads et les exports
 - **Portée des tokens API appliquée** : un token « lecture seule » ne peut plus écrire ni supprimer, quel que soit le rôle de son créateur
+- **Export cloisonné par permissions de catégorie**, comme la liste des matériels
 - Rôles vérifiés route par route, figés par une matrice de tests
 - Fichiers du dossier `/uploads` protégés par JWT
 - SQL des plugins verrouillé : tables système protégées, écritures interdites
@@ -697,7 +699,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
 | **Impression d'étiquettes QR en lot** | `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes | Aucun écran ne l'appelle : les QR codes s'impriment un par un |
 | **Historique des manifestations** | Table `manifestation_history` créée, composant `ManifestationPDFExport` écrit | La table n'est ni écrite ni lue, et le composant n'est importé nulle part |
-| **Filtres d'export** | Le serveur accepte des filtres à l'export | L'écran ne les expose pas |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 | **Import de matériels** | Import CSV/XLSX fonctionnel | Le mapping est **positionnel strict** sur 11 colonnes : le fichier doit suivre exactement le modèle téléchargeable |
 

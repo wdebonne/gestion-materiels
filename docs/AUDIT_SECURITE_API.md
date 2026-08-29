@@ -213,7 +213,7 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 
 ## 🔎 Révision d'août 2026 — défauts trouvés après le premier audit
 
-L'audit de février portait sur *quelles routes sont protégées*. Ces quatre défauts concernent *ce que font les contrôles une fois franchis*, et aucun n'était visible depuis la liste des routes.
+L'audit de février portait sur *quelles routes sont protégées*. Ces défauts concernent *ce que font les contrôles une fois franchis*, et aucun n'était visible depuis la liste des routes.
 
 ### 1. Portée des tokens API analysée puis ignorée — **corrigé**
 
@@ -262,6 +262,25 @@ Colonnes ajoutées par la migration `002_politique_connexion` : `failed_login_at
 
 **Vérifié** : blocage au 3ᵉ échec avec le seuil réglé à 3, bon mot de passe refusé pendant le blocage, déblocage par un administrateur, et signalement d'expiration sur un mot de passe daté de 100 jours avec un seuil à 90. 21 tests figent le contrat.
 
+### 5. L'export ignorait les permissions de catégorie — **corrigé**
+
+`GET /api/import-export/export` n'avait que `authenticateToken`. Il construisait
+sa requête sur `WHERE 1=1`, sans le filtrage par catégories accessibles
+qu'applique `GET /objects`.
+
+Un compte dont l'écran ne montre aucune catégorie récupérait donc l'inventaire
+complet dans un classeur — nom, référence, numéro de série, localisation, prix
+d'achat de chaque matériel. La route était bien authentifiée, ce qui explique
+qu'elle figure dans la liste des routes protégées de l'audit de février : c'est
+le contrôle *après* l'authentification qui manquait.
+
+**Correction** : le même filtre que `GET /objects`, et un 403 explicite quand
+aucune catégorie n'est accessible.
+
+**Vérifié** : un compte `user` sans permission voit 0 matériel à l'écran et
+reçoit désormais `403 Aucune catégorie ne vous est accessible` sur l'export, là
+où il obtenait auparavant les 57 matériels du parc.
+
 ### Journalisation muette — **corrigé**
 
 Deux défauts indépendants faisaient disparaître des entrées de journal sans erreur :
@@ -275,7 +294,7 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 
 | Critère OWASP | Statut | Notes |
 |---------------|--------|-------|
-| A01 - Broken Access Control | ✅ | Uploads protégés par JWT. La portée des tokens API, ignorée jusqu'en août 2026, est désormais appliquée |
+| A01 - Broken Access Control | ✅ | Uploads protégés par JWT. La portée des tokens API et le cloisonnement de l'export par catégorie, ignorés jusqu'en août 2026, sont désormais appliqués |
 | A02 - Cryptographic Failures | ✅ | Bcrypt + JWT avec rotation |
 | A03 - Injection | ✅ | Requêtes paramétrées |
 | A04 - Insecure Design | ✅ | Architecture sécurisée |

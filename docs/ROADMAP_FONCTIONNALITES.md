@@ -12,7 +12,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | # | Priorité | Fonctionnalité | Statut | Réserve |
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | 🟡 Partiel | Génération et scan terrain ✅ — l'**impression en lot** n'a pas d'écran, alors que `POST /api/qrcode/batch` existe |
-| 2 | 🔴 Haute | Import/Export CSV & Excel | 🟡 Partiel | Import et export ✅ — mapping **positionnel strict** sur 11 colonnes, et les filtres d'export acceptés par le serveur ne sont pas exposés |
+| 2 | 🔴 Haute | Import/Export CSV & Excel | 🟡 Partiel | Export filtrable et cloisonné ✅ — l'import reste en mapping **positionnel strict** sur 11 colonnes |
 | 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 131 tests (87 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
@@ -57,7 +57,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Librairies :** `xlsx` ou `exceljs`
 - **Impact :** Indispensable pour migration initiale et inventaires annuels
 
-> 🟡 **Reste :** le mapping de colonnes annoncé n'existe pas — l'import est **positionnel strict** sur 11 colonnes, le fichier doit suivre exactement le modèle téléchargeable. Et les filtres d'export acceptés par le serveur ne sont pas exposés dans l'écran.
+> 🟡 **Reste :** le mapping de colonnes annoncé n'existe pas — l'import est **positionnel strict** sur 11 colonnes, le fichier doit suivre exactement le modèle téléchargeable.
+>
+> ✅ **Complété en août 2026 :** les filtres catégorie, sous-catégorie et statut sont exposés dans l'écran, avec le nombre de matériels concernés annoncé avant le téléchargement — sans quoi on récupère un classeur vide sans comprendre pourquoi. L'export est par ailleurs cloisonné par les permissions de catégorie, comme la liste des matériels : il n'avait que `authenticateToken`, donc n'importe quel compte récupérait l'inventaire complet. Et chaque CSV commençait par deux lignes d'en-tête identiques.
 
 ### 3. Tests automatisés
 - **Description :** Couverture de tests pour les routes API critiques et les composants React.

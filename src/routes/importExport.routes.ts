@@ -4,7 +4,7 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, getAccessibleCategoryIds } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
 
 const router = Router();
@@ -59,6 +59,20 @@ router.get('/export', authenticateToken, async (req: AuthRequest, res: Response)
       WHERE 1=1
     `;
     const params: any[] = [];
+
+    // Même filtrage que `GET /objects`. Sans lui, cette route n'avait que
+    // `authenticateToken` : n'importe quel compte exportait le parc entier,
+    // y compris les catégories qu'il n'a pas le droit de consulter à l'écran.
+    const accessibleIds = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+    if (accessibleIds !== null) {
+      if (accessibleIds.length === 0) {
+        res.status(403).json({ success: false, message: 'Aucune catégorie ne vous est accessible' });
+        return;
+      }
+      const placeholders = accessibleIds.map(() => '?').join(',');
+      sql += ` AND (o.category_id IN (${placeholders}) OR EXISTS (SELECT 1 FROM subcategories sc WHERE sc.id = o.subcategory_id AND sc.category_id IN (${placeholders})))`;
+      params.push(...accessibleIds, ...accessibleIds);
+    }
 
     if (categoryId) {
       sql += ' AND o.category_id = ?';
@@ -126,18 +140,14 @@ router.get('/export', authenticateToken, async (req: AuthRequest, res: Response)
 
     // Générer le fichier
     if (format === 'csv') {
-      const csvWorkbook = new ExcelJS.Workbook();
-      const csvSheet = csvWorkbook.addWorksheet('Matériels');
-      csvSheet.columns = sheet.columns;
-      sheet.eachRow((row, rowNumber) => {
-        if (rowNumber > 0) {
-          csvSheet.addRow(row.values);
-        }
-      });
-
+      // Le classeur est écrit tel quel. La version précédente en recopiait le
+      // contenu dans un second classeur dont `columns` avait déjà posé une
+      // ligne d'en-tête, puis recopiait aussi la ligne 1 de la source : chaque
+      // CSV exporté commençait par deux en-têtes identiques, ce qui décale
+      // toute relecture et fait échouer un réimport.
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename=materiels_${Date.now()}.csv`);
-      await csvWorkbook.csv.write(res);
+      await workbook.csv.write(res);
     } else {
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename=materiels_${Date.now()}.xlsx`);

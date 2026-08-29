@@ -1,14 +1,65 @@
 import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react'
 import { Button, Card, CardBody, CardHeader, CardTitle } from '@/components/ui'
 import api from '@/lib/api'
+import { getStatusLabel } from '@/lib/utils'
 import toast from 'react-hot-toast'
+
+/** Statuts d'un matériel, dans l'ordre où ils apparaissent ailleurs. */
+const STATUTS = ['active', 'inactive', 'maintenance', 'out_of_service']
+
+const CLASSE_CHAMP =
+  'block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100'
 
 export default function ImportExportPage() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importResult, setImportResult] = useState<any>(null)
   const [exportFormat, setExportFormat] = useState('xlsx')
+
+  // Le serveur acceptait ces trois filtres depuis toujours ; aucun écran ne les
+  // proposait, donc l'export sortait forcément le parc entier.
+  const [categoryId, setCategoryId] = useState('')
+  const [subcategoryId, setSubcategoryId] = useState('')
+  const [status, setStatus] = useState('')
+
+  const { data: categories = [] } = useQuery({
+    queryKey: ['categories'],
+    queryFn: async () => {
+      const res = await api.get('/categories')
+      return res.data.categories ?? res.data.data ?? []
+    },
+  })
+
+  const { data: subcategories = [] } = useQuery({
+    queryKey: ['subcategories', categoryId],
+    queryFn: async () => {
+      const res = await api.get(`/categories/${categoryId}/subcategories`)
+      return res.data.subcategories ?? res.data.data ?? []
+    },
+    enabled: Boolean(categoryId),
+  })
+
+  /** Paramètres communs au décompte et à l'export, pour qu'ils ne divergent pas. */
+  const filtres = () => {
+    const params = new URLSearchParams()
+    if (categoryId) params.append('categoryId', categoryId)
+    if (subcategoryId) params.append('subcategoryId', subcategoryId)
+    if (status) params.append('status', status)
+    return params
+  }
+
+  // Annonce ce que le fichier contiendra : sans ce décompte, on télécharge un
+  // classeur vide sans comprendre pourquoi.
+  const { data: nombreMateriels, isFetching: comptageEnCours } = useQuery({
+    queryKey: ['export-count', categoryId, subcategoryId, status],
+    queryFn: async () => {
+      const params = filtres()
+      params.append('limit', '1')
+      const res = await api.get(`/objects?${params.toString()}`)
+      return Number(res.data.pagination?.total ?? 0)
+    },
+  })
 
   // Import
   const importMutation = useMutation({
@@ -35,7 +86,7 @@ export default function ImportExportPage() {
   // Export
   const handleExport = async () => {
     try {
-      const params = new URLSearchParams()
+      const params = filtres()
       params.append('format', exportFormat)
 
       const response = await api.get(`/import-export/export?${params.toString()}`, {
@@ -165,20 +216,93 @@ export default function ImportExportPage() {
           <CardBody>
             <div className="space-y-4">
               <p className="text-sm text-gray-600 dark:text-gray-300">
-                Exporter vos matériels en fichier Excel ou CSV.
+                Exporter vos matériels en fichier Excel ou CSV. Sans filtre, tout le parc est exporté.
               </p>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">Format</label>
+                <label htmlFor="export-categorie" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Catégorie
+                </label>
                 <select
+                  id="export-categorie"
+                  value={categoryId}
+                  onChange={(e) => {
+                    setCategoryId(e.target.value)
+                    // La sous-catégorie retenue n'appartient plus à la nouvelle
+                    // catégorie : la garder produirait un export vide.
+                    setSubcategoryId('')
+                  }}
+                  className={CLASSE_CHAMP}
+                >
+                  <option value="">Toutes les catégories</option>
+                  {(Array.isArray(categories) ? categories : []).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {categoryId && (
+                <div>
+                  <label htmlFor="export-sous-categorie" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    Sous-catégorie
+                  </label>
+                  <select
+                    id="export-sous-categorie"
+                    value={subcategoryId}
+                    onChange={(e) => setSubcategoryId(e.target.value)}
+                    className={CLASSE_CHAMP}
+                  >
+                    <option value="">Toutes les sous-catégories</option>
+                    {(Array.isArray(subcategories) ? subcategories : []).map((sc: any) => (
+                      <option key={sc.id} value={sc.id}>{sc.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <div>
+                <label htmlFor="export-statut" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Statut
+                </label>
+                <select
+                  id="export-statut"
+                  value={status}
+                  onChange={(e) => setStatus(e.target.value)}
+                  className={CLASSE_CHAMP}
+                >
+                  <option value="">Tous les statuts</option>
+                  {STATUTS.map((v) => (
+                    <option key={v} value={v}>{getStatusLabel(v)}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="export-format" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  Format
+                </label>
+                <select
+                  id="export-format"
                   value={exportFormat}
                   onChange={(e) => setExportFormat(e.target.value)}
-                  className="block w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100"
+                  className={CLASSE_CHAMP}
                 >
                   <option value="xlsx">Excel (.xlsx)</option>
                   <option value="csv">CSV (.csv)</option>
                 </select>
               </div>
-              <Button onClick={handleExport} className="w-full">
+
+              <p className="text-sm text-gray-600 dark:text-gray-300" aria-live="polite">
+                {comptageEnCours
+                  ? 'Décompte en cours…'
+                  : nombreMateriels === undefined
+                    ? ''
+                    : nombreMateriels === 0
+                      ? 'Aucun matériel ne correspond à ces filtres.'
+                      : `${nombreMateriels} matériel${nombreMateriels > 1 ? 's' : ''} seront exportés.`}
+              </p>
+
+              <Button onClick={handleExport} className="w-full" disabled={nombreMateriels === 0}>
                 <Download className="w-4 h-4 mr-2" />
                 Exporter
               </Button>

@@ -52,6 +52,13 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
 - **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
 
+### Import / Export
+
+- **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier
+- **Nombre de matériels annoncé** avant le téléchargement, et bouton inactif quand aucun ne correspond : sans ce décompte, on récupère un classeur vide sans comprendre pourquoi
+- **Export cloisonné par les permissions de catégorie**, comme la liste des matériels. La route n'avait que `authenticateToken` et construisait sa requête sur `WHERE 1=1` : un compte dont l'écran ne montre aucune catégorie récupérait l'inventaire complet — nom, référence, numéro de série, localisation et prix d'achat de chaque matériel
+- **Double en-tête CSV corrigé** : le second classeur recevait `columns`, qui pose déjà une ligne d'en-tête, puis recopiait aussi la ligne 1 de la source. Chaque CSV exporté commençait par deux en-têtes identiques, ce qui décale toute relecture et fait échouer un réimport
+
 ### Réservations
 
 - **Disponibilité affichée pendant la saisie.** `GET /reservations/availability/:objectId` existait depuis toujours et n'était appelé par aucun écran : un créneau déjà pris n'apparaissait qu'en erreur 409, après avoir rempli et envoyé le formulaire. L'agent découvrait le conflit une fois son travail perdu, sans savoir quand le matériel serait libre
