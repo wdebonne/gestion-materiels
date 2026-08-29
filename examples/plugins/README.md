@@ -16,8 +16,11 @@ Les plugins système sont intégrés à l'application avec des pages React dédi
 | Cartographie | `map` | `/map` | Carte interactive Leaflet/OpenStreetMap |
 | Import / Export | `import-export` | `/import-export` | Import/Export CSV et Excel |
 | Manifestations | `manifestations` | `/manifestations` | Gestion événements et prêt matériel |
+| Espaces Verts | `espaces-verts` | `/espaces-verts` | Plan interactif, composition botanique, entretiens |
 
-Leurs fichiers de configuration se trouvent dans `plugins/pages/<slug>/` (plugin.json + index.json).
+S'y ajoutent trois plugins associables à des catégories, qui n'ont pas de route propre mais enrichissent la fiche d'un matériel : `fuel` (carburant), `maintenance` (entretien) et `technical-control` (contrôle technique).
+
+Les plugins qui disposent d'une page JSON ont leurs fichiers de configuration dans `plugins/pages/<slug>/` (plugin.json + index.json). Ceux dont la page est écrite en React — Calendrier et Espaces Verts — n'y figurent pas.
 
 ### Plugins personnalisés (ZIP)
 
@@ -32,6 +35,8 @@ Les plugins personnalisés sont importables via fichier ZIP avec des pages dynam
 2. Compressez le dossier en ZIP
 
 3. Importez le ZIP depuis l'interface d'administration (Paramètres > Plugins > Importer Plugin ZIP)
+
+> Les requêtes SQL déclarées dans les endpoints d'un plugin sont contraintes : une seule instruction, verbe cohérent avec la méthode HTTP, pas de modification de schéma, pas d'accès aux tables système. Voir [Structure des plugins](../../docs/PLUGIN_STRUCTURE.md#restrictions-sur-les-requêtes-sql).
 
 ## Structure du fichier plugin.json
 

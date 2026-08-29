@@ -1,10 +1,20 @@
 import bcrypt from 'bcryptjs';
 import { db } from './index';
 
+/**
+ * URL publique utilisée dans les liens des emails, semée à la première
+ * installation puis modifiable dans Paramètres.
+ *
+ * La valeur codée en dur pointait sur le port 3000 alors que le serveur écoute
+ * sur 3001 : sur une installation neuve, tous les liens des emails menaient
+ * vers un port fermé.
+ */
+const URL_PAR_DEFAUT = process.env.SITE_URL || `http://localhost:${process.env.PORT || 3001}`;
+
 const DEFAULT_SETTINGS = [
   { key: 'site_name', value: 'Gestion Matériels', type: 'string', description: 'Nom du site' },
   { key: 'site_version', value: '1.0.0', type: 'string', description: 'Version du site' },
-  { key: 'site_url', value: 'http://localhost:3000', type: 'string', description: 'URL du site' },
+  { key: 'site_url', value: URL_PAR_DEFAUT, type: 'string', description: 'URL du site' },
   { key: 'site_logo', value: '', type: 'string', description: 'Logo du site' },
   { key: 'site_favicon', value: '', type: 'string', description: 'Favicon du site' },
   { key: 'default_image', value: '', type: 'string', description: 'Image par défaut' },

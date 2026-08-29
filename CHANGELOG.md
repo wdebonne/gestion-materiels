@@ -7,6 +7,103 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ergonomie terrain
+
+> L'application est utilisée par des agents de métier manuel — jardiniers, mécaniciens, chauffeurs — sur téléphone, dehors, parfois avec des gants et sans réseau. Cet ensemble de changements part de cet usage.
+
+#### Ajouté
+
+- **Rôle « agent de terrain »** : quatrième rôle, entre utilisateur et superviseur. Il peut relever un plein, un entretien, un contrôle technique, un entretien d'espace vert, joindre une photo et demander une réservation. Le référentiel (types, statuts, groupes, seuils) et toutes les suppressions restent au superviseur. Auparavant, pour saisir un plein, un jardinier devait être promu superviseur — ce qui lui donnait au passage la suppression des espaces verts et la gestion du stock des manifestations
+  - Garde serveur unique `requireFieldWrite`, pour que le retour arrière tienne en une ligne
+  - Hook `usePermissions()` et composant `<Can>` côté client, au lieu de recopier `user?.role === 'admin' || …` page par page
+  - Déploiement en deux temps : d'abord les boutons honnêtes sans changement de droits, puis l'ouverture des droits une fois la matrice de tests écrite
+- **Saisie hors réseau** (`lib/offlineQueue.ts`) : un relevé saisi sans connexion est conservé et renvoyé automatiquement au retour du réseau
+  - Liste blanche stricte d'URL, jamais de `DELETE` mis en file
+  - Bandeau permanent tant que la file n'est pas vide, avec le nombre de saisies en attente et un bouton d'envoi manuel
+  - Une erreur 4xx abandonne la saisie et le signale ; une erreur réseau arrête le traitement pour préserver l'ordre
+  - Persistance IndexedDB avec repli en mémoire
+- **Scan de QR code** : page `/scan` utilisant le décodeur natif du navigateur (`BarcodeDetector`). Le QR code était généré depuis toujours et n'était scannable depuis nulle part
+- **Position GPS** (`useGeolocation`, `LocationPicker`) : bouton « Utiliser ma position » avec précision affichée et aperçu OpenStreetMap, au lieu d'une latitude et d'une longitude à recopier. `navigator.geolocation` n'était jamais appelé
+- **Photo** : bouton « Prendre une photo » ouvrant l'appareil, redimensionnement avant envoi (12 Mo → ~400 Ko), redressement EXIF côté serveur via `sharp` — installé et inutilisé jusqu'ici
+- **Listes fermées** (`ReferenceSelect`) pour station-service, prestataire et centre de contrôle. « Total Pavilly », « TOTAL Pavilly » et « total pavilly » formaient trois stations distinctes et fragmentaient les rapports de coûts
+- **Recherche globale** : une seule recherche sur tout le parc. Il n'en existait aucune, seulement 19 champs de recherche locaux indépendants
+- **Actions rapides** sur l'accueil, **favoris personnels**, **barre de navigation basse sur mobile**, **aide contextuelle** par page
+- **Préférences d'affichage** : taille du texte (normal / grand / très grand) et contraste renforcé, pour le travail en plein soleil
+- **Rester connecté** : coché, la session survit à la fermeture du navigateur ; décoché, elle passe en `sessionStorage` et disparaît avec l'onglet. La case existait sans état ni gestionnaire, et la session était de toute façon écrite en `localStorage` : sur le PC partagé de l'atelier, l'agent suivant héritait de la session du précédent
+- **Fenêtre de session expirée** : reconnexion par-dessus l'écran courant, sans détruire le formulaire en cours de saisie
+- **Écran d'erreur avec bouton Réessayer** (`ErrorBoundary`) : une erreur de rendu donnait une page blanche
+- **Page 404** : une URL inconnue redirigeait silencieusement vers l'accueil
+- **Bandeau de mise à jour** : la PWA se rechargeait au milieu d'une saisie
+
+#### Corrigé
+
+- **45 mutations muettes** : la page Espaces Verts comptait 45 `useMutation`, aucun `onError`, aucun message. Enregistrer, supprimer, cloner ou archiver un espace vert ne produisait aucun retour, ni en succès ni en échec. Corrigé par un `MutationCache` global, en une dizaine de lignes
+- **Boutons qui mentaient** : un compte sans droits d'écriture voyait quand même « Ajouter un plein ». Il remplissait le formulaire, appuyait sur Ajouter, et rien ne se passait — le 403 n'était pas intercepté. Les boutons sont désormais masqués, et un refus affiche « Vous n'avez pas les droits… »
+- **Perte de réseau silencieuse** : l'absence de réponse n'était signalée nulle part
+- **Messages d'erreur techniques** : `getErrorMessage()` filtre les messages SQLite, MySQL et les traces avant affichage, et traduit chaque code HTTP en français
+- **`confirm()` natif** remplacé sur 12 sites par une boîte de dialogue expliquant ce qui va être perdu
+- **Cibles tactiles** portées à 44 px minimum ; les actions Modifier et Supprimer des cartes étaient en `opacity-0 group-hover:opacity-100`, donc invisibles et inaccessibles sur écran tactile
+- **Contraste et typographie** : `text-gray-400` (2,8:1, échec WCAG AA) était utilisé 339 fois ; l'échelle typographique a été remontée d'un cran dans `tailwind.config.js`, ce qui corrige 716 `text-sm` et 424 `text-xs` en une fois
+- **Mode sombre** complété sur 8 pages et 6 primitives qui n'avaient aucune classe `dark:`
+- **Langue verrouillée en français** : la détection automatique basculait toute l'interface en anglais sur une tablette configurée en anglais, alors que `useTranslation` n'est utilisé que dans 1 fichier sur 60
+- **Alertes marquées comme lues pour tout le monde** : `PUT /alerts/read-all` faisait `UPDATE alerts SET is_read = 1` sans filtre utilisateur — un agent qui vidait sa pastille vidait celle de toute la collectivité. Table `alert_reads` par utilisateur
+- **Emails d'alerte** envoyés aussi à la personne qui entretient le matériel, et plus seulement aux administrateurs et superviseurs
+- **`emitAlert()` jamais appelé** dans le cron : il était importé et inutilisé, donc aucune alerte n'arrivait en temps réel
+- **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
+- **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
+
+### Structure et fiabilité
+
+#### Ajouté
+
+- **Système de migration versionné** : `npm run db:migrate` pointait vers `src/database/migrate.ts`, un fichier qui n'existait pas — la commande échouait depuis toujours. Journal `schema_migrations`, sauvegarde SQLite préalable par `VACUUM INTO`, application au démarrage du serveur (le conteneur ne lance que `node dist/server.js`), et `--dry-run` qui n'écrit rien
+- **25 index de base de données** sur 54 tables qui n'en comptaient aucun
+- **Découpage du bundle** : 33 des 37 pages en chargement différé. L'écran de connexion téléchargeait leaflet, fullcalendar, recharts, jspdf et html2canvas
+- **Validation serveur des écritures de terrain** : une charge incomplète produisait un 500 « Erreur serveur », la contrainte `NOT NULL` de SQLite remontant jusqu'au gestionnaire générique. Réponses 400 avec un message en français
+- **Chargement groupé** (`utils/batchQuery.ts`) remplaçant les requêtes N+1
+- **131 tests** contre 36 : matrice rôle × endpoint, validation des saisies, portée des tokens API, migrations, chargement groupé, noms de colonnes, magasin d'authentification, file hors ligne
+
+#### Modifié
+
+- **L'image Docker vérifie les types** : le serveur était compilé par esbuild, qui retire les types sans les vérifier — la production était le seul endroit où le code n'était jamais type-checké. Serveur compilé par `tsc`, client par `build:check`
+- **Erreurs de type du client : 76 → 0**
+- **Configuration ESLint ajoutée** : le script `lint` existait et les plugins étaient installés, mais aucun fichier de configuration — la commande échouait immédiatement, donc personne ne lintait
+- **better-sqlite3** monté en v12, `engines.node` porté à `>= 20`
+- **Cache API de la PWA** porté de 5 minutes à 24 heures, pour qu'une fiche consultée le matin s'ouvre l'après-midi en zone blanche
+- **`.env.example`** : port corrigé de 3000 à 3001, qui est le port réellement utilisé partout ailleurs
+
+#### Performance
+
+- **Requêtes N+1 supprimées** sur la fiche d'espace vert et les manifestations. Sur un espace de 60 entretiens, la seule partie « entretiens » émettait 120 requêtes ; mesuré à 120 requêtes / 1,25 ms contre 2 requêtes / 0,16 ms après regroupement, avec vérification que les deux motifs rendent les mêmes lignes
+
+### Sécurité
+
+- **Portée des tokens API appliquée** : les permissions d'un token étaient analysées puis rangées dans la requête, et plus aucune ligne ne les lisait — 0 référence dans les 25 fichiers de routes. Un token créé « lecture seule » par un administrateur pouvait supprimer tout ce que son créateur pouvait supprimer, puisqu'il hérite de son rôle
+- **`JWT_SECRET` obligatoire** : le repli vers un secret codé en dur a été supprimé. Le serveur refuse de démarrer en production si le secret est absent, trop court ou laissé à sa valeur d'exemple
+- **SQL des plugins verrouillé** : `pluginAdvanced.service.ts` exécutait du SQL stocké en base, atteignable avec un simple `authenticateToken`
+- **`/plugins` placé derrière authentification**
+- **Cascade de déconnexion** : `logout()` envoyait la requête puis effaçait l'état, donc elle partait sans en-tête d'autorisation et prenait un 401 ; ce 401 relançait `logout()`, qui rappelait `/auth/logout` — une dizaine de requêtes jusqu'au 429. Comme le limiteur couvre tout `/api/auth` à 10 requêtes par quart d'heure, se déconnecter — ou simplement se tromper de mot de passe — interdisait de se reconnecter pendant 15 minutes
+- **Déconnexion enfin journalisée** : elle prenait un 401 systématique, donc rien n'était enregistré et le cookie d'authentification n'était jamais effacé. Le journal d'audit ne contenait que des connexions
+
+### Corrigé (divers)
+
+- **Changer sa photo de profil déconnectait l'utilisateur** : la page profil lisait `useAuthStore.getState().accessToken`, un champ qui n'existe pas — le vrai s'appelle `token` — et le passait à `setAuth` avec un `!` pour forcer le type. Le magasin se retrouvait avec `token: undefined` et la requête suivante partait sans autorisation
+- **Synchronisation Outlook et CalDAV inutilisable** : les 18 requêtes de configuration interrogeaient `key` et `value` alors que la table `settings` a pour colonnes `setting_key` et `setting_value`. SQLite répondait « no such column », la route renvoyait un 500 générique, et aucune configuration ne pouvait être enregistrée
+- **Journal muet sur 13 actions** : la catégorie `'other'` est déclarée dans le type et proposée dans l'écran des journaux sous le nom « Autre », mais manquait dans les catégories activées par défaut. Création et suppression d'espace vert, cycle de vie des manifestations, import/export et réservations n'écrivaient rien, et le filtre « Autre » ne montrait jamais rien
+- **Changement de configuration d'authentification non tracé** : l'appel au journal passait `action` et omettait `level` ; `log()` filtre sur les niveaux activés, `includes(undefined)` est faux, et l'entrée était jetée
+- **Liens des emails vers un port fermé** : le réglage `site_url` était semé sur `http://localhost:3000` alors que le serveur écoute sur 3001. La valeur initiale suit désormais `SITE_URL` puis `PORT`
+- **`Badge`** ne transmettait pas la prop `title` que ses appelants lui passaient : l'infobulle explicative des champs personnalisés n'existait pas
+- **Onglet « Espaces verts » du module Suivi** absent du type de `activeTab`
+- **Code mort livré en production** : `ObjectDetailPage-FREDERICDEBONNE.tsx` (1 435 lignes), `object.routes-FREDERICDEBONNE.ts` (811 lignes) et `index-FREDERICDEBONNE.ts` (552 lignes), non référencés mais compilés
+- **Artefacts Playwright** sortis du suivi Git
+
+### Supprimé
+
+- Affichage de la description des sous-catégories, lu à deux endroits alors qu'il n'existe ni colonne en base, ni champ de route, ni champ de formulaire : il ne pouvait jamais rien rendre
+- `DOC_TYPES`, `updateDocMutation` et `getRoleIcon` : intentions jamais branchées à aucun contrôle
+
+---
+
 ### Ajouté
 - **Module Espaces Verts — Plugin système complet** : Gestion des espaces verts municipaux avec plan interactif annoté, composition botanique, entretiens et documents :
   - **Tables base de données** : `green_spaces` (informations générales, type, superficie, localisation, plan), `green_space_elements` (éléments du plan : arbres, massifs, mobilier...), `green_space_annotations` (annotations textuelles sur le plan), `green_space_seasons` (gestion saisonnière), `green_space_documents` (documents et fichiers), `green_space_element_groups` (groupes d'éléments), `green_space_maintenances` (entretiens programmés), `green_space_maintenance_elements` (éléments concernés), `green_space_maintenance_documents` (documents liés aux entretiens)

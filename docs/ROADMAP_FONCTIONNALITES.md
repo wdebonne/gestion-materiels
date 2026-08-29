@@ -1,29 +1,35 @@
 # 🗺️ Roadmap des Fonctionnalités - Gestion Matériels
 
-> Document de suivi des nouvelles fonctionnalités à intégrer au projet.
-> Créé le 6 mars 2026.
+> Document de suivi des fonctionnalités du projet.
+> Créé le 6 mars 2026 — état vérifié contre le code le 29 août 2026.
 
 ---
 
 ## 📊 Récapitulatif par priorité
 
-| # | Priorité | Fonctionnalité | Effort | Impact | Statut |
-|---|----------|---------------|--------|--------|--------|
-| 1 | 🔴 Haute | QR Codes matériels | Faible | Fort | ✅ Fait |
-| 2 | 🔴 Haute | Import/Export CSV & Excel | Moyen | Fort | ✅ Plugin système |
-| 3 | 🔴 Haute | Tests automatisés | Moyen | Fort | ✅ Fait |
-| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | Élevé | Fort | ✅ Plugin système |
-| 5 | 🟠 Moyenne | Amortissement / Dépréciation | Moyen | Moyen | ✅ Plugin système |
-| 6 | 🟠 Moyenne | PWA (Progressive Web App) | Faible | Moyen | ✅ Fait |
-| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | Moyen | Moyen | ✅ Plugin système |
-| 8 | 🟡 Basse | Timeline historique matériel | Faible | Moyen | ✅ Fait |
-| 9 | 🟡 Basse | Reporting périodique automatique | Moyen | Moyen | ✅ Fait |
-| 10 | 🟢 Optionnel | Dark Mode | Faible | Faible | ✅ Fait |
-| 11 | 🟢 Optionnel | Internationalisation (i18n) | Moyen | Faible | ✅ Fait |
-| 12 | 🟢 Optionnel | WebSocket temps réel | Moyen | Moyen | ✅ Fait |
-| 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | Moyen | Fort | ✅ Fait |
-| 14 | 🔴 Haute | Manifestations (gestion matériel événementiel) | Élevé | Fort | ✅ Plugin système |
-| 15 | 🔴 Haute | Espaces Verts (gestion espaces verts municipaux) | Élevé | Fort | ✅ Plugin système |
+Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'interface. Une fonctionnalité dont l'écran existe mais que rien ne relit est marquée ⚠️, pas ✅.
+
+| # | Priorité | Fonctionnalité | Statut | Réserve |
+|---|----------|---------------|--------|---------|
+| 1 | 🔴 Haute | QR Codes matériels | 🟡 Partiel | Génération et scan terrain ✅ — l'**impression en lot** n'a pas d'écran, alors que `POST /api/qrcode/batch` existe |
+| 2 | 🔴 Haute | Import/Export CSV & Excel | 🟡 Partiel | Import et export ✅ — mapping **positionnel strict** sur 11 colonnes, et les filtres d'export acceptés par le serveur ne sont pas exposés |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 131 tests (87 backend, 44 frontend) |
+| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | 🟡 Partiel | Réservations et alertes de retard ✅ — le **calendrier de disponibilité** n'est pas branché : le conflit n'apparaît qu'après envoi |
+| 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
+| 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
+| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | 🟡 Partiel | Carte et saisie GPS ✅ — le **géocodage d'adresses** n'existe pas |
+| 8 | 🟡 Basse | Timeline historique matériel | ✅ Fait | |
+| 9 | 🟡 Basse | Reporting périodique automatique | ✅ Fait | Rapport hebdomadaire réellement envoyé le lundi à 7h |
+| 10 | 🟢 Optionnel | Dark Mode | ✅ Fait | Étendu à l'ensemble des pages |
+| 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
+| 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
+| 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration est enregistrée dans `auth_config` et **relue par personne**. La connexion reste en bcrypt local. La politique de mot de passe et le blocage après N tentatives ne sont **jamais appliqués** |
+| 14 | 🔴 Haute | Manifestations | 🟡 Partiel | Stock, workflow et export ✅ — la table `manifestation_history` n'est **ni écrite ni lue**, et `ManifestationPDFExport.tsx` n'est importé nulle part |
+| 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
+| 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
+| 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
+
+**Légende** — ✅ fonctionne · 🟡 fonctionne partiellement, écart documenté · ⚠️ visible dans l'interface mais sans effet
 
 ---
 
@@ -39,6 +45,8 @@
 - **Librairies :** `qrcode` (backend), `react-qr-code` (frontend)
 - **Impact :** Très utile pour l'inventaire terrain, les agents municipaux
 
+> 🟡 **Reste :** l'impression d'étiquettes en lot n'a pas d'écran. `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes en data-URL et n'est appelé par personne : les QR codes s'impriment un par un.
+
 ### 2. Import/Export CSV & Excel
 - **Description :** Importer massivement des matériels depuis un fichier CSV/Excel, et exporter la base avec filtres.
 - **Fonctionnalités :**
@@ -48,6 +56,8 @@
   - Template de fichier d'import téléchargeable
 - **Librairies :** `xlsx` ou `exceljs`
 - **Impact :** Indispensable pour migration initiale et inventaires annuels
+
+> 🟡 **Reste :** le mapping de colonnes annoncé n'existe pas — l'import est **positionnel strict** sur 11 colonnes, le fichier doit suivre exactement le modèle téléchargeable. Et les filtres d'export acceptés par le serveur ne sont pas exposés dans l'écran.
 
 ### 3. Tests automatisés
 - **Description :** Couverture de tests pour les routes API critiques et les composants React.
@@ -74,6 +84,8 @@
 - **Tables BDD :** `reservations`
 - **Impact :** Gestion partagée du matériel entre services
 
+> 🟡 **Reste :** le calendrier de disponibilité n'est pas branché. `GET /api/reservations/availability/:objectId` existe et n'est appelé par aucun écran : un créneau déjà pris n'apparaît qu'en erreur 409, après l'envoi du formulaire.
+
 ### 5. Amortissement / Dépréciation
 - **Description :** Calcul automatique de la valeur résiduelle des équipements.
 - **Fonctionnalités :**
@@ -92,6 +104,8 @@
   - Manifest et service worker
 - **Librairies :** `vite-plugin-pwa`
 - **Impact :** Accès terrain facilité, expérience native
+
+> 🟡 **Reste :** les notifications push ne sont pas implémentées (aucun appel à `PushManager` ni à `Notification.requestPermission`). Installation, cache et service worker fonctionnent. La mise à jour ne se fait plus automatiquement : un bandeau la propose, parce que le rechargement survenait au milieu d'une saisie.
 
 ---
 
@@ -166,7 +180,10 @@
   - Préservation des secrets lors de la mise à jour
 - **Tables BDD :** `auth_config` (provider, is_active, config JSON)
 - **Routes API :** `/api/settings/auth` — GET, GET/:provider, PUT/:provider, POST/:provider/test
-- **Impact :** Intégration entreprise, SSO centralisé, sécurité renforcée
+
+> ⚠️ **État réel :** seuls les écrans de configuration existent. `auth_config` est écrite par cette page et **relue par personne** — aucun fichier de `src/` ne l'interroge en dehors de sa propre route. La connexion reste en bcrypt local, la politique de mot de passe et le blocage après N tentatives ne sont jamais appliqués, et le bouton « Tester » ne fait que vérifier la forme de l'URL saisie.
+>
+> Un écran qui *simule* un SSO est plus dangereux qu'une absence de SSO : il fait croire à un administrateur que l'authentification est déléguée alors qu'elle ne l'est pas. À finir ou à retirer.
 
 ### 14. Manifestations (gestion matériel événementiel)
 - **Description :** Plugin système pour gérer les manifestations/événements avec prêt, livraison et récupération de matériel.
@@ -184,6 +201,8 @@
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
 - **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
+
+> 🟡 **Reste :** la table `manifestation_history` est créée mais **ni écrite ni lue**, et `ManifestationPDFExport.tsx` n'est importé nulle part — la timeline horodatée et l'export PDF annoncés n'existent donc pas à l'écran. Par ailleurs `PUT /:id` ignore le champ `status` (il faut passer par `PUT /:id/status`), et `PUT /:id/materials` répond 200 même quand aucune ligne n'est modifiée.
 
 ### 15. Espaces Verts (gestion espaces verts municipaux)
 - **Description :** Plugin système complet pour la gestion des espaces verts avec plan interactif annoté, composition botanique, entretiens et intégrations transversales.
@@ -215,3 +234,48 @@
 - **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, types de groupes, remplacement d'éléments, historique remplacements, clonage, snapshots, archives, stats
 - **Frontend :** 7 onglets (Éléments, Plan annoté, Carte, Saisons, Documents, Entretien, Archives), modale clonage, export PDF
 - **Impact :** Gestion complète des espaces verts communaux avec vision cartographique et suivi des interventions
+
+---
+
+## 🔴 Priorité Haute
+
+### 16. Ergonomie terrain
+
+- **Contexte :** l'application avait été construite pour un utilisateur qui ressemblait à son développeur. Les utilisateurs réels sont des agents de métier manuel — jardiniers, mécaniciens, chauffeurs — sur téléphone, dehors, parfois avec des gants et sans réseau.
+- **Trois problèmes de fond corrigés :**
+  1. **L'application mentait.** Un compte « utilisateur » ne pouvait écrire nulle part, mais l'interface lui affichait quand même « Ajouter un plein ». Il remplissait le formulaire, appuyait sur Ajouter, et il ne se passait rien : le 403 n'était pas intercepté.
+  2. **La sauvegarde était silencieuse.** La page Espaces Verts comptait 45 `useMutation`, aucun `onError`, aucun message. Enregistrer, supprimer, cloner ou archiver ne produisait aucun retour, ni en succès ni en échec.
+  3. **L'ergonomie n'était pas tactile.** Aucun attribut `aria-*` dans tout le client, des boutons-icônes de 18 à 28 px identifiés par une infobulle au survol, les actions Modifier/Supprimer des cartes en `opacity-0 group-hover:opacity-100` — donc inexistantes au doigt — et `text-gray-400` (2,8:1, échec WCAG AA) utilisé 339 fois.
+
+- **Livré :**
+  - **Rôle « agent de terrain »** : relevés de plein, entretien, contrôle technique, entretien d'espace vert, photo jointe, demande de réservation. Le référentiel et les suppressions restent au superviseur. Déployé en deux temps — d'abord les boutons honnêtes sans changement de droits, puis l'ouverture des droits une fois la matrice de tests en place
+  - **Saisie hors réseau** : file d'attente persistante, liste blanche stricte d'URL, jamais de suppression différée, bandeau permanent tant que la file n'est pas vide, renvoi automatique au retour du réseau
+  - **Photo** : capture directe par l'appareil, redimensionnement avant envoi (12 Mo → ~400 Ko), redressement EXIF côté serveur
+  - **GPS** : bouton « Utiliser ma position » avec précision affichée et aperçu OpenStreetMap ; la clé Google Maps codée en dur dans le source a été retirée
+  - **Scan de QR code** : page `/scan` avec le décodeur natif du navigateur
+  - **Listes fermées** pour station-service, prestataire et centre de contrôle — le texte libre fragmentait les rapports de coûts
+  - **Validation lisible** sous le champ, côté client puis revalidée côté serveur
+  - **Retour systématique** sur chaque enregistrement, message explicite sur 403 et sur perte de réseau
+  - **Session expirée** : fenêtre de reconnexion par-dessus l'écran, sans détruire le formulaire en cours
+  - **Cibles tactiles ≥ 44 px**, actions visibles sans survol, taille de texte réglable, contraste renforcé, mode sombre complété
+  - **Recherche globale**, actions rapides, favoris personnels, barre de navigation basse sur mobile, aide contextuelle par page
+  - **Alertes** : état de lecture par utilisateur — « tout marquer comme lu » vidait la pastille de toute la collectivité — et emails envoyés aussi à la personne qui entretient le matériel
+- **Impact :** un agent peut enregistrer son propre travail, sans passer par son chef, y compris sans réseau.
+
+### 17. Consolidation structurelle
+
+- **Fait :**
+  - **Index de base de données** : 25 index sur 54 tables qui n'en comptaient aucun
+  - **Découpage du bundle** : 33 des 37 pages en chargement différé, l'écran de connexion ne télécharge plus leaflet, fullcalendar, recharts et jspdf
+  - **Pagination réelle** : au-delà du vingtième matériel, les suivants étaient invisibles
+  - **Validation serveur des écritures de terrain** : une charge incomplète produisait un 500 « Erreur serveur » au lieu d'un message utile
+  - **Requêtes N+1 supprimées** sur les espaces verts et les manifestations : 120 requêtes → 2 sur une fiche de 60 entretiens
+  - **Portée des tokens API appliquée** : elle était analysée puis ignorée
+  - **Système de migration versionné** : `npm run db:migrate` pointait vers un fichier inexistant
+  - **Types vérifiés à la construction de l'image** : la production était le seul endroit où le code n'était jamais type-checké. Client passé de 76 à 0 erreur de type
+  - **Lint client réparé** : le script existait, les plugins étaient installés, aucun fichier de configuration n'existait
+  - **131 tests** contre 36
+- **Reste à faire :**
+  - Découpage des fichiers-monstres (`EspacesVertsPage.tsx` ~5 700 lignes, `ObjectDetailPage.tsx` ~2 800 lignes, `espaceVert.routes.ts` ~1 500 lignes) — à faire au fil de l'eau, pas en sprint dédié
+  - Types partagés entre client et serveur (449 avertissements ESLint restants, presque tous des `any`)
+  - Les requêtes du cron encadrent leurs colonnes de dates dans `date()`, ce qui empêche les index correspondants de servir

@@ -2,8 +2,8 @@
 
 Application web de gestion du matériel municipal (véhicules, tondeuses, équipements divers).
 
-![Version](https://img.shields.io/badge/version-1.2.61-blue.svg)
-![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)
+![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
+![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
@@ -14,18 +14,37 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔌 **Système de plugins** extensible avec import ZIP
 - 📱 **Design responsive** adapté mobile et desktop
 - 🔒 **Sécurisé** avec authentification JWT
-- � **Documentation API Swagger** interactive intégrée- 🌙 **Dark Mode** avec persistance des préférences
-- 🌍 **Multilingue** (FR/EN) avec détection automatique
+- 📖 **Documentation API Swagger** interactive intégrée
+- 🌙 **Dark Mode** avec persistance des préférences
+- 📝 **Interface en français**, verrouillée (la détection automatique a été retirée : elle basculait une application francophone en anglais sur une tablette configurée en anglais, sans moyen d'en sortir)
 - 📲 **PWA installable** sur mobile avec cache hors-ligne
-- ⚡ **Temps réel** via WebSocket (Socket.io)- �🐳 **Docker ready** pour un déploiement facile
+- ⚡ **Temps réel** via WebSocket (Socket.io)
+- 📴 **Saisie hors réseau** conservée et rejouée au retour de la connexion
+- 🐳 **Docker ready** pour un déploiement facile
 
 ## 📋 Fonctionnalités
 
 ### Gestion des utilisateurs
 - 🔐 Authentification sécurisée (JWT)
-- 👥 Trois rôles : Administrateur, Superviseur, Utilisateur
+- 👥 **Quatre rôles** : Administrateur, Superviseur, **Agent de terrain**, Utilisateur
 - 🔑 Réinitialisation de mot de passe par email
 - 👤 Profil utilisateur personnalisable
+- ✅ **Rester connecté** : coché, la session survit à la fermeture du navigateur ; décoché, elle disparaît avec l'onglet — à utiliser sur un poste partagé
+
+#### Le rôle « Agent de terrain »
+
+Pour relever un plein, un jardinier devait auparavant être promu **superviseur**, ce qui lui donnait au passage la suppression des espaces verts, la gestion du stock des manifestations et les seuils d'alerte.
+
+L'agent de terrain peut faire les gestes du quotidien — relevé de plein, entretien, contrôle technique, entretien d'espace vert, photo jointe, demande de réservation — et rien d'autre. Le référentiel (types, statuts, groupes, seuils) et toutes les suppressions restent au superviseur.
+
+| Geste | Utilisateur | Agent | Superviseur | Admin |
+|-------|:-----------:|:-----:|:-----------:|:-----:|
+| Consulter | ✓ | ✓ | ✓ | ✓ |
+| Relevé de plein, entretien, contrôle | | ✓ | ✓ | ✓ |
+| Joindre une photo | | ✓ | ✓ | ✓ |
+| Créer / modifier un matériel | | | ✓ | ✓ |
+| Gérer le référentiel et supprimer | | | ✓ | ✓ |
+| Utilisateurs, sauvegardes, permissions | | | | ✓ |
 
 ### Gestion du matériel
 - 📁 Organisation par catégories et sous-catégories
@@ -33,6 +52,36 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 📝 Fiches détaillées pour chaque objet
 - 🔍 Recherche et filtres avancés
 - 📊 Champs personnalisés et spécifications
+
+### 📲 Usage terrain
+
+L'application est utilisée par des agents de terrain — jardiniers, mécaniciens, chauffeurs — souvent sur téléphone, dehors, parfois avec des gants et sans réseau.
+
+**Saisie**
+- 📴 **Hors réseau** : un relevé de plein, d'entretien ou de contrôle saisi sans connexion est conservé et renvoyé automatiquement au retour du réseau. Un bandeau permanent annonce le nombre de saisies en attente. Liste blanche stricte d'URL, jamais de suppression différée
+- 📷 **Photo** : bouton « Prendre une photo » ouvrant l'appareil, redimensionnement avant envoi (une photo de 12 Mo passe à ~400 Ko) et redressement EXIF côté serveur
+- 📍 **Position GPS** : bouton « Utiliser ma position » avec précision affichée et aperçu OpenStreetMap, au lieu d'une latitude et d'une longitude à recopier
+- 📷 **Scan de QR code** : page `/scan` utilisant le décodeur natif du navigateur, qui ouvre directement la fiche du matériel
+- 📋 **Listes fermées** : station-service, prestataire et centre de contrôle sont choisis dans une liste et non tapés librement — « Total Pavilly », « TOTAL Pavilly » et « total pavilly » ne forment plus trois stations distinctes dans les rapports de coûts
+- ✅ **Validation lisible** : le message apparaît sous le champ concerné, en français, avant l'envoi ; le serveur revalide et répond 400 avec le même message
+
+**Lecture et navigation**
+- 🔎 **Recherche globale** : une seule recherche sur tout le parc (nom, référence, numéro de série, champs personnalisés)
+- ⚡ **Actions rapides** sur l'accueil : scanner, faire un plein, chercher, mes matériels
+- ⭐ **Mes matériels** : épinglage personnel, propre à chaque utilisateur
+- 📱 **Barre du bas sur mobile** : accueil, scan, recherche, alertes, profil
+- ❓ **Aide contextuelle** : un bouton `?` par page principale, cinq puces « comment faire »
+
+**Confort de lecture**
+- 🔠 **Taille du texte** réglable (normal / grand / très grand) et **contraste renforcé** pour le plein soleil
+- 👆 **Cibles tactiles d'au moins 44 px**, actions visibles sans survol — les boutons Modifier et Supprimer des cartes étaient invisibles sur écran tactile
+- 🌙 **Mode sombre** sur l'ensemble des pages
+
+**Retours et erreurs**
+- 💬 Chaque enregistrement produit un message de succès ou d'échec explicite
+- 🚫 Un refus de droits affiche « Vous n'avez pas les droits… » au lieu de ne rien faire
+- 🔐 **Session expirée** : une fenêtre de reconnexion s'affiche par-dessus l'écran courant, sans détruire le formulaire en cours
+- ♻️ **Écran d'erreur avec bouton Réessayer** au lieu d'une page blanche
 
 ### ⚙️ Configuration des Champs
 - 🎛️ Personnalisation des champs par catégorie et sous-catégorie
@@ -88,9 +137,9 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🗂️ **Archives & Snapshots** : Capture de l'état complet (plan, éléments, annotations, groupes) à un instant T, liste chronologique, vue détaillée du plan archivé
 - 🔄 **Comparaison de versions** : Mode côte-à-côte entre snapshot archivé et état actuel avec résumé des différences (éléments, annotations, groupes)
 - 📜 **Historique de l'espace source** : Accès aux documents et entretiens de l'espace original si l'espace est un clone
-- � **Types de groupes** : Gestion CRUD des types de groupes de composition (massif, haie, bosquet, rocaille, jardinière...) avec icône et couleur personnalisables
+- 🏷️ **Types de groupes** : Gestion CRUD des types de groupes de composition (massif, haie, bosquet, rocaille, jardinière...) avec icône et couleur personnalisables
 - ♻️ **Remplacement d'éléments** : Archivage automatique de l'état avant remplacement avec contexte saisonnier (printemps/été/automne/hiver) — timeline visuelle de l'historique pour traçabilité
-- �📊 **Export PDF** : Plan annoté en paysage + légende + tableaux détaillés
+- 📊 **Export PDF** : Plan annoté en paysage + légende + tableaux détaillés
 - 🔗 **Intégrations** : Alertes automatiques (cron), événements calendrier, coûts dans le module Suivi
 
 ### Plugins intégrés
@@ -117,7 +166,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🗓️ Mini-calendrier avec navigation rapide (overlay sur mobile)
 - 🔍 Recherche et filtres par type d'événement
 - 📆 Vues : Mois, Semaine, Jour, Liste (adaptées aux petits écrans)
-- 🔄 **Synchronisation Outlook** via Azure AD
+- 🔄 **Synchronisation Outlook** via Azure AD *(voir la réserve dans « État réel »)*
 - 🔄 **Synchronisation CalDAV** (Nextcloud, Synology, iCloud, Google)
 - ⚠️ Système d'alertes automatiques
 - 📧 Notifications par email
@@ -131,7 +180,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔄 Migration SQLite vers MySQL/MariaDB
 - 🔐 Gestion des permissions par catégorie
 - 📋 **Journal des logs** avec filtrage, export et paramètres avancés
-- 🔗 **Webhooks** : Notifications HTTP vers des services externes
+- 🔗 **Webhooks** : écran de création et de test complet, mais **aucun événement ne les déclenche** — voir « État réel » ci-dessous
 - 📖 **API** : Documentation interactive Swagger UI, spécification OpenAPI, statistiques
 
 ### 📦 QR Codes
@@ -165,7 +214,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 ### 🌙 Dark Mode & i18n
 - 🌙 Mode sombre togglable (clair/sombre/système) avec persistance
-- 🌍 Support multilingue FR/EN avec détection automatique du navigateur
+- 🇫🇷 Interface en français. Les fichiers de traduction FR/EN existent mais `useTranslation` n'est utilisé que dans un fichier sur soixante : la détection automatique de langue a été retirée, car elle basculait toute l'interface en anglais sur une tablette configurée en anglais
 
 ### ⚡ Temps réel (WebSocket)
 - 🔔 Alertes instantanées via Socket.io
@@ -187,7 +236,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 ### Prérequis
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0
 - npm >= 9.0.0
 - (Optionnel) Docker et Docker Compose
 
@@ -218,17 +267,13 @@ cd ..
 
 4. **Lancer l'application en développement**
 ```bash
-# Terminal 1 - Backend
-npm run dev
-
-# Terminal 2 - Frontend
-cd client
+# Lance le serveur et le client ensemble
 npm run dev
 ```
 
 5. **Accéder à l'application**
 - Frontend : http://localhost:5173
-- Backend API : http://localhost:3000
+- Backend API : http://localhost:3001
 
 ### Identifiants par défaut
 
@@ -249,9 +294,10 @@ cp .env.example .env
 
 2. **Configurer les variables importantes**
 ```env
-# Sécurité - OBLIGATOIRE en production
+# Sécurité - OBLIGATOIRE en production, minimum 32 caractères.
+# L'application refuse de démarrer si ce secret est absent, trop court,
+# ou laissé à sa valeur d'exemple.
 JWT_SECRET=votre_secret_jwt_tres_long_minimum_32_caracteres
-JWT_REFRESH_SECRET=autre_secret_pour_refresh_token
 
 # Base de données
 DB_TYPE=sqlite  # ou mysql
@@ -277,6 +323,8 @@ docker-compose up -d
 ```
 http://localhost:3001
 ```
+
+> Le conteneur applique les migrations de schéma au démarrage, avec une sauvegarde préalable de la base SQLite. Aucune commande manuelle n'est nécessaire.
 
 ### Avec Nginx (production)
 
@@ -318,6 +366,9 @@ gestion-materiels/
 │   │   └── cron.service.ts           # Tâches planifiées
 │   ├── middleware/        # Middlewares (auth)
 │   ├── database/          # Gestion BDD
+│   │   ├── migrations/    # Migrations versionnées
+│   │   ├── migrationRunner.ts # Journal, sauvegarde, application
+│   │   └── migrate.ts     # Commande `npm run db:migrate`
 │   └── server.ts          # Point d'entrée
 ├── data/                   # Base de données SQLite
 ├── uploads/                # Fichiers uploadés
@@ -327,10 +378,16 @@ gestion-materiels/
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
 ├── tests/                  # Tests backend (Jest)
-│   ├── slugify.test.ts    # Tests utilitaire slugify
-│   └── api.test.ts        # Tests routes API & WebSocket
+│   ├── roles.test.ts      # Matrice rôle × endpoint
+│   ├── saisie-terrain.test.ts # Validation des relevés de terrain
+│   ├── apiTokens.test.ts  # Portée des tokens API
+│   ├── migrations.test.ts # Système de migration
+│   ├── batchQuery.test.ts # Chargement groupé (N+1)
+│   ├── settingsColumns.test.ts # Noms de colonnes de `settings`
+│   ├── slugify.test.ts    # Utilitaire slugify
+│   └── api.test.ts        # Routes API & WebSocket
 ├── docs/                   # Documentation
-│   ├── ROADMAP_FONCTIONNALITES.md # Roadmap 12 fonctionnalités
+│   ├── ROADMAP_FONCTIONNALITES.md # Roadmap et état réel des fonctionnalités
 │   ├── PLUGIN_STRUCTURE.md # Structure des plugins
 │   ├── AUDIT_SECURITE_API.md # Audit sécurité
 │   ├── JWT_ROTATION.md    # Rotation JWT
@@ -347,12 +404,16 @@ gestion-materiels/
 
 | Variable | Description | Défaut |
 |----------|-------------|--------|
-| `PORT` | Port du serveur | 3000 |
+| `PORT` | Port du serveur | 3001 |
 | `NODE_ENV` | Environnement | development |
-| `JWT_SECRET` | Secret JWT (obligatoire) | - |
-| `JWT_REFRESH_SECRET` | Secret refresh token | - |
+| `JWT_SECRET` | Secret JWT (**obligatoire**, ≥ 32 caractères) | - |
+| `JWT_REFRESH_SECRET` | Déclaré dans `docker-compose.yml` mais **lu par personne** : le jeton de rafraîchissement est signé avec `JWT_SECRET` | - |
+| `JWT_EXPIRES_IN` | Durée du jeton d'accès | 7d |
+| `JWT_REFRESH_EXPIRES_IN` | Durée du jeton de rafraîchissement | 30d |
+| `SITE_URL` | URL publique inscrite dans les liens des emails à la première installation, modifiable ensuite dans **Paramètres** | `http://localhost:$PORT` |
+| `APP_URL` | URL encodée dans les QR codes ; à défaut, l'hôte de la requête est utilisé | - |
 | `DB_TYPE` | Type de BDD (sqlite/mysql) | sqlite |
-| `SQLITE_PATH` | Chemin BDD SQLite | ./data/database.sqlite |
+| `DB_PATH` | Chemin BDD SQLite | ./data/database.sqlite |
 | `MYSQL_HOST` | Hôte MySQL | localhost |
 | `MYSQL_PORT` | Port MySQL | 3306 |
 | `MYSQL_USER` | Utilisateur MySQL | - |
@@ -363,6 +424,9 @@ gestion-materiels/
 | `SMTP_USER` | Utilisateur SMTP | - |
 | `SMTP_PASS` | Mot de passe SMTP | - |
 | `SMTP_FROM` | Email expéditeur | - |
+| `VITE_GOOGLE_MAPS_KEY` | Clé Google Maps côté client, optionnelle (sans elle, l'aperçu utilise OpenStreetMap) | - |
+
+> Au démarrage en production, l'application refuse de se lancer si `JWT_SECRET` ou `JWT_REFRESH_SECRET` est absent, trop court, ou reste sur une valeur d'exemple. Il n'y a plus de secret de repli.
 
 ### Templates d'emails
 
@@ -587,35 +651,84 @@ POST   /api/backup/migrate    # Migrer vers MySQL
 
 ## 🔒 Sécurité & Authentification
 
-- Authentification JWT avec refresh tokens
-- Mots de passe hashés avec bcrypt
-- Protection CSRF
-- Rate limiting sur les endpoints sensibles
-- Validation des entrées
-- Headers de sécurité HTTP
-- Rotation automatique des secrets JWT
-- **SSO SAML 2.0** : Azure AD, Google Workspace, Okta, Keycloak
-- **SSO OpenID Connect** : Azure AD, Google, Auth0, Keycloak
-- **LDAP / Active Directory** : Authentification annuaire avec mapping groupes/rôles
-- **Passkey (WebAuthn / FIDO2)** : Empreinte digitale, reconnaissance faciale, clés USB
-- **Politique de mot de passe** : Longueur, complexité, expiration configurables
-- **Politique de connexion** : Blocage après N tentatives, 2FA obligatoire, timeout session
+### En place
+
+- Authentification JWT, jetons d'accès et de rafraîchissement (signés avec le même secret)
+- Mots de passe hashés avec bcrypt (12 tours)
+- `JWT_SECRET` obligatoire : plus de secret de repli, démarrage refusé en production s'il est absent, trop court ou laissé à sa valeur d'exemple
+- Rate limiting : 10 tentatives / 15 min sur `/api/auth`, 1000 req / 15 min globalement, quotas dédiés pour les uploads et les exports
+- **Portée des tokens API appliquée** : un token « lecture seule » ne peut plus écrire ni supprimer, quel que soit le rôle de son créateur
+- Rôles vérifiés route par route, figés par une matrice de tests
+- Fichiers du dossier `/uploads` protégés par JWT
+- SQL des plugins verrouillé : tables système protégées, écritures interdites
+- Rotation automatique des secrets JWT avec période de grâce
+- Headers de sécurité HTTP (Helmet), CORS, HTTPS forcé en production
+- Validation des entrées côté serveur sur les écritures de terrain
+- Journal d'audit : connexions, échecs, déconnexions, changements de configuration
+
+### Écrans de configuration sans effet ⚠️
+
+Ces écrans existent dans **Paramètres > Authentification**, enregistrent leur configuration dans la table `auth_config`, et **rien ne la relit** : la connexion reste en bcrypt local seul. Ne les présentez pas comme actifs à un administrateur.
+
+| Fonction | État réel |
+|----------|-----------|
+| SSO SAML 2.0 | Écran de configuration uniquement — aucun flux d'authentification |
+| SSO OpenID Connect | Écran de configuration uniquement |
+| LDAP / Active Directory | Écran de configuration uniquement |
+| Passkey (WebAuthn / FIDO2) | Écran de configuration uniquement |
+| Politique de mot de passe (longueur, complexité, expiration) | Configurable, **jamais appliquée** à la création ni au changement de mot de passe |
+| Blocage après N tentatives échouées, 2FA, timeout de session | Configurable, **jamais appliqué** — seul le rate limiting global protège du bourrinage |
+
+Le bouton « Tester » de chaque fournisseur ne fait que vérifier la forme de l'URL saisie.
+
+## 🚧 État réel
+
+Cette section liste ce qui est visible dans l'interface sans fonctionner, pour qu'un administrateur ne le présente pas comme acquis. Tout ce qui n'y figure pas fonctionne.
+
+| Fonction | Ce qui existe | Ce qui manque |
+|----------|---------------|---------------|
+| **SSO SAML / OIDC / LDAP / Passkey** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local |
+| **Politique de mot de passe et de connexion** | Écran de configuration (longueur, complexité, expiration, blocage après N tentatives, 2FA, timeout) | Aucune règle n'est appliquée à la création ni au changement de mot de passe |
+| **Webhooks** | CRUD complet, bouton de test, journalisation | Aucune route ni tâche planifiée n'appelle `POST /trigger` : aucun webhook ne part jamais |
+| **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
+| **Impression d'étiquettes QR en lot** | `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes | Aucun écran ne l'appelle : les QR codes s'impriment un par un |
+| **Disponibilité des réservations** | `GET /api/reservations/availability/:objectId` | L'écran ne l'appelle pas : un conflit n'apparaît qu'en erreur après l'envoi du formulaire |
+| **Historique des manifestations** | Table `manifestation_history` créée, composant `ManifestationPDFExport` écrit | La table n'est ni écrite ni lue, et le composant n'est importé nulle part |
+| **Filtres d'export** | Le serveur accepte des filtres à l'export | L'écran ne les expose pas |
+| **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
+| **Import de matériels** | Import CSV/XLSX fonctionnel | Le mapping est **positionnel strict** sur 11 colonnes : le fichier doit suivre exactement le modèle téléchargeable |
+
+### Limites connues
+
+- Les requêtes du cron encadrent leurs colonnes de dates dans `date()`, ce qui empêche les index `idx_control_expiry` et `idx_maintenance_next` de servir. Sans effet visible au volume actuel
+- `JWT_REFRESH_SECRET` est déclaré dans `docker-compose.yml` mais n'est lu par personne : les deux jetons sont signés avec `JWT_SECRET`
+- `PUT /api/manifestations/:id/materials` répond 200 même lorsqu'aucune ligne n'est modifiée
+- `PUT /api/manifestations/:id` ne lit pas le champ `status` : le statut se change uniquement via `PUT /:id/status`
+- Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`
 
 ## 🛠️ Développement
 
 ### Scripts disponibles
 
 ```bash
-# Backend
-npm run dev       # Développement avec hot-reload
-npm run build     # Compilation TypeScript
-npm start         # Production
+# Racine — lance serveur et client ensemble
+npm run dev             # Développement (serveur 3001 + client 5173)
+npm run build           # Build complet, types vérifiés des deux côtés
+npm run build:server    # Compilation TypeScript du serveur (tsc)
+npm start               # Production
+npm test                # Tests backend (Jest)
+npm run db:migrate      # Applique les migrations en attente
+npm run db:migrate -- --dry-run   # Liste ce qui reste à appliquer, sans rien modifier
 
 # Frontend (dans /client)
-npm run dev       # Développement Vite
-npm run build     # Build production
-npm run preview   # Prévisualiser le build
+npm run dev             # Développement Vite
+npm run build           # Build sans vérification de types
+npm run build:check     # Build avec vérification de types (utilisé par l'image Docker)
+npm run lint            # ESLint
+npm run test:run        # Tests (Vitest)
 ```
+
+> L'image Docker compile le serveur avec `tsc` et le client avec `build:check` : une erreur de type arrête la construction de l'image au lieu de ressortir en panne en production.
 
 ### Tests
 
@@ -630,7 +743,20 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-> 36 tests au total : 15 backend (slugify, routes API, WebSocket) + 21 frontend (Badge, Button, Card)
+> **131 tests** : 87 backend + 44 frontend.
+>
+> | Suite | Couvre |
+> |-------|--------|
+> | `roles.test.ts` | Matrice rôle × endpoint, contrat de chaque route protégée |
+> | `saisie-terrain.test.ts` | Champs obligatoires des relevés, et surtout que les champs validés soient bien ceux que la route lit |
+> | `apiTokens.test.ts` | Portée des tokens API, méthode HTTP → permission |
+> | `migrations.test.ts` | Journal, ordre, non-rejeu, reprise après échec |
+> | `batchQuery.test.ts` | Chargement groupé : regroupement, découpage en tranches |
+> | `settingsColumns.test.ts` | Aucune requête n'interroge `settings` avec de mauvais noms de colonnes |
+> | `api.test.ts`, `slugify.test.ts` | Routes API, WebSocket, génération de slugs |
+> | `auth.store.test.ts` | Contrat du magasin d'authentification, « Rester connecté » |
+> | `offlineQueue.test.ts` | File hors ligne : ce qui est différable, sort de file, abandonné |
+> | `Badge`, `Button`, `Card` | Composants UI |
 
 ## 📝 Licence
 
@@ -646,7 +772,7 @@ Pour toute question ou problème :
 
 ## 📚 Documentation
 
-- [Roadmap fonctionnalités](docs/ROADMAP_FONCTIONNALITES.md) - Suivi des 12 fonctionnalités ajoutées
+- [Roadmap fonctionnalités](docs/ROADMAP_FONCTIONNALITES.md) - Suivi des 15 fonctionnalités et état réel de chacune
 - [Structure des plugins](docs/PLUGIN_STRUCTURE.md) - Comment créer des plugins
 - [Déploiement Portainer](docs/DEPLOIEMENT_PORTAINER.md) - Déployer avec Docker/Portainer
 - [Audit sécurité API](docs/AUDIT_SECURITE_API.md) - Rapport d'audit de sécurité

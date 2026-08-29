@@ -135,6 +135,26 @@ mon-plugin.zip
 }
 ```
 
+## Restrictions sur les requêtes SQL
+
+Les requêtes déclarées dans `api.endpoints[].query` sont exécutées par le serveur. Elles proviennent d'un plugin installé par un administrateur, mais elles sont **déclenchables par n'importe quel compte authentifié** : elles sont donc contraintes.
+
+Une requête refusée fait échouer l'endpoint avec un message explicite au moment de l'appel.
+
+| Règle | Détail |
+|-------|--------|
+| Une seule instruction | Un `;` en milieu de requête est refusé |
+| Verbe cohérent avec la méthode | `GET` n'accepte que `SELECT` et `WITH`. Les autres méthodes acceptent `SELECT`, `WITH`, `INSERT`, `UPDATE`, `DELETE` |
+| Pas de modification de schéma | `DROP`, `ALTER`, `CREATE`, `TRUNCATE`, `GRANT`, `REVOKE`, `ATTACH`, `DETACH`, `PRAGMA`, `VACUUM` sont refusés |
+| Pas d'accès au système de fichiers | `LOAD_FILE`, `INTO OUTFILE`, `INTO DUMPFILE` sont refusés |
+| Tables système hors d'atteinte | `users`, `api_tokens`, `settings`, `auth_config`, `plugins` et toutes les tables de permissions |
+
+Les tables du plugin lui-même sont créées via `database.tables` dans `plugin.json`, pas par une requête `CREATE TABLE` dans un endpoint.
+
+**Paramètres** : utilisez la syntaxe `:nom` (`WHERE id = :id`), jamais de concaténation de chaîne — les valeurs sont liées, pas interpolées.
+
+---
+
 ## Types de composants disponibles
 
 ### header
