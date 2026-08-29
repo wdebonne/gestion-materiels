@@ -22,6 +22,7 @@ import toast from 'react-hot-toast'
 // ==================== CONSTANTES ====================
 
 const statusLabels: Record<string, string> = {
+  pending: 'À confirmer',
   draft: 'Brouillon',
   validated: 'Validée',
   delivered: 'Livrée',
@@ -31,6 +32,10 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
+  // L'orange distingue au premier coup d'œil une demande reçue d'un formulaire,
+  // qui attend une décision, d'un brouillon que la collectivité a elle-même
+  // commencé.
+  pending: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
   draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
   validated: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   delivered: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -40,6 +45,11 @@ const statusColors: Record<string, string> = {
 }
 
 const statusActions: Record<string, { next: string; label: string; icon: any; color: string }[]> = {
+  pending: [
+    { next: 'validated', label: 'Confirmer', icon: Check, color: 'text-blue-600' },
+    { next: 'draft', label: 'Reprendre en brouillon', icon: Edit, color: 'text-gray-600' },
+    { next: 'cancelled', label: 'Refuser', icon: X, color: 'text-red-600' }
+  ],
   draft: [
     { next: 'validated', label: 'Valider', icon: Check, color: 'text-blue-600' },
     { next: 'cancelled', label: 'Annuler', icon: X, color: 'text-red-600' }
@@ -64,7 +74,7 @@ const emptyForm = {
   title: '', date_start: new Date().toISOString().split('T')[0], date_end: '',
   start_time: '', end_time: '', expected_people: 0,
   contact_name: '', contact_phone: '', contact_email: '',
-  delivery_address: '', delivery_date: '',
+  delivery_address: '', delivery_date: '', recovery_date: '',
   notes_interior: '', notes_exterior: '', materials: [] as ManifMaterial[]
 }
 
@@ -203,7 +213,7 @@ export default function ManifestationsPage() {
     mutationFn: (data: any) => editingManif
       ? manifestationApi.update(editingManif.id, data)
       : manifestationApi.create(data),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
@@ -211,6 +221,18 @@ export default function ManifestationsPage() {
       setEditingManif(null)
       setManifForm(emptyForm)
       toast.success(editingManif ? 'Manifestation modifiée' : 'Manifestation créée')
+
+      // Avertissement, jamais refus : la demande est enregistrée telle qu'elle a
+      // été formulée, et le manque est dit pour être arbitré.
+      const conflits = res.data.conflits ?? []
+      if (conflits.length > 0) {
+        toast(
+          `Stock insuffisant sur la période : ${conflits
+            .map(c => `${c.stock_name} (${c.manquant} manquant${c.manquant > 1 ? 's' : ''})`)
+            .join(', ')}`,
+          { icon: '⚠️', duration: 8000 }
+        )
+      }
     },
     onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
   })
@@ -289,10 +311,14 @@ export default function ManifestationsPage() {
       contact_name: m.contact_name || '', contact_phone: m.contact_phone || '',
       contact_email: m.contact_email || '', delivery_address: m.delivery_address || '',
       delivery_date: m.delivery_date?.split('T')[0] || '',
+      recovery_date: m.recovery_date?.split('T')[0] || '',
       notes_interior: m.notes_interior || '', notes_exterior: m.notes_exterior || '',
       materials: m.materials?.map(mat => ({
         stock_id: mat.stock_id, quantity_requested: mat.quantity_requested,
         quantity_delivered: mat.quantity_delivered, quantity_recovered: mat.quantity_recovered,
+        // Les pertes déjà constatées suivent la ligne : les réenvoyer à zéro
+        // effacerait la trace d'une casse dont le stock, lui, garde la marque.
+        quantity_lost: mat.quantity_lost ?? 0, loss_reason: mat.loss_reason ?? null,
         unit_value: mat.unit_value, notes: mat.notes || '',
         stock_name: mat.stock_name, unit: mat.unit
       })) || []
@@ -385,11 +411,20 @@ export default function ManifestationsPage() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">En cours</div>
           </CardBody></Card>
+          <Card
+            className={stats.pending > 0 ? 'cursor-pointer ring-1 ring-orange-300 dark:ring-orange-700' : 'cursor-pointer'}
+            onClick={() => setStatusFilter('pending')}
+          >
+            <CardBody className="text-center py-3">
+              <div className="text-2xl font-bold text-orange-600">{stats.pending ?? 0}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">À confirmer</div>
+            </CardBody>
+          </Card>
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-blue-600">{stats.upcoming}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">À venir</div>
@@ -482,6 +517,8 @@ export default function ManifestationsPage() {
                   onChange={e => setManifForm({ ...manifForm, delivery_address: e.target.value })} />
                 <Input label="Date de livraison" type="date" value={manifForm.delivery_date}
                   onChange={e => setManifForm({ ...manifForm, delivery_date: e.target.value })} />
+                <Input label="Date de récupération" type="date" value={manifForm.recovery_date}
+                  onChange={e => setManifForm({ ...manifForm, recovery_date: e.target.value })} />
               </CardBody>
             </Card>
 
@@ -640,6 +677,8 @@ export default function ManifestationsPage() {
                 </div>
               </CardBody>
             </Card>
+
+            {editingStock && <AliasArticle stockId={editingStock.id} nom={editingStock.name} />}
           </div>
         </ModalBody>
         <ModalFooter>
@@ -1182,6 +1221,7 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
                 <div><span className="text-gray-500 dark:text-gray-400">Tél:</span> {m.contact_phone || '-'}</div>
                 <div><span className="text-gray-500 dark:text-gray-400">Email:</span> {m.contact_email || '-'}</div>
                 <div><span className="text-gray-500 dark:text-gray-400">Livraison:</span> {formatD(m.delivery_date)}</div>
+                <div><span className="text-gray-500 dark:text-gray-400">Récupération:</span> {formatD(m.recovery_date)}</div>
                 <div className="col-span-2"><span className="text-gray-500 dark:text-gray-400">Adresse:</span> {m.delivery_address || '-'}</div>
               </div>
             </CardBody>
@@ -1202,6 +1242,8 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
             </div>
           )}
 
+          <MaterielARattacher brut={m.intake_unmatched} />
+
           {m.materials?.length > 0 && (
             <Card>
               <CardHeader><CardTitle className="text-sm">Liste du matériel</CardTitle></CardHeader>
@@ -1213,6 +1255,7 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
                       <th className="pb-1 text-center">Demandé</th>
                       <th className="pb-1 text-center">Livré</th>
                       <th className="pb-1 text-center">Récupéré</th>
+                      <th className="pb-1 text-center">Perdu</th>
                       <th className="pb-1 text-right">Val. TTC</th>
                     </tr>
                   </thead>
@@ -1223,6 +1266,10 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
                         <td className="py-1.5 text-center">{mat.quantity_requested} {mat.unit}</td>
                         <td className="py-1.5 text-center">{mat.quantity_delivered}</td>
                         <td className="py-1.5 text-center">{mat.quantity_recovered}</td>
+                        <td className={`py-1.5 text-center ${mat.quantity_lost ? 'text-red-600 font-semibold' : ''}`}
+                          title={mat.loss_reason || undefined}>
+                          {mat.quantity_lost || 0}
+                        </td>
                         <td className="py-1.5 text-right">{(mat.unit_value * mat.quantity_requested).toFixed(2)} €</td>
                       </tr>
                     ))}
@@ -1233,6 +1280,7 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
                       <td className="pt-2 text-center">{m.materials.reduce((s, mat) => s + mat.quantity_requested, 0)}</td>
                       <td className="pt-2 text-center">{m.materials.reduce((s, mat) => s + mat.quantity_delivered, 0)}</td>
                       <td className="pt-2 text-center">{m.materials.reduce((s, mat) => s + mat.quantity_recovered, 0)}</td>
+                      <td className="pt-2 text-center">{m.materials.reduce((s, mat) => s + (mat.quantity_lost || 0), 0)}</td>
                       <td className="pt-2 text-right">{totalValue.toFixed(2)} €</td>
                     </tr>
                   </tfoot>
@@ -1263,6 +1311,120 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
   )
 }
 
+/**
+ * Autres noms sous lesquels une demande peut désigner cet article.
+ *
+ * Le formulaire dit « tables », le stock dit « Table 180 cm ». Sans alias,
+ * chaque demande reçue laisserait la ligne à rattacher à la main, demande après
+ * demande — alors que le rapprochement est toujours le même.
+ *
+ * N'apparaît qu'à la modification : un alias a besoin d'un article existant.
+ */
+function AliasArticle({ stockId, nom }: { stockId: number; nom: string }) {
+  const queryClient = useQueryClient()
+  const [saisie, setSaisie] = useState('')
+
+  const { data: alias = [] } = useQuery({
+    queryKey: ['stock-aliases', stockId],
+    queryFn: async () => (await manifestationApi.getAliases(stockId)).data.data
+  })
+
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['stock-aliases', stockId] })
+
+  const ajout = useMutation({
+    mutationFn: (valeur: string) => manifestationApi.addAlias(stockId, valeur),
+    onSuccess: () => { rafraichir(); setSaisie('') },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
+  })
+
+  const retrait = useMutation({
+    mutationFn: (aliasId: number) => manifestationApi.deleteAlias(aliasId),
+    onSuccess: rafraichir,
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
+  })
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Autres noms reconnus</CardTitle></CardHeader>
+      <CardBody className="space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Une demande reçue par formulaire qui parle de l'un de ces noms sera rattachée
+          automatiquement à « {nom} ».
+        </p>
+
+        {alias.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {alias.map(a => (
+              <span key={a.id}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                {a.alias}
+                <button type="button" onClick={() => retrait.mutate(a.id)}
+                  aria-label={`Retirer l'alias ${a.alias}`}
+                  className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Input value={saisie} size="sm" placeholder="tables, table pliante…"
+            onChange={e => setSaisie(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && saisie.trim()) {
+                e.preventDefault()
+                ajout.mutate(saisie.trim())
+              }
+            }} />
+          <Button size="sm" variant="outline" loading={ajout.isPending}
+            disabled={!saisie.trim()} onClick={() => ajout.mutate(saisie.trim())}>
+            Ajouter
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+/**
+ * Matériel demandé par un formulaire qu'aucun article du stock n'a permis de
+ * rattacher.
+ *
+ * Ces lignes seraient invisibles autrement : la demande arriverait amputée sans
+ * que personne le sache, et le manque se découvrirait le jour de la livraison.
+ * Le rattachement se fait à la main, en modifiant la manifestation — ou une fois
+ * pour toutes en ajoutant un alias à l'article concerné.
+ */
+function MaterielARattacher({ brut }: { brut?: string | null }) {
+  if (!brut) return null
+
+  let lignes: Array<{ libelle: string; quantite: number }> = []
+  try {
+    lignes = JSON.parse(brut)
+  } catch {
+    return null
+  }
+  if (lignes.length === 0) return null
+
+  return (
+    <Alert type="warning">
+      <div className="text-sm">
+        <strong>Matériel demandé non rattaché au stock :</strong>
+        <ul className="mt-1 list-disc list-inside">
+          {lignes.map((l, i) => (
+            <li key={i}>{l.quantite} × {l.libelle}</li>
+          ))}
+        </ul>
+        <p className="mt-1 text-xs">
+          Ajoutez-le à la main, ou enregistrez un alias sur l'article correspondant
+          pour que les prochaines demandes le trouvent seules.
+        </p>
+      </div>
+    </Alert>
+  )
+}
+
 // ==================== MODALE LIVRAISON / RÉCUPÉRATION ====================
 
 function DeliveryModal({ manif, onClose, onSave, loading }: {
@@ -1274,15 +1436,29 @@ function DeliveryModal({ manif, onClose, onSave, loading }: {
       id: m.id, stock_name: m.stock_name, unit: m.unit,
       quantity_requested: m.quantity_requested,
       quantity_delivered: m.quantity_delivered,
-      quantity_recovered: m.quantity_recovered
+      quantity_recovered: m.quantity_recovered,
+      quantity_lost: m.quantity_lost ?? 0,
+      loss_reason: m.loss_reason ?? ''
     })) || []
   )
 
-  const update = (idx: number, field: string, value: number) => {
+  const update = (idx: number, field: string, value: number | string) => {
     const updated = [...materials]
     updated[idx] = { ...updated[idx], [field]: value }
     setMaterials(updated)
   }
+
+  /**
+   * Écart entre ce qui est sorti et ce qui est revenu ou déclaré perdu.
+   *
+   * C'est le chiffre qui trahit une saisie incomplète : 12 chaises livrées, 11
+   * récupérées et rien de déclaré perdu, c'est une chaise que personne ne
+   * cherche.
+   */
+  const manquant = (m: typeof materials[number]) =>
+    m.quantity_delivered - m.quantity_recovered - m.quantity_lost
+
+  const aDesEcarts = materials.some(m => manquant(m) > 0)
 
   return (
     <Modal isOpen onClose={onClose} title={`Matériel — ${manif.title}`} size="lg">
@@ -1290,30 +1466,66 @@ function DeliveryModal({ manif, onClose, onSave, loading }: {
         <Alert type="info">
           <span className="text-sm">
             {manif.status === 'validated'
-              ? 'Saisissez les quantités livrées pour chaque article.'
-              : 'Saisissez les quantités récupérées. Le stock sera mis à jour automatiquement.'}
+              ? "Saisissez ce qui part réellement. Si seules 8 tables sur 10 sont nécessaires, corrigez la quantité demandée."
+              : "Saisissez ce qui revient. Ce qui est déclaré cassé, perdu ou volé est retiré du stock physique et reste tracé."}
           </span>
         </Alert>
+
         <div className="mt-4 space-y-3">
           {materials.map((m, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div className="flex-1">
+            <div key={i} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{m.stock_name}</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">(demandé: {m.quantity_requested} {m.unit})</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{m.unit}</span>
               </div>
-              <div className="w-28">
-                <Input label="Livré" type="number"
-                inputMode="numeric" size="sm" value={String(m.quantity_delivered)}
-                  onChange={e => update(i, 'quantity_delivered', parseInt(e.target.value) || 0)} />
+
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="w-28">
+                  <Input label="Demandé" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_requested)}
+                    onChange={e => update(i, 'quantity_requested', parseInt(e.target.value) || 0)} />
+                </div>
+                <div className="w-28">
+                  <Input label="Livré" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_delivered)}
+                    onChange={e => update(i, 'quantity_delivered', parseInt(e.target.value) || 0)} />
+                </div>
+                <div className="w-28">
+                  <Input label="Récupéré" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_recovered)}
+                    onChange={e => update(i, 'quantity_recovered', parseInt(e.target.value) || 0)} />
+                </div>
+                <div className="w-28">
+                  <Input label="Perdu / cassé" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_lost)}
+                    onChange={e => update(i, 'quantity_lost', parseInt(e.target.value) || 0)} />
+                </div>
+                {m.quantity_lost > 0 && (
+                  <div className="flex-1 min-w-[12rem]">
+                    <Input label="Motif" size="sm" value={m.loss_reason}
+                      placeholder="Cassée au transport, volée…"
+                      onChange={e => update(i, 'loss_reason', e.target.value)} />
+                  </div>
+                )}
               </div>
-              <div className="w-28">
-                <Input label="Récupéré" type="number"
-                inputMode="numeric" size="sm" value={String(m.quantity_recovered)}
-                  onChange={e => update(i, 'quantity_recovered', parseInt(e.target.value) || 0)} />
-              </div>
+
+              {manquant(m) > 0 && (
+                <p className="mt-2 text-xs text-yellow-700 dark:text-yellow-500">
+                  {manquant(m)} {m.unit} ni récupéré(s) ni déclaré(s) perdu(s).
+                </p>
+              )}
             </div>
           ))}
         </div>
+
+        {aDesEcarts && (
+          <Alert type="warning" className="mt-4">
+            <span className="text-sm">
+              Des articles sortis ne sont ni revenus ni déclarés perdus. Tant qu'ils
+              ne le sont pas, le stock les considère comme encore dehors.
+            </span>
+          </Alert>
+        )}
       </ModalBody>
       <ModalFooter>
         <Button variant="outline" onClick={onClose}>Annuler</Button>

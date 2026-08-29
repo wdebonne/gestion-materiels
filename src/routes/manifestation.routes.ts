@@ -2,17 +2,42 @@ import { Router, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
+import {
+  filtreManifestations,
+  filtreStock,
+  peutVoirManifestation,
+  REFUS_PORTEE_MANIFESTATION,
+} from '../middleware/manifestationScope';
 import { logService } from '../services/log.service';
+import { notifierWebhooks } from '../services/webhook.service';
+import {
+  aujourdHui,
+  detecterConflits,
+  disponibiliteSur,
+  enregistrerMouvement,
+  enrichirStock,
+  periodeDe,
+} from '../services/manifestationStock.service';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
+import { normaliserLibelle } from '../utils/normaliserLibelle';
 
 const router = Router();
 
 // ======================== STOCK MATÉRIEL ========================
 
-// GET /stock - Liste du stock avec quantités réelles et prévisionnelles
+// GET /stock - Liste du stock, avec engagement réel et prévisionnel
+//
+// `date_from`/`date_to` répondent à « qu'aurai-je de disponible le 14 juillet ? »,
+// question que ni cette route ni `/stock/availability` ne savaient traiter.
 router.get('/stock', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { search, category, etat, lieu, stock_type, category_id, subcategory_id } = req.query;
+    const { search, category, etat, lieu, stock_type, category_id, subcategory_id, date_from, date_to } = req.query;
+
+    const portee = await filtreStock(req, 'ms');
+    if (portee === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
     let sql = `
       SELECT ms.*, c.name as category_name, c.slug as category_slug,
         sc.name as subcategory_name
@@ -51,53 +76,88 @@ router.get('/stock', authenticateToken, async (req: AuthRequest, res: Response) 
       sql += ' AND ms.subcategory_id = ?';
       params.push(subcategory_id);
     }
+
+    sql += portee.sql;
+    params.push(...portee.params);
     sql += ' ORDER BY ms.category, ms.name';
 
     const stock = await db.query(sql, params);
+    const periode = date_from
+      ? { debut: String(date_from), fin: String(date_to || date_from) }
+      : null;
 
-    // Quantités engagées et prévisionnelles, agrégées en deux requêtes pour
-    // tout le stock plutôt qu'en deux requêtes par article.
-    const idsStock = stock.map((item: any) => item.id);
-    const [pretParArticle, reserveParArticle] = await Promise.all([
-      // En prêt : livré mais pas encore récupéré, sur les manifs validées ou livrées
-      grouperEnfants(
-        (marqueurs) => `
-        SELECT mm.stock_id, COALESCE(SUM(mm.quantity_delivered - mm.quantity_recovered), 0) as qty
-        FROM manifestation_materials mm
-        JOIN manifestations m ON m.id = mm.manifestation_id
-        WHERE mm.stock_id IN (${marqueurs}) AND m.status IN ('validated', 'delivered')
-        GROUP BY mm.stock_id
-      `,
-        idsStock,
-        'stock_id'
-      ),
-      // Réservé pour des manifs futures (brouillon ou validé, date_start >= aujourd'hui)
-      grouperEnfants(
-        (marqueurs) => `
-        SELECT mm.stock_id, COALESCE(SUM(mm.quantity_requested), 0) as qty
-        FROM manifestation_materials mm
-        JOIN manifestations m ON m.id = mm.manifestation_id
-        WHERE mm.stock_id IN (${marqueurs}) AND m.status IN ('draft', 'validated') AND m.date_start >= date('now')
-        GROUP BY mm.stock_id
-      `,
-        idsStock,
-        'stock_id'
-      ),
-    ]);
+    res.json({ success: true, data: await enrichirStock(stock, periode) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
-    const enriched = stock.map((item: any) => {
-      const lent = enfantsDe<any>(pretParArticle, item.id)[0]?.qty || 0;
-      const reserved = enfantsDe<any>(reserveParArticle, item.id)[0]?.qty || 0;
+// ======================== ALIAS D'ARTICLES ========================
+//
+// Le formulaire dit « tables », le stock dit « Table 180 cm ». Sans alias,
+// chaque demande reçue obligerait à rattacher le matériel à la main, demande
+// après demande. Les alias sont lus par l'appariement de la réception
+// (`manifestationIntake.service.ts`).
 
-      return {
-        ...item,
-        quantity_available: item.quantity_total - lent,
-        quantity_lent: lent,
-        quantity_reserved_future: reserved
-      };
-    });
+// GET /stock/:id/aliases - Alias d'un article
+router.get('/stock/:id/aliases', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const alias = await db.query(
+      'SELECT * FROM manifestation_stock_aliases WHERE stock_id = ? ORDER BY alias',
+      [req.params.id]
+    );
+    res.json({ success: true, data: alias });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
-    res.json({ success: true, data: enriched });
+// POST /stock/:id/aliases - Ajouter un alias
+router.post('/stock/:id/aliases', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const alias = String(req.body.alias ?? '').trim();
+    if (!alias) {
+      return res.status(400).json({ success: false, message: "L'alias ne peut pas être vide" });
+    }
+
+    const article = await db.queryOne('SELECT id FROM manifestation_stock WHERE id = ?', [req.params.id]);
+    if (!article) return res.status(404).json({ success: false, message: 'Article introuvable' });
+
+    // Deux articles qui répondent au même alias rendraient l'appariement
+    // arbitraire : mieux vaut refuser et laisser choisir.
+    const deja = await db.query('SELECT stock_id, alias FROM manifestation_stock_aliases');
+    const conflit = deja.find(
+      (a: any) => normaliserLibelle(a.alias) === normaliserLibelle(alias) && a.stock_id !== Number(req.params.id)
+    );
+    if (conflit) {
+      const porteur = await db.queryOne('SELECT name FROM manifestation_stock WHERE id = ?', [conflit.stock_id]);
+      return res.status(400).json({
+        success: false,
+        message: `Cet alias est déjà utilisé par « ${porteur?.name ?? 'un autre article'} »`
+      });
+    }
+
+    const resultat = await db.execute(
+      'INSERT INTO manifestation_stock_aliases (stock_id, alias, created_at) VALUES (?, ?, ?)',
+      [req.params.id, alias, new Date().toISOString()]
+    );
+    res.status(201).json({ success: true, data: { id: resultat.lastInsertRowid, stock_id: Number(req.params.id), alias } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// DELETE /stock/aliases/:aliasId - Retirer un alias
+router.delete('/stock/aliases/:aliasId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const resultat = await db.execute(
+      'DELETE FROM manifestation_stock_aliases WHERE id = ?',
+      [req.params.aliasId]
+    );
+    if (resultat.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Alias introuvable' });
+    }
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -209,38 +269,47 @@ router.delete('/stock/:id', authenticateToken, requireSupervisor, async (req: Au
   }
 });
 
-// GET /stock/availability - Disponibilité stock à une date donnée
+// GET /stock/availability - Disponibilité sur une date ou une période
+//
+// `date` reste accepté pour ne pas casser les appels existants ; `date_from` et
+// `date_to` permettent d'interroger toute la durée d'une manifestation, ce qui
+// est la vraie question quand on reçoit une demande.
 router.get('/stock/availability', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { date } = req.query;
-    const targetDate = date || new Date().toISOString().split('T')[0];
+    const { date, date_from, date_to } = req.query;
+    const debut = String(date_from || date || aujourdHui());
+    const fin = String(date_to || date || debut);
 
-    const stock = await db.query('SELECT * FROM manifestation_stock ORDER BY category, name');
-    const engageParArticle = await grouperEnfants(
-      (marqueurs) => `
-        SELECT mm.stock_id, COALESCE(SUM(mm.quantity_delivered), 0) as qty
-        FROM manifestation_materials mm
-        JOIN manifestations m ON m.id = mm.manifestation_id
-        WHERE mm.stock_id IN (${marqueurs}) AND m.status IN ('validated', 'delivered')
-          AND m.date_start <= ? AND (m.date_end >= ? OR m.date_end IS NULL)
-        GROUP BY mm.stock_id
-      `,
-      stock.map((item: any) => item.id),
-      'stock_id',
-      (tranche) => [...tranche, targetDate, targetDate]
+    const portee = await filtreStock(req, 'ms');
+    if (portee === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    const stock = await db.query(
+      `SELECT ms.* FROM manifestation_stock ms WHERE 1=1${portee.sql} ORDER BY ms.category, ms.name`,
+      portee.params
     );
+    const engagements = await disponibiliteSur(stock.map((item: any) => item.id), debut, fin);
 
     const enriched = stock.map((item: any) => {
-      const engaged = enfantsDe<any>(engageParArticle, item.id)[0]?.qty || 0;
+      const engage = engagements.get(item.id);
+      const previsionnel = engage?.engage_previsionnel ?? 0;
+      const reel = engage?.engage_reel ?? 0;
 
       return {
         ...item,
-        quantity_engaged: engaged,
-        quantity_available: item.quantity_total - engaged
+        engage_previsionnel: previsionnel,
+        engage_reel: reel,
+        // `quantity_engaged` et `quantity_available` gardent leur nom : ils sont
+        // déjà lus ailleurs. Ils portent désormais le total engagé, réel comme
+        // promis — c'est ce qu'un agent veut voir avant de promettre à son tour.
+        quantity_engaged: previsionnel + reel,
+        quantity_available: item.quantity_total - previsionnel - reel,
+        disponible_reel: item.quantity_total - reel,
       };
     });
 
-    res.json({ success: true, data: enriched });
+    res.json({ success: true, data: enriched, periode: { debut, fin } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -251,8 +320,15 @@ router.get('/stock/availability', authenticateToken, async (req: AuthRequest, re
 // GET /stats/summary - Statistiques globales
 router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
+    // `date('now')` est propre à SQLite : la date est passée en paramètre pour
+    // que le décompte soit juste aussi sur MySQL.
+    const jour = aujourdHui();
     const total = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status != 'archived'");
-    const upcoming = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status IN ('draft', 'validated') AND date_start >= date('now')");
+    const pending = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'pending'");
+    const upcoming = await db.queryOne(
+      "SELECT COUNT(*) as cnt FROM manifestations WHERE status IN ('pending', 'draft', 'validated') AND date_start >= ?",
+      [jour]
+    );
     const delivered = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'delivered'");
     const archived = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'archived'");
     const stockItems = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestation_stock");
@@ -261,6 +337,7 @@ router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: R
       success: true,
       data: {
         total: total?.cnt || 0,
+        pending: pending?.cnt || 0,
         upcoming: upcoming?.cnt || 0,
         delivered: delivered?.cnt || 0,
         archived: archived?.cnt || 0,
@@ -278,6 +355,12 @@ router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: R
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { status, search, archived, date_from, date_to } = req.query;
+
+    const portee = await filtreManifestations(req, 'm');
+    if (portee === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
     let sql = `
       SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
       FROM manifestations m
@@ -296,8 +379,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       params.push(status);
     }
     if (search) {
-      sql += ' AND (m.title LIKE ? OR m.contact_name LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`);
+      sql += ' AND (m.title LIKE ? OR m.contact_name LIKE ? OR m.delivery_address LIKE ?)';
+      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
     }
     if (date_from) {
       sql += ' AND m.date_start >= ?';
@@ -308,6 +391,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       params.push(date_to);
     }
 
+    sql += portee.sql;
+    params.push(...portee.params);
     sql += ' ORDER BY m.date_start DESC';
 
     const manifestations = await db.query(sql, params);
@@ -337,6 +422,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
 /** Libellé lisible de chaque transition, pour que l'historique se lise sans décodeur. */
 const LIBELLES_TRANSITION: Record<string, string> = {
+  pending: 'Retour en attente de confirmation',
   draft: 'Retour en brouillon',
   validated: 'Validation',
   delivered: 'Livraison',
@@ -357,7 +443,7 @@ const LIBELLES_TRANSITION: Record<string, string> = {
  * L'écriture ne doit jamais faire échouer l'action qu'elle décrit : perdre une
  * ligne d'historique est moins grave que perdre une livraison.
  */
-async function consignerHistorique(
+export async function consignerHistorique(
   manifestationId: number | string,
   userId: number | undefined,
   action: string,
@@ -383,7 +469,7 @@ async function consignerHistorique(
 }
 
 /** Historique d'une manifestation, du plus récent au plus ancien. */
-async function lireHistorique(manifestationId: number | string): Promise<any[]> {
+export async function lireHistorique(manifestationId: number | string): Promise<any[]> {
   return db.query(
     `SELECT h.*, u.first_name, u.last_name, u.email
      FROM manifestation_history h
@@ -405,6 +491,12 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     `, [req.params.id]);
     if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
 
+    // La liste filtrait, le détail non : la même fuite que celle corrigée sur
+    // les matériels par `objectScope`.
+    if (!(await peutVoirManifestation(req, m.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
     const materials = await db.query(`
       SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category, ms.quantity_total as stock_total
       FROM manifestation_materials mm
@@ -425,6 +517,9 @@ router.get('/:id/history', authenticateToken, async (req: AuthRequest, res: Resp
   try {
     const m = await db.queryOne('SELECT id FROM manifestations WHERE id = ?', [req.params.id]);
     if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
+    if (!(await peutVoirManifestation(req, m.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
 
     res.json({ success: true, data: await lireHistorique(req.params.id) });
   } catch (error: any) {
@@ -445,18 +540,18 @@ router.post('/', authenticateToken, requireSupervisor,
       const {
         title, date_start, date_end, start_time, end_time, expected_people,
         contact_name, contact_phone, contact_email, delivery_address, delivery_date,
-        notes_interior, notes_exterior, materials
+        recovery_date, notes_interior, notes_exterior, materials
       } = req.body;
 
       const result = await db.execute(`
         INSERT INTO manifestations (title, date_start, date_end, start_time, end_time, expected_people,
           contact_name, contact_phone, contact_email, delivery_address, delivery_date,
-          notes_interior, notes_exterior, status, created_by)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+          recovery_date, notes_interior, notes_exterior, status, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
       `, [
         title, date_start, date_end || null, start_time || null, end_time || null,
         expected_people || 0, contact_name || '', contact_phone || '', contact_email || '',
-        delivery_address || '', delivery_date || null,
+        delivery_address || '', delivery_date || null, recovery_date || null,
         notes_interior || '', notes_exterior || '', req.user!.userId
       ]);
 
@@ -475,7 +570,19 @@ router.post('/', authenticateToken, requireSupervisor,
       await consignerHistorique(manifestationId, req.user!.userId, 'Création', { toStatus: 'draft' });
       await logService.info('other', `Manifestation créée: ${title}`, { userId: req.user!.userId });
       const created = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [manifestationId]);
-      res.status(201).json({ success: true, data: created });
+
+      // Avertissement, jamais refus : la manifestation est enregistrée telle
+      // qu'elle a été demandée, et le manque est signalé pour être arbitré.
+      const periode = periodeDe(created);
+      const conflits = await detecterConflits(
+        Array.isArray(materials) ? materials : [],
+        periode.debut,
+        periode.fin,
+        manifestationId
+      );
+
+      notifierWebhooks('manifestation.created', { id: manifestationId, title, status: 'draft' });
+      res.status(201).json({ success: true, data: created, conflits });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -492,36 +599,66 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     const {
       title, date_start, date_end, start_time, end_time, expected_people,
       contact_name, contact_phone, contact_email, delivery_address, delivery_date,
-      notes_interior, notes_exterior, materials
+      recovery_date, notes_interior, notes_exterior, materials
     } = req.body;
 
     await db.execute(`
       UPDATE manifestations SET title = ?, date_start = ?, date_end = ?, start_time = ?, end_time = ?,
         expected_people = ?, contact_name = ?, contact_phone = ?, contact_email = ?,
-        delivery_address = ?, delivery_date = ?, notes_interior = ?, notes_exterior = ?,
-        updated_at = datetime('now')
+        delivery_address = ?, delivery_date = ?, recovery_date = ?,
+        notes_interior = ?, notes_exterior = ?, updated_at = ?
       WHERE id = ?
     `, [
       title, date_start, date_end || null, start_time || null, end_time || null,
       expected_people || 0, contact_name || '', contact_phone || '', contact_email || '',
-      delivery_address || '', delivery_date || null,
-      notes_interior || '', notes_exterior || '', req.params.id
+      delivery_address || '', delivery_date || null, recovery_date || null,
+      notes_interior || '', notes_exterior || '', new Date().toISOString(), req.params.id
     ]);
 
     // Mettre à jour les matériaux: supprimer puis réinsérer
     if (materials && Array.isArray(materials)) {
+      // Les pertes déjà constatées ont diminué le stock physique. Les
+      // réinsérer à zéro parce que le formulaire ne les renvoie pas ferait
+      // disparaître la trace d'une casse dont le stock, lui, garde la marque.
+      const precedentes = await db.query(
+        'SELECT stock_id, quantity_lost, loss_reason FROM manifestation_materials WHERE manifestation_id = ?',
+        [req.params.id]
+      );
+      const pertesConnues = new Map<any, any>(precedentes.map((l: any) => [l.stock_id, l]));
+
       await db.execute('DELETE FROM manifestation_materials WHERE manifestation_id = ?', [req.params.id]);
       for (const mat of materials) {
+        const perte = pertesConnues.get(mat.stock_id);
         await db.execute(
-          'INSERT INTO manifestation_materials (manifestation_id, stock_id, quantity_requested, quantity_delivered, quantity_recovered, unit_value, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-          [req.params.id, mat.stock_id, mat.quantity_requested || 0, mat.quantity_delivered || 0, mat.quantity_recovered || 0, mat.unit_value || 0, mat.notes || '']
+          `INSERT INTO manifestation_materials
+             (manifestation_id, stock_id, quantity_requested, quantity_delivered, quantity_recovered,
+              quantity_lost, loss_reason, unit_value, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            req.params.id, mat.stock_id, mat.quantity_requested || 0,
+            mat.quantity_delivered || 0, mat.quantity_recovered || 0,
+            mat.quantity_lost ?? perte?.quantity_lost ?? 0,
+            mat.loss_reason ?? perte?.loss_reason ?? null,
+            mat.unit_value || 0, mat.notes || ''
+          ]
         );
       }
     }
 
     await consignerHistorique(req.params.id, req.user!.userId, 'Modification');
     await logService.info('other', `Manifestation modifiée: ${title}`, { userId: req.user!.userId });
-    res.json({ success: true });
+
+    const apres = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [req.params.id]);
+    const periode = periodeDe(apres);
+    const conflits = await detecterConflits(
+      Array.isArray(materials) ? materials : [],
+      periode.debut,
+      periode.fin,
+      req.params.id
+    );
+
+    notifierWebhooks('manifestation.updated', { id: Number(req.params.id), title });
+    res.json({ success: true, conflits });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -529,7 +666,7 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
 
 // PUT /:id/status - Changer le statut d'une manifestation
 router.put('/:id/status', authenticateToken, requireSupervisor,
-  body('status').isIn(['draft', 'validated', 'delivered', 'recovered', 'archived', 'cancelled']),
+  body('status').isIn(['pending', 'draft', 'validated', 'delivered', 'recovered', 'archived', 'cancelled']),
   async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -540,8 +677,14 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
       const m = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [req.params.id]);
       if (!m) return res.status(404).json({ success: false, message: 'Non trouvée' });
 
-      // Transitions autorisées
+      // Transitions autorisées.
+      //
+      // `pending` est le statut d'une demande reçue d'un formulaire : elle
+      // réserve le matériel au prévisionnel sans rien engager de réel, tant que
+      // personne ne l'a confirmée. On peut la valider directement, la reprendre
+      // en brouillon pour la compléter, ou la refuser.
       const transitions: Record<string, string[]> = {
+        pending: ['validated', 'draft', 'cancelled'],
         draft: ['validated', 'cancelled'],
         validated: ['delivered', 'cancelled', 'draft'],
         delivered: ['recovered'],
@@ -584,6 +727,12 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
         comment,
       });
       await logService.info('other', `Manifestation "${m.title}" → ${status}`, { userId: req.user!.userId });
+      notifierWebhooks('manifestation.status_changed', {
+        id: Number(req.params.id),
+        title: m.title,
+        from: m.status,
+        to: status,
+      });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
@@ -591,23 +740,68 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
   }
 );
 
-// PUT /:id/materials - Mise à jour spécifique du matériel livré/récupéré
+// PUT /:id/materials - Quantités réellement demandées, livrées, récupérées, perdues
+//
+// C'est ici que le stock cesse d'être théorique. Un agent revient de terrain
+// avec « ils n'avaient besoin que de 8 tables sur 10 », ou « 12 chaises livrées,
+// 11 revenues, 1 cassée ». La casse et le vol diminuent le stock physique : sans
+// cette écriture, le total resterait celui de l'achat et s'éloignerait un peu
+// plus du réel à chaque manifestation.
 router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { materials } = req.body;
     if (!materials || !Array.isArray(materials)) {
       return res.status(400).json({ success: false, message: 'Données de matériaux requises' });
     }
+
+    // Les lignes actuelles servent de référence : une perte déjà enregistrée a
+    // déjà diminué le stock, seul l'écart doit être appliqué. Sans cela, un
+    // simple réenregistrement retirerait une deuxième fois la même chaise.
+    const existantes = await db.query(
+      `SELECT mm.*, ms.name as stock_name, ms.unit
+       FROM manifestation_materials mm
+       JOIN manifestation_stock ms ON ms.id = mm.stock_id
+       WHERE mm.manifestation_id = ?`,
+      [req.params.id]
+    );
+    const parLigne = new Map<any, any>(existantes.map((l: any) => [l.id, l]));
+
     // `changes` est compté : la route répondait 200 même quand aucune ligne ne
     // correspondait, par exemple avec un identifiant de stock à la place de
     // l'identifiant de ligne.
     let modifiees = 0;
+    const mouvements: Array<{ stockId: number; ecart: number; raison: string | null }> = [];
+    const resume: string[] = [];
+
     for (const mat of materials) {
+      const avant = parLigne.get(mat.id);
+      if (!avant) continue;
+
+      const demande = mat.quantity_requested ?? avant.quantity_requested;
+      const livre = mat.quantity_delivered ?? avant.quantity_delivered;
+      const recupere = mat.quantity_recovered ?? avant.quantity_recovered;
+      const perdu = mat.quantity_lost ?? avant.quantity_lost ?? 0;
+      const raison = mat.loss_reason ?? avant.loss_reason ?? null;
+
       const r = await db.execute(
-        'UPDATE manifestation_materials SET quantity_delivered = ?, quantity_recovered = ? WHERE id = ? AND manifestation_id = ?',
-        [mat.quantity_delivered, mat.quantity_recovered, mat.id, req.params.id]
+        `UPDATE manifestation_materials
+         SET quantity_requested = ?, quantity_delivered = ?, quantity_recovered = ?,
+             quantity_lost = ?, loss_reason = ?
+         WHERE id = ? AND manifestation_id = ?`,
+        [demande, livre, recupere, perdu, raison, mat.id, req.params.id]
       );
       modifiees += r.changes;
+
+      if (r.changes === 0) continue;
+
+      const ecart = perdu - (avant.quantity_lost ?? 0);
+      if (ecart !== 0) {
+        mouvements.push({ stockId: avant.stock_id, ecart, raison });
+      }
+
+      const morceaux = [`${avant.stock_name} : ${livre} livré(s)`, `${recupere} récupéré(s)`];
+      if (perdu > 0) morceaux.push(`${perdu} perdu(s) ou cassé(s)`);
+      resume.push(morceaux.join(', '));
     }
 
     if (modifiees === 0) {
@@ -617,8 +811,27 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
       });
     }
 
+    // Les mouvements ne sont écrits qu'une fois les lignes acceptées : une
+    // requête entièrement rejetée ne doit pas avoir touché au stock.
+    for (const mouvement of mouvements) {
+      await enregistrerMouvement(
+        mouvement.stockId,
+        req.params.id,
+        mouvement.ecart > 0 ? 'perte' : 'entree',
+        Math.abs(mouvement.ecart),
+        mouvement.ecart > 0 ? mouvement.raison : 'Correction de perte',
+        req.user!.userId
+      );
+    }
+
     await consignerHistorique(req.params.id, req.user!.userId, 'Quantités mises à jour', {
-      comment: `${modifiees} ligne(s) de matériel`
+      comment: resume.join(' ; ') || `${modifiees} ligne(s) de matériel`
+    });
+
+    notifierWebhooks('manifestation.materials_updated', {
+      id: Number(req.params.id),
+      lignes: modifiees,
+      pertes: mouvements.filter((m) => m.ecart > 0).length,
     });
 
     res.json({ success: true, updated: modifiees });

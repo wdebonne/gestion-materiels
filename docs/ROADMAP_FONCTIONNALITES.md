@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
-| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique horodaté et fiche PDF branchés en août 2026 |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée des demandes et stock réel/prévisionnel — août 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -202,16 +202,17 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Fonctionnalités :**
   - **Gestion de stock dédié** : Catalogue matériel avec quantités totales, disponibles (temps réel), prêtées et réservées (prévisionnel)
   - **Manifestations** : CRUD complet avec dates, horaires, nombre de personnes attendues, notes intérieures/extérieures
-  - **Workflow de statut** : Brouillon → Validé → Livré → Récupéré → Archivé (+ Annulé), transitions contrôlées serveur
-  - **Contact livraison** : Nom, téléphone, email, adresse de livraison, date de livraison
-  - **Matériel par manifestation** : Quantités demandées, livrées, récupérées avec suivi unitaire
-  - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue
+  - **Workflow de statut** : À confirmer → Brouillon → Validé → Livré → Récupéré → Archivé (+ Annulé), transitions contrôlées serveur
+  - **Contact livraison** : Nom, téléphone, email, adresse de livraison, dates de livraison et de récupération
+  - **Matériel par manifestation** : Quantités demandées, livrées, récupérées et perdues, avec suivi unitaire
+  - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue, une perte le diminue
+  - **Réception de demandes** : dépôt signé depuis une application de formulaires, correspondance des champs configurable
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
   - **Filtres** : Par statut, dates, recherche textuelle
   - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
-- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`
+- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
-- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison
+- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, écran Réglages › Réception manifestations
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
 
 > ✅ **Complété en août 2026 :** chaque action est consignée dans `manifestation_history` — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et un commentaire facultatif. La timeline s'affiche dans le détail, et `GET /:id/history` la sert seule.
@@ -219,6 +220,16 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 > La fiche PDF est branchée. Le composant existait sans être importé nulle part, et il était écrit contre une forme de données qui n'a jamais existé : `name` au lieu de `title`, `items` au lieu de `materials`, `res.data` au lieu de `res.data.data`, des statuts en français là où le serveur en stocke d'autres. Chaque champ serait ressorti vide et la génération se serait arrêtée sur `detail.name.replace`.
 >
 > `PUT /:id/materials` refuse désormais une mise à jour qui ne touche aucune ligne, au lieu de répondre 200.
+>
+> ✅ **Réception et stock réel, août 2026 :** les demandes arrivent d'une application de formulaires par `POST /api/manifestations/intake/:slug`, signées HMAC sur les octets exacts du corps, idempotentes, journalisées. La correspondance entre le JSON reçu et les champs d'une manifestation est une donnée réglée dans l'interface, pas du code — chaque formulaire nomme ses champs à sa façon et changera.
+>
+> Le prévisionnel et le réel sont désormais deux comptes distincts, écrits une seule fois dans `manifestationStock.service.ts`. Ils étaient mélangés et réécrits à la main dans chaque route, et aucune ne savait répondre sur une période. Une manifestation ne compte que dans un seul des deux selon son statut : sans cette séparation, une manifestation livrée était comptée deux fois.
+>
+> La casse et le vol diminuent le stock physique et laissent un mouvement tracé. Seul l'écart est appliqué : réenregistrer la même perte ne retire pas une deuxième fois.
+>
+> ⚠️ **Fuite fermée :** `GET /manifestations`, `GET /:id`, `/stock` et `/stock/availability` étaient lisibles par tout compte authentifié — seules les écritures étaient gardées. `objectScope.ts` ne couvrait que la table `objects`, et son test de non-régression ne cherche que cette chaîne. Règle écrite dans `manifestationScope.ts`.
+>
+> ⏳ **Reste à faire :** services et approbations par service concerné, conversation par manifestation, accès cloisonné au seul module Manifestations, export Excel vers Nextcloud. La table `manifestation_items` reste inutilisée.
 >
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 

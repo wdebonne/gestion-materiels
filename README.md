@@ -113,7 +113,10 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 🎪 **Page dédiée** : Gestion complète des manifestations (prêts de matériel pour événements)
 - 🔍 **Recherche avancée** : Recherche en temps réel avec debounce sur les manifestations
 - 📊 **Tableau de bord** : Statistiques avec compteurs par statut (brouillons, en cours, archivées)
-- 🔄 **Workflow complet** : Circuit de validation en 5 étapes (Brouillon → Validée → Livrée → Récupérée → Archivée)
+- 🔄 **Workflow complet** : Circuit de validation en 6 étapes (À confirmer → Brouillon → Validée → Livrée → Récupérée → Archivée)
+- 📥 **Réception de demandes** : une application de formulaires dépose ses demandes sur une adresse signée (HMAC-SHA256). Elles arrivent « À confirmer » et réservent le matériel au prévisionnel. La correspondance entre le JSON reçu et les champs d'une manifestation se règle dans l'interface, pas dans le code
+- 📈 **Stock prévisionnel et réel** : ce qui est promis sur une période et ce qui est physiquement sorti sont comptés séparément, jamais deux fois. Interrogeable à une date ou sur une période — « aurai-je 200 chaises le 14 juillet ? »
+- 🪑 **Quantités réelles** : demandé, livré, récupéré et **perdu**. Une chaise cassée ou volée diminue le stock physique et laisse un mouvement tracé
 - 🎨 **Indicateurs visuels** : Cartes colorées par statut (bordure, fond, badge) avec barre de progression du workflow
 - ✅ **Modales de changement de statut** :
   - Refus/Validation avec commentaire optionnel
@@ -122,7 +125,6 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 📝 **Historique horodaté** : timeline de chaque action — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et son commentaire
 - 📄 **Export PDF** : Génération de rapport PDF avec en-tête, articles (commandé/livré/récupéré), et historique
 - 🗂️ **Onglets** : Vue par manifestations actives, stock, et archives
-- 🔗 **Recherche d'objets** : Autocomplete de recherche d'objets du parc pour ajout aux manifestations
 
 ### 🌳 Espaces Verts (Nouveau!)
 - 🗺️ **Plan interactif** : Upload du plan, placement de repères par clic avec drag & drop, popup persistant, labels visibles
@@ -530,16 +532,46 @@ POST /api/objects/:id/controls        # Ajouter un contrôle
 ### Manifestations
 
 ```
-GET    /api/manifestations           # Liste des manifestations (filtres: search, status)
-GET    /api/manifestations/stats     # Statistiques par statut
-GET    /api/manifestations/search/objects  # Recherche d'objets du parc
-POST   /api/manifestations           # Créer une manifestation
-GET    /api/manifestations/:id       # Détail (avec articles et historique)
-PUT    /api/manifestations/:id       # Modifier une manifestation
-DELETE /api/manifestations/:id       # Supprimer une manifestation
-POST   /api/manifestations/:id/status # Changer le statut (avec validation des transitions)
+GET    /api/manifestations             # Liste (filtres: search, status, date_from, date_to)
+GET    /api/manifestations/stats/summary  # Compteurs par statut
+POST   /api/manifestations             # Créer une manifestation
+GET    /api/manifestations/:id         # Détail (avec articles et historique)
+PUT    /api/manifestations/:id         # Modifier une manifestation
+DELETE /api/manifestations/:id         # Supprimer une manifestation
+PUT    /api/manifestations/:id/status  # Changer le statut (transitions validées, commentaire accepté)
+PUT    /api/manifestations/:id/materials  # Quantités demandées, livrées, récupérées, perdues
 GET    /api/manifestations/:id/history # Historique des changements
 ```
+
+**Stock des manifestations**
+
+```
+GET    /api/manifestations/stock       # Liste (date_from/date_to → prévisionnel et réel à cette période)
+GET    /api/manifestations/stock/availability  # Disponibilité à une date ou sur une période
+POST   /api/manifestations/stock       # Créer un article
+PUT    /api/manifestations/stock/:id   # Modifier un article
+DELETE /api/manifestations/stock/:id   # Supprimer un article
+GET    /api/manifestations/stock/:id/aliases   # Autres noms reconnus à la réception
+POST   /api/manifestations/stock/:id/aliases   # Ajouter un alias
+DELETE /api/manifestations/stock/aliases/:id   # Retirer un alias
+```
+
+**Réception des demandes**
+
+```
+POST   /api/manifestations/intake/:slug        # Dépôt d'une demande (signé HMAC, sans compte)
+GET    /api/manifestations/intake/sources/list # Sources déclarées
+POST   /api/manifestations/intake/sources      # Créer une source (rend le secret, une seule fois)
+PUT    /api/manifestations/intake/sources/:id  # Nom, correspondance des champs, activation
+POST   /api/manifestations/intake/sources/:id/secret  # Régénérer le secret
+DELETE /api/manifestations/intake/sources/:id  # Supprimer une source
+GET    /api/manifestations/intake/sources/:id/champs  # Chemins reçus et correspondance déduite
+GET    /api/manifestations/intake/requests     # Journal des demandes reçues
+```
+
+Le dépôt attend l'en-tête `X-Webhook-Signature: sha256=<HMAC-SHA256 du corps>`, calculé avec le secret
+de la source sur les **octets exacts** envoyés. Une demande acceptée rend `202` et l'identifiant créé ;
+une demande déjà reçue rend `200` et signale le doublon plutôt que de créer une seconde manifestation.
 
 ### Espaces Verts
 
@@ -707,6 +739,8 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - Les requêtes du cron encadrent leurs colonnes de dates dans `date()`, ce qui empêche les index `idx_control_expiry` et `idx_maintenance_next` de servir. Sans effet visible au volume actuel
 - `JWT_REFRESH_SECRET` est déclaré dans `docker-compose.yml` mais n'est lu par personne : les deux jetons sont signés avec `JWT_SECRET`
 - `PUT /api/manifestations/:id` ne lit pas le champ `status` : le statut se change uniquement via `PUT /:id/status`
+- La table `manifestation_items`, qui rattacherait à une manifestation un matériel du parc identifié individuellement — plutôt qu'une quantité — existe depuis l'origine et n'est ni lue ni écrite. Le README annonçait jusqu'ici une « recherche d'objets du parc pour ajout aux manifestations » et l'API une route `GET /api/manifestations/search/objects` : ni l'une ni l'autre n'existent
+- La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
 - Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`
 
 ## 🛠️ Développement

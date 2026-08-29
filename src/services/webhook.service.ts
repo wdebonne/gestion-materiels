@@ -30,6 +30,11 @@ export const EVENEMENTS_WEBHOOK = [
   'backup.created',
   'user.created',
   'user.login',
+  'manifestation.received',
+  'manifestation.created',
+  'manifestation.updated',
+  'manifestation.status_changed',
+  'manifestation.materials_updated',
 ] as const;
 
 export type EvenementWebhook = (typeof EVENEMENTS_WEBHOOK)[number];

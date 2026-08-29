@@ -14,6 +14,8 @@
  * ordre, et une colonne inconnue — `ID` en particulier — est simplement ignorée.
  */
 
+import { normaliserLibelle } from '../utils/normaliserLibelle';
+
 export type ChampImport =
   | 'name'
   | 'category'
@@ -112,20 +114,14 @@ export const CHAMPS_IMPORT: DefinitionChamp[] = [
 export type Correspondance = Partial<Record<ChampImport, number>>;
 
 /**
- * Ramène un intitulé à une forme comparable : sans accent, sans ponctuation,
- * sans astérisque d'obligation, sans parenthèses explicatives.
+ * Ramène un intitulé de colonne à une forme comparable.
  *
- * « Date d'achat (AAAA-MM-JJ) » et « date achat » doivent se rejoindre.
+ * La règle est partagée avec la réception des demandes de manifestation, qui
+ * rapproche des clés de JSON et des noms d'articles selon exactement le même
+ * principe : elle vit donc dans `utils/normaliserLibelle`. Le nom historique
+ * reste exporté ici, c'est celui que connaissent l'import et ses tests.
  */
-export function normaliserEntete(brut: unknown): string {
-  return String(brut ?? '')
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\([^)]*\)/g, ' ')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, ' ')
-    .trim();
-}
+export const normaliserEntete = normaliserLibelle;
 
 /**
  * Reconnaît les colonnes d'après leur intitulé.

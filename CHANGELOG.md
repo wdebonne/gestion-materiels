@@ -95,6 +95,47 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Fiche PDF branchée.** `ManifestationPDFExport.tsx` existait sans être importé nulle part, et il lisait des champs qui n'existent pas : `name` au lieu de `title`, `items` au lieu de `materials`, `object_name` au lieu de `stock_name`, `res.data` au lieu de `res.data.data`, et des statuts en français là où le serveur stocke `draft`, `validated`, `delivered`… Chaque champ serait ressorti vide, et la génération se serait arrêtée sur `detail.name.replace`. La fiche contient désormais les informations générales, le matériel avec ses totaux et l'historique
 - **`PUT /:id/materials` refuse une mise à jour qui ne touche aucune ligne** au lieu de répondre 200 : c'était le cas quand un identifiant de stock était envoyé à la place de l'identifiant de ligne
 
+### Manifestations — réception des demandes et stock réel
+
+> Les demandes de manifestation arrivaient par une application de formulaires externe et étaient **ressaisies à la main**. Une chaise cassée pendant un prêt ne diminuait rien : le stock affiché restait celui de l'achat et s'éloignait un peu plus du réel à chaque manifestation.
+
+#### Ajouté
+
+- **Réception signée des demandes** (`POST /api/manifestations/intake/:slug`). Une application tierce dépose sa demande ; elle arrive au statut « À confirmer » et réserve le matériel au prévisionnel sans rien engager de réel
+  - Signature HMAC-SHA256 sur les **octets exacts** du corps, même convention que les webhooks émis. `express.json()` ne conservait aucun corps brut : un `verify` le retient, uniquement pour ce chemin, pour ne pas garder 10 Mo en mémoire à chaque requête de l'application
+  - Comparaison par `timingSafeEqual` : comparer deux signatures avec `===` laisse fuir, par le temps de réponse, le nombre de caractères devinés
+  - **Idempotence** sur l'identifiant d'origine : un formulaire qui réessaie après un délai réseau ne crée pas deux manifestations et ne réserve pas deux fois le matériel
+  - **Journal de toutes les réceptions**, refus compris. Sans journal, une demande perdue est indiscernable d'une demande jamais envoyée — et le problème se découvre le jour de la manifestation
+- **Correspondance configurable, pas codée en dur.** Chaque formulaire nomme ses champs à sa façon et changera sans prévenir : l'écran Réglages › Réception manifestations dit quel chemin JSON alimente quel champ. Les chemins proposés sont ceux **réellement présents dans la dernière demande reçue**, et non un champ de saisie libre où une faute de frappe reste invisible jusqu'à la prochaine demande perdue
+  - Reconnaissance automatique par le nom des clés, accents, casse et ponctuation ignorés — la règle de `importMapping.service.ts`, désormais partagée dans `utils/normaliserLibelle`
+  - Dates acceptées en `14/07/2026` comme en `2026-07-14T09:00:00Z`. Une date non reconnue est laissée vide plutôt que devinée : une manifestation placée au mauvais jour bloquerait le mauvais matériel
+  - Matériel lu sous quatre formes : liste d'objets, objet clé/valeur, cases cochées sans quantité, ou saisie libre « 10 tables »
+- **Alias d'articles.** Le formulaire dit « tables », le stock dit « Table 180 cm ». Sans alias, chaque demande laisserait la ligne à rattacher à la main, demande après demande. Un alias déjà porté par un autre article est refusé : l'appariement resterait arbitraire
+- **Matériel non rattaché conservé et signalé** sur la manifestation. Le jeter reviendrait à recevoir une demande amputée sans que personne le sache
+- **Statut « À confirmer »** (`pending`), avec ses transitions : confirmer, reprendre en brouillon, refuser
+- **Date de récupération.** Sans elle, la fenêtre d'immobilisation n'avait pas de fin exploitable : une manifestation d'un jour libérait son matériel le matin même. Le matériel est désormais bloqué de la livraison à la reprise
+- **Quantités réellement perdues**, avec motif. Une casse ou un vol diminue le stock physique et laisse un **mouvement de stock** tracé, pour qu'un total puisse toujours s'expliquer — et se corriger si la saisie était fausse. L'écart seul est appliqué : réenregistrer la même casse ne retire pas une deuxième chaise
+- **La quantité demandée est modifiable à la livraison** : « ils n'avaient besoin que de 8 tables sur 10 » se saisit tel quel
+- **Cinq événements de webhook** : `manifestation.received`, `.created`, `.updated`, `.status_changed`, `.materials_updated`
+
+#### Modifié
+
+- **Prévisionnel et réel séparés une fois pour toutes** (`manifestationStock.service.ts`). Les deux notions étaient mélangées et réécrites à la main dans chaque route : `GET /stock` soustrayait le matériel dehors mais pas les réservations à venir, `/stock/availability` faisait l'inverse, et aucune des deux ne savait répondre sur une période — alors que c'est exactement la question qu'on se pose en recevant une demande pour le mois prochain
+  - Une manifestation ne compte que dans un seul des deux comptes selon son statut. Sans cette séparation, une manifestation livrée serait comptée deux fois : une fois pour ce qu'elle avait demandé, une fois pour ce qu'elle a emporté
+  - `date_from` / `date_to` sur `/stock` et `/stock/availability`
+  - Le manque est rendu comme un **avertissement, jamais comme un refus** : une commune substitue du matériel, décale une livraison ou emprunte ailleurs. Bloquer la saisie l'obligerait à mentir sur ce qu'elle a demandé pour pouvoir enregistrer
+  - `date('now')`, propre à SQLite, remplacé par une date passée en paramètre
+
+#### Corrigé
+
+- **Le module Manifestations était lisible par tout compte authentifié.** `GET /manifestations`, `GET /:id`, `/stock` et `/stock/availability` n'appliquaient aucun filtre : seules les écritures étaient gardées. `objectScope.ts` avait fermé la même fuite sur la table `objects`, mais sa règle ne dit rien de `manifestation_stock`, qui porte pourtant ses propres catégories — et le test de non-régression ne pouvait pas le voir, il ne cherche que la chaîne `objects`. Règle écrite une seule fois dans `manifestationScope.ts`
+  - Un article rattaché **uniquement par sa sous-catégorie** — un vidéoprojecteur du service informatique — restait visible de tous : la condition « article sans catégorie » avalait ce cas
+  - Une manifestation sans matériel reste visible : ce sont justement celles qu'on vient de recevoir et qu'il faut traiter
+- **`POST /intake/sources` était capté par la route de dépôt** `POST /:slug`, qui accepte n'importe quel segment : créer une source échouait en « source de réception inconnue ». Le dépôt est déclaré en dernier, après toutes les routes nommées, et les identifiants réservés sont refusés à la création
+- **La modification d'une manifestation effaçait les pertes déjà constatées** : les lignes de matériel sont supprimées puis réinsérées, et le formulaire ne renvoie pas les pertes. Le stock, lui, en gardait la marque
+- **Le commentaire de transition était jeté par le client** : le serveur l'accepte et le consigne depuis toujours, `updateStatus` ne le transmettait pas — aucune validation ni annulation ne pouvait être motivée
+- **Les regex de `tests/webhooks.test.ts` ignoraient tout événement comportant un tiret bas.** La parité entre l'écran et le service qu'elles vérifient serait devenue muette précisément sur les événements qu'on venait d'ajouter
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

@@ -639,6 +639,9 @@ class DatabaseManager {
         status VARCHAR(20) DEFAULT 'draft',
         created_by INTEGER,
         archived_at DATETIME,
+        recovery_date DATE,
+        intake_request_id INTEGER,
+        intake_unmatched ${textType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
@@ -652,6 +655,8 @@ class DatabaseManager {
         quantity_requested INTEGER NOT NULL DEFAULT 0,
         quantity_delivered INTEGER NOT NULL DEFAULT 0,
         quantity_recovered INTEGER NOT NULL DEFAULT 0,
+        quantity_lost INTEGER NOT NULL DEFAULT 0,
+        loss_reason ${textType},
         unit_value REAL DEFAULT 0,
         notes ${textType},
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
@@ -669,6 +674,63 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
+      )`,
+
+      // Sources autorisées à déposer une demande de manifestation, et journal
+      // de ce qu'elles ont envoyé. Voir la migration 003 : ces tables y sont
+      // aussi créées, pour les bases déjà déployées.
+      `CREATE TABLE IF NOT EXISTS manifestation_intake_sources (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        slug VARCHAR(100) NOT NULL UNIQUE,
+        secret VARCHAR(255) NOT NULL,
+        is_active ${boolType} DEFAULT 1,
+        field_mapping ${textType},
+        material_mapping ${textType},
+        last_payload ${textType},
+        last_received_at DATETIME,
+        last_status VARCHAR(20),
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_intake_requests (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        source_id INTEGER,
+        external_id VARCHAR(255),
+        payload ${textType},
+        signature_ok ${boolType} DEFAULT 0,
+        status VARCHAR(20) NOT NULL,
+        manifestation_id INTEGER,
+        error ${textType},
+        received_at DATETIME ${timestampDefault},
+        FOREIGN KEY (source_id) REFERENCES manifestation_intake_sources(id) ON DELETE SET NULL,
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE SET NULL
+      )`,
+
+      // « tables » dans le formulaire, « Table 180 cm » dans le stock.
+      `CREATE TABLE IF NOT EXISTS manifestation_stock_aliases (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        stock_id INTEGER NOT NULL,
+        alias VARCHAR(255) NOT NULL,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE
+      )`,
+
+      // Journal des mouvements de stock : un total doit toujours pouvoir
+      // s'expliquer, en particulier quand une perte l'a diminué.
+      `CREATE TABLE IF NOT EXISTS manifestation_stock_movements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        stock_id INTEGER NOT NULL,
+        manifestation_id INTEGER,
+        type VARCHAR(20) NOT NULL,
+        quantity INTEGER NOT NULL,
+        reason ${textType},
+        user_id INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE,
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE SET NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
       // Table historique des manifestations
@@ -1044,6 +1106,9 @@ class DatabaseManager {
 
       // Manifestations
       ['idx_manif_materials', 'manifestation_materials', 'manifestation_id'],
+      ['idx_manif_intake_external', 'manifestation_intake_requests', 'external_id'],
+      ['idx_manif_movements_stock', 'manifestation_stock_movements', 'stock_id'],
+      ['idx_manif_alias_stock', 'manifestation_stock_aliases', 'stock_id'],
 
       // Droits — consultés à chaque requête filtrée par catégorie
       ['idx_user_permissions_user', 'user_permissions', 'user_id'],

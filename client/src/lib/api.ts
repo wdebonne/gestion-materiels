@@ -358,8 +358,22 @@ export interface ManifestationStockItem {
   quantity_available: number
   quantity_lent: number
   quantity_reserved_future: number
+  /** Renseignés seulement quand une période est demandée. */
+  engage_previsionnel?: number
+  engage_reel?: number
+  disponible_previsionnel?: number
+  disponible_reel?: number
   created_at: string
   updated_at: string
+}
+
+/** Article demandé au-delà de ce qui restera disponible sur la période. */
+export interface ConflitStock {
+  stock_id: number
+  stock_name: string
+  demande: number
+  disponible: number
+  manquant: number
 }
 
 export interface ManifestationMaterial {
@@ -371,6 +385,9 @@ export interface ManifestationMaterial {
   quantity_requested: number
   quantity_delivered: number
   quantity_recovered: number
+  /** Casse, perte ou vol constaté au retour : diminue le stock physique. */
+  quantity_lost?: number
+  loss_reason?: string | null
   unit_value: number
   notes: string
   stock_total?: number
@@ -389,6 +406,7 @@ export interface Manifestation {
   contact_email: string
   delivery_address: string
   delivery_date: string
+  recovery_date: string
   notes_interior: string
   notes_exterior: string
   status: string
@@ -398,10 +416,14 @@ export interface Manifestation {
   created_at: string
   updated_at: string
   materials: ManifestationMaterial[]
+  /** Lignes reçues d'un formulaire qu'aucun article du stock n'a permis de rattacher. */
+  intake_unmatched?: string | null
 }
 
 export interface ManifestationStats {
   total: number
+  /** Demandes reçues d'un formulaire, en attente de confirmation. */
+  pending: number
   upcoming: number
   delivered: number
   archived: number
@@ -428,6 +450,7 @@ export interface ManifestationFormData {
   contact_email?: string
   delivery_address?: string
   delivery_date?: string
+  recovery_date?: string
   notes_interior?: string
   notes_exterior?: string
   materials?: Omit<ManifestationMaterial, 'id' | 'stock_name' | 'unit' | 'stock_category' | 'stock_total'>[]
@@ -463,13 +486,16 @@ export const manifestationApi = {
   getById: (id: number) =>
     api.get<{ success: boolean; data: Manifestation }>(`/manifestations/${id}`),
   create: (data: ManifestationFormData) =>
-    api.post<{ success: boolean; data: Manifestation }>('/manifestations', data),
+    api.post<{ success: boolean; data: Manifestation; conflits: ConflitStock[] }>('/manifestations', data),
   update: (id: number, data: ManifestationFormData) =>
-    api.put<{ success: boolean; data: Manifestation }>(`/manifestations/${id}`, data),
+    api.put<{ success: boolean; conflits: ConflitStock[] }>(`/manifestations/${id}`, data),
   delete: (id: number) =>
     api.delete<{ success: boolean }>(`/manifestations/${id}`),
-  updateStatus: (id: number, status: string) =>
-    api.put<{ success: boolean }>(`/manifestations/${id}/status`, { status }),
+  // Le serveur accepte un commentaire de transition et le consigne dans
+  // l'historique ; l'appel le laissait tomber, si bien qu'aucune validation ni
+  // annulation ne pouvait être motivée.
+  updateStatus: (id: number, status: string, comment?: string) =>
+    api.put<{ success: boolean }>(`/manifestations/${id}/status`, { status, comment }),
   updateMaterials: (id: number, materials: Partial<ManifestationMaterial>[]) =>
     api.put<{ success: boolean }>(`/manifestations/${id}/materials`, { materials }),
 
@@ -478,8 +504,14 @@ export const manifestationApi = {
     api.get<{ success: boolean; data: ManifestationStats }>('/manifestations/stats/summary'),
 
   // Stock
-  getStock: () =>
-    api.get<{ success: boolean; data: ManifestationStockItem[] }>('/manifestations/stock'),
+  // Une période fait apparaître le prévisionnel et le réel à cette date, ce que
+  // demande « aurai-je 200 chaises le 14 juillet ? ».
+  getStock: (periode?: { date_from: string; date_to?: string }) => {
+    const p = periode
+      ? `?date_from=${periode.date_from}&date_to=${periode.date_to || periode.date_from}`
+      : ''
+    return api.get<{ success: boolean; data: ManifestationStockItem[] }>(`/manifestations/stock${p}`)
+  },
   getStockCategories: () =>
     api.get<{ success: boolean; data: string[] }>('/manifestations/stock/categories'),
   getStockEtats: () =>
@@ -488,9 +520,14 @@ export const manifestationApi = {
     api.get<{ success: boolean; data: string[] }>('/manifestations/stock/lieux'),
   getStockTypes: () =>
     api.get<{ success: boolean; data: string[] }>('/manifestations/stock/types'),
-  getStockAvailability: (date?: string) => {
-    const p = date ? `?date=${date}` : ''
-    return api.get<{ success: boolean; data: ManifestationStockItem[] }>(`/manifestations/stock/availability${p}`)
+  getStockAvailability: (date?: string, dateFin?: string) => {
+    const p = new URLSearchParams()
+    if (date) p.append('date_from', date)
+    if (dateFin || date) p.append('date_to', dateFin || date!)
+    const requete = p.toString() ? `?${p.toString()}` : ''
+    return api.get<{ success: boolean; data: ManifestationStockItem[]; periode?: { debut: string; fin: string } }>(
+      `/manifestations/stock/availability${requete}`
+    )
   },
   createStock: (data: StockFormData) =>
     api.post<{ success: boolean; data: ManifestationStockItem }>('/manifestations/stock', data),
@@ -498,4 +535,99 @@ export const manifestationApi = {
     api.put<{ success: boolean; data: ManifestationStockItem }>(`/manifestations/stock/${id}`, data),
   deleteStock: (id: number) =>
     api.delete<{ success: boolean }>(`/manifestations/stock/${id}`),
+
+  // Alias : « tables » doit trouver « Table 180 cm » sans qu'on rebaptise le stock.
+  getAliases: (stockId: number) =>
+    api.get<{ success: boolean; data: StockAlias[] }>(`/manifestations/stock/${stockId}/aliases`),
+  addAlias: (stockId: number, alias: string) =>
+    api.post<{ success: boolean; data: StockAlias }>(`/manifestations/stock/${stockId}/aliases`, { alias }),
+  deleteAlias: (aliasId: number) =>
+    api.delete<{ success: boolean }>(`/manifestations/stock/aliases/${aliasId}`),
+}
+
+// ======================== RÉCEPTION DES DEMANDES ========================
+
+export interface StockAlias {
+  id: number
+  stock_id: number
+  alias: string
+}
+
+export interface IntakeSource {
+  id: number
+  name: string
+  slug: string
+  is_active: number
+  has_secret: boolean
+  field_mapping: string | null
+  material_mapping: string | null
+  last_received_at: string | null
+  last_status: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface IntakeRequest {
+  id: number
+  source_id: number | null
+  source_name: string | null
+  external_id: string | null
+  payload: string
+  signature_ok: number
+  status: 'accepted' | 'rejected' | 'duplicate'
+  manifestation_id: number | null
+  manifestation_title: string | null
+  error: string | null
+  received_at: string
+}
+
+export interface ChampIntake {
+  champ: string
+  libelle: string
+  obligatoire: boolean
+  type: string
+  alias: string[]
+}
+
+export const intakeApi = {
+  getSources: () =>
+    api.get<{ success: boolean; data: IntakeSource[] }>('/manifestations/intake/sources/list'),
+  // Les chemins proposés sont ceux réellement vus dans la dernière demande :
+  // un champ de saisie libre laisserait passer la moindre faute de frappe.
+  getChamps: (id: number) =>
+    api.get<{
+      success: boolean
+      data: {
+        champs: ChampIntake[]
+        chemins: string[]
+        correspondance: Record<string, string>
+        origine: 'imposee' | 'detectee'
+        derniere_demande: unknown
+      }
+    }>(`/manifestations/intake/sources/${id}/champs`),
+  createSource: (data: { name: string; slug: string }) =>
+    api.post<{ success: boolean; data: { id: number; name: string; slug: string; secret: string } }>(
+      '/manifestations/intake/sources',
+      data
+    ),
+  updateSource: (
+    id: number,
+    data: {
+      name: string
+      field_mapping?: Record<string, string> | null
+      material_mapping?: Record<string, string> | null
+      is_active?: boolean
+    }
+  ) => api.put<{ success: boolean }>(`/manifestations/intake/sources/${id}`, data),
+  regenerateSecret: (id: number) =>
+    api.post<{ success: boolean; data: { secret: string } }>(`/manifestations/intake/sources/${id}/secret`, {}),
+  deleteSource: (id: number) =>
+    api.delete<{ success: boolean }>(`/manifestations/intake/sources/${id}`),
+  getRequests: (filtres?: { status?: string; source_id?: number }) => {
+    const p = new URLSearchParams()
+    if (filtres?.status) p.append('status', filtres.status)
+    if (filtres?.source_id) p.append('source_id', String(filtres.source_id))
+    const requete = p.toString() ? `?${p.toString()}` : ''
+    return api.get<{ success: boolean; data: IntakeRequest[] }>(`/manifestations/intake/requests${requete}`)
+  },
 }

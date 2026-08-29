@@ -1,6 +1,7 @@
 import type { Migration } from './types';
 import baseline from './001_baseline';
 import politiqueConnexion from './002_politique_connexion';
+import manifestationsReception from './003_manifestations_reception';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -11,6 +12,10 @@ import politiqueConnexion from './002_politique_connexion';
  * échouerait silencieusement — en n'appliquant rien — s'il se trompait. Une
  * migration s'ajoute donc ici, en même temps que son fichier.
  */
-export const MIGRATIONS: readonly Migration[] = [baseline, politiqueConnexion];
+export const MIGRATIONS: readonly Migration[] = [
+  baseline,
+  politiqueConnexion,
+  manifestationsReception,
+];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

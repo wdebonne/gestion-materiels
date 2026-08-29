@@ -116,3 +116,22 @@ export const exportLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/**
+ * Réception des demandes de manifestation.
+ *
+ * La route est ouverte : sans signature valide elle refuse, mais un tiers peut
+ * toujours la marteler. Le seuil reste large — une commune peut recevoir
+ * plusieurs demandes dans la même minute un lundi matin — et sert seulement à
+ * empêcher qu'une boucle emballée remplisse le journal des réceptions.
+ */
+export const intakeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 60,
+  message: {
+    success: false,
+    message: 'Trop de demandes reçues. Veuillez réessayer dans une minute.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});

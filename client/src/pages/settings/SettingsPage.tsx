@@ -12,7 +12,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck
+  ShieldCheck, Inbox
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -81,6 +81,12 @@ const settingsNavItems = [
     to: '/settings/webhooks', 
     icon: Webhook, 
     label: 'Webhooks',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/manifestations-reception', 
+    icon: Inbox, 
+    label: 'Réception manifestations',
     adminOnly: true
   },
   { 

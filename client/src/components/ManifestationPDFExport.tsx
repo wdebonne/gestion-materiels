@@ -25,6 +25,7 @@ interface ManifestationPDFExportProps {
 
 /** Statuts tels que le serveur les stocke. */
 const LIBELLES_STATUT: Record<string, string> = {
+  pending: 'À confirmer',
   draft: 'Brouillon',
   validated: 'Validée',
   delivered: 'Livrée',
@@ -131,9 +132,12 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
         doc.setFont('helvetica', 'bold')
         doc.setTextColor(75, 85, 99)
         doc.text('Article', 17, y)
-        doc.text('Demandé', 115, y, { align: 'center' })
-        doc.text('Livré', 145, y, { align: 'center' })
-        doc.text('Récupéré', 175, y, { align: 'center' })
+        doc.text('Demandé', 108, y, { align: 'center' })
+        doc.text('Livré', 133, y, { align: 'center' })
+        doc.text('Récupéré', 158, y, { align: 'center' })
+        // La casse et le vol ont diminué le stock : la fiche sert d'archive en
+        // cas de litige, elle doit les porter.
+        doc.text('Perdu', 185, y, { align: 'center' })
         y += 8
 
         doc.setFont('helvetica', 'normal')
@@ -143,10 +147,11 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
           if (y > 275) { doc.addPage(); y = 20 }
 
           const nom = mat.stock_name || `Article #${mat.stock_id}`
-          doc.text(String(nom).substring(0, 45), 17, y)
-          doc.text(String(mat.quantity_requested ?? 0), 115, y, { align: 'center' })
-          doc.text(String(mat.quantity_delivered ?? 0), 145, y, { align: 'center' })
-          doc.text(String(mat.quantity_recovered ?? 0), 175, y, { align: 'center' })
+          doc.text(String(nom).substring(0, 42), 17, y)
+          doc.text(String(mat.quantity_requested ?? 0), 108, y, { align: 'center' })
+          doc.text(String(mat.quantity_delivered ?? 0), 133, y, { align: 'center' })
+          doc.text(String(mat.quantity_recovered ?? 0), 158, y, { align: 'center' })
+          doc.text(String(mat.quantity_lost ?? 0), 185, y, { align: 'center' })
 
           doc.setDrawColor(...GRIS_CLAIR)
           doc.line(15, y + 3, 195, y + 3)
@@ -158,9 +163,10 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
         if (y > 275) { doc.addPage(); y = 20 }
         doc.setFont('helvetica', 'bold')
         doc.text('Total', 17, y)
-        doc.text(String(total('quantity_requested')), 115, y, { align: 'center' })
-        doc.text(String(total('quantity_delivered')), 145, y, { align: 'center' })
-        doc.text(String(total('quantity_recovered')), 175, y, { align: 'center' })
+        doc.text(String(total('quantity_requested')), 108, y, { align: 'center' })
+        doc.text(String(total('quantity_delivered')), 133, y, { align: 'center' })
+        doc.text(String(total('quantity_recovered')), 158, y, { align: 'center' })
+        doc.text(String(total('quantity_lost')), 185, y, { align: 'center' })
         doc.setFont('helvetica', 'normal')
         y += 12
       }
