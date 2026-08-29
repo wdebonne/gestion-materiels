@@ -9,6 +9,7 @@ import {
   Card, CardBody, CardHeader, CardTitle, Badge, Alert, Tabs, Tab
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
+import ManifestationPDFExport from '@/components/ManifestationPDFExport'
 import api from '@/lib/api'
 import {
   manifestationApi,
@@ -1075,9 +1076,85 @@ function ArchivesTab() {
 
 // ==================== MODALE DÉTAIL ====================
 
+/** Un événement de l'historique d'une manifestation. */
+interface EvenementHistorique {
+  id: number
+  action: string
+  from_status?: string | null
+  to_status?: string | null
+  comment?: string | null
+  created_at: string
+  first_name?: string | null
+  last_name?: string | null
+  email?: string | null
+}
+
+/**
+ * Timeline horodatée des actions.
+ *
+ * La table `manifestation_history` existait depuis le début sans être ni écrite
+ * ni lue : la « timeline complète de toutes les actions » annoncée dans le
+ * README et la feuille de route n'existait nulle part. Un prêt de matériel pour
+ * un événement municipal engage la collectivité — savoir qui a validé, qui a
+ * livré et quand est le minimum.
+ */
+function HistoriqueManifestation({ manifestationId }: { manifestationId: number }) {
+  const { data: evenements = [], isLoading } = useQuery({
+    queryKey: ['manifestation-history', manifestationId],
+    queryFn: async () => {
+      const res = await api.get(`/manifestations/${manifestationId}/history`)
+      return (res.data.data ?? []) as EvenementHistorique[]
+    },
+  })
+
+  if (isLoading) {
+    return <p className="text-sm text-gray-600 dark:text-gray-300">Chargement de l'historique…</p>
+  }
+
+  if (evenements.length === 0) {
+    // Les manifestations créées avant la mise en place de l'historique n'en ont
+    // pas : on le dit plutôt que d'afficher un bloc vide.
+    return (
+      <p className="text-sm text-gray-600 dark:text-gray-300">
+        Aucune action enregistrée pour cette manifestation.
+      </p>
+    )
+  }
+
+  return (
+    <ol className="space-y-3">
+      {evenements.map((e) => {
+        const auteur = e.first_name || e.last_name
+          ? `${e.first_name ?? ''} ${e.last_name ?? ''}`.trim()
+          : e.email || 'Système'
+        const depuis = e.from_status ? statusLabels[e.from_status] ?? e.from_status : null
+        const vers = e.to_status ? statusLabels[e.to_status] ?? e.to_status : null
+
+        return (
+          <li key={e.id} className="border-l-2 border-primary-500 pl-3">
+            <div className="flex flex-wrap items-baseline gap-x-2">
+              <strong className="text-gray-900 dark:text-gray-100">{e.action}</strong>
+              <span className="text-xs text-gray-600 dark:text-gray-300">
+                {new Date(e.created_at).toLocaleString('fr-FR')} — {auteur}
+              </span>
+            </div>
+            {depuis && vers && (
+              <p className="text-gray-700 dark:text-gray-300">{depuis} → {vers}</p>
+            )}
+            {e.comment && (
+              <p className="text-gray-600 dark:text-gray-300 italic">« {e.comment} »</p>
+            )}
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
 function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose: () => void }) {
   const formatD = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR') : '-'
   const totalValue = m.materials?.reduce((s, mat) => s + (mat.unit_value * mat.quantity_requested), 0) || 0
+  const [exportPDF, setExportPDF] = useState(false)
 
   return (
     <Modal isOpen onClose={onClose} title={m.title} size="xl">
@@ -1163,11 +1240,25 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
               </CardBody>
             </Card>
           )}
+          <Card>
+            <CardHeader><CardTitle className="text-sm">Historique</CardTitle></CardHeader>
+            <CardBody>
+              <HistoriqueManifestation manifestationId={m.id} />
+            </CardBody>
+          </Card>
         </div>
       </ModalBody>
       <ModalFooter>
         <Button variant="outline" onClick={onClose}>Fermer</Button>
+        <Button onClick={() => setExportPDF(true)}>
+          <FileDown className="w-4 h-4 mr-2" />
+          Exporter en PDF
+        </Button>
       </ModalFooter>
+
+      {exportPDF && (
+        <ManifestationPDFExport manifestation={m} onClose={() => setExportPDF(false)} />
+      )}
     </Modal>
   )
 }

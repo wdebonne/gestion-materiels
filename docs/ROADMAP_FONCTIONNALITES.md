@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
-| 14 | 🔴 Haute | Manifestations | 🟡 Partiel | Stock, workflow et export ✅ — la table `manifestation_history` n'est **ni écrite ni lue**, et `ManifestationPDFExport.tsx` n'est importé nulle part |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique horodaté et fiche PDF branchés en août 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -210,7 +210,13 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
 
-> 🟡 **Reste :** la table `manifestation_history` est créée mais **ni écrite ni lue**, et `ManifestationPDFExport.tsx` n'est importé nulle part — la timeline horodatée et l'export PDF annoncés n'existent donc pas à l'écran. Par ailleurs `PUT /:id` ignore le champ `status` (il faut passer par `PUT /:id/status`), et `PUT /:id/materials` répond 200 même quand aucune ligne n'est modifiée.
+> ✅ **Complété en août 2026 :** chaque action est consignée dans `manifestation_history` — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et un commentaire facultatif. La timeline s'affiche dans le détail, et `GET /:id/history` la sert seule.
+>
+> La fiche PDF est branchée. Le composant existait sans être importé nulle part, et il était écrit contre une forme de données qui n'a jamais existé : `name` au lieu de `title`, `items` au lieu de `materials`, `res.data` au lieu de `res.data.data`, des statuts en français là où le serveur en stocke d'autres. Chaque champ serait ressorti vide et la génération se serait arrêtée sur `detail.name.replace`.
+>
+> `PUT /:id/materials` refuse désormais une mise à jour qui ne touche aucune ligne, au lieu de répondre 200.
+>
+> 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 
 ### 15. Espaces Verts (gestion espaces verts municipaux)
 - **Description :** Plugin système complet pour la gestion des espaces verts avec plan interactif annoté, composition botanique, entretiens et intégrations transversales.

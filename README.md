@@ -119,7 +119,7 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
   - Refus/Validation avec commentaire optionnel
   - Livraison avec gestion des quantités livrées (individuel ou global)
   - Récupération avec gestion des quantités retournées
-- 📝 **Historique horodaté** : Timeline complète de toutes les actions avec utilisateur, date et commentaire
+- 📝 **Historique horodaté** : timeline de chaque action — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et son commentaire
 - 📄 **Export PDF** : Génération de rapport PDF avec en-tête, articles (commandé/livré/récupéré), et historique
 - 🗂️ **Onglets** : Vue par manifestations actives, stock, et archives
 - 🔗 **Recherche d'objets** : Autocomplete de recherche d'objets du parc pour ajout aux manifestations
@@ -698,7 +698,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **Webhooks** | CRUD complet, bouton de test, journalisation | Aucune route ni tâche planifiée n'appelle `POST /trigger` : aucun webhook ne part jamais |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
 | **Impression d'étiquettes QR en lot** | `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes | Aucun écran ne l'appelle : les QR codes s'impriment un par un |
-| **Historique des manifestations** | Table `manifestation_history` créée, composant `ManifestationPDFExport` écrit | La table n'est ni écrite ni lue, et le composant n'est importé nulle part |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 | **Import de matériels** | Import CSV/XLSX fonctionnel | Le mapping est **positionnel strict** sur 11 colonnes : le fichier doit suivre exactement le modèle téléchargeable |
 
@@ -706,7 +705,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 
 - Les requêtes du cron encadrent leurs colonnes de dates dans `date()`, ce qui empêche les index `idx_control_expiry` et `idx_maintenance_next` de servir. Sans effet visible au volume actuel
 - `JWT_REFRESH_SECRET` est déclaré dans `docker-compose.yml` mais n'est lu par personne : les deux jetons sont signés avec `JWT_SECRET`
-- `PUT /api/manifestations/:id/materials` répond 200 même lorsqu'aucune ligne n'est modifiée
 - `PUT /api/manifestations/:id` ne lit pas le champ `status` : le statut se change uniquement via `PUT /:id/status`
 - Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`
 

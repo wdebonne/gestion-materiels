@@ -52,6 +52,16 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
 - **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
 
+### Manifestations
+
+- **Historique horodaté.** La table `manifestation_history` était créée depuis le début et n'était ni écrite ni lue, alors que le README et la feuille de route annonçaient une « timeline complète de toutes les actions ». Un prêt de matériel pour un événement municipal engage la collectivité : savoir qui a validé, qui a livré et à quelle date n'est pas un confort
+  - Création, modification, validation, livraison, récupération, annulation, archivage et mise à jour des quantités sont consignés, avec l'auteur, la date et un commentaire facultatif
+  - Le changement de statut accepte un commentaire — « validée en commission du 12 septembre » vaut mieux qu'une date seule
+  - La timeline s'affiche dans le détail d'une manifestation, et `GET /:id/history` la sert seule
+  - L'écriture de l'historique ne peut pas faire échouer l'action qu'elle décrit : perdre une ligne d'historique est moins grave que perdre une livraison
+- **Fiche PDF branchée.** `ManifestationPDFExport.tsx` existait sans être importé nulle part, et il lisait des champs qui n'existent pas : `name` au lieu de `title`, `items` au lieu de `materials`, `object_name` au lieu de `stock_name`, `res.data` au lieu de `res.data.data`, et des statuts en français là où le serveur stocke `draft`, `validated`, `delivered`… Chaque champ serait ressorti vide, et la génération se serait arrêtée sur `detail.name.replace`. La fiche contient désormais les informations générales, le matériel avec ses totaux et l'historique
+- **`PUT /:id/materials` refuse une mise à jour qui ne touche aucune ligne** au lieu de répondre 200 : c'était le cas quand un identifiant de stock était envoyé à la place de l'identifiant de ligne
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

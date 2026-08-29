@@ -335,6 +335,65 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
+/** Libellé lisible de chaque transition, pour que l'historique se lise sans décodeur. */
+const LIBELLES_TRANSITION: Record<string, string> = {
+  draft: 'Retour en brouillon',
+  validated: 'Validation',
+  delivered: 'Livraison',
+  recovered: 'Récupération',
+  archived: 'Archivage',
+  cancelled: 'Annulation',
+};
+
+/**
+ * Consigne un événement dans l'historique d'une manifestation.
+ *
+ * La table `manifestation_history` était créée depuis le début et n'était ni
+ * écrite ni lue : le README et la feuille de route annonçaient une « timeline
+ * horodatée de toutes les actions » qui n'existait nulle part. Un prêt de
+ * matériel pour un événement municipal engage la collectivité — savoir qui a
+ * validé, qui a livré et à quelle date est le minimum.
+ *
+ * L'écriture ne doit jamais faire échouer l'action qu'elle décrit : perdre une
+ * ligne d'historique est moins grave que perdre une livraison.
+ */
+async function consignerHistorique(
+  manifestationId: number | string,
+  userId: number | undefined,
+  action: string,
+  details: { fromStatus?: string | null; toStatus?: string | null; comment?: string | null } = {}
+): Promise<void> {
+  try {
+    await db.execute(
+      `INSERT INTO manifestation_history (manifestation_id, user_id, action, from_status, to_status, comment, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        manifestationId,
+        userId ?? null,
+        action,
+        details.fromStatus ?? null,
+        details.toStatus ?? null,
+        details.comment?.trim() || null,
+        new Date().toISOString(),
+      ]
+    );
+  } catch (erreur: any) {
+    console.error('Historique manifestation non enregistré:', erreur.message);
+  }
+}
+
+/** Historique d'une manifestation, du plus récent au plus ancien. */
+async function lireHistorique(manifestationId: number | string): Promise<any[]> {
+  return db.query(
+    `SELECT h.*, u.first_name, u.last_name, u.email
+     FROM manifestation_history h
+     LEFT JOIN users u ON u.id = h.user_id
+     WHERE h.manifestation_id = ?
+     ORDER BY h.created_at DESC, h.id DESC`,
+    [manifestationId]
+  );
+}
+
 // GET /:id - Détail d'une manifestation
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -353,7 +412,21 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       WHERE mm.manifestation_id = ?
     `, [m.id]);
 
-    res.json({ success: true, data: { ...m, materials } });
+    const history = await lireHistorique(m.id);
+
+    res.json({ success: true, data: { ...m, materials, history } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /:id/history - Historique seul
+router.get('/:id/history', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const m = await db.queryOne('SELECT id FROM manifestations WHERE id = ?', [req.params.id]);
+    if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
+
+    res.json({ success: true, data: await lireHistorique(req.params.id) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -399,6 +472,7 @@ router.post('/', authenticateToken, requireSupervisor,
         }
       }
 
+      await consignerHistorique(manifestationId, req.user!.userId, 'Création', { toStatus: 'draft' });
       await logService.info('other', `Manifestation créée: ${title}`, { userId: req.user!.userId });
       const created = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [manifestationId]);
       res.status(201).json({ success: true, data: created });
@@ -445,6 +519,7 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       }
     }
 
+    await consignerHistorique(req.params.id, req.user!.userId, 'Modification');
     await logService.info('other', `Manifestation modifiée: ${title}`, { userId: req.user!.userId });
     res.json({ success: true });
   } catch (error: any) {
@@ -461,7 +536,7 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
       return res.status(400).json({ success: false, errors: errors.array() });
     }
     try {
-      const { status } = req.body;
+      const { status, comment } = req.body;
       const m = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [req.params.id]);
       if (!m) return res.status(404).json({ success: false, message: 'Non trouvée' });
 
@@ -503,6 +578,11 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
         [status, req.params.id]
       );
 
+      await consignerHistorique(req.params.id, req.user!.userId, LIBELLES_TRANSITION[status] ?? 'Changement de statut', {
+        fromStatus: m.status,
+        toStatus: status,
+        comment,
+      });
       await logService.info('other', `Manifestation "${m.title}" → ${status}`, { userId: req.user!.userId });
       res.json({ success: true });
     } catch (error: any) {
@@ -518,13 +598,30 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
     if (!materials || !Array.isArray(materials)) {
       return res.status(400).json({ success: false, message: 'Données de matériaux requises' });
     }
+    // `changes` est compté : la route répondait 200 même quand aucune ligne ne
+    // correspondait, par exemple avec un identifiant de stock à la place de
+    // l'identifiant de ligne.
+    let modifiees = 0;
     for (const mat of materials) {
-      await db.execute(
+      const r = await db.execute(
         'UPDATE manifestation_materials SET quantity_delivered = ?, quantity_recovered = ? WHERE id = ? AND manifestation_id = ?',
         [mat.quantity_delivered, mat.quantity_recovered, mat.id, req.params.id]
       );
+      modifiees += r.changes;
     }
-    res.json({ success: true });
+
+    if (modifiees === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Aucune ligne de matériel ne correspond : vérifiez l'identifiant de ligne envoyé"
+      });
+    }
+
+    await consignerHistorique(req.params.id, req.user!.userId, 'Quantités mises à jour', {
+      comment: `${modifiees} ligne(s) de matériel`
+    });
+
+    res.json({ success: true, updated: modifiees });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
