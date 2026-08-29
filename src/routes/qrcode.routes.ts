@@ -1,15 +1,47 @@
 import { Router, Response } from 'express';
 import QRCode from 'qrcode';
 import { db } from '../database';
-import { authenticateToken, AuthRequest } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, getAccessibleCategoryIds } from '../middleware/auth.middleware';
 
 const router = Router();
+
+/**
+ * Restreint une requête sur `objects` aux catégories que le compte peut voir.
+ *
+ * Ces routes n'avaient que `authenticateToken` : la génération en lot renvoyait
+ * le nom, la référence et le numéro de série de n'importe quel identifiant, ce
+ * qui permettait d'énumérer l'inventaire complet en incrémentant des nombres.
+ * Le même filtre que `GET /objects` s'applique désormais.
+ */
+async function clauseCategoriesAccessibles(
+  req: AuthRequest
+): Promise<{ sql: string; params: any[] } | 'aucune'> {
+  const accessibles = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
+  if (accessibles === null) return { sql: '', params: [] };
+  if (accessibles.length === 0) return 'aucune';
+
+  const marqueurs = accessibles.map(() => '?').join(',');
+  return {
+    sql: ` AND (category_id IN (${marqueurs}) OR EXISTS (SELECT 1 FROM subcategories sc WHERE sc.id = subcategory_id AND sc.category_id IN (${marqueurs})))`,
+    params: [...accessibles, ...accessibles],
+  };
+}
 
 // Générer un QR code pour un objet spécifique (PNG data URL)
 router.get('/:objectId', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { objectId } = req.params;
-    const object = await db.queryOne('SELECT id, name FROM objects WHERE id = ?', [objectId]);
+
+    const filtre = await clauseCategoriesAccessibles(req);
+    if (filtre === 'aucune') {
+      res.status(403).json({ success: false, message: 'Aucune catégorie ne vous est accessible' });
+      return;
+    }
+
+    const object = await db.queryOne(
+      `SELECT id, name FROM objects WHERE id = ?${filtre.sql}`,
+      [objectId, ...filtre.params]
+    );
 
     if (!object) {
       res.status(404).json({ success: false, message: 'Objet non trouvé' });
@@ -59,10 +91,16 @@ router.post('/batch', authenticateToken, async (req: AuthRequest, res: Response)
     const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
     const results = [];
 
+    const filtre = await clauseCategoriesAccessibles(req);
+    if (filtre === 'aucune') {
+      res.status(403).json({ success: false, message: 'Aucune catégorie ne vous est accessible' });
+      return;
+    }
+
     const placeholders = objectIds.map(() => '?').join(',');
     const objects = await db.query(
-      `SELECT id, name, reference, serial_number FROM objects WHERE id IN (${placeholders})`,
-      objectIds
+      `SELECT id, name, reference, serial_number FROM objects WHERE id IN (${placeholders})${filtre.sql}`,
+      [...objectIds, ...filtre.params]
     );
 
     for (const obj of objects) {

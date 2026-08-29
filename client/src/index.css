@@ -445,3 +445,94 @@ body {
     width: 100% !important;
   }
 }
+
+/*
+ * Étiquettes QR imprimables.
+ *
+ * `POST /api/qrcode/batch` renvoyait jusqu'à 100 étiquettes sans qu'aucun écran
+ * l'appelle : les QR codes s'imprimaient un par un depuis la fiche de chaque
+ * matériel. Étiqueter cinquante machines demandait cinquante allers-retours.
+ *
+ * La grille est rendue dans la page plutôt que dans une fenêtre ouverte en
+ * JavaScript, que les navigateurs bloquent souvent. Elle n'existe qu'à
+ * l'impression.
+ */
+.zone-etiquettes {
+  display: none;
+}
+
+@media print {
+  /* Seules les étiquettes sortent : ni navigation, ni modale, ni bandeau.
+     La grille est un enfant direct de `body`, via un portail React : masquer
+     `#root` aurait sinon masqué la grille avec lui, et la page serait sortie
+     blanche. */
+  body > *:not(.zone-etiquettes) {
+    display: none !important;
+  }
+
+  /* Le fond de l'application est teinté ; une étiquette s'imprime sur blanc. */
+  body {
+    background: #fff !important;
+  }
+
+  .zone-etiquettes {
+    display: grid !important;
+    /* Flux normal, pas de positionnement absolu : au-delà d'une page, le
+       contenu doit se répartir sur les suivantes. `align-content: start`
+       empêche les rangées de s'étirer pour remplir la hauteur. */
+    grid-template-columns: repeat(2, 1fr);
+    align-content: start;
+    gap: 4mm;
+    padding: 8mm;
+    background: #fff;
+    color: #000;
+  }
+
+  .etiquette {
+    display: flex !important;
+    align-items: center;
+    gap: 4mm;
+    height: 52mm;
+    padding: 3mm;
+    border: 1px dashed #999;
+    border-radius: 2mm;
+    /* Une étiquette ne doit jamais être coupée entre deux pages. */
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .etiquette-qr {
+    width: 40mm;
+    height: 40mm;
+    flex-shrink: 0;
+  }
+
+  .etiquette-texte {
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .etiquette-nom {
+    font-size: 12pt;
+    font-weight: 700;
+    line-height: 1.2;
+    /* Un nom trop long ne doit pas pousser le QR code hors de l'étiquette. */
+    overflow-wrap: anywhere;
+  }
+
+  .etiquette-ref {
+    margin-top: 1mm;
+    font-size: 10pt;
+  }
+
+  .etiquette-serie {
+    margin-top: 0.5mm;
+    font-size: 9pt;
+    color: #444;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+}

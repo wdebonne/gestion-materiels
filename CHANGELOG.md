@@ -52,6 +52,14 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
 - **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
 
+### Étiquettes QR
+
+- **Impression en lot.** `POST /api/qrcode/batch` renvoyait jusqu'à 100 étiquettes depuis toujours et n'était appelé par aucun écran : les QR codes s'imprimaient un par un depuis la fiche de chaque matériel. Étiqueter un parc de cinquante machines demandait cinquante allers-retours
+  - Bouton « Étiquettes QR » sur une catégorie ou une sous-catégorie, sélection des matériels, planche A4 de deux colonnes en 95 × 52 mm avec QR code, nom et référence
+  - Les lots de plus de 100 matériels sont découpés automatiquement — la limite du serveur ne doit pas se traduire par un découpage à la main
+  - Une étiquette n'est jamais coupée entre deux pages, et un nom trop long ne pousse pas le QR code hors du cadre
+- **Génération cloisonnée par les permissions de catégorie.** Les deux routes QR n'avaient que `authenticateToken`, et la génération en lot renvoyait nom, référence et numéro de série pour des identifiants arbitraires : un compte sans aucune permission pouvait énumérer l'inventaire complet en incrémentant des nombres, sans voir un seul matériel à l'écran
+
 ### Webhooks
 
 - **Les webhooks partent enfin.** Le CRUD, le bouton de test et la journalisation existaient depuis toujours, mais `POST /webhooks/trigger` n'était appelé par aucune route ni tâche planifiée : un administrateur configurait une URL, la testait avec succès, et plus jamais rien ne partait. L'écran proposait pourtant douze événements

@@ -13,6 +13,7 @@ import api, { Subcategory, GestionObject as EquipmentObject } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import toast from 'react-hot-toast'
 import Can from '@/components/Can'
+import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
 
 export default function SubcategoryDetailPage() {
   const { categorySlug, subcategorySlug } = useParams<{ categorySlug: string; subcategorySlug: string }>()
@@ -221,6 +222,9 @@ export default function SubcategoryDetailPage() {
             icon={<Search className="w-5 h-5" />}
           />
         </div>
+        {/* Étiquetage d'un lot de matériels : la génération existait côté
+            serveur sans aucun écran pour l'appeler. */}
+        <BoutonEtiquettesQr materiels={objects} titre={subcategory?.name} />
         <Can manage>
           <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
             Nouveau matériel

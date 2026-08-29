@@ -184,7 +184,9 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 📖 **API** : Documentation interactive Swagger UI, spécification OpenAPI, statistiques
 
 ### 📦 QR Codes
-- 📱 **QR Codes** : Génération par matériel, scan terrain pour accès rapide à la fiche
+- 📱 **QR Codes** : génération par matériel, scan terrain pour accès rapide à la fiche
+- 🖨️ **Impression en lot** : depuis une catégorie ou une sous-catégorie, sélection des matériels et impression d'une planche A4 d'étiquettes (2 colonnes, 95 × 52 mm) portant le QR code, le nom et la référence
+- 🔐 **Génération cloisonnée** : un compte ne génère d'étiquettes que pour les catégories qu'il a le droit de consulter
 
 ### 🔌 Plugins système (activables/désactivables depuis Paramètres > Plugins)
 
@@ -696,7 +698,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **SSO SAML / OIDC / LDAP / Passkey** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local |
 | **2FA, timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Aucun second facteur n'est implémenté ; le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
-| **Impression d'étiquettes QR en lot** | `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes | Aucun écran ne l'appelle : les QR codes s'impriment un par un |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 | **Import de matériels** | Import CSV/XLSX fonctionnel | Le mapping est **positionnel strict** sur 11 colonnes : le fichier doit suivre exactement le modèle téléchargeable |
 

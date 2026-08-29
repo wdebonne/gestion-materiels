@@ -13,6 +13,7 @@ import api, { Category, Subcategory, GestionObject as ObjectType } from '@/lib/a
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import { useAuthStore } from '@/stores/auth.store'
 import toast from 'react-hot-toast'
+import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
 
 export default function CategoryDetailPage() {
   const { categorySlug: slug } = useParams<{ categorySlug: string }>()
@@ -360,6 +361,11 @@ export default function CategoryDetailPage() {
             icon={<Search className="w-5 h-5" />}
           />
         </div>
+        {/* Étiquetage d'un lot de matériels : la génération existait côté
+            serveur sans aucun écran pour l'appeler. */}
+        {!category.hasSubcategories && (
+          <BoutonEtiquettesQr materiels={objects} titre={category.name} />
+        )}
         {isSupervisor && (
         <>
         {category.hasSubcategories ? (

@@ -281,6 +281,20 @@ aucune catégorie n'est accessible.
 reçoit désormais `403 Aucune catégorie ne vous est accessible` sur l'export, là
 où il obtenait auparavant les 57 matériels du parc.
 
+### 6. La génération de QR codes ignorait les permissions — **corrigé**
+
+`GET /api/qrcode/:objectId` et `POST /api/qrcode/batch` n'avaient que
+`authenticateToken`. La génération en lot accepte jusqu'à 100 identifiants et
+renvoie, pour chacun, le nom, la référence et le numéro de série du matériel.
+
+Un compte sans aucune permission de catégorie pouvait donc énumérer l'inventaire
+complet en incrémentant des nombres, sans jamais voir un seul matériel à
+l'écran. Même schéma que l'export : la route est authentifiée, mais le contrôle
+qui suit l'authentification manquait.
+
+**Correction** : le même filtre que `GET /objects` sur les deux routes, et un
+403 explicite quand aucune catégorie n'est accessible.
+
 ### Journalisation muette — **corrigé**
 
 Deux défauts indépendants faisaient disparaître des entrées de journal sans erreur :
@@ -294,7 +308,7 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 
 | Critère OWASP | Statut | Notes |
 |---------------|--------|-------|
-| A01 - Broken Access Control | ✅ | Uploads protégés par JWT. La portée des tokens API et le cloisonnement de l'export par catégorie, ignorés jusqu'en août 2026, sont désormais appliqués |
+| A01 - Broken Access Control | ✅ | Uploads protégés par JWT. La portée des tokens API, le cloisonnement de l'export et celui de la génération de QR codes, ignorés jusqu'en août 2026, sont désormais appliqués |
 | A02 - Cryptographic Failures | ✅ | Bcrypt + JWT avec rotation |
 | A03 - Injection | ✅ | Requêtes paramétrées |
 | A04 - Insecure Design | ✅ | Architecture sécurisée |

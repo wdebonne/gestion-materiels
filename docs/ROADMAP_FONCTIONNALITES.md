@@ -11,7 +11,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 
 | # | Priorité | Fonctionnalité | Statut | Réserve |
 |---|----------|---------------|--------|---------|
-| 1 | 🔴 Haute | QR Codes matériels | 🟡 Partiel | Génération et scan terrain ✅ — l'**impression en lot** n'a pas d'écran, alors que `POST /api/qrcode/batch` existe |
+| 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | 🟡 Partiel | Export filtrable et cloisonné ✅ — l'import reste en mapping **positionnel strict** sur 11 colonnes |
 | 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 131 tests (87 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
@@ -45,7 +45,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Librairies :** `qrcode` (backend), `react-qr-code` (frontend)
 - **Impact :** Très utile pour l'inventaire terrain, les agents municipaux
 
-> 🟡 **Reste :** l'impression d'étiquettes en lot n'a pas d'écran. `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes en data-URL et n'est appelé par personne : les QR codes s'impriment un par un.
+> ✅ **Complété en août 2026 :** depuis une catégorie ou une sous-catégorie, un bouton « Étiquettes QR » ouvre la sélection des matériels et imprime une planche A4 — deux colonnes de 95 × 52 mm, QR code, nom et référence. Les lots de plus de 100 matériels sont découpés automatiquement, la limite du serveur.
+>
+> La génération était par ailleurs accessible à tout compte authentifié, sans filtrage par catégorie : elle renvoyait nom, référence et numéro de série pour des identifiants arbitraires, ce qui permettait d'énumérer l'inventaire en incrémentant des nombres. Elle applique désormais le même filtre que la liste des matériels.
 
 ### 2. Import/Export CSV & Excel
 - **Description :** Importer massivement des matériels depuis un fichier CSV/Excel, et exporter la base avec filtres.
