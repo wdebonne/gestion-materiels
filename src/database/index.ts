@@ -178,6 +178,7 @@ class DatabaseManager {
         role VARCHAR(50) DEFAULT 'user',
         avatar VARCHAR(500),
         is_active ${boolType} DEFAULT 1,
+        anonymized_at DATETIME,
         reset_token VARCHAR(255),
         reset_token_expires DATETIME,
         last_login DATETIME,
@@ -760,6 +761,7 @@ class DatabaseManager {
         email VARCHAR(255),
         description ${textType},
         is_observer ${boolType} DEFAULT 0,
+        is_coordinator ${boolType} DEFAULT 0,
         is_active ${boolType} DEFAULT 1,
         notify_new_request ${boolType} DEFAULT 1,
         notify_status_change ${boolType} DEFAULT 1,
@@ -833,6 +835,22 @@ class DatabaseManager {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
         FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Délégation d'approbation, accordée par un responsable de service.
+      // Voir la migration 007 : seul un responsable décide, et lui seul délègue.
+      `CREATE TABLE IF NOT EXISTS service_delegations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        delegate_user_id INTEGER NOT NULL,
+        granted_by INTEGER,
+        start_date DATE,
+        end_date DATE,
+        created_at DATETIME ${timestampDefault},
+        UNIQUE(service_id, delegate_user_id),
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (delegate_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
       // Préférences de notification, une ligne par compte et par événement.
@@ -1238,6 +1256,7 @@ class DatabaseManager {
       ['idx_manif_items', 'manifestation_items', 'manifestation_id'],
       ['idx_manif_items_object', 'manifestation_items', 'object_id'],
       ['idx_notif_prefs_user', 'notification_preferences', 'user_id'],
+      ['idx_service_delegations', 'service_delegations', 'service_id'],
 
       // Droits — consultés à chaque requête filtrée par catégorie
       ['idx_user_permissions_user', 'user_permissions', 'user_id'],

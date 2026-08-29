@@ -2,7 +2,11 @@ import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
-import { servicesDe } from '../services/manifestationServices.service';
+import {
+  delegationsDe,
+  peutDeleguerPour,
+  servicesDe,
+} from '../services/manifestationServices.service';
 import slugify from '../utils/slugify';
 
 /**
@@ -18,6 +22,10 @@ import slugify from '../utils/slugify';
  */
 
 const router = Router();
+
+/** Un seul message de refus, pour qu'il se lise pareil partout. */
+const REFUS_DELEGATION =
+  "Seul le responsable du service peut gérer ses délégations d'approbation";
 
 /** Détail d'un service, avec son périmètre et ses membres. */
 async function lireService(id: number | string): Promise<any | null> {
@@ -83,21 +91,27 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
 
 router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, email, description, is_observer, is_active } = req.body;
+    const { name, email, description, is_observer, is_coordinator, is_active } = req.body;
     if (!name?.trim()) {
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
     }
 
+    // Un seul service pilote les manifestations, ici comme à la modification.
+    if (is_coordinator) {
+      await db.execute('UPDATE services SET is_coordinator = 0');
+    }
+
     const maintenant = new Date().toISOString();
     const resultat = await db.execute(
-      `INSERT INTO services (name, slug, email, description, is_observer, is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO services (name, slug, email, description, is_observer, is_coordinator, is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name.trim(),
         slugify(name),
         email?.trim() || null,
         description?.trim() || null,
         is_observer ? 1 : 0,
+        is_coordinator ? 1 : 0,
         is_active === false ? 0 : 1,
         maintenant,
         maintenant,
@@ -117,7 +131,7 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
 router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const {
-      name, email, description, is_observer, is_active,
+      name, email, description, is_observer, is_coordinator, is_active,
       notify_new_request, notify_status_change, notify_material_change, notify_message,
     } = req.body;
 
@@ -125,14 +139,21 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
     // geste explicite, jamais la conséquence d'un champ oublié.
     const actif = (valeur: unknown) => (valeur === false || valeur === 0 ? 0 : 1);
 
+    // Un seul service pilote les manifestations : le désigner retire le drapeau
+    // au précédent, plutôt que de laisser deux services se disputer la
+    // validation finale sans que personne sache lequel tranche.
+    if (is_coordinator) {
+      await db.execute('UPDATE services SET is_coordinator = 0 WHERE id != ?', [req.params.id]);
+    }
+
     const resultat = await db.execute(
-      `UPDATE services SET name = ?, email = ?, description = ?, is_observer = ?, is_active = ?,
+      `UPDATE services SET name = ?, email = ?, description = ?, is_observer = ?, is_coordinator = ?, is_active = ?,
          notify_new_request = ?, notify_status_change = ?, notify_material_change = ?, notify_message = ?,
          updated_at = ?
        WHERE id = ?`,
       [
         name, email?.trim() || null, description?.trim() || null,
-        is_observer ? 1 : 0, is_active === false ? 0 : 1,
+        is_observer ? 1 : 0, is_coordinator ? 1 : 0, is_active === false ? 0 : 1,
         actif(notify_new_request), actif(notify_status_change),
         actif(notify_material_change), actif(notify_message),
         new Date().toISOString(), req.params.id,
@@ -229,6 +250,35 @@ router.post('/:id/members', authenticateToken, requireAdmin, async (req: AuthReq
   }
 });
 
+/**
+ * PUT /:id/members/:userId - Désigner ou retirer le responsable.
+ *
+ * C'est lui qui approuve au nom du service et lui seul qui délègue. Un service
+ * sans responsable ne peut plus rien approuver : l'écran le signale plutôt que
+ * de laisser découvrir le blocage le jour d'une validation.
+ */
+router.put('/:id/members/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const resultat = await db.execute(
+      'UPDATE service_members SET is_manager = ? WHERE service_id = ? AND user_id = ?',
+      [req.body.is_manager ? 1 : 0, req.params.id, req.params.userId]
+    );
+    if (resultat.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Membre non trouvé' });
+    }
+
+    // Retirer le dernier responsable laisse le service sans signature possible :
+    // les délégations en cours perdent leur fondement au passage.
+    if (!req.body.is_manager) {
+      await db.execute('DELETE FROM service_delegations WHERE service_id = ?', [req.params.id]);
+    }
+
+    res.json({ success: true, data: await lireService(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.delete('/:id/members/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const resultat = await db.execute(
@@ -239,6 +289,124 @@ router.delete('/:id/members/:userId', authenticateToken, requireAdmin, async (re
       return res.status(404).json({ success: false, message: 'Membre non trouvé' });
     }
     res.json({ success: true, data: await lireService(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== DÉLÉGATIONS D'APPROBATION ========================
+//
+// Approuver engage la collectivité : la décision revient au responsable du
+// service. Quand il s'absente, il désigne lui-même qui décide à sa place — et
+// lui seul, car une délégation qui se redéléguerait rendrait la chaîne de
+// responsabilité inconnaissable.
+
+/** GET /:id/delegations - Délégations accordées par ce service. */
+router.get('/:id/delegations', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await peutDeleguerPour(req.user!.userId, req.user!.role, Number(req.params.id)))) {
+      return res.status(403).json({ success: false, message: REFUS_DELEGATION });
+    }
+    res.json({ success: true, data: await delegationsDe(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/delegations - Déléguer ses approbations.
+ *
+ * Les dates sont facultatives : sans elles, la délégation vaut jusqu'à
+ * révocation — le cas de l'adjoint permanent, aussi courant qu'un remplacement
+ * de congés.
+ */
+router.post('/:id/delegations', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const serviceId = Number(req.params.id);
+    if (!(await peutDeleguerPour(req.user!.userId, req.user!.role, serviceId))) {
+      return res.status(403).json({ success: false, message: REFUS_DELEGATION });
+    }
+
+    const { delegate_user_id, start_date, end_date } = req.body;
+    if (!delegate_user_id) {
+      return res.status(400).json({ success: false, message: 'Indiquez à qui déléguer' });
+    }
+
+    const destinataire = await db.queryOne(
+      'SELECT id, is_active, anonymized_at FROM users WHERE id = ?',
+      [delegate_user_id]
+    );
+    if (!destinataire) {
+      return res.status(404).json({ success: false, message: 'Compte introuvable' });
+    }
+    if (!destinataire.is_active || destinataire.anonymized_at) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ce compte est désactivé : il ne pourrait pas se connecter pour décider',
+      });
+    }
+
+    // Déléguer à soi-même n'ajoute rien et brouille la lecture du tableau.
+    if (Number(delegate_user_id) === req.user!.userId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vous décidez déjà pour ce service : la délégation serait sans effet',
+      });
+    }
+
+    if (start_date && end_date && start_date > end_date) {
+      return res.status(400).json({
+        success: false,
+        message: 'La fin de la délégation précède son début',
+      });
+    }
+
+    await db.execute(
+      `INSERT INTO service_delegations (service_id, delegate_user_id, granted_by, start_date, end_date, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [serviceId, delegate_user_id, req.user!.userId, start_date || null, end_date || null, new Date().toISOString()]
+    );
+
+    await logService.success(
+      'user',
+      `Délégation d'approbation accordée sur le service ${serviceId}`,
+      { delegate_user_id },
+      { userId: req.user?.userId }
+    );
+
+    res.status(201).json({ success: true, data: await delegationsDe(serviceId) });
+  } catch (error: any) {
+    const message = /UNIQUE|Duplicate/i.test(error.message)
+      ? 'Cette personne a déjà une délégation sur ce service'
+      : error.message;
+    res.status(400).json({ success: false, message });
+  }
+});
+
+/** DELETE /:id/delegations/:delegationId - Révoquer une délégation. */
+router.delete('/:id/delegations/:delegationId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const serviceId = Number(req.params.id);
+    if (!(await peutDeleguerPour(req.user!.userId, req.user!.role, serviceId))) {
+      return res.status(403).json({ success: false, message: REFUS_DELEGATION });
+    }
+
+    const resultat = await db.execute(
+      'DELETE FROM service_delegations WHERE id = ? AND service_id = ?',
+      [req.params.delegationId, serviceId]
+    );
+    if (resultat.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Délégation non trouvée' });
+    }
+
+    await logService.warning(
+      'user',
+      `Délégation d'approbation révoquée sur le service ${serviceId}`,
+      {},
+      { userId: req.user?.userId }
+    );
+
+    res.json({ success: true, data: await delegationsDe(serviceId) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

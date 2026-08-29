@@ -38,6 +38,10 @@ jest.mock('../src/database', () => {
 
 import {
   approbationsEnAttente,
+  approbationsEnAttenteHorsCoordinateur,
+  delegationActive,
+  peutDeleguerPour,
+  toutEstApprouve,
   creerApprobationsManquantes,
   destinatairesDuService,
   destinatairesManifestation,
@@ -61,12 +65,16 @@ beforeAll(() => {
     );
     CREATE TABLE services (
       id INTEGER PRIMARY KEY, name VARCHAR(255), slug VARCHAR(100), email VARCHAR(255),
-      is_observer INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1,
+      is_observer INTEGER DEFAULT 0, is_coordinator INTEGER DEFAULT 0, is_active INTEGER DEFAULT 1,
       notify_new_request INTEGER DEFAULT 1, notify_status_change INTEGER DEFAULT 1,
       notify_material_change INTEGER DEFAULT 1, notify_message INTEGER DEFAULT 1
     );
     CREATE TABLE service_categories (id INTEGER PRIMARY KEY, service_id INTEGER, category_id INTEGER);
     CREATE TABLE service_members (id INTEGER PRIMARY KEY, service_id INTEGER, user_id INTEGER, is_manager INTEGER DEFAULT 0);
+    CREATE TABLE service_delegations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, service_id INTEGER, delegate_user_id INTEGER,
+      granted_by INTEGER, start_date DATE, end_date DATE, created_at DATETIME
+    );
     CREATE TABLE manifestation_stock (
       id INTEGER PRIMARY KEY, name VARCHAR(255), category_id INTEGER, subcategory_id INTEGER
     );
@@ -103,7 +111,11 @@ beforeAll(() => {
       (4, 'Direction générale', 'direction', 'dgs@ville.fr', 1);
 
     INSERT INTO service_categories (service_id, category_id) VALUES (1, 1), (2, 2), (3, 3);
-    INSERT INTO service_members (service_id, user_id) VALUES (1, 3), (2, 2), (4, 4);
+    INSERT INTO users (id, email, first_name, last_name, role) VALUES (6, 'simple@ville.fr', 'Sim', 'Ple', 'service');
+    -- Le festif a un responsable (3) et un simple membre (6) ; l'informatique un
+    -- responsable (2) ; la direction un membre observateur (4).
+    INSERT INTO service_members (service_id, user_id, is_manager) VALUES
+      (1, 3, 1), (1, 6, 0), (2, 2, 1), (4, 4, 0);
 
     INSERT INTO manifestation_stock (id, name, category_id, subcategory_id) VALUES
       (1, 'Chaise', 1, NULL),
@@ -127,8 +139,8 @@ beforeAll(() => {
 });
 
 afterEach(() => {
-  base.exec('DELETE FROM manifestation_approvals; DELETE FROM manifestation_watchers;');
-  base.exec('UPDATE services SET is_active = 1, notify_new_request = 1, notify_status_change = 1');
+  base.exec('DELETE FROM manifestation_approvals; DELETE FROM manifestation_watchers; DELETE FROM service_delegations;');
+  base.exec('UPDATE services SET is_active = 1, is_coordinator = 0, notify_new_request = 1, notify_status_change = 1');
 });
 
 const noms = (services: any[]) => services.map((s) => s.name).sort();
@@ -228,12 +240,18 @@ describe('Blocage de la validation', () => {
 });
 
 describe('Qui peut décider', () => {
-  it('un membre décide pour son service', async () => {
+  it('le responsable décide pour son service', async () => {
     expect(await peutDeciderPour(2, 'service', 2)).toBe(true);
   });
 
-  it('un membre ne décide pas pour un autre service', async () => {
-    // Sans cette garde, n'importe qui approuverait à la place de l'informatique.
+  it('un simple membre ne décide pas', async () => {
+    // `is_manager` était enregistré et relu sans entrer dans aucune décision :
+    // tout membre approuvait au nom de son service. Approuver engage la
+    // collectivité, c'est au responsable de le faire.
+    expect(await peutDeciderPour(6, 'service', 1)).toBe(false);
+  });
+
+  it('un responsable ne décide pas pour un autre service', async () => {
     expect(await peutDeciderPour(3, 'service', 2)).toBe(false);
   });
 
@@ -243,13 +261,150 @@ describe('Qui peut décider', () => {
   });
 });
 
+describe('Délégations', () => {
+  const deleguer = (serviceId: number, userId: number, debut?: string, fin?: string) =>
+    base
+      .prepare(
+        'INSERT INTO service_delegations (service_id, delegate_user_id, granted_by, start_date, end_date) VALUES (?, ?, ?, ?, ?)'
+      )
+      .run(serviceId, userId, 3, debut ?? null, fin ?? null);
+
+  const jourDecale = (jours: number) => {
+    const date = new Date();
+    date.setDate(date.getDate() + jours);
+    return date.toISOString().split('T')[0];
+  };
+
+  it('un délégataire décide comme le responsable', async () => {
+    deleguer(1, 6);
+    expect(await peutDeciderPour(6, 'service', 1)).toBe(true);
+  });
+
+  it('sans bornes, la délégation vaut jusqu’à révocation', async () => {
+    // Le cas de l'adjoint permanent, aussi courant qu'un remplacement de congés.
+    deleguer(1, 6);
+    expect(await delegationActive(6, 1)).toBe(true);
+  });
+
+  it('une délégation à venir ne donne encore rien', async () => {
+    deleguer(1, 6, jourDecale(3), jourDecale(10));
+    expect(await peutDeciderPour(6, 'service', 1)).toBe(false);
+  });
+
+  it('une délégation expirée ne donne plus rien', async () => {
+    // Sans cette borne, un remplacement de congés durerait toujours.
+    deleguer(1, 6, jourDecale(-10), jourDecale(-1));
+    expect(await peutDeciderPour(6, 'service', 1)).toBe(false);
+  });
+
+  it('une délégation en cours donne le droit de décider', async () => {
+    deleguer(1, 6, jourDecale(-1), jourDecale(1));
+    expect(await peutDeciderPour(6, 'service', 1)).toBe(true);
+  });
+
+  it('ne vaut que pour le service qui l’a accordée', async () => {
+    deleguer(1, 6);
+    expect(await peutDeciderPour(6, 'service', 2)).toBe(false);
+  });
+
+  it('seul le responsable délègue, jamais un délégataire', async () => {
+    // Une délégation qui se redéléguerait rendrait la chaîne de responsabilité
+    // inconnaissable.
+    deleguer(1, 6);
+    expect(await peutDeleguerPour(3, 'service', 1)).toBe(true);
+    expect(await peutDeleguerPour(6, 'service', 1)).toBe(false);
+    expect(await peutDeleguerPour(1, 'admin', 1)).toBe(true);
+  });
+});
+
+describe('Service coordinateur', () => {
+  const designerCoordinateur = (serviceId: number) =>
+    base.prepare('UPDATE services SET is_coordinator = 1 WHERE id = ?').run(serviceId);
+
+  it('est sollicité même sur une manifestation qui ne le concerne pas', async () => {
+    // C'est lui qui prononce la validation finale : il ne peut jamais être
+    // absent du tableau des approbations.
+    designerCoordinateur(3);
+    const creees = await creerApprobationsManquantes(100, 1);
+
+    expect(noms(creees.map((c) => c.service))).toEqual(['Service festif', 'Service restauration']);
+  });
+
+  it('est sollicité même quand aucun matériel n’est demandé', async () => {
+    designerCoordinateur(3);
+    const creees = await creerApprobationsManquantes(400, 1);
+
+    expect(noms(creees.map((c) => c.service))).toEqual(['Service restauration']);
+  });
+
+  it('n’est pas compté parmi les approbations qu’il attend', async () => {
+    // Lui demander son avis avant que les services aient répondu le ferait
+    // valider à l'aveugle.
+    designerCoordinateur(3);
+    await creerApprobationsManquantes(300, 1);
+
+    const toutes = await approbationsEnAttente(300);
+    const horsLui = await approbationsEnAttenteHorsCoordinateur(300);
+
+    expect(toutes).toHaveLength(3);
+    expect(horsLui.map((a: any) => a.service_name).sort()).toEqual([
+      'Service festif',
+      'Service informatique',
+    ]);
+  });
+
+  it('ne considère tout approuvé que lorsque les autres ont répondu', async () => {
+    designerCoordinateur(3);
+    await creerApprobationsManquantes(300, 1);
+
+    expect(await toutEstApprouve(300)).toBe(false);
+
+    base.exec("UPDATE manifestation_approvals SET status = 'approved' WHERE service_id = 1");
+    expect(await toutEstApprouve(300)).toBe(false);
+
+    base.exec("UPDATE manifestation_approvals SET status = 'not_concerned' WHERE service_id = 2");
+    // « Non concerné » vaut accord : le service a répondu, il ne bloque rien.
+    expect(await toutEstApprouve(300)).toBe(true);
+  });
+
+  it('un refus empêche de considérer tout approuvé', async () => {
+    designerCoordinateur(3);
+    await creerApprobationsManquantes(300, 1);
+    base.exec("UPDATE manifestation_approvals SET status = 'approved' WHERE service_id = 1");
+    base.exec("UPDATE manifestation_approvals SET status = 'rejected' WHERE service_id = 2");
+
+    expect(await toutEstApprouve(300)).toBe(false);
+  });
+
+  it('voit toutes les manifestations, comme un observateur', async () => {
+    designerCoordinateur(3);
+    base.prepare('INSERT INTO service_members (service_id, user_id, is_manager) VALUES (3, 6, 1)').run();
+
+    expect(await manifestationsVisiblesParService(6)).toEqual([100, 200, 300, 400]);
+    base.prepare('DELETE FROM service_members WHERE service_id = 3').run();
+  });
+
+  it('est destinataire de tout, sans être concerné par le matériel', async () => {
+    designerCoordinateur(3);
+    await creerApprobationsManquantes(100, 1);
+
+    expect(adresses(await destinatairesManifestation(100, 'message'))).toContain('resto@ville.fr');
+  });
+});
+
 /** Adresses seules, pour comparer sans se soucier du compte porteur. */
 const adresses = (destinataires: Array<{ email: string }>) => destinataires.map((d) => d.email);
 
 describe('Destinataires', () => {
-  it('préfère la boîte partagée et y ajoute les membres', async () => {
-    // Une boîte partagée survit aux départs, contrairement à l'adresse d'un agent.
-    expect(adresses(await destinatairesDuService(1)).sort()).toEqual(['festif@ville.fr', 'fetes@ville.fr']);
+  it('préfère la boîte partagée et y ajoute tous les membres', async () => {
+    // Une boîte partagée survit aux départs, contrairement à l'adresse d'un
+    // agent. Tous les membres reçoivent — décider est une autre affaire, et
+    // c'est celle du seul responsable.
+    expect(adresses(await destinatairesDuService(1)).sort()).toEqual([
+      'festif@ville.fr',
+      'fetes@ville.fr',
+      'simple@ville.fr',
+    ]);
   });
 
   it('retombe sur les membres quand le service n’a pas de boîte', async () => {

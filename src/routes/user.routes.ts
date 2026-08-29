@@ -6,6 +6,8 @@ import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth
 import { ROLES, isRole } from '../config/roles';
 import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.service';
 import { notifierWebhooks } from '../services/webhook.service';
+import { logService } from '../services/log.service';
+import { anonymiser, desactiver, estDernierAdmin, tracesDe } from '../services/comptes.service';
 
 const router = Router();
 
@@ -358,8 +360,45 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
       return res.status(400).json({ success: false, message: 'Vous ne pouvez pas vous supprimer vous-même' });
     }
 
-    const result = await db.execute('DELETE FROM users WHERE id = ?', [id]);
+    const compte = await db.queryOne('SELECT id FROM users WHERE id = ?', [id]);
+    if (!compte) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+    }
 
+    if (await estDernierAdmin(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "C'est le dernier administrateur actif : plus personne ne pourrait configurer l'application"
+      });
+    }
+
+    /**
+     * Supprimer effaçait la ligne, et chaque clé étrangère en `ON DELETE SET
+     * NULL` vidait au passage l'auteur des décisions, des messages et de
+     * l'historique. Une manifestation perdait la trace de qui l'avait validée le
+     * jour où la personne quittait la collectivité — précisément ce qu'un litige
+     * exige de retrouver, des mois plus tard.
+     *
+     * Un compte qui a laissé des traces est donc désactivé, jamais effacé. Pour
+     * le RGPD, `POST /:id/anonymize` retire l'identité en gardant les liens.
+     */
+    const traces = await tracesDe(id);
+    if (traces.total > 0) {
+      await desactiver(id);
+      await logService.warning('user', `Compte désactivé (traces conservées) : ${id}`, { traces }, { userId: req.user?.userId });
+
+      return res.json({
+        success: true,
+        desactive: true,
+        traces,
+        message:
+          'Ce compte a participé à des manifestations : il a été désactivé, pas supprimé. ' +
+          "L'effacer retirerait de l'historique le nom de qui a validé, livré ou échangé. " +
+          "Utilisez l'anonymisation si le RGPD l'exige."
+      });
+    }
+
+    const result = await db.execute('DELETE FROM users WHERE id = ?', [id]);
     if (result.changes === 0) {
       return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
     }
@@ -368,6 +407,49 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
   } catch (error: any) {
     console.error('Erreur delete user:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * GET /api/users/:id/traces - Ce qu'un compte laisserait derrière lui.
+ *
+ * Affiché avant toute suppression : l'administrateur doit savoir ce qu'il
+ * s'apprête à retirer, plutôt que de le découvrir après coup.
+ */
+router.get('/:id/traces', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const compte = await db.queryOne('SELECT id, anonymized_at FROM users WHERE id = ?', [req.params.id]);
+    if (!compte) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+    }
+
+    res.json({
+      success: true,
+      data: { traces: await tracesDe(req.params.id), anonymized_at: compte.anonymized_at }
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /api/users/:id/anonymize - Retirer l'identité, garder les liens.
+ *
+ * Ce que le RGPD demande sans détruire la traçabilité : « qui a validé cette
+ * manifestation ? » garde une réponse — un compte, distinct des autres — sans
+ * que cette réponse nomme quelqu'un. Irréversible.
+ */
+router.post('/:id/anonymize', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const resultat = await anonymiser(req.params.id, req.user?.userId);
+    if (!resultat.ok) {
+      return res.status(400).json({ success: false, message: resultat.message });
+    }
+
+    await logService.warning('security', `Compte anonymisé : ${req.params.id}`, {}, { userId: req.user?.userId });
+    res.json({ success: true, message: resultat.message });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

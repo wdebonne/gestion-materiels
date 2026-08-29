@@ -218,6 +218,31 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 - **`objectScope.test.ts` a rattrapé une fuite pendant l'écriture** : le nouveau service lisait `objects` sans porter la règle de portée. Plutôt que de l'exempter, la règle a été déplacée à l'intérieur — un appelant ne peut plus l'oublier
 
+### Manifestations — responsables, délégations, service coordinateur, comptes anonymisables
+
+> Trois manques, tous constatés à l'usage. `service_members.is_manager` était enregistré et relu, mais n'entrait dans aucune décision : n'importe quel membre approuvait au nom de son service. Rien ne permettait de désigner le service qui pilote *toutes* les manifestations et prononce la validation. Et `DELETE /users/:id` effaçait la ligne, vidant au passage l'auteur des décisions, des messages et de l'historique.
+
+#### Ajouté
+
+- **Responsable de service.** Approuver engage la collectivité : la décision revient au responsable, désigné dans l'écran des services. Un simple membre reçoit les avis du service mais n'engage pas sa signature — et le refus le dit précisément, plutôt que de laisser chercher. Un service sans responsable est signalé : il ne peut rien approuver, et une manifestation qui l'attend resterait bloquée
+- **Délégation d'approbation.** Le responsable — et lui seul — désigne qui décide à sa place. Une délégation ne se redélègue pas : la chaîne de responsabilité doit rester connaissable. Les dates sont facultatives, sans elles la délégation vaut jusqu'à révocation — le cas de l'adjoint permanent, aussi courant qu'un remplacement de congés
+- **Service coordinateur.** Le service qui pilote toutes les manifestations — Culture et Communication ici, un autre ailleurs. Il est sollicité sur **chaque** manifestation, même celle qui ne touche pas son périmètre, voit tout, reçoit tout, y compris les messages
+  - **Son approbation prononce la validation** : la manifestation bascule d'elle-même. Lui faire approuver puis exiger un second geste dédoublerait la décision, et laisserait une manifestation approuvée par tous rester en brouillon parce que personne n'a cliqué une seconde fois
+  - Il ne peut pas trancher avant que les services concernés aient répondu : valider à l'aveugle viderait sa signature de son sens. Le refus nomme qui manque
+  - Un seul service à la fois : le désigner retire le rôle au précédent, plutôt que de laisser deux services se disputer la validation sans qu'on sache lequel tranche
+  - « Non concerné » vaut accord : le service a répondu, il ne bloque rien
+- **Anonymisation d'un compte (RGPD).** L'identité est remplacée, tous les liens sont conservés : « qui a validé cette manifestation ? » garde une réponse — un compte, distinct des autres — sans que cette réponse nomme quelqu'un. Deux personnes anonymisées ne se confondent pas, ce qu'un simple « inconnu » ne permettrait pas
+  - Le mot de passe est remplacé par une valeur aléatoire jamais communiquée : laisser l'ancien permettrait de se reconnecter sous une identité effacée
+  - Appartenances aux services, délégations reçues, droits et préférences sont retirés — une délégation laissée derrière soi donnerait un pouvoir de décision à un compte fermé. L'historique, lui, n'est jamais touché
+  - Refusée sur soi-même, sur un compte déjà anonymisé, et sur le dernier administrateur actif
+
+#### Corrigé
+
+- **Supprimer un compte effaçait qui avait fait quoi.** Chaque clé étrangère en `ON DELETE SET NULL` vidait l'auteur des décisions, des messages et de l'historique : une manifestation perdait la trace de qui l'avait validée le jour où la personne quittait la collectivité — précisément ce qu'un litige exige de retrouver, des mois plus tard. Un compte qui a laissé des traces est désormais **désactivé, jamais effacé**, et l'écran énumère ce qui serait perdu avant de demander confirmation. La suppression réelle reste possible pour un compte qui n'a rien laissé
+- **`POST /services` ignorait le drapeau coordinateur** : créer le service pilote depuis l'écran ne le désignait pas, et il n'était sollicité sur aucune manifestation. Trouvé à l'essai sur l'application
+- **Le cloisonnement interdisait à un responsable de gérer ses délégations** : `/api/services` était ouvert en lecture seule, et déléguer est une écriture. Le seul geste qui lui revient en propre lui était refusé
+- **Le refus opposé à un membre non responsable était trompeur** — « vous ne pouvez répondre que pour votre service », alors qu'il en fait partie. Les deux cas sont distingués : ils n'appellent pas la même action
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

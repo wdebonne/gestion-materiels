@@ -654,6 +654,8 @@ export interface Service {
   email: string | null
   description: string | null
   is_observer: number
+  /** Service qui pilote toutes les manifestations et prononce la validation finale. */
+  is_coordinator: number
   is_active: number
   notify_new_request: number
   notify_status_change: number
@@ -716,8 +718,13 @@ export const serviceApi = {
   getAll: () => api.get<{ success: boolean; data: Service[] }>('/services'),
   getMine: () => api.get<{ success: boolean; data: Service[] }>('/services/mine'),
   getById: (id: number) => api.get<{ success: boolean; data: Service }>(`/services/${id}`),
-  create: (data: { name: string; email?: string; description?: string; is_observer?: boolean }) =>
-    api.post<{ success: boolean; data: Service }>('/services', data),
+  create: (data: {
+    name: string
+    email?: string
+    description?: string
+    is_observer?: boolean
+    is_coordinator?: boolean
+  }) => api.post<{ success: boolean; data: Service }>('/services', data),
   update: (id: number, data: Partial<Service> & { name: string }) =>
     api.put<{ success: boolean; data: Service }>(`/services/${id}`, data),
   remove: (id: number) =>
@@ -942,4 +949,57 @@ export const notificationApi = {
     api.get<{ success: boolean; data: PreferenceNotification[] }>('/notifications/preferences'),
   savePreference: (event: string, enabled: boolean) =>
     api.put<{ success: boolean }>('/notifications/preferences', { event, enabled }),
+}
+
+
+// ======================== DÉLÉGATIONS ET FIN DE VIE DES COMPTES ========================
+
+export interface Delegation {
+  id: number
+  service_id: number
+  delegate_user_id: number
+  delegate_name: string
+  delegate_email: string
+  granted_by_name: string | null
+  start_date: string | null
+  end_date: string | null
+  created_at: string
+}
+
+export const delegationApi = {
+  lister: (serviceId: number) =>
+    api.get<{ success: boolean; data: Delegation[] }>(`/services/${serviceId}/delegations`),
+  accorder: (
+    serviceId: number,
+    data: { delegate_user_id: number; start_date?: string; end_date?: string }
+  ) => api.post<{ success: boolean; data: Delegation[] }>(`/services/${serviceId}/delegations`, data),
+  revoquer: (serviceId: number, delegationId: number) =>
+    api.delete<{ success: boolean; data: Delegation[] }>(
+      `/services/${serviceId}/delegations/${delegationId}`
+    ),
+  /** Désigner ou retirer le responsable d'un service. */
+  definirResponsable: (serviceId: number, userId: number, is_manager: boolean) =>
+    api.put<{ success: boolean; data: Service }>(`/services/${serviceId}/members/${userId}`, {
+      is_manager,
+    }),
+}
+
+/** Ce qu'un compte laisserait derrière lui s'il était supprimé. */
+export interface TracesCompte {
+  manifestations_creees: number
+  historique: number
+  decisions: number
+  messages: number
+  services: number
+  total: number
+}
+
+export const compteApi = {
+  getTraces: (userId: number) =>
+    api.get<{ success: boolean; data: { traces: TracesCompte; anonymized_at: string | null } }>(
+      `/users/${userId}/traces`
+    ),
+  /** Retire l'identité, conserve les liens. Irréversible. */
+  anonymiser: (userId: number) =>
+    api.post<{ success: boolean; message: string }>(`/users/${userId}/anonymize`, {}),
 }

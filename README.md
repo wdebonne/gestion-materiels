@@ -121,6 +121,8 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 🪑 **Quantités réelles** : demandé, livré, récupéré et **perdu**. Une chaise cassée ou volée diminue le stock physique et laisse un mouvement tracé
 - 🏛️ **Services concernés** : un service est un groupe de personnes et un périmètre de catégories. Il n'est sollicité, alerté et destinataire que si la manifestation demande du matériel de son périmètre — le service informatique ne reçoit rien d'une brocante sans matériel informatique
 - ✅ **Approbations** : chaque service concerné approuve sa part, avec ses propres dates de livraison et de récupération. La validation reste bloquée tant qu'un service n'a pas répondu
+- 👤 **Responsable et délégations** : seul le responsable d'un service approuve en son nom, et lui seul désigne qui décide à sa place pendant son absence
+- 👑 **Service coordinateur** : le service qui pilote toutes les manifestations — sollicité sur chacune, destinataire de tout, et son approbation **prononce la validation**
 - 💬 **Conversation** : les services échangent dans le fil de la manifestation ; tout est consigné dans l'historique et dans l'archive
 - 👀 **Mise en copie** : une direction générale, un maire ou un élu suit l'intégralité des échanges sans rien approuver
 - 🚚 **Deux natures de matériel** : des **quantités** (50 tables d'un même modèle, sans les saisir une par une) et des **exemplaires uniques** choisis dans le parc (un véhicule, un vidéoprojecteur identifié). Deux manifestations peuvent se partager cent chaises ; elles ne peuvent pas se partager le camion, et le conflit est signalé avec qui le retient et quand
@@ -572,6 +574,19 @@ GET    /api/manifestations/objects/search   # Parc sur une période, avec ce qui
 GET    /api/manifestations/:id/objects      # Matériels uniques demandés
 PUT    /api/manifestations/:id/objects      # Remplace la liste (rend les conflits)
 PUT    /api/manifestations/:id/objects/:itemId  # Sortie, retour, état constaté
+```
+
+**Délégations et fin de vie d'un compte**
+
+```
+GET    /api/services/:id/delegations       # Délégations accordées (responsable)
+POST   /api/services/:id/delegations       # Déléguer ses approbations
+DELETE /api/services/:id/delegations/:did  # Révoquer
+PUT    /api/services/:id/members/:userId   # Désigner ou retirer le responsable
+
+GET    /api/users/:id/traces      # Ce qu'un compte laisserait derrière lui
+POST   /api/users/:id/anonymize   # Retire l'identité, conserve les liens (RGPD)
+DELETE /api/users/:id             # Supprime, ou désactive si le compte a des traces
 ```
 
 **Notifications**

@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Building2, Plus, Trash2, Eye, UserPlus, X } from 'lucide-react'
+import { Building2, Plus, Trash2, Eye, UserPlus, X, Crown, Star, UserCheck } from 'lucide-react'
 import {
   Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert, Badge,
   Modal, ModalBody, ModalFooter, Spinner, TextArea
 } from '@/components/ui'
-import api, { serviceApi, type Service } from '@/lib/api'
+import api, { serviceApi, delegationApi, type Service } from '@/lib/api'
 import toast from 'react-hot-toast'
 
 /**
@@ -33,8 +33,13 @@ export default function ServicesPage() {
   const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['services'] })
 
   const creation = useMutation({
-    mutationFn: (data: { name: string; email?: string; description?: string; is_observer?: boolean }) =>
-      serviceApi.create(data),
+    mutationFn: (data: {
+      name: string
+      email?: string
+      description?: string
+      is_observer?: boolean
+      is_coordinator?: boolean
+    }) => serviceApi.create(data),
     onSuccess: (res) => {
       rafraichir()
       setCreationOuverte(false)
@@ -89,6 +94,9 @@ export default function ServicesPage() {
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-medium text-gray-900 dark:text-gray-100">{service.name}</span>
+                      {service.is_coordinator ? (
+                        <Badge variant="success"><Crown className="w-3 h-3 inline mr-1" />Coordinateur</Badge>
+                      ) : null}
                       {service.is_observer ? (
                         <Badge variant="info"><Eye className="w-3 h-3 inline mr-1" />Observateur</Badge>
                       ) : null}
@@ -101,7 +109,7 @@ export default function ServicesPage() {
                       {service.members_count ?? 0} membre(s)
                       {!service.is_observer && ` · ${service.categories_count ?? 0} catégorie(s)`}
                     </p>
-                    {!service.is_observer && (service.categories_count ?? 0) === 0 && (
+                    {!service.is_observer && !service.is_coordinator && (service.categories_count ?? 0) === 0 && (
                       <p className="text-xs text-yellow-700 dark:text-yellow-500 mt-1">
                         Sans catégorie, ce service ne sera jamais sollicité.
                       </p>
@@ -145,13 +153,20 @@ export default function ServicesPage() {
 
 function ModaleCreation({ onClose, onSave, loading }: {
   onClose: () => void
-  onSave: (data: { name: string; email?: string; description?: string; is_observer?: boolean }) => void
+  onSave: (data: {
+    name: string
+    email?: string
+    description?: string
+    is_observer?: boolean
+    is_coordinator?: boolean
+  }) => void
   loading: boolean
 }) {
   const [nom, setNom] = useState('')
   const [email, setEmail] = useState('')
   const [description, setDescription] = useState('')
   const [observateur, setObservateur] = useState(false)
+  const [coordinateur, setCoordinateur] = useState(false)
 
   return (
     <Modal isOpen onClose={onClose} title="Nouveau service">
@@ -176,12 +191,29 @@ function ModaleCreation({ onClose, onSave, loading }: {
               C'est la case d'une direction générale ou d'élus.
             </span>
           </label>
+          <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" className="mt-1" checked={coordinateur}
+              onChange={(e) => setCoordinateur(e.target.checked)} />
+            <span>
+              <strong>Coordinateur</strong> — pilote toutes les manifestations : il est sollicité
+              sur chacune, reçoit tout, et son approbation prononce la validation. Un seul service
+              à la fois.
+            </span>
+          </label>
         </div>
       </ModalBody>
       <ModalFooter>
         <Button variant="outline" onClick={onClose}>Annuler</Button>
         <Button loading={loading} disabled={!nom.trim()}
-          onClick={() => onSave({ name: nom.trim(), email: email.trim() || undefined, description, is_observer: observateur })}>
+          onClick={() =>
+            onSave({
+              name: nom.trim(),
+              email: email.trim() || undefined,
+              description,
+              is_observer: observateur,
+              is_coordinator: coordinateur,
+            })
+          }>
           Créer
         </Button>
       </ModalFooter>
@@ -245,6 +277,13 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
     onError: surErreur,
   })
 
+  const responsable = useMutation({
+    mutationFn: ({ userId, is_manager }: { userId: number; is_manager: boolean }) =>
+      delegationApi.definirResponsable(serviceId, userId, is_manager),
+    onSuccess: rafraichir,
+    onError: surErreur,
+  })
+
   const retraitMembre = useMutation({
     mutationFn: (userId: number) => serviceApi.removeMember(serviceId, userId),
     onSuccess: rafraichir,
@@ -274,6 +313,38 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
           <div className="flex justify-center py-10"><Spinner /></div>
         ) : (
           <div className="space-y-4">
+            <Card>
+              <CardHeader><CardTitle className="text-sm">Rôle du service</CardTitle></CardHeader>
+              <CardBody className="space-y-2">
+                <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={Boolean(service.is_coordinator)}
+                    onChange={(e) => reglages.mutate({ is_coordinator: e.target.checked ? 1 : 0 })}
+                  />
+                  <span>
+                    <strong>Coordinateur des manifestations</strong> — sollicité sur chacune, même
+                    celles qui ne touchent pas son périmètre. Il reçoit tout, voit tout, et son
+                    approbation <strong>prononce la validation</strong> une fois les services
+                    concernés ont répondu. Le désigner retire ce rôle au service qui l'avait.
+                  </span>
+                </label>
+                <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={Boolean(service.is_observer)}
+                    onChange={(e) => reglages.mutate({ is_observer: e.target.checked ? 1 : 0 })}
+                  />
+                  <span>
+                    <strong>Observateur</strong> — suit tout sans rien approuver. Direction
+                    générale, maire, élus.
+                  </span>
+                </label>
+              </CardBody>
+            </Card>
+
             <Card>
               <CardHeader><CardTitle className="text-sm">Périmètre de matériel</CardTitle></CardHeader>
               <CardBody>
@@ -310,20 +381,50 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
             <Card>
               <CardHeader><CardTitle className="text-sm">Membres</CardTitle></CardHeader>
               <CardBody className="space-y-3">
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Tous les membres reçoivent les avis du service. Seul le <strong>responsable</strong>
+                  approuve en son nom — et lui seul peut déléguer.
+                </p>
+
                 {(service.members ?? []).length > 0 && (
-                  <div className="flex flex-wrap gap-2">
+                  <div className="space-y-1">
                     {service.members!.map((membre) => (
-                      <span key={membre.id}
-                        className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
-                        {membre.first_name} {membre.last_name}
+                      <div key={membre.id}
+                        className="flex flex-wrap items-center gap-2 p-2 rounded bg-gray-50 dark:bg-gray-800">
+                        <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">
+                          {membre.first_name} {membre.last_name}
+                          <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{membre.email}</span>
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => responsable.mutate({ userId: membre.id, is_manager: !membre.is_manager })}
+                          className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${
+                            membre.is_manager
+                              ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                              : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
+                          }`}
+                          title={membre.is_manager ? 'Retirer le rôle de responsable' : 'Désigner responsable'}
+                        >
+                          <Star className={`w-3 h-3 ${membre.is_manager ? 'fill-current' : ''}`} />
+                          {membre.is_manager ? 'Responsable' : 'Désigner'}
+                        </button>
                         <button type="button" onClick={() => retraitMembre.mutate(membre.id)}
                           aria-label={`Retirer ${membre.first_name} ${membre.last_name}`}
-                          className="hover:text-red-600">
-                          <X className="w-3 h-3" />
+                          className="p-1 hover:text-red-600">
+                          <X className="w-4 h-4" />
                         </button>
-                      </span>
+                      </div>
                     ))}
                   </div>
+                )}
+
+                {(service.members ?? []).length > 0 && !(service.members ?? []).some((m) => m.is_manager) && (
+                  <Alert type="warning">
+                    <span className="text-sm">
+                      Aucun responsable désigné : ce service ne peut rien approuver, et une
+                      manifestation qui l'attend restera bloquée.
+                    </span>
+                  </Alert>
                 )}
                 <div className="flex gap-2">
                   <Select
@@ -344,6 +445,8 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
                 </div>
               </CardBody>
             </Card>
+
+            <Delegations serviceId={serviceId} membres={service.members ?? []} />
 
             <Card>
               <CardHeader><CardTitle className="text-sm">Ce que ce service reçoit</CardTitle></CardHeader>
@@ -371,5 +474,136 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
         <Button onClick={onClose}>Fermer</Button>
       </ModalFooter>
     </Modal>
+  )
+}
+
+/**
+ * Délégations d'approbation d'un service.
+ *
+ * Approuver engage la collectivité : la décision revient au responsable. Quand
+ * il s'absente, il désigne lui-même qui décide à sa place — et lui seul, car une
+ * délégation qui se redéléguerait rendrait la chaîne de responsabilité
+ * inconnaissable.
+ */
+function Delegations({ serviceId, membres }: {
+  serviceId: number
+  membres: Array<{ id: number; first_name: string; last_name: string; email: string; is_manager: number }>
+}) {
+  const queryClient = useQueryClient()
+  const [destinataire, setDestinataire] = useState('')
+  const [debut, setDebut] = useState('')
+  const [fin, setFin] = useState('')
+
+  const { data: delegations = [], isError } = useQuery({
+    queryKey: ['service-delegations', serviceId],
+    queryFn: async () => (await delegationApi.lister(serviceId)).data.data,
+    // Un compte qui n'est pas responsable reçoit un 403 : ce n'est pas une
+    // panne, il n'a simplement rien à gérer ici.
+    retry: false,
+  })
+
+  const rafraichir = () =>
+    queryClient.invalidateQueries({ queryKey: ['service-delegations', serviceId] })
+
+  const accorder = useMutation({
+    mutationFn: () =>
+      delegationApi.accorder(serviceId, {
+        delegate_user_id: Number(destinataire),
+        start_date: debut || undefined,
+        end_date: fin || undefined,
+      }),
+    onSuccess: () => {
+      rafraichir()
+      setDestinataire('')
+      setDebut('')
+      setFin('')
+      toast.success('Délégation accordée')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur'),
+  })
+
+  const revoquer = useMutation({
+    mutationFn: (id: number) => delegationApi.revoquer(serviceId, id),
+    onSuccess: () => {
+      rafraichir()
+      toast.success('Délégation révoquée')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur'),
+  })
+
+  if (isError) return null
+
+  const formatDate = (valeur: string | null) =>
+    valeur ? new Date(valeur).toLocaleDateString('fr-FR') : null
+
+  const periode = (d: { start_date: string | null; end_date: string | null }) => {
+    const debutTexte = formatDate(d.start_date)
+    const finTexte = formatDate(d.end_date)
+    if (!debutTexte && !finTexte) return "jusqu'à révocation"
+    if (debutTexte && finTexte) return `du ${debutTexte} au ${finTexte}`
+    return debutTexte ? `à partir du ${debutTexte}` : `jusqu'au ${finTexte}`
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-sm flex items-center gap-2">
+          <UserCheck className="w-4 h-4" /> Délégations d'approbation
+        </CardTitle>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Le délégataire approuve à la place du responsable pendant la période indiquée. Sans dates,
+          la délégation vaut jusqu'à révocation — le cas d'un adjoint permanent.
+        </p>
+
+        {delegations.length > 0 && (
+          <div className="space-y-1">
+            {delegations.map((d) => (
+              <div key={d.id}
+                className="flex flex-wrap items-center gap-2 p-2 rounded bg-gray-50 dark:bg-gray-800">
+                <span className="text-sm text-gray-900 dark:text-gray-100 flex-1 min-w-0">
+                  {d.delegate_name}
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{periode(d)}</span>
+                </span>
+                <button type="button" onClick={() => revoquer.mutate(d.id)}
+                  aria-label={`Révoquer la délégation de ${d.delegate_name}`}
+                  className="p-1 hover:text-red-600">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1 min-w-[12rem]">
+            <Select
+              label="Déléguer à"
+              value={destinataire}
+              onChange={(e) => setDestinataire(e.target.value)}
+              options={[
+                { value: '', label: '— Choisir un membre —' },
+                ...membres
+                  .filter((m) => !m.is_manager)
+                  .map((m) => ({ value: m.id, label: `${m.first_name} ${m.last_name}` })),
+              ]}
+            />
+          </div>
+          <div className="w-36">
+            <Input label="Du (facultatif)" type="date" size="sm" value={debut}
+              onChange={(e) => setDebut(e.target.value)} />
+          </div>
+          <div className="w-36">
+            <Input label="Au (facultatif)" type="date" size="sm" value={fin}
+              onChange={(e) => setFin(e.target.value)} />
+          </div>
+          <Button size="sm" variant="outline" disabled={!destinataire} loading={accorder.isPending}
+            onClick={() => accorder.mutate()}>
+            Déléguer
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
   )
 }

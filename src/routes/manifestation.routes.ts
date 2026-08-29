@@ -20,9 +20,12 @@ import { logService } from '../services/log.service';
 import {
   approbationsDe,
   approbationsEnAttente,
+  approbationsEnAttenteHorsCoordinateur,
   creerApprobationsManquantes,
   peutDeciderPour,
+  serviceCoordinateur,
   servicesDe,
+  toutEstApprouve,
 } from '../services/manifestationServices.service';
 import {
   notifierDecision,
@@ -1222,10 +1225,40 @@ router.put('/:id/approvals/:approvalId', authenticateToken, async (req: AuthRequ
       : approbation.user_id === req.user!.userId || req.user!.role === 'admin';
 
     if (!autorise) {
+      // Distinguer les deux refus : « ce n'est pas votre service » et « vous en
+      // êtes membre mais pas responsable » n'appellent pas la même action, et un
+      // message unique laisserait chercher.
+      const membre = approbation.service_id
+        ? await db.queryOne('SELECT id FROM service_members WHERE user_id = ? AND service_id = ?', [
+            req.user!.userId,
+            approbation.service_id,
+          ])
+        : null;
+
       return res.status(403).json({
         success: false,
-        message: 'Vous ne pouvez répondre que pour votre service',
+        message: membre
+          ? "Seul le responsable du service, ou son délégataire, peut approuver en son nom"
+          : 'Vous ne pouvez répondre que pour votre service',
       });
+    }
+
+    // Le coordinateur tranche en dernier : lui demander son avis avant que les
+    // services aient répondu le ferait valider à l'aveugle, ce qui viderait sa
+    // signature de son sens.
+    const coordinateur = await serviceCoordinateur();
+    const estCoordinateur = Boolean(coordinateur && approbation.service_id === coordinateur.id);
+
+    if (estCoordinateur && status === 'approved') {
+      const restantes = await approbationsEnAttenteHorsCoordinateur(req.params.id);
+      if (restantes.length > 0) {
+        const noms = restantes.map((a: any) => a.service_name || 'un destinataire').join(', ');
+        return res.status(409).json({
+          success: false,
+          message: `Les services concernés n'ont pas tous répondu : ${noms}`,
+          approbations_en_attente: restantes,
+        });
+      }
     }
 
     await db.execute(
@@ -1250,10 +1283,44 @@ router.put('/:id/approvals/:approvalId', authenticateToken, async (req: AuthRequ
       comment: [service?.name, comment?.trim()].filter(Boolean).join(' — ') || null,
     });
 
-    const m = await db.queryOne('SELECT title FROM manifestations WHERE id = ?', [req.params.id]);
+    const m = await db.queryOne('SELECT title, status FROM manifestations WHERE id = ?', [req.params.id]);
     notifierDecision(req.params.id, m?.title ?? '', status, service?.name ?? null, comment?.trim() || null);
 
-    res.json({ success: true, data: await approbationsDe(req.params.id) });
+    /**
+     * L'accord du coordinateur **est** la validation.
+     *
+     * Lui faire approuver puis exiger qu'un second geste change le statut
+     * dédoublerait la décision, et laisserait une manifestation approuvée par
+     * tous rester en brouillon parce que personne n'a cliqué une seconde fois.
+     */
+    let validee = false;
+    if (
+      estCoordinateur &&
+      status === 'approved' &&
+      m &&
+      ['pending', 'draft'].includes(m.status) &&
+      (await toutEstApprouve(req.params.id))
+    ) {
+      await db.execute(
+        "UPDATE manifestations SET status = 'validated', updated_at = ? WHERE id = ?",
+        [new Date().toISOString(), req.params.id]
+      );
+      await consignerHistorique(req.params.id, req.user!.userId, LIBELLES_TRANSITION.validated, {
+        fromStatus: m.status,
+        toStatus: 'validated',
+        comment: `Validée par ${service?.name ?? 'le service coordinateur'}`,
+      });
+      notifierWebhooks('manifestation.status_changed', {
+        id: Number(req.params.id),
+        title: m.title,
+        from: m.status,
+        to: 'validated',
+      });
+      redeposerSuivi();
+      validee = true;
+    }
+
+    res.json({ success: true, data: await approbationsDe(req.params.id), manifestation_validee: validee });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

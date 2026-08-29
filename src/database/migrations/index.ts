@@ -5,6 +5,7 @@ import manifestationsReception from './003_manifestations_reception';
 import servicesApprobations from './004_services_approbations';
 import exportManifestations from './005_export_manifestations';
 import materielUniqueEtNotifications from './006_materiel_unique_et_notifications';
+import responsablesDelegationsCoordination from './007_responsables_delegations_coordination';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -22,6 +23,7 @@ export const MIGRATIONS: readonly Migration[] = [
   servicesApprobations,
   exportManifestations,
   materielUniqueEtNotifications,
+  responsablesDelegationsCoordination,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

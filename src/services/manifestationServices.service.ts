@@ -70,6 +70,16 @@ export async function creerApprobationsManquantes(
   demandeurId?: number
 ): Promise<any[]> {
   const concernes = await servicesConcernes(manifestationId);
+
+  // Le service coordinateur est sollicité sur **toute** manifestation, même
+  // celle qui ne demande aucun matériel de son périmètre : c'est lui qui
+  // prononce la validation finale, il ne peut donc jamais être absent du
+  // tableau des approbations.
+  const coordinateur = await serviceCoordinateur();
+  if (coordinateur && !concernes.some((s: any) => s.id === coordinateur.id)) {
+    concernes.push(coordinateur);
+  }
+
   if (concernes.length === 0) return [];
 
   const existantes = await db.query(
@@ -128,6 +138,39 @@ export async function approbationsEnAttente(manifestationId: number | string): P
   );
 }
 
+/**
+ * Approbations attendues **des autres** que le coordinateur.
+ *
+ * Le coordinateur tranche en dernier : lui demander son avis avant que les
+ * services aient répondu le ferait valider à l'aveugle, ce qui viderait sa
+ * signature de son sens.
+ */
+export async function approbationsEnAttenteHorsCoordinateur(
+  manifestationId: number | string
+): Promise<any[]> {
+  const attendues = await approbationsEnAttente(manifestationId);
+  const coordinateur = await serviceCoordinateur();
+  if (!coordinateur) return attendues;
+
+  return attendues.filter((a: any) => a.service_id !== coordinateur.id);
+}
+
+/** Toutes les approbations hors coordinateur sont-elles favorables ? */
+export async function toutEstApprouve(manifestationId: number | string): Promise<boolean> {
+  const coordinateur = await serviceCoordinateur();
+
+  const bloquantes = await db.query(
+    `SELECT a.status, a.service_id FROM manifestation_approvals a
+     WHERE a.manifestation_id = ? AND a.kind = 'approbation'`,
+    [manifestationId]
+  );
+
+  return bloquantes
+    .filter((a: any) => !coordinateur || a.service_id !== coordinateur.id)
+    // « Non concerné » vaut accord : le service a répondu, il ne bloque rien.
+    .every((a: any) => a.status === 'approved' || a.status === 'not_concerned');
+}
+
 /** Services auxquels appartient un compte. */
 export async function servicesDe(userId: number): Promise<any[]> {
   return db.query(
@@ -142,8 +185,19 @@ export async function servicesDe(userId: number): Promise<any[]> {
 /**
  * Ce compte peut-il décider à la place de ce service ?
  *
- * Un administrateur le peut toujours : c'est lui qui débloque une manifestation
- * quand un service ne répond pas. Sinon, il faut être membre du service.
+ * Approuver engage la collectivité. Ce n'était jusqu'ici l'affaire de personne
+ * en particulier : `is_manager` était enregistré et relu, mais n'entrait dans
+ * aucune décision, si bien que tout membre pouvait approuver au nom de son
+ * service. Trois portes, et trois seulement :
+ *
+ * - **l'administrateur**, qui débloque une manifestation quand un service ne
+ *   répond pas ;
+ * - **le responsable du service**, à qui la décision revient ;
+ * - **un délégataire**, que le responsable a désigné pour une période — le cas
+ *   des congés, et celui de l'adjoint permanent.
+ *
+ * Être simple membre ne suffit plus : on reçoit les avis du service, on n'engage
+ * pas sa signature.
  */
 export async function peutDeciderPour(
   userId: number,
@@ -152,11 +206,73 @@ export async function peutDeciderPour(
 ): Promise<boolean> {
   if (role === 'admin') return true;
 
-  const membre = await db.queryOne(
-    'SELECT id FROM service_members WHERE user_id = ? AND service_id = ?',
+  const responsable = await db.queryOne(
+    'SELECT id FROM service_members WHERE user_id = ? AND service_id = ? AND is_manager = 1',
     [userId, serviceId]
   );
-  return Boolean(membre);
+  if (responsable) return true;
+
+  return delegationActive(userId, serviceId);
+}
+
+/**
+ * Une délégation en cours couvre-t-elle ce compte pour ce service ?
+ *
+ * Les bornes sont facultatives et comparées au jour : sans elles, la délégation
+ * vaut jusqu'à révocation. Les comparer en SQL laisserait le dialecte décider du
+ * format ; la date du jour est passée en paramètre, comme partout ailleurs.
+ */
+export async function delegationActive(userId: number, serviceId: number): Promise<boolean> {
+  const jour = new Date().toISOString().split('T')[0];
+
+  const delegation = await db.queryOne(
+    `SELECT id FROM service_delegations
+     WHERE delegate_user_id = ? AND service_id = ?
+       AND (start_date IS NULL OR start_date <= ?)
+       AND (end_date IS NULL OR end_date >= ?)`,
+    [userId, serviceId, jour, jour]
+  );
+  return Boolean(delegation);
+}
+
+/**
+ * Ce compte peut-il gérer les délégations de ce service ?
+ *
+ * Le responsable, et lui seul — pas ses délégataires : une délégation ne se
+ * redélègue pas, sans quoi la chaîne de responsabilité deviendrait
+ * inconnaissable. L'administrateur reste maître, comme partout.
+ */
+export async function peutDeleguerPour(
+  userId: number,
+  role: string,
+  serviceId: number
+): Promise<boolean> {
+  if (role === 'admin') return true;
+
+  const responsable = await db.queryOne(
+    'SELECT id FROM service_members WHERE user_id = ? AND service_id = ? AND is_manager = 1',
+    [userId, serviceId]
+  );
+  return Boolean(responsable);
+}
+
+/** Délégations en cours et à venir d'un service, avec le nom du délégataire. */
+export async function delegationsDe(serviceId: number | string): Promise<any[]> {
+  return db.query(
+    `SELECT d.*, (u.first_name || ' ' || u.last_name) as delegate_name, u.email as delegate_email,
+            (g.first_name || ' ' || g.last_name) as granted_by_name
+     FROM service_delegations d
+     JOIN users u ON u.id = d.delegate_user_id
+     LEFT JOIN users g ON g.id = d.granted_by
+     WHERE d.service_id = ?
+     ORDER BY d.start_date, d.id`,
+    [serviceId]
+  );
+}
+
+/** Service qui pilote toutes les manifestations, s'il en existe un. */
+export async function serviceCoordinateur(): Promise<any | null> {
+  return db.queryOne('SELECT * FROM services WHERE is_coordinator = 1 AND is_active = 1');
 }
 
 /**
@@ -227,6 +343,7 @@ export async function destinatairesManifestation(
      WHERE s.is_active = 1 AND s.${colonne} = 1
        AND (
          s.is_observer = 1
+         OR s.is_coordinator = 1
          OR EXISTS (
            SELECT 1 FROM manifestation_approvals a
            WHERE a.manifestation_id = ? AND a.service_id = s.id
@@ -285,7 +402,9 @@ export async function manifestationsVisiblesParService(userId: number): Promise<
   if (services.length === 0) return [];
 
   const ids = services.map((s: any) => s.id);
-  const observateur = services.some((s: any) => s.is_observer);
+  // Observateur ou coordinateur : les deux suivent l'intégralité des
+  // manifestations, l'un sans pouvoir, l'autre parce qu'il les valide.
+  const observateur = services.some((s: any) => s.is_observer || s.is_coordinator);
 
   if (observateur) {
     const toutes = await db.query('SELECT id FROM manifestations');

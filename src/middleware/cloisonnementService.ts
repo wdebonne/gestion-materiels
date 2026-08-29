@@ -31,7 +31,17 @@ import type { Request, Response } from 'express';
  * seule** (voir `METHODES_LECTURE`) : l'interface a besoin du nom du site, de son
  * logo et du libellé des catégories pour s'afficher.
  */
-const CHEMINS_AUTORISES: ReadonlyArray<{ prefixe: string; lectureSeule?: boolean }> = [
+const CHEMINS_AUTORISES: ReadonlyArray<{
+  prefixe?: string;
+  /** Motif pour les chemins qui portent un identifiant au milieu. */
+  motif?: RegExp;
+  lectureSeule?: boolean;
+}> = [
+  // Un responsable de service gère ses délégations, et il a le rôle `service` :
+  // laisser `/api/services` en lecture seule le priverait du seul geste qui lui
+  // revient en propre. La route vérifie ensuite qu'il est bien responsable.
+  { motif: /^\/api\/services\/\d+\/delegations(\/|$)/ },
+
   { prefixe: '/api/manifestations' },
   { prefixe: '/api/auth' },
   { prefixe: '/api/settings', lectureSeule: true },
@@ -75,8 +85,10 @@ export function cheminAutorise(chemin: string, methode: string): boolean {
 
   if (CHEMINS_PUBLICS.some((p) => sansRequete.startsWith(p))) return true;
 
-  const regle = CHEMINS_AUTORISES.find(
-    (r) => sansRequete === r.prefixe || sansRequete.startsWith(`${r.prefixe}/`)
+  const regle = CHEMINS_AUTORISES.find((r) =>
+    r.motif
+      ? r.motif.test(sansRequete)
+      : sansRequete === r.prefixe || sansRequete.startsWith(`${r.prefixe}/`)
   );
   if (!regle) return false;
 

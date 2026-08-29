@@ -211,7 +211,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
   - **Filtres** : Par statut, dates, recherche textuelle
   - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
-- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`, `manifestation_export_profiles`, `manifestation_items`, `notification_preferences`
+- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`, `manifestation_export_profiles`, `manifestation_items`, `notification_preferences`, `service_delegations`
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
 - **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
@@ -241,6 +241,10 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 > ✅ **Matériel unique et notifications réglables, août 2026 :** une demande porte désormais deux natures de matériel — des quantités et des exemplaires identifiés choisis dans le parc. `manifestation_items`, créée à l'origine et jamais utilisée, est en service : un conflit y est toujours réel, et les réservations sont lues au passage puisque les deux circuits engagent le même parc.
 >
 > Les notifications se règlent à trois niveaux : défaut de la collectivité par événement et par rôle, réglage de chaque service, choix de chaque compte. Ce qui engage son destinataire — une approbation attendue — part toujours.
+>
+> ✅ **Responsables, délégations et coordination, août 2026 :** `is_manager` était enregistré sans entrer dans aucune décision ; seul le responsable d'un service approuve désormais en son nom, et lui seul délègue. Un **service coordinateur** pilote toutes les manifestations : sollicité sur chacune, destinataire de tout, son approbation prononce la validation — mais seulement une fois les services concernés ont répondu.
+>
+> ⚠️ **Traçabilité préservée :** supprimer un compte effaçait la ligne, et chaque `ON DELETE SET NULL` vidait l'auteur des décisions, des messages et de l'historique. Un compte qui a laissé des traces est désormais désactivé, jamais effacé ; l'anonymisation retire l'identité en conservant les liens, ce que le RGPD demande sans détruire la traçabilité.
 >
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 
