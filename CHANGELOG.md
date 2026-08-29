@@ -52,6 +52,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
 - **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
 
+### Réservations
+
+- **Disponibilité affichée pendant la saisie.** `GET /reservations/availability/:objectId` existait depuis toujours et n'était appelé par aucun écran : un créneau déjà pris n'apparaissait qu'en erreur 409, après avoir rempli et envoyé le formulaire. L'agent découvrait le conflit une fois son travail perdu, sans savoir quand le matériel serait libre
+  - Les créneaux occupés sont listés avec leur période et leur emprunteur
+  - Le bouton de création reste inactif tant que la période demandée est prise
+  - Les demandes en attente de validation sont signalées sans bloquer : elles n'empêchent pas la création, mais deux agents qui demandent le même créneau sans le savoir aboutissent à une demande validée et une autre qui reste en attente
+- **Filtre de chevauchement partagé** entre la vérification et la création. Ils étaient écrits séparément ; s'ils avaient divergé, l'écran aurait annoncé « disponible » puis le serveur aurait refusé — pire que de ne rien annoncer. Un test vérifie que le filtre n'est écrit qu'à un seul endroit
+- **Nom de l'emprunteur chargé en une requête** pour l'ensemble des créneaux, et non une par ligne
+
 ### Sécurité
 
 - **Politique de mot de passe appliquée.** L'écran Paramètres > Authentification permettait de régler la longueur minimale, la complexité, l'expiration et le blocage après N tentatives. Rien n'était appliqué : la configuration était écrite dans `auth_config` et relue par personne, et un administrateur qui réglait « blocage après 5 tentatives » croyait disposer d'un contrôle qui n'existait pas

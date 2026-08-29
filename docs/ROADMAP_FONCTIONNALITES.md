@@ -14,7 +14,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 1 | 🔴 Haute | QR Codes matériels | 🟡 Partiel | Génération et scan terrain ✅ — l'**impression en lot** n'a pas d'écran, alors que `POST /api/qrcode/batch` existe |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | 🟡 Partiel | Import et export ✅ — mapping **positionnel strict** sur 11 colonnes, et les filtres d'export acceptés par le serveur ne sont pas exposés |
 | 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 131 tests (87 backend, 44 frontend) |
-| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | 🟡 Partiel | Réservations et alertes de retard ✅ — le **calendrier de disponibilité** n'est pas branché : le conflit n'apparaît qu'après envoi |
+| 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
 | 7 | 🟡 Basse | Cartographie GPS (Leaflet) | 🟡 Partiel | Carte et saisie GPS ✅ — le **géocodage d'adresses** n'existe pas |
@@ -84,7 +84,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Tables BDD :** `reservations`
 - **Impact :** Gestion partagée du matériel entre services
 
-> 🟡 **Reste :** le calendrier de disponibilité n'est pas branché. `GET /api/reservations/availability/:objectId` existe et n'est appelé par aucun écran : un créneau déjà pris n'apparaît qu'en erreur 409, après l'envoi du formulaire.
+> ✅ **Complété en août 2026 :** la disponibilité est vérifiée pendant la saisie. Les créneaux déjà pris sont affichés avec leur emprunteur, le bouton de création reste inactif tant que la période demandée est occupée, et les demandes en attente de validation sont signalées sans bloquer — sans quoi deux agents demandent le même créneau et l'un des deux attend indéfiniment.
+>
+> Le filtre de chevauchement est écrit à un seul endroit, partagé par la vérification et la création : s'ils divergeaient, l'écran annoncerait « disponible » puis le serveur répondrait 409, ce qui est pire que de ne rien annoncer.
 
 ### 5. Amortissement / Dépréciation
 - **Description :** Calcul automatique de la valeur résiduelle des équipements.

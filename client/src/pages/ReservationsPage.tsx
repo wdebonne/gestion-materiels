@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock, Plus, Check, RotateCcw, X, Search } from 'lucide-react'
 import { Button, Input, Modal, ModalBody, ModalFooter, Card, CardBody, LoadingInline } from '@/components/ui'
 import api from '@/lib/api'
+import ReservationAvailability from '@/components/ReservationAvailability'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
 import Can from '@/components/Can'
@@ -31,6 +32,9 @@ export default function ReservationsPage() {
   const { canManage: isSupervisor } = usePermissions()
   const [showModal, setShowModal] = useState(false)
   const [statusFilter, setStatusFilter] = useState('')
+  // Verdict remonté par la vérification de disponibilité : le bouton de
+  // création reste inactif tant que la période demandée est déjà prise.
+  const [creneauLibre, setCreneauLibre] = useState(true)
   const [search, setSearch] = useState('')
   const [formData, setFormData] = useState({
     objectId: '',
@@ -264,6 +268,13 @@ export default function ReservationsPage() {
                 required
               />
             </div>
+
+            <ReservationAvailability
+              objectId={formData.objectId}
+              startDate={formData.startDate}
+              endDate={formData.endDate}
+              onDisponibilite={setCreneauLibre}
+            />
             <Input
               label="Motif"
               value={formData.reason}
@@ -282,7 +293,7 @@ export default function ReservationsPage() {
               endDate: formData.endDate,
               reason: formData.reason
             })}
-            disabled={!formData.objectId || !formData.userId || !formData.startDate || !formData.endDate || createMutation.isPending}
+            disabled={!formData.objectId || !formData.userId || !formData.startDate || !formData.endDate || !creneauLibre || createMutation.isPending}
           >
             {createMutation.isPending ? 'Création...' : 'Créer'}
           </Button>

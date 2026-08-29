@@ -190,6 +190,7 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 
 #### 🔄 Réservation / Prêt de matériel
 - 📅 Formulaire de réservation (dates, motif, emprunteur)
+- ✅ **Disponibilité affichée avant l'envoi** : les créneaux déjà pris apparaissent avec leur emprunteur, et le bouton reste inactif tant que la période demandée est occupée. Les demandes en attente de validation sont signalées sans bloquer
 - 🔄 Statuts : réservé, en prêt, retourné, en retard
 - ⏰ Alertes automatiques CRON pour retours en retard
 - 📜 Historique complet des emprunts
@@ -695,7 +696,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **Webhooks** | CRUD complet, bouton de test, journalisation | Aucune route ni tâche planifiée n'appelle `POST /trigger` : aucun webhook ne part jamais |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
 | **Impression d'étiquettes QR en lot** | `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes | Aucun écran ne l'appelle : les QR codes s'impriment un par un |
-| **Disponibilité des réservations** | `GET /api/reservations/availability/:objectId` | L'écran ne l'appelle pas : un conflit n'apparaît qu'en erreur après l'envoi du formulaire |
 | **Historique des manifestations** | Table `manifestation_history` créée, composant `ManifestationPDFExport` écrit | La table n'est ni écrite ni lue, et le composant n'est importé nulle part |
 | **Filtres d'export** | Le serveur accepte des filtres à l'export | L'écran ne les expose pas |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |

@@ -54,33 +54,119 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Prom
   }
 });
 
+/**
+ * Statuts qui rendent un matériel indisponible.
+ *
+ * Une demande `pending` n'en fait pas partie : c'est au superviseur de trancher
+ * entre deux demandes. Elle est signalée à l'écran sans bloquer.
+ */
+export const STATUTS_BLOQUANTS = ['reserved', 'borrowed'] as const;
+
+/**
+ * Deux périodes se chevauchent dès que l'une commence avant la fin de l'autre
+ * et finit après son début. Les bornes sont incluses : un matériel n'est pas
+ * rendu et repris dans la même seconde.
+ *
+ * Écrit une seule fois : la disponibilité affichée à l'écran, le refus de la
+ * création et la liste des demandes en attente doivent parler de la même chose.
+ * Paramètres attendus, dans cet ordre : date de fin, puis date de début.
+ */
+export const CHEVAUCHEMENT = 'start_date <= ? AND end_date >= ?';
+
+/**
+ * Conflit de réservation sur une période.
+ *
+ * Partagé entre la vérification de disponibilité et la création : s'ils
+ * divergeaient, l'écran annoncerait « disponible » puis le serveur répondrait
+ * 409 — pire que de ne rien annoncer, parce que l'utilisateur cesserait de
+ * faire confiance à l'indication.
+ */
+export function requeteConflits(
+  objectId: number | string,
+  startDate: string,
+  endDate: string,
+  colonnes = 'id'
+): { sql: string; params: any[] } {
+  const marqueurs = STATUTS_BLOQUANTS.map(() => '?').join(', ');
+  return {
+    sql: `SELECT ${colonnes} FROM reservations
+          WHERE object_id = ? AND status IN (${marqueurs})
+          AND ${CHEVAUCHEMENT}`,
+    params: [objectId, ...STATUTS_BLOQUANTS, endDate, startDate],
+  };
+}
+
+/**
+ * Complète des réservations avec le nom de leur emprunteur.
+ *
+ * En une requête pour l'ensemble : la boucle « une requête par ligne » est
+ * exactement le motif retiré ailleurs dans ce dépôt.
+ */
+async function nommerEmprunteurs(lignes: any[]): Promise<void> {
+  const ids = [...new Set(lignes.map((l) => l.user_id).filter(Boolean))];
+  if (ids.length === 0) return;
+
+  const marqueurs = ids.map(() => '?').join(', ');
+  const utilisateurs = await db.query(
+    `SELECT id, first_name, last_name FROM users WHERE id IN (${marqueurs})`,
+    ids
+  );
+  const parId = new Map(utilisateurs.map((u: any) => [u.id, u]));
+
+  for (const ligne of lignes) {
+    const u = parId.get(ligne.user_id);
+    ligne.first_name = u?.first_name ?? null;
+    ligne.last_name = u?.last_name ?? null;
+  }
+}
+
 // Vérifier la disponibilité d'un objet
 router.get('/availability/:objectId', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { objectId } = req.params;
     const { startDate, endDate } = req.query;
 
-    let sql = `
-      SELECT r.*, u.first_name, u.last_name
-      FROM reservations r
-      LEFT JOIN users u ON r.user_id = u.id
-      WHERE r.object_id = ? AND r.status IN ('reserved', 'borrowed')
-    `;
-    const params: any[] = [objectId];
+    const periodeComplete = Boolean(startDate && endDate);
 
-    if (startDate && endDate) {
-      sql += ' AND r.start_date <= ? AND r.end_date >= ?';
-      params.push(endDate, startDate);
+    // Le verdict s'appuie sur `requeteConflits`, celle-là même qu'utilise la
+    // création : c'est ce qui garantit que l'écran n'annonce jamais
+    // « disponible » sur un créneau que le serveur refuserait ensuite.
+    const reservations = periodeComplete
+      ? await (async () => {
+          const conflit = requeteConflits(
+            objectId,
+            String(startDate),
+            String(endDate),
+            'reservations.*'
+          );
+          return db.query(conflit.sql + ' ORDER BY start_date ASC', conflit.params);
+        })()
+      : await db.query(
+          `SELECT * FROM reservations
+           WHERE object_id = ? AND status IN ('reserved', 'borrowed')
+           ORDER BY start_date ASC`,
+          [objectId]
+        );
+
+    // Une demande en attente ne bloque pas la création, mais deux agents qui
+    // demandent le même créneau sans le savoir aboutissent à une demande
+    // validée et une autre qui reste en attente pour toujours.
+    let sqlAttente = `SELECT * FROM reservations WHERE object_id = ? AND status = 'pending'`;
+    const paramsAttente: any[] = [objectId];
+    if (periodeComplete) {
+      sqlAttente += ` AND ${CHEVAUCHEMENT}`;
+      paramsAttente.push(endDate, startDate);
     }
+    const pending = await db.query(sqlAttente + ' ORDER BY start_date ASC', paramsAttente);
 
-    sql += ' ORDER BY r.start_date ASC';
+    // Le nom de l'emprunteur, en une requête pour l'ensemble.
+    await nommerEmprunteurs([...reservations, ...pending]);
 
-    const reservations = await db.query(sql, params);
     const isAvailable = reservations.length === 0;
 
     res.json({
       success: true,
-      data: { isAvailable, reservations }
+      data: { isAvailable, reservations, pending }
     });
   } catch (error: any) {
     console.error('Erreur vérification disponibilité:', error);
@@ -121,13 +207,10 @@ router.post('/',
         return;
       }
 
-      // Vérifier les conflits de réservation
-      const conflicts = await db.query(
-        `SELECT id FROM reservations 
-         WHERE object_id = ? AND status IN ('reserved', 'borrowed')
-         AND start_date <= ? AND end_date >= ?`,
-        [objectId, endDate, startDate]
-      );
+      // Vérifier les conflits de réservation, avec le filtre que la
+      // vérification de disponibilité utilise déjà.
+      const conflit = requeteConflits(objectId, startDate, endDate);
+      const conflicts = await db.query(conflit.sql, conflit.params);
 
       if (conflicts.length > 0) {
         res.status(409).json({ success: false, message: 'Conflit avec une réservation existante' });
