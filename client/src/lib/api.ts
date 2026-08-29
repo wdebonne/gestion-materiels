@@ -747,3 +747,74 @@ export const suiviApi = {
   removeWatcher: (manifestationId: number, watcherId: number) =>
     api.delete<{ success: boolean }>(`/manifestations/${manifestationId}/watchers/${watcherId}`),
 }
+
+
+// ======================== EXPORT DES MANIFESTATIONS ========================
+
+export interface ChampExportManifestation {
+  champ: string
+  libelle: string
+  largeur: number
+}
+
+export interface ColonneProfil {
+  champ: string
+  entete?: string
+}
+
+export interface FiltresExportProfil {
+  status?: string
+  date_from?: string
+  date_to?: string
+  archived?: boolean
+}
+
+export interface ProfilExport {
+  id: number
+  name: string
+  columns: ColonneProfil[]
+  filters: FiltresExportProfil
+  destination: 'download' | 'webdav'
+  remote_path: string | null
+  is_active: number
+  auto_export: number
+  last_export_at: string | null
+  last_status: string | null
+  last_error: string | null
+}
+
+export interface ConfigNextcloud {
+  url: string
+  username: string
+  folder: string
+  configured: boolean
+}
+
+export const exportManifestationApi = {
+  getFields: () =>
+    api.get<{ success: boolean; data: ChampExportManifestation[] }>('/manifestations/export/fields'),
+  getProfiles: () =>
+    api.get<{ success: boolean; data: ProfilExport[] }>('/manifestations/export/profiles'),
+  createProfile: (data: Partial<ProfilExport> & { name: string }) =>
+    api.post<{ success: boolean; data: { id: number } }>('/manifestations/export/profiles', data),
+  updateProfile: (id: number, data: Partial<ProfilExport> & { name: string }) =>
+    api.put<{ success: boolean }>(`/manifestations/export/profiles/${id}`, data),
+  deleteProfile: (id: number) =>
+    api.delete<{ success: boolean }>(`/manifestations/export/profiles/${id}`),
+  /** Dépose sur Nextcloud, ou télécharge selon la destination du profil. */
+  run: (id: number) =>
+    api.post<{ success: boolean; data?: { chemin: string; lignes: number }; message?: string }>(
+      `/manifestations/export/profiles/${id}/run`,
+      {}
+    ),
+  /** URL de téléchargement direct, avec ou sans profil. */
+  downloadUrl: (profileId?: number) =>
+    `/manifestations/export${profileId ? `?profile=${profileId}` : ''}`,
+
+  getNextcloud: () =>
+    api.get<{ success: boolean; data: ConfigNextcloud }>('/manifestations/export/nextcloud'),
+  saveNextcloud: (data: { url: string; username: string; password?: string; folder?: string }) =>
+    api.put<{ success: boolean }>('/manifestations/export/nextcloud', data),
+  testNextcloud: (data: { url?: string; username?: string; password?: string; folder?: string }) =>
+    api.post<{ success: boolean; message: string }>('/manifestations/export/nextcloud/test', data),
+}

@@ -832,6 +832,24 @@ class DatabaseManager {
         FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
+      // Profils d'export des manifestations. Voir la migration 005 : quelles
+      // colonnes, dans quel ordre, sous quel intitulé, et vers où.
+      `CREATE TABLE IF NOT EXISTS manifestation_export_profiles (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        columns ${textType},
+        filters ${textType},
+        destination VARCHAR(20) NOT NULL DEFAULT 'download',
+        remote_path VARCHAR(500),
+        is_active ${boolType} DEFAULT 1,
+        auto_export ${boolType} DEFAULT 0,
+        last_export_at DATETIME,
+        last_status VARCHAR(20),
+        last_error ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
       // Table de configuration de l'authentification (SSO, LDAP, Passkey)
       `CREATE TABLE IF NOT EXISTS auth_config (
         id INTEGER PRIMARY KEY ${autoIncrement},

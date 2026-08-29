@@ -166,6 +166,32 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **La validation n'était pas réellement bloquée.** Les approbations étaient créées *après* la transition, si bien que le contrôle ne trouvait rien à attendre et laissait passer — puis les créait, trop tard. Trouvé à l'essai sur l'application, pas au typecheck. Elles sont désormais créées à la création de la manifestation, et rafraîchies avant le contrôle
 - **Un compte « service » ne doit pas être filtré par catégorie de matériel** : il suit les manifestations où il est sollicité, observateur ou en copie. Lui appliquer la portée par catégorie lui aurait montré des manifestations qui ne le concernent pas tout en lui cachant les siennes
 
+### Manifestations — export configurable et dépôt sur Nextcloud
+
+> Le suivi des manifestations se partage par fichier : une feuille de calcul déposée sur un Nextcloud, que plusieurs services consultent et annotent. Elle était tenue à la main, donc périmée dès qu'un statut changeait — et c'est ce fichier périmé que tout le monde continuait de lire. Rien dans l'application n'écrivait vers un stockage distant : `upload.service` range sur le disque local, les sauvegardes restent dans `./backups`.
+
+#### Ajouté
+
+- **Export des manifestations en feuille de calcul**, 24 colonnes disponibles : identité et dates, contact et lieu, quantités demandées / livrées / récupérées / perdues, détail du matériel, état de chaque approbation et services encore attendus
+  - **Profils de colonnes** : quelles colonnes, dans quel ordre, sous quel intitulé. C'est une donnée, pas du code — chaque collectivité range son tableau à sa façon, et redemander un développeur à chaque changement de colonne serait absurde. Même choix que pour l'import
+  - Un profil qui référence un champ disparu perd cette colonne au lieu de faire échouer l'export entier
+  - Ligne d'entête figée et filtre automatique : un tableau de suivi se lit en faisant défiler, et sans le gel on perd les intitulés dès la vingtième ligne
+  - Le détail du matériel et les approbations tiennent dans une cellule à retours à la ligne plutôt qu'en lignes multiples : le fichier sert à filtrer et à trier, ce qu'un tableau à lignes fusionnées rend impraticable
+  - Les archivées sont exclues par défaut ; l'archive se demande explicitement
+- **Dépôt WebDAV sur Nextcloud** (`webdav.service.ts`), sens unique : l'application reste la source de vérité, le fichier déposé sert à consulter et à annoter à côté. Une synchronisation bidirectionnelle demanderait des verrous et une détection de conflits, et permettrait surtout à deux personnes de contredire la base
+  - Les dossiers manquants sont créés un niveau à la fois — WebDAV ne crée pas les parents
+  - Mot de passe d'application, jamais le mot de passe du compte : il se révoque sans changer les identifiants de la personne. Il n'est jamais renvoyé par l'API une fois enregistré
+  - **La vérification dépose réellement un fichier témoin** puis le retire. Se contenter de valider la forme des champs laisserait un administrateur croire que tout est branché — c'est précisément le défaut des écrans SSO de ce projet, qui « testent » sans rien prouver
+  - Délai maximal réel (`AbortSignal.timeout`) et échec isolé, comme pour les webhooks : un Nextcloud injoignable ne doit pas empêcher de valider une manifestation
+  - `last_status` et `last_error` sur chaque profil : sans eux, un dépôt qui échoue est invisible, et c'est le fichier périmé que tout le monde continue de lire
+- **Redépôt automatique** après chaque changement de statut ou de quantités, **regroupé sur une minute** — saisir les quantités livrées article par article produirait sinon dix envois pour un seul résultat — plus un passage nocturne à 3h qui rattrape ce qu'un serveur injoignable aurait fait manquer
+- **Écran Réglages › Export manifestations** : configuration Nextcloud, profils, réordonnancement et renommage des colonnes, téléchargement direct et dépôt manuel
+
+#### Corrigé
+
+- **`fetch` échoue avec un laconique « fetch failed »** et range la vraie cause dans `error.cause` : un administrateur qui lit cela ne sait pas s'il s'est trompé d'adresse, si le serveur est éteint ou si le certificat est refusé, et n'a aucune piste pour corriger. Les erreurs réseau sont désormais traduites — connexion refusée, domaine introuvable, certificat expiré ou auto-signé
+- **Un mot de passe erroné se manifestait en « Création du dossier refusée (HTTP 401) »**, puisque le premier appel au serveur est un `MKCOL`. Le refus dit maintenant ce qu'il faut vérifier
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

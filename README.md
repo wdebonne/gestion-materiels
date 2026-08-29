@@ -123,6 +123,7 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - ✅ **Approbations** : chaque service concerné approuve sa part, avec ses propres dates de livraison et de récupération. La validation reste bloquée tant qu'un service n'a pas répondu
 - 💬 **Conversation** : les services échangent dans le fil de la manifestation ; tout est consigné dans l'historique et dans l'archive
 - 👀 **Mise en copie** : une direction générale, un maire ou un élu suit l'intégralité des échanges sans rien approuver
+- 📊 **Export configurable** : choisissez vos colonnes, leur ordre et leurs intitulés, et déposez le suivi sur un **Nextcloud** automatiquement à chaque changement
 - 🎨 **Indicateurs visuels** : Cartes colorées par statut (bordure, fond, badge) avec barre de progression du workflow
 - ✅ **Modales de changement de statut** :
   - Refus/Validation avec commentaire optionnel
@@ -585,6 +586,24 @@ POST   /api/manifestations/:id/watchers       # Mettre en copie
 DELETE /api/manifestations/:id/watchers/:watcherId
 ```
 
+**Export et dépôt Nextcloud**
+
+```
+GET    /api/manifestations/export           # Télécharge un .xlsx (profile, status, date_from/to)
+GET    /api/manifestations/export/fields    # Colonnes disponibles
+GET    /api/manifestations/export/profiles  # Profils enregistrés
+POST   /api/manifestations/export/profiles  # Créer un profil
+PUT    /api/manifestations/export/profiles/:id
+DELETE /api/manifestations/export/profiles/:id
+POST   /api/manifestations/export/profiles/:id/run   # Produit et dépose sur Nextcloud
+GET    /api/manifestations/export/nextcloud       # Configuration (sans le mot de passe)
+PUT    /api/manifestations/export/nextcloud       # Enregistrer la configuration
+POST   /api/manifestations/export/nextcloud/test  # Dépose un fichier témoin, puis le retire
+```
+
+Le sens est unique : l'application reste la source de vérité, le fichier déposé sert à consulter
+et à annoter à côté. Utilisez un **mot de passe d'application** Nextcloud, jamais celui du compte.
+
 **Réception des demandes**
 
 ```
@@ -770,7 +789,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - `PUT /api/manifestations/:id` ne lit pas le champ `status` : le statut se change uniquement via `PUT /:id/status`
 - La table `manifestation_items`, qui rattacherait à une manifestation un matériel du parc identifié individuellement — plutôt qu'une quantité — existe depuis l'origine et n'est ni lue ni écrite. Le README annonçait jusqu'ici une « recherche d'objets du parc pour ajout aux manifestations » et l'API une route `GET /api/manifestations/search/objects` : ni l'une ni l'autre n'existent
 - La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
-- L'export Excel des manifestations vers Nextcloud n'est pas encore fait : les manifestations s'exportent seulement en fiche PDF
 - Un service ne peut être mis en copie que globalement ; il n'existe pas encore de mise en copie d'une personne depuis l'écran (l'API l'accepte : `POST /:id/watchers` avec `user_id`)
 - Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`
 

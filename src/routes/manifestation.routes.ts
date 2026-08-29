@@ -23,6 +23,7 @@ import {
   notifierServicesConcernes,
   notifierChangementDates,
   notifierChangementMateriel,
+  redeposerSuivi,
 } from '../services/manifestationNotify.service';
 import { notifierWebhooks } from '../services/webhook.service';
 import {
@@ -818,6 +819,9 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
         to: status,
       });
 
+      // Le suivi partagé sur Nextcloud n'a d'intérêt que s'il est à jour.
+      redeposerSuivi();
+
       // Une demande reprise en brouillon sollicite aussi les services concernés :
       // c'est le moment où quelqu'un s'en saisit pour la compléter.
       if (status === 'draft') {
@@ -925,6 +929,7 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
       lignes: modifiees,
       pertes: mouvements.filter((m) => m.ecart > 0).length,
     });
+    redeposerSuivi();
 
     res.json({ success: true, updated: modifiees });
   } catch (error: any) {

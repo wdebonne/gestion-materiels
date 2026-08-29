@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
-| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations — août 2026 |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, export Nextcloud — août 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -210,7 +210,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
   - **Filtres** : Par statut, dates, recherche textuelle
   - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
-- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`
+- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`, `manifestation_export_profiles`
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
 - **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
@@ -235,7 +235,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > Le rôle `service` ouvre le seul module Manifestations. Le cloisonnement est **fermé par défaut** — tout `/api/*` est refusé sauf une liste blanche — et appliqué au point unique où le rôle devient connu, jetons API compris.
 >
-> ⏳ **Reste à faire :** export Excel des manifestations vers Nextcloud. La table `manifestation_items` reste inutilisée.
+> ✅ **Export et dépôt Nextcloud, août 2026 :** 24 colonnes disponibles, dont l'état de chaque approbation et les services encore attendus. Les profils disent quelles colonnes, dans quel ordre et sous quel intitulé — une donnée, pas du code. Le dépôt WebDAV est à sens unique : l'application reste la source de vérité. La vérification de configuration dépose réellement un fichier témoin plutôt que de valider la forme des champs, et le redépôt automatique est regroupé sur une minute.
+>
+> ⏳ **Reste à faire :** la table `manifestation_items` reste inutilisée.
 >
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 

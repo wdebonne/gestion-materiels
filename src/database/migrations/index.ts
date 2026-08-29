@@ -3,6 +3,7 @@ import baseline from './001_baseline';
 import politiqueConnexion from './002_politique_connexion';
 import manifestationsReception from './003_manifestations_reception';
 import servicesApprobations from './004_services_approbations';
+import exportManifestations from './005_export_manifestations';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -18,6 +19,7 @@ export const MIGRATIONS: readonly Migration[] = [
   politiqueConnexion,
   manifestationsReception,
   servicesApprobations,
+  exportManifestations,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

@@ -3,6 +3,8 @@ import { db } from '../database';
 import { sendAlertEmail, sendEmail, sendEmailRaw } from './email.service';
 import { emitAlert } from './websocket.service';
 import { destinatairesManifestation } from './manifestationServices.service';
+import { genererClasseur, TYPE_MIME_XLSX } from './manifestationExport.service';
+import { deposerFichier, lireConfiguration } from './webdav.service';
 
 // Récupérer les paramètres d'alertes
 async function getAlertSettings(): Promise<{
@@ -529,6 +531,77 @@ export async function verifierManifestations(): Promise<void> {
   }
 }
 
+
+/**
+ * Dépose les profils réglés en automatique sur Nextcloud.
+ *
+ * Le fichier partagé était tenu à la main, donc périmé dès qu'un statut
+ * changeait — et c'est ce fichier périmé que les services continuaient de lire.
+ *
+ * Chaque profil est traité indépendamment : un chemin distant refusé ne doit pas
+ * empêcher les autres de partir. Le résultat est noté sur le profil, sinon un
+ * dépôt qui échoue reste invisible.
+ */
+export async function deposerExportsAutomatiques(): Promise<void> {
+  const config = await lireConfiguration();
+  if (!config) return;
+
+  let profils: any[] = [];
+  try {
+    profils = await db.query(
+      "SELECT * FROM manifestation_export_profiles WHERE is_active = 1 AND auto_export = 1 AND destination = 'webdav'"
+    );
+  } catch (erreur: any) {
+    // Table absente sur une base pas encore migrée : rien à déposer.
+    console.error('Profils d\'export illisibles :', erreur?.message ?? erreur);
+    return;
+  }
+
+  for (const profil of profils) {
+    try {
+      const { contenu, lignes, nomFichier } = await genererClasseur(
+        lireProfilJson<any[]>(profil.columns, []),
+        lireProfilJson<any>(profil.filters, {})
+      );
+
+      const dossier = (profil.remote_path || 'Manifestations').replace(/^\/+|\/+$/g, '');
+      const depot = await deposerFichier(`${dossier}/${nomFichier}`, contenu, TYPE_MIME_XLSX);
+
+      await db.execute(
+        `UPDATE manifestation_export_profiles
+         SET last_export_at = ?, last_status = ?, last_error = ?, updated_at = ?
+         WHERE id = ?`,
+        [
+          new Date().toISOString(),
+          depot.success ? 'ok' : 'echec',
+          depot.error ?? null,
+          new Date().toISOString(),
+          profil.id,
+        ]
+      );
+
+      if (depot.success) {
+        console.log(`📤 Export « ${profil.name} » déposé (${lignes} manifestation(s))`);
+      } else {
+        console.warn(`⚠️ Export « ${profil.name} » non déposé : ${depot.error}`);
+      }
+    } catch (erreur: any) {
+      console.error(`Export « ${profil.name} » interrompu :`, erreur?.message ?? erreur);
+    }
+  }
+}
+
+/** Lecture tolérante d'une colonne JSON : un profil corrompu ne bloque pas les autres. */
+function lireProfilJson<T>(brut: unknown, defaut: T): T {
+  if (!brut) return defaut;
+  try {
+    return typeof brut === 'string' ? (JSON.parse(brut) as T) : (brut as T);
+  } catch {
+    return defaut;
+  }
+}
+
+
 // Initialiser les tâches cron
 export function initCronJobs(): void {
   // Vérifier les alertes toutes les heures
@@ -546,6 +619,11 @@ export function initCronJobs(): void {
   // Manifestations : rappel de livraison et récupérations en retard, chaque
   // matin à 7h30 — avant que les équipes partent sur le terrain.
   cron.schedule('30 7 * * *', verifierManifestations);
+
+  // Dépôt du suivi partagé, chaque nuit à 3h. Les changements de la journée sont
+  // déjà déposés au fil de l'eau ; ce passage rattrape ce qu'un Nextcloud
+  // injoignable aurait fait manquer.
+  cron.schedule('0 3 * * *', deposerExportsAutomatiques);
 
   // Exécuter une première vérification au démarrage
   setTimeout(checkAlerts, 10000);
@@ -685,4 +763,4 @@ async function generateWeeklyReport(): Promise<void> {
   }
 }
 
-export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport, verifierManifestations };
+export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport, verifierManifestations, deposerExportsAutomatiques };

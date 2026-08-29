@@ -251,3 +251,39 @@ export function notifierChangementMateriel(
     });
   }, 'changement de matériel');
 }
+
+/**
+ * Régénère et redépose le suivi partagé, sans faire attendre l'appelant.
+ *
+ * Appelée après un changement de statut ou de quantités. Le fichier déposé sur
+ * Nextcloud n'a d'intérêt que s'il est à jour : tenu à la main, il était périmé
+ * dès la première validation, et c'est le fichier périmé que tout le monde
+ * continuait de lire.
+ *
+ * Les dépôts sont **regroupés** : dix changements en une minute — ce qui arrive
+ * en saisissant les quantités livrées article par article — ne doivent produire
+ * qu'un seul envoi, pas dix.
+ */
+let depotEnAttente: NodeJS.Timeout | null = null;
+const DELAI_REGROUPEMENT_MS = 60_000;
+
+export function redeposerSuivi(): void {
+  if (depotEnAttente) return;
+
+  depotEnAttente = setTimeout(() => {
+    depotEnAttente = null;
+    void (async () => {
+      try {
+        // Import différé : `cron.service` importe déjà ce module, et une
+        // dépendance croisée au chargement laisserait l'un des deux vide.
+        const { deposerExportsAutomatiques } = await import('./cron.service');
+        await deposerExportsAutomatiques();
+      } catch (erreur: any) {
+        console.error('Redépôt du suivi interrompu :', erreur?.message ?? erreur);
+      }
+    })();
+  }, DELAI_REGROUPEMENT_MS);
+
+  // Le minuteur ne doit pas retenir le processus au moment de l'arrêt.
+  depotEnAttente.unref?.();
+}

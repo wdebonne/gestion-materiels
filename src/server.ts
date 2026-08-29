@@ -49,6 +49,7 @@ import authSettingsRoutes from './routes/authSettings.routes';
 import manifestationRoutes from './routes/manifestation.routes';
 import manifestationIntakeRoutes from './routes/manifestationIntake.routes';
 import serviceRoutes from './routes/service.routes';
+import manifestationExportRoutes from './routes/manifestationExport.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
 
 // Import des services
@@ -270,6 +271,11 @@ app.use('/api/settings/auth', authSettingsRoutes);
 // Monté avant `/api/manifestations` : le dépôt d'une demande est signé, pas
 // authentifié, et ne doit pas passer par les gardes du routeur principal.
 app.use('/api/manifestations/intake', intakeLimiter, manifestationIntakeRoutes);
+// Monté avant `/api/manifestations` pour que « export » ne soit pas pris pour un
+// identifiant de manifestation. Volontairement pas derrière `exportLimiter` :
+// celui-ci couvre déjà tout `/api/import-export` avec 10 requêtes par heure, et
+// un dépôt automatique le viderait pour les utilisateurs.
+app.use('/api/manifestations/export', manifestationExportRoutes);
 app.use('/api/manifestations', manifestationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
