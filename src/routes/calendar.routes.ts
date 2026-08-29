@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
+import { filtreObjetsLies } from '../middleware/objectScope';
 
 const router = Router();
 
@@ -34,6 +35,14 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     if (eventType) {
       whereClause += ' AND event_type = ?';
       params.push(eventType);
+    }
+
+    // Un événement rattaché à un matériel en révèle le nom. Ceux qui n'en
+    // portent aucun — la plupart — restent visibles de tous.
+    const filtre = await filtreObjetsLies(req, 'o', 'ce.object_id');
+    if (filtre) {
+      whereClause += filtre.sql;
+      params.push(...filtre.params);
     }
 
     const events = await db.query(
@@ -127,6 +136,14 @@ router.get('/events', authenticateToken, async (req: AuthRequest, res: Response)
       params.push(eventType);
     }
 
+    // Un événement rattaché à un matériel en révèle le nom. Ceux qui n'en
+    // portent aucun — la plupart — restent visibles de tous.
+    const filtre = await filtreObjetsLies(req, 'o', 'ce.object_id');
+    if (filtre) {
+      whereClause += filtre.sql;
+      params.push(...filtre.params);
+    }
+
     const events = await db.query(
       `SELECT ce.*, o.name as object_name 
        FROM calendar_events ce
@@ -170,12 +187,14 @@ router.get('/events/:id', authenticateToken, async (req: AuthRequest, res: Respo
   try {
     const { id } = req.params;
 
+    const filtre = await filtreObjetsLies(req, 'o', 'ce.object_id');
+
     const event = await db.queryOne(
       `SELECT ce.*, o.name as object_name 
        FROM calendar_events ce
        LEFT JOIN objects o ON o.id = ce.object_id
-       WHERE ce.id = ?`,
-      [id]
+       WHERE ce.id = ?${filtre?.sql ?? ''}`,
+      [id, ...(filtre?.params ?? [])]
     );
 
     if (!event) {
@@ -404,13 +423,16 @@ router.get('/upcoming', authenticateToken, async (req: AuthRequest, res: Respons
   try {
     const { days = 30 } = req.query;
 
+    const filtre = await filtreObjetsLies(req, 'o', 'ce.object_id');
+
     const events = await db.query(
       `SELECT ce.*, o.name as object_name 
        FROM calendar_events ce
        LEFT JOIN objects o ON o.id = ce.object_id
-       WHERE date(start_date) >= date('now') AND date(start_date) <= date('now', '+${days} days')
+       WHERE date(start_date) >= date('now') AND date(start_date) <= date('now', '+${days} days')${filtre?.sql ?? ''}
        ORDER BY start_date
-       LIMIT 50`
+       LIMIT 50`,
+      filtre?.params ?? []
     );
 
     res.json({

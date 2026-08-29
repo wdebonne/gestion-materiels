@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor, requireFieldWrite } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
+import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
 
 const router = Router();
 
@@ -43,6 +44,17 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response): Prom
       sql += ' AND r.start_date <= ?';
       params.push(endDate);
     }
+
+    // Une réservation nomme le matériel concerné : sans ce filtre, la liste
+    // révélait le nom et la référence de matériels que le compte n'a pas le
+    // droit de consulter.
+    const filtre = await filtreObjets(req, 'o');
+    if (filtre === null) {
+      res.json({ success: true, data: [] });
+      return;
+    }
+    sql += filtre.sql;
+    params.push(...filtre.params);
 
     sql += ' ORDER BY r.start_date DESC';
 

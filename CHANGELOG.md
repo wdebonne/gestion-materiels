@@ -52,6 +52,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
 - **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
 
+### Sécurité — portée des matériels
+
+- **Revue systématique de la portée par catégorie.** Trois défauts identiques trouvés séparément — tokens API, export, génération de QR codes — n'étant pas une coïncidence, les treize fichiers touchant la table `objects` ont été revus, puis sondés avec un compte sans aucune permission. Quatre endpoints rendaient des matériels hors périmètre :
+  - `GET /objects/:id` — la liste filtrait, le détail non : la fiche complète était lisible en connaissant l'identifiant
+  - `GET /green-spaces/search/objects` — recherche libre sur tout le parc, prix d'achat compris
+  - `GET /reservations` — nom et référence via les réservations
+  - `GET /calendar/events` — nom via les événements, sur quatre requêtes
+  - La règle est désormais écrite une seule fois, dans `middleware/objectScope.ts`. Une variante distincte traite les tables qui *référencent* un matériel : un événement de calendrier sans matériel reste visible de tous, sinon la protection deviendrait une régression
+  - Un test de contrat énumère les fichiers lisant `objects` et échoue dès que l'un d'eux n'applique ni la portée ni une exemption motivée. Cinq fichiers sont exemptés, chacun avec sa raison
+  - La première sonde avait sous-estimé le problème : deux endpoints ne laissaient rien fuir **faute de données**. Il a fallu créer une réservation et un événement pour que la fuite apparaisse
+
 ### Étiquettes QR
 
 - **Impression en lot.** `POST /api/qrcode/batch` renvoyait jusqu'à 100 étiquettes depuis toujours et n'était appelé par aucun écran : les QR codes s'imprimaient un par un depuis la fiche de chaque matériel. Étiqueter un parc de cinquante machines demandait cinquante allers-retours

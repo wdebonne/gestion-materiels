@@ -4,6 +4,7 @@ import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor, requireFieldWrite } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
+import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
 
 const router = Router();
 
@@ -1031,6 +1032,14 @@ router.get('/search/objects', authenticateToken, async (req: AuthRequest, res: R
     if (!q || String(q).length < 2) {
       return res.json({ success: true, data: [] });
     }
+    // Recherche libre sur tout le parc, sans aucun filtre : elle rendait nom,
+    // référence, prix d'achat et description de matériels que le compte n'a pas
+    // le droit de consulter.
+    const filtre = await filtreObjets(req, 'o');
+    if (filtre === null) {
+      return res.json({ success: true, data: [] });
+    }
+
     const objects = await db.query(`
       SELECT o.id, o.name, o.reference, o.image, o.purchase_price, o.purchase_date,
         o.status, o.description, o.custom_fields,
@@ -1038,10 +1047,10 @@ router.get('/search/objects', authenticateToken, async (req: AuthRequest, res: R
       FROM objects o
       LEFT JOIN categories c ON c.id = o.category_id
       LEFT JOIN subcategories sc ON sc.id = o.subcategory_id
-      WHERE o.name LIKE ? OR o.reference LIKE ?
+      WHERE (o.name LIKE ? OR o.reference LIKE ?)${filtre.sql}
       ORDER BY o.name
       LIMIT 20
-    `, [`%${q}%`, `%${q}%`]);
+    `, [`%${q}%`, `%${q}%`, ...filtre.params]);
     res.json({ success: true, data: objects });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
 import { notifierWebhooks } from '../services/webhook.service';
+import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
 
 const router = Router();
 
@@ -176,6 +177,14 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   try {
     const { id } = req.params;
 
+    // La liste filtrait par catégories accessibles, le détail non : n'importe
+    // quel compte lisait la fiche complète d'un matériel en connaissant son
+    // identifiant.
+    const filtre = await filtreObjets(req, 'o');
+    if (filtre === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
     // Récupérer la catégorie soit directement (o.category_id) soit via la sous-catégorie (s.category_id)
     const obj = await db.queryOne(
       `SELECT o.*, 
@@ -187,8 +196,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
        LEFT JOIN categories c ON c.id = o.category_id
        LEFT JOIN categories c2 ON c2.id = s.category_id
-       WHERE o.id = ?`,
-      [id]
+       WHERE o.id = ?${filtre.sql}`,
+      [id, ...filtre.params]
     );
 
     if (!obj) {

@@ -295,6 +295,45 @@ qui suit l'authentification manquait.
 **Correction** : le même filtre que `GET /objects` sur les deux routes, et un
 403 explicite quand aucune catégorie n'est accessible.
 
+### 7. Revue systématique : quatre routes rendaient des matériels hors périmètre — **corrigé**
+
+Les constats 1, 5 et 6 décrivaient le même schéma : une route authentifiée où le
+contrôle *suivant* l'authentification manquait. Trois occurrences n'étant pas
+une coïncidence, les treize fichiers touchant la table `objects` ont été revus
+un par un, puis sondés avec un compte sans aucune permission de catégorie.
+
+Quatre endpoints rendaient des données qu'il n'a pas le droit de consulter :
+
+| Route | Ce qui sortait |
+|-------|----------------|
+| `GET /api/objects/:id` | La fiche complète. La liste filtrait, le détail non |
+| `GET /api/green-spaces/search/objects` | Recherche libre sur tout le parc : nom, référence, prix d'achat, description |
+| `GET /api/reservations` | Nom et référence des matériels réservés |
+| `GET /api/calendar/events` | Nom des matériels liés aux événements (quatre requêtes concernées) |
+
+La sonde initiale avait sous-estimé le problème : `/reservations` et
+`/calendar/events` répondaient sans rien laisser fuir **faute de données**. Il a
+fallu créer une réservation et un événement sur un matériel témoin pour que la
+fuite apparaisse. Une absence de fuite sur un jeu de données vide ne prouve rien.
+
+**Correction** : `src/middleware/objectScope.ts` écrit la règle une seule fois.
+`filtreObjets` pour les requêtes sur `objects`, `filtreObjetsLies` pour les
+tables qui *référencent* un matériel — un événement sans matériel reste visible
+de tous, sinon la protection deviendrait une régression.
+
+**Vérifié** : les huit sondes rendues avec le compte restreint ne contiennent
+plus le nom du matériel témoin, et l'événement sans matériel reste visible.
+
+**Ce qui empêche la récidive** : `tests/objectScope.test.ts` énumère les
+fichiers qui lisent `objects` et échoue dès que l'un d'eux n'applique ni la
+portée ni une exemption motivée. Vérifié en introduisant volontairement un
+fichier non filtré : le test échoue et le nomme.
+
+Cinq fichiers sont exemptés, chacun avec sa raison — comptages déjà restreints,
+configuration de champs sans données de matériel, jointures d'espaces verts
+gouvernées par leur propre modèle d'accès, et deux services sans requête ni
+utilisateur.
+
 ### Journalisation muette — **corrigé**
 
 Deux défauts indépendants faisaient disparaître des entrées de journal sans erreur :
@@ -308,7 +347,7 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 
 | Critère OWASP | Statut | Notes |
 |---------------|--------|-------|
-| A01 - Broken Access Control | ✅ | Uploads protégés par JWT. La portée des tokens API, le cloisonnement de l'export et celui de la génération de QR codes, ignorés jusqu'en août 2026, sont désormais appliqués |
+| A01 - Broken Access Control | ✅ | Uploads protégés par JWT. La portée par catégorie, absente de sept endpoints jusqu'en août 2026, est désormais appliquée partout et gardée par un test de contrat |
 | A02 - Cryptographic Failures | ✅ | Bcrypt + JWT avec rotation |
 | A03 - Injection | ✅ | Requêtes paramétrées |
 | A04 - Insecure Design | ✅ | Architecture sécurisée |
@@ -369,7 +408,9 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 
 **Le contrôle d'accès aux routes est solide** : toutes les routes sont protégées, les rôles sont vérifiés et désormais figés par une matrice de tests, le rate limiting et les en-têtes de sécurité sont en place.
 
-La révision d'août 2026 montre en revanche que la protection des routes ne dit rien de ce qui se passe une fois le contrôle franchi. Trois défauts corrigés depuis — portée des tokens API ignorée, cascade de déconnexion bloquant la reconnexion 15 minutes, déconnexions jamais journalisées — étaient invisibles depuis la liste des endpoints.
+La révision d'août 2026 montre en revanche que la protection des routes ne dit rien de ce qui se passe une fois le contrôle franchi. C'est là que se trouvaient tous les défauts : portée des tokens API ignorée, export et génération de QR codes non cloisonnés, quatre routes rendant des matériels hors périmètre, cascade de déconnexion bloquant la reconnexion quinze minutes, déconnexions jamais journalisées. Aucun n'était visible depuis la liste des endpoints — ils étaient tous authentifiés.
+
+La leçon tient en une phrase : **une route protégée n'est pas une route qui protège**. Un audit qui s'arrête à « qui peut appeler quoi » manque « ce que l'appel rend ».
 
 **Le point ouvert le plus sérieux n'est pas un défaut de code mais un écart entre l'interface et la réalité.** La politique de mot de passe et le blocage après N tentatives, qui étaient dans ce cas, sont désormais appliqués ; les réglages inapplicables ont été retirés du formulaire.
 
