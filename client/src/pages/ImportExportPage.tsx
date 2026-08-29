@@ -15,6 +15,18 @@ const CLASSE_CHAMP =
 export default function ImportExportPage() {
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importResult, setImportResult] = useState<any>(null)
+
+  /**
+   * Reconnaissance des colonnes avant d'écrire quoi que ce soit.
+   *
+   * L'import était positionnel strict : le fichier devait suivre le modèle au
+   * caractère près, et l'export de l'application — qui commence par une colonne
+   * `ID` — ne pouvait pas être réimporté. Les colonnes sont maintenant
+   * reconnues par leur intitulé, et cet écran laisse corriger une
+   * reconnaissance ratée avant l'import.
+   */
+  const [analyse, setAnalyse] = useState<any>(null)
+  const [correspondance, setCorrespondance] = useState<Record<string, number | ''>>({})
   const [exportFormat, setExportFormat] = useState('xlsx')
 
   // Le serveur acceptait ces trois filtres depuis toujours ; aucun écran ne les
@@ -61,11 +73,50 @@ export default function ImportExportPage() {
     },
   })
 
+  // Reconnaissance des colonnes
+  const analyseMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res = await api.post('/import-export/analyze', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      return res.data.data
+    },
+    onSuccess: (data) => {
+      setAnalyse(data)
+      setCorrespondance(data.correspondance ?? {})
+    },
+    onError: () => {
+      setAnalyse(null)
+      toast.error('Fichier illisible')
+    },
+  })
+
+  const choisirFichier = (file: File | null) => {
+    setImportFile(file)
+    setImportResult(null)
+    setAnalyse(null)
+    setCorrespondance({})
+    if (file) analyseMutation.mutate(file)
+  }
+
+  /** Champs obligatoires qu'aucune colonne ne renseigne, d'après le choix courant. */
+  const manquants = (analyse?.champs ?? [])
+    .filter((c: any) => c.obligatoire && !correspondance[c.champ])
+    .map((c: any) => c.libelle)
+
   // Import
   const importMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData()
       formData.append('file', file)
+      // La correspondance validée à l'écran prime sur la reconnaissance
+      // automatique : c'est ce qui rend l'erreur corrigeable.
+      const retenue = Object.fromEntries(
+        Object.entries(correspondance).filter(([, index]) => index !== '' && index !== undefined)
+      )
+      formData.append('mapping', JSON.stringify(retenue))
       const res = await api.post('/import-export/import', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -156,10 +207,7 @@ export default function ImportExportPage() {
                 <input
                   type="file"
                   accept=".csv,.xlsx,.xls"
-                  onChange={(e) => {
-                    setImportFile(e.target.files?.[0] || null)
-                    setImportResult(null)
-                  }}
+                  onChange={(e) => choisirFichier(e.target.files?.[0] || null)}
                   className="hidden"
                   id="import-file"
                 />
@@ -172,13 +220,81 @@ export default function ImportExportPage() {
                 </label>
               </div>
 
-              {importFile && (
+              {analyseMutation.isPending && (
+                <p className="text-sm text-gray-600 dark:text-gray-300">Lecture du fichier…</p>
+              )}
+
+              {analyse && (
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-baseline gap-x-2 text-sm">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">
+                      {analyse.lignes} ligne{analyse.lignes > 1 ? 's' : ''} à importer
+                    </span>
+                    <span className="text-gray-600 dark:text-gray-300">
+                      {analyse.origine === 'entetes'
+                        ? 'colonnes reconnues d\'après leurs intitulés'
+                        : 'aucun intitulé reconnu — les colonnes sont prises dans l\'ordre du modèle'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+                    {analyse.champs.map((c: any) => (
+                      <div key={c.champ} className="flex items-center gap-3">
+                        <label
+                          htmlFor={`colonne-${c.champ}`}
+                          className="w-40 flex-shrink-0 text-sm text-gray-700 dark:text-gray-200"
+                        >
+                          {c.libelle}
+                          {c.obligatoire && <span className="text-red-600"> *</span>}
+                        </label>
+                        <select
+                          id={`colonne-${c.champ}`}
+                          value={correspondance[c.champ] ?? ''}
+                          onChange={(e) =>
+                            setCorrespondance((p) => ({
+                              ...p,
+                              [c.champ]: e.target.value === '' ? '' : Number(e.target.value),
+                            }))
+                          }
+                          className={CLASSE_CHAMP}
+                        >
+                          <option value="">— ignorer —</option>
+                          {analyse.entetes.map((entete: string, i: number) => (
+                            <option key={i} value={i + 1}>
+                              {entete || `Colonne ${i + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+
+                  {analyse.apercu?.length > 0 && (
+                    <p className="text-sm text-gray-600 dark:text-gray-300">
+                      Première ligne lue : <strong>{analyse.apercu[0].name ?? '—'}</strong>
+                      {analyse.apercu[0].category ? ` — catégorie ${analyse.apercu[0].category}` : ''}
+                    </p>
+                  )}
+
+                  {manquants.length > 0 && (
+                    <p className="text-sm text-red-700 dark:text-red-300">
+                      Colonne obligatoire à choisir : {manquants.join(', ')}.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {importFile && !analyseMutation.isPending && (
                 <Button
                   onClick={() => importMutation.mutate(importFile)}
-                  disabled={importMutation.isPending}
+                  disabled={importMutation.isPending || manquants.length > 0}
                   className="w-full"
                 >
-                  {importMutation.isPending ? 'Import en cours...' : 'Lancer l\'import'}
+                  {importMutation.isPending
+                    ? 'Import en cours…'
+                    : analyse
+                      ? `Importer ${analyse.lignes} ligne${analyse.lignes > 1 ? 's' : ''}`
+                      : 'Lancer l\'import'}
                 </Button>
               )}
 

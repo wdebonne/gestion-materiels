@@ -6,6 +6,12 @@ import fs from 'fs';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, getAccessibleCategoryIds } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
+import {
+  CHAMPS_IMPORT,
+  champsObligatoiresManquants,
+  resoudreCorrespondance,
+  valeurDe,
+} from '../services/importMapping.service';
 
 const router = Router();
 
@@ -232,6 +238,77 @@ router.get('/template', authenticateToken, async (_req: AuthRequest, res: Respon
 // ===== IMPORT =====
 
 // Importer des matériels depuis un fichier CSV/Excel
+/** Lit un classeur téléversé et rend sa première feuille. */
+async function lireFeuille(fichier: Express.Multer.File): Promise<ExcelJS.Worksheet | null> {
+  const workbook = new ExcelJS.Workbook();
+  const ext = path.extname(fichier.originalname).toLowerCase();
+
+  if (ext === '.csv') await workbook.csv.readFile(fichier.path);
+  else await workbook.xlsx.readFile(fichier.path);
+
+  return workbook.worksheets[0] ?? null;
+}
+
+/** Intitulés de la première ligne, indexés à partir de 0. */
+function entetesDe(feuille: ExcelJS.Worksheet): string[] {
+  const premiere = feuille.getRow(1).values as any[];
+  // ExcelJS numérote à partir de 1 et laisse la case 0 vide.
+  return (premiere ?? []).slice(1).map((v) => (v === undefined || v === null ? '' : String(v)));
+}
+
+// POST /api/import-export/analyze - Reconnaître les colonnes avant d'importer
+router.post('/analyze', authenticateToken, requireSupervisor, upload.single('file'), async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
+      return;
+    }
+
+    const feuille = await lireFeuille(req.file);
+    if (!feuille) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+      res.status(400).json({ success: false, message: 'Fichier vide' });
+      return;
+    }
+
+    const entetes = entetesDe(feuille);
+    const { correspondance, origine } = resoudreCorrespondance(entetes);
+
+    // Quelques lignes telles qu'elles seront lues : c'est le seul moyen de voir
+    // qu'une colonne a été mal reconnue avant d'écrire quoi que ce soit.
+    const apercu: Array<Record<string, string | null>> = [];
+    feuille.eachRow((row, numero) => {
+      if (numero === 1 || apercu.length >= 5) return;
+      const valeurs = row.values as any[];
+      const ligne: Record<string, string | null> = {};
+      for (const definition of CHAMPS_IMPORT) {
+        ligne[definition.champ] = valeurDe(valeurs, correspondance, definition.champ);
+      }
+      apercu.push(ligne);
+    });
+
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+
+    res.json({
+      success: true,
+      data: {
+        entetes,
+        correspondance,
+        origine,
+        champs: CHAMPS_IMPORT.map(({ champ, libelle, obligatoire }) => ({ champ, libelle, obligatoire })),
+        manquants: champsObligatoiresManquants(correspondance).map((d) => d.libelle),
+        lignes: Math.max(0, feuille.rowCount - 1),
+        apercu,
+      },
+    });
+  } catch (error: any) {
+    console.error('Erreur analyse import:', error);
+    try { if (req.file) fs.unlinkSync(req.file.path); } catch (_) {}
+    res.status(500).json({ success: false, message: "Fichier illisible" });
+  }
+});
+
+// POST /api/import-export/import - Importer des matériels
 router.post('/import', authenticateToken, requireSupervisor, upload.single('file'), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.file) {
@@ -239,123 +316,133 @@ router.post('/import', authenticateToken, requireSupervisor, upload.single('file
       return;
     }
 
-    const filePath = req.file.path;
-    const workbook = new ExcelJS.Workbook();
-
-    const ext = path.extname(req.file.originalname).toLowerCase();
-    if (ext === '.csv') {
-      await workbook.csv.readFile(filePath);
-    } else {
-      await workbook.xlsx.readFile(filePath);
-    }
-
-    const sheet = workbook.worksheets[0];
-    if (!sheet) {
+    const feuille = await lireFeuille(req.file);
+    if (!feuille) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
       res.status(400).json({ success: false, message: 'Fichier vide' });
       return;
     }
 
-    // Récupérer les catégories existantes
+    // La correspondance choisie par l'utilisateur arrive en JSON, le corps étant
+    // multipart. Sans elle, elle est déduite des intitulés.
+    let imposee = null;
+    if (typeof req.body?.mapping === 'string' && req.body.mapping.trim()) {
+      try {
+        imposee = JSON.parse(req.body.mapping);
+      } catch {
+        try { fs.unlinkSync(req.file.path); } catch (_) {}
+        res.status(400).json({ success: false, message: 'Correspondance de colonnes illisible' });
+        return;
+      }
+    }
+
+    const entetes = entetesDe(feuille);
+    const { correspondance, origine } = resoudreCorrespondance(entetes, imposee);
+
+    const manquants = champsObligatoiresManquants(correspondance);
+    if (manquants.length > 0) {
+      try { fs.unlinkSync(req.file.path); } catch (_) {}
+      res.status(400).json({
+        success: false,
+        message: `Colonne obligatoire non reconnue : ${manquants.map((d) => d.libelle).join(', ')}. Colonnes trouvées dans le fichier : ${entetes.filter(Boolean).join(', ') || 'aucune'}.`,
+      });
+      return;
+    }
+
     const categories = await db.query('SELECT id, name, slug FROM categories');
     const categoryMap = new Map(categories.map((c: any) => [c.name.toLowerCase(), c]));
-
-    // Récupérer les sous-catégories
     const subcategories = await db.query('SELECT id, category_id, name, slug FROM subcategories');
 
     const results = { imported: 0, errors: [] as string[], skipped: 0 };
     const now = new Date().toISOString();
+    const STATUTS = ['active', 'inactive', 'maintenance', 'out_of_service'];
 
-    // Parcourir les lignes (skip header)
-    sheet.eachRow((row, rowNumber) => {
-      if (rowNumber === 1) return; // Skip header
+    // Les lignes sont collectées avant d'être insérées : `eachRow` est
+    // synchrone, et l'insertion y était lancée sans être attendue. Les erreurs
+    // d'insertion n'étaient donc jamais rattrapées, le compteur annonçait des
+    // lignes qui n'existaient pas, et la réponse partait avant la fin.
+    const lignes: Array<{ numero: number; valeurs: any[] }> = [];
+    feuille.eachRow((row, numero) => {
+      if (numero === 1 && origine !== 'positionnelle') return;
+      lignes.push({ numero, valeurs: row.values as any[] });
+    });
 
-      const values = row.values as any[];
-      // ExcelJS row values are 1-indexed
-      const name = values[1]?.toString()?.trim();
-      const categoryName = values[2]?.toString()?.trim();
-      const subcategoryName = values[3]?.toString()?.trim();
-      const reference = values[4]?.toString()?.trim() || null;
-      const serialNumber = values[5]?.toString()?.trim() || null;
-      const status = values[6]?.toString()?.trim() || 'active';
-      const location = values[7]?.toString()?.trim() || null;
-      const purchaseDate = values[8]?.toString()?.trim() || null;
-      const purchasePrice = values[9] ? Number(values[9]) : null;
-      const description = values[10]?.toString()?.trim() || null;
-      const notes = values[11]?.toString()?.trim() || null;
+    for (const { numero, valeurs } of lignes) {
+      const champ = (c: any) => valeurDe(valeurs, correspondance, c);
 
+      const name = champ('name');
       if (!name) {
-        results.errors.push(`Ligne ${rowNumber}: Nom manquant`);
-        return;
+        results.errors.push(`Ligne ${numero} : nom manquant`);
+        continue;
       }
 
+      const categoryName = champ('category');
       if (!categoryName) {
-        results.errors.push(`Ligne ${rowNumber}: Catégorie manquante pour "${name}"`);
-        return;
+        results.errors.push(`Ligne ${numero} : catégorie manquante pour « ${name} »`);
+        continue;
       }
 
       const category = categoryMap.get(categoryName.toLowerCase());
       if (!category) {
-        results.errors.push(`Ligne ${rowNumber}: Catégorie "${categoryName}" introuvable`);
-        return;
+        results.errors.push(`Ligne ${numero} : catégorie « ${categoryName} » introuvable`);
+        continue;
       }
 
-      // Valider le statut
-      const validStatuses = ['active', 'inactive', 'maintenance', 'out_of_service'];
-      if (!validStatuses.includes(status)) {
-        results.errors.push(`Ligne ${rowNumber}: Statut "${status}" invalide pour "${name}"`);
-        return;
+      const status = champ('status') ?? 'active';
+      if (!STATUTS.includes(status)) {
+        results.errors.push(`Ligne ${numero} : statut « ${status} » invalide pour « ${name} » (attendu : ${STATUTS.join(', ')})`);
+        continue;
       }
 
-      let subcategoryId = null;
+      let subcategoryId: number | null = null;
+      const subcategoryName = champ('subcategory');
       if (subcategoryName) {
         const sub = subcategories.find(
           (s: any) => s.category_id === category.id && s.name.toLowerCase() === subcategoryName.toLowerCase()
         );
-        if (sub) {
-          subcategoryId = sub.id;
-        } else {
-          results.errors.push(`Ligne ${rowNumber}: Sous-catégorie "${subcategoryName}" introuvable dans "${categoryName}"`);
-          return;
+        if (!sub) {
+          results.errors.push(`Ligne ${numero} : sous-catégorie « ${subcategoryName} » introuvable dans « ${categoryName} »`);
+          continue;
         }
+        subcategoryId = sub.id;
       }
 
-      // Valider et formater le prix
-      let validPrice = purchasePrice;
-      if (validPrice !== null && isNaN(validPrice)) {
-        validPrice = null;
-      }
+      const prixBrut = champ('purchasePrice');
+      const prix = prixBrut === null ? null : Number(prixBrut.replace(',', '.').replace(/\s/g, ''));
+      const prixValide = prix !== null && Number.isFinite(prix) ? prix : null;
 
       try {
-        // We can't use await inside eachRow, so we collect and process after
-        // This is a sync operation for SQLite
-        db.execute(
-          `INSERT INTO objects (name, category_id, subcategory_id, reference, serial_number, status, location, purchase_date, purchase_price, description, notes, created_at, updated_at) 
+        await db.execute(
+          `INSERT INTO objects (name, category_id, subcategory_id, reference, serial_number, status, location, purchase_date, purchase_price, description, notes, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [name, category.id, subcategoryId, reference, serialNumber, status, location, purchaseDate, validPrice, description, notes, now, now]
+          [
+            name, category.id, subcategoryId,
+            champ('reference'), champ('serialNumber'), status, champ('location'),
+            champ('purchaseDate'), prixValide, champ('description'), champ('notes'),
+            now, now,
+          ]
         );
         results.imported++;
       } catch (err: any) {
-        results.errors.push(`Ligne ${rowNumber}: Erreur d'insertion pour "${name}" - ${err.message}`);
+        results.errors.push(`Ligne ${numero} : insertion impossible pour « ${name} » — ${err.message}`);
       }
-    });
+    }
 
-    // Supprimer le fichier uploadé
-    try { fs.unlinkSync(filePath); } catch (_) {}
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
 
     await logService.info('other', 'Import matériels', {
       userId: req.user?.userId,
       imported: results.imported,
       errors: results.errors.length,
-      filename: req.file.originalname
+      origine,
+      filename: req.file.originalname,
     });
 
-    res.json({
-      success: true,
-      data: results
-    });
+    res.json({ success: true, data: { ...results, origine } });
   } catch (error: any) {
     console.error('Erreur import:', error);
-    res.status(500).json({ success: false, message: 'Erreur lors de l\'import' });
+    try { if (req.file) fs.unlinkSync(req.file.path); } catch (_) {}
+    res.status(500).json({ success: false, message: "Erreur lors de l'import" });
   }
 });
 

@@ -207,7 +207,8 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 📜 **Timeline** : Frise chronologique consolidée sur la fiche objet (maintenances, contrôles, carburant, alertes)
 
 #### 📥 Import / Export
-- 📥 **Import CSV/Excel** : Import massif avec validation des données
+- 📥 **Import CSV/Excel** : les colonnes sont reconnues par leur intitulé, quel que soit leur ordre, et une colonne inconnue est ignorée. La reconnaissance est affichée avant l'import et corrigeable colonne par colonne. Un fichier sans ligne d'en-tête reste lu dans l'ordre du modèle
+- 🔁 **Export réimportable** : exporter, corriger dans un tableur, réimporter fonctionne — la colonne `ID` de l'export décalait auparavant toutes les autres et faisait échouer chaque ligne
 - 📤 **Export** : filtrable par catégorie, sous-catégorie et statut, au format CSV ou XLSX. Le nombre de matériels concernés est annoncé avant le téléchargement
 - 🔐 **Export cloisonné** : un compte n'exporte que les catégories qu'il a le droit de consulter
 - 📋 Template d'import téléchargeable
@@ -699,7 +700,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **2FA, timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Aucun second facteur n'est implémenté ; le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
-| **Import de matériels** | Import CSV/XLSX fonctionnel | Le mapping est **positionnel strict** sur 11 colonnes : le fichier doit suivre exactement le modèle téléchargeable |
 
 ### Limites connues
 

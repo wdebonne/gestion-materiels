@@ -89,6 +89,15 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier
 - **Nombre de matériels annoncé** avant le téléchargement, et bouton inactif quand aucun ne correspond : sans ce décompte, on récupère un classeur vide sans comprendre pourquoi
 - **Export cloisonné par les permissions de catégorie**, comme la liste des matériels. La route n'avait que `authenticateToken` et construisait sa requête sur `WHERE 1=1` : un compte dont l'écran ne montre aucune catégorie récupérait l'inventaire complet — nom, référence, numéro de série, localisation et prix d'achat de chaque matériel
+- **Correspondance des colonnes à l'import.** L'import était positionnel strict sur onze colonnes : le fichier devait suivre le modèle au caractère près
+  - Les colonnes sont reconnues par leur intitulé — accents, astérisques et parenthèses ignorés — quel que soit leur ordre. « Désignation », « Libellé » ou « Matériel » valent « Nom » ; « Famille » vaut « Catégorie »
+  - Une colonne inconnue est écartée au lieu de tout décaler
+  - **L'export de l'application est enfin réimportable.** Il commence par une colonne `ID` absente du modèle : elle décalait tout d'un cran et chaque ligne échouait sur « Catégorie introuvable ». Exporter, corriger dans un tableur, réimporter — le geste d'un inventaire annuel — était impossible
+  - La reconnaissance est affichée avant l'import, avec le nombre de lignes et la première ligne telle qu'elle sera lue ; chaque colonne reste corrigeable
+  - Un fichier sans ligne d'en-tête est toujours lu dans l'ordre du modèle
+  - Une colonne obligatoire non reconnue est refusée avec la liste des intitulés trouvés, au lieu d'un échec ligne par ligne
+- **Insertions réellement attendues.** `db.execute` était lancé dans `eachRow`, qui est synchrone : les promesses n'étaient pas attendues, le `try/catch` ne rattrapait aucune erreur d'insertion, le compteur annonçait des lignes qui n'existaient pas et la réponse partait avant la fin du travail
+
 - **Double en-tête CSV corrigé** : le second classeur recevait `columns`, qui pose déjà une ligne d'en-tête, puis recopiait aussi la ligne 1 de la source. Chaque CSV exporté commençait par deux en-têtes identiques, ce qui décale toute relecture et fait échouer un réimport
 
 ### Réservations

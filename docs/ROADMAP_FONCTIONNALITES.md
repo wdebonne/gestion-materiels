@@ -12,7 +12,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | # | Priorité | Fonctionnalité | Statut | Réserve |
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
-| 2 | 🔴 Haute | Import/Export CSV & Excel | 🟡 Partiel | Export filtrable et cloisonné ✅ — l'import reste en mapping **positionnel strict** sur 11 colonnes |
+| 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
 | 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 131 tests (87 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
@@ -59,7 +59,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Librairies :** `xlsx` ou `exceljs`
 - **Impact :** Indispensable pour migration initiale et inventaires annuels
 
-> 🟡 **Reste :** le mapping de colonnes annoncé n'existe pas — l'import est **positionnel strict** sur 11 colonnes, le fichier doit suivre exactement le modèle téléchargeable.
+> ✅ **Complété en août 2026 :** les colonnes sont reconnues par leur intitulé — accents, astérisques et parenthèses ignorés — quel que soit leur ordre, et une colonne inconnue est simplement écartée. La reconnaissance est affichée avant l'import, avec le nombre de lignes et la première ligne telle qu'elle sera lue, et chaque colonne reste corrigeable à la main. Un fichier sans ligne d'en-tête est toujours lu dans l'ordre du modèle.
+>
+> Le cas qui motivait ce chantier : l'export de l'application commence par une colonne `ID` que le modèle n'a pas. Elle décalait tout d'un cran, et chaque ligne échouait sur « Catégorie introuvable » — exporter, corriger dans un tableur, réimporter, le geste naturel d'un inventaire annuel, était donc impossible.
 >
 > ✅ **Complété en août 2026 :** les filtres catégorie, sous-catégorie et statut sont exposés dans l'écran, avec le nombre de matériels concernés annoncé avant le téléchargement — sans quoi on récupère un classeur vide sans comprendre pourquoi. L'export est par ailleurs cloisonné par les permissions de catégorie, comme la liste des matériels : il n'avait que `authenticateToken`, donc n'importe quel compte récupérait l'inventaire complet. Et chaque CSV commençait par deux lignes d'en-tête identiques.
 
