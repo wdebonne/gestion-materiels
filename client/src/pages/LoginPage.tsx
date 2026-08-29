@@ -1,21 +1,22 @@
 import { useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
-import { useAuthStore } from '@/stores/auth.store'
+import { useAuthStore, seSouvenirDeMoi, definirSouvenir } from '@/stores/auth.store'
 import { useSettingsStore } from '@/stores/settings.store'
 import { Button, Input, Alert } from '@/components/ui'
+import { getErrorMessage } from '@/lib/errors'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
-  const navigate = useNavigate()
-  const { setAuth } = useAuthStore()
+  const { setAuth, setPasswordExpired } = useAuthStore()
   const { settings } = useSettingsStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [souvenir, setSouvenir] = useState(seSouvenirDeMoi)
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -26,12 +27,15 @@ export default function LoginPage() {
       const response = await api.post('/auth/login', { email, password })
       const { user, accessToken, refreshToken } = response.data
 
+      // La redirection est assurée par PublicRoute, qui reprend la main dès que
+      // `isAuthenticated` passe à true et renvoie vers la page initialement
+      // demandée (ex. la fiche d'un matériel ouverte via un QR code).
+      definirSouvenir(souvenir)
+      setPasswordExpired(response.data.passwordExpired === true)
       setAuth(user, accessToken, refreshToken)
       toast.success(`Bienvenue, ${user.firstName} !`)
-      navigate('/')
     } catch (err: any) {
-      const message = err.response?.data?.error || 'Identifiants incorrects'
-      setError(message)
+      setError(err.response?.status === 401 ? 'Identifiants incorrects' : getErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -64,7 +68,7 @@ export default function LoginPage() {
         </div>
 
         {/* Formulaire */}
-        <div className="bg-white rounded-2xl shadow-xl p-8">
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-8">
           <form onSubmit={handleSubmit} className="space-y-5">
             {error && (
               <Alert type="error">
@@ -107,12 +111,14 @@ export default function LoginPage() {
             />
 
             <div className="flex items-center justify-between">
-              <label className="flex items-center gap-2 cursor-pointer">
+              <label className="flex items-center gap-2 cursor-pointer touch-target">
                 <input
                   type="checkbox"
-                  className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  checked={souvenir}
+                  onChange={(e) => setSouvenir(e.target.checked)}
+                  className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                 />
-                <span className="text-sm text-gray-600">Se souvenir de moi</span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">Rester connecté</span>
               </label>
 
               <Link
@@ -122,6 +128,12 @@ export default function LoginPage() {
                 Mot de passe oublié ?
               </Link>
             </div>
+
+            {!souvenir && (
+              <p className="text-sm text-gray-600 dark:text-gray-400 -mt-2">
+                La session se fermera à la fermeture du navigateur — à garder décoché sur un poste partagé.
+              </p>
+            )}
 
             <Button
               type="submit"

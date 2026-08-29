@@ -1,4 +1,5 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
+import http from 'http';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -7,6 +8,9 @@ import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
 import jwt from 'jsonwebtoken';
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
+import { getJwtSecret, assertSecretsConfigured } from './config/secrets';
 
 // Import des middlewares de sécurité avancés
 import { globalLimiter, authLimiter, sensitiveOpsLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter.middleware';
@@ -14,6 +18,9 @@ import { httpsRedirect, httpsStatus } from './middleware/https.middleware';
 
 // Charger les variables d'environnement
 dotenv.config();
+
+// Refuser de démarrer en production avec un secret JWT absent ou d'exemple
+assertSecretsConfigured();
 
 // Import des routes
 import authRoutes from './routes/auth.routes';
@@ -34,6 +41,13 @@ import logRoutes from './routes/log.routes';
 import webhookRoutes from './routes/webhook.routes';
 import trackingRoutes from './routes/tracking.routes';
 import securityRoutes from './routes/security.routes';
+import apiTokenRoutes from './routes/apiToken.routes';
+import qrcodeRoutes from './routes/qrcode.routes';
+import importExportRoutes from './routes/importExport.routes';
+import reservationRoutes from './routes/reservation.routes';
+import authSettingsRoutes from './routes/authSettings.routes';
+import manifestationRoutes from './routes/manifestation.routes';
+import espaceVertRoutes from './routes/espaceVert.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -42,6 +56,7 @@ import { initPluginSystem } from './services/plugin.service';
 import { initCronJobs } from './services/cron.service';
 import { logService } from './services/log.service';
 import { jwtRotationService } from './services/jwtRotation.service';
+import { initWebSocket } from './services/websocket.service';
 
 /**
  * Synchronise la version du package.json vers la base de données
@@ -86,7 +101,8 @@ async function syncVersionToDatabase() {
 }
 
 const app: Application = express();
-const PORT = Number(process.env.PORT) || 3000;
+// 3001 partout ailleurs : Dockerfile, docker-compose.yml, nginx.conf et le proxy Vite
+const PORT = Number(process.env.PORT) || 3001;
 
 // Middleware de redirection HTTPS (production uniquement)
 app.use(httpsRedirect);
@@ -103,7 +119,9 @@ app.use(helmet({
   contentSecurityPolicy: false // Disable CSP for now to allow assets loading
 }));
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? true : (process.env.CLIENT_URL || 'http://localhost:5173'),
+  origin: process.env.NODE_ENV === 'production'
+    ? (process.env.CLIENT_URL || true)
+    : true,
   credentials: true
 }));
 app.use(morgan('combined'));
@@ -134,7 +152,7 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
   }
 
   try {
-    jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    jwt.verify(token, getJwtSecret());
     next();
   } catch (error) {
     res.status(403).json({ success: false, message: 'Token invalide ou expiré' });
@@ -143,11 +161,70 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
 
 // Servir les fichiers statiques (uploads) avec protection
 app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../uploads')));
-// Plugins restent publics (contiennent uniquement du code/config)
-app.use('/plugins', express.static(path.join(__dirname, '../plugins')));
+// Les fichiers de plugins portent leur configuration (dont des requêtes SQL) :
+// ils ne doivent pas être servis publiquement.
+app.use('/plugins', verifyUploadAccess, express.static(path.join(__dirname, '../plugins')));
 
 // Route de vérification HTTPS (utile pour le debugging)
 app.get('/api/https-status', httpsStatus);
+
+// Health check (Docker, Portainer, etc.)
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok' });
+});
+
+// Swagger UI - Documentation API interactive
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Gestion Matériels - API Documentation',
+}));
+
+// Endpoint JSON de la spec OpenAPI
+app.get('/api/swagger.json', (req: Request, res: Response) => {
+  res.setHeader('Content-Type', 'application/json');
+  res.json(swaggerSpec);
+});
+
+// Endpoint d'information API (pour la page settings/api)
+app.get('/api/api-info', (req: Request, res: Response) => {
+  const spec = swaggerSpec as any;
+  const paths = spec.paths || {};
+  
+  // Compter les endpoints par méthode
+  const methodCounts: Record<string, number> = {};
+  let totalEndpoints = 0;
+  for (const pathKey of Object.keys(paths)) {
+    for (const method of Object.keys(paths[pathKey])) {
+      methodCounts[method.toUpperCase()] = (methodCounts[method.toUpperCase()] || 0) + 1;
+      totalEndpoints++;
+    }
+  }
+
+  // Compter les endpoints par tag
+  const tagCounts: Record<string, number> = {};
+  for (const pathKey of Object.keys(paths)) {
+    for (const method of Object.keys(paths[pathKey])) {
+      const tags = paths[pathKey][method].tags || ['Uncategorized'];
+      for (const tag of tags) {
+        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+      }
+    }
+  }
+
+  res.json({
+    success: true,
+    data: {
+      version: spec.info?.version || '1.0.0',
+      title: spec.info?.title || 'API',
+      totalEndpoints,
+      methodCounts,
+      tagCounts,
+      tags: spec.tags || [],
+      swaggerUrl: '/api-docs',
+      specUrl: '/api/swagger.json',
+    },
+  });
+});
 
 // Routes API avec rate limiting spécifiques
 app.use('/api/auth', authLimiter, authRoutes);
@@ -169,6 +246,13 @@ app.use('/api/logs', logRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/security', securityRoutes);
+app.use('/api/api-tokens', apiTokenRoutes);
+app.use('/api/qrcode', qrcodeRoutes);
+app.use('/api/import-export', exportLimiter, importExportRoutes);
+app.use('/api/reservations', reservationRoutes);
+app.use('/api/settings/auth', authSettingsRoutes);
+app.use('/api/manifestations', manifestationRoutes);
+app.use('/api/green-spaces', espaceVertRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {
@@ -219,7 +303,13 @@ async function startServer() {
     console.log('✅ Tâches planifiées initialisées');
 
     // Listen on 0.0.0.0 for Docker compatibility
-    app.listen(PORT, '0.0.0.0', () => {
+    const server = http.createServer(app);
+    
+    // Initialiser WebSocket
+    initWebSocket(server);
+    console.log('✅ WebSocket initialisé');
+
+    server.listen(PORT, '0.0.0.0', () => {
       console.log(`🚀 Serveur démarré sur http://0.0.0.0:${PORT}`);
       console.log(`📊 Mode: ${process.env.NODE_ENV || 'development'}`);
       

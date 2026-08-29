@@ -1,0 +1,124 @@
+{
+  "name": "Réservations",
+  "slug": "reservations",
+  "version": "1.0.0",
+  "description": "Gestion des réservations et prêts de matériel entre services",
+  "author": "Système",
+  "icon": "calendar-clock",
+  "type": "menu",
+  "route": "reservations",
+  "config": {
+    "statuses": ["reserved", "borrowed", "returned", "cancelled", "overdue"],
+    "require_approval": true,
+    "overdue_check_cron": "0 8 * * *"
+  },
+  "api": {
+    "endpoints": [
+      {
+        "method": "GET",
+        "path": "/list",
+        "query": "SELECT r.*, o.name as object_name, o.reference as object_reference, u.first_name as borrower_first_name, u.last_name as borrower_last_name, u.email as borrower_email, cu.first_name as created_by_first_name, cu.last_name as created_by_last_name FROM reservations r LEFT JOIN objects o ON r.object_id = o.id LEFT JOIN users u ON r.user_id = u.id LEFT JOIN users cu ON r.created_by = cu.id ORDER BY r.start_date DESC",
+        "description": "Liste toutes les réservations"
+      },
+      {
+        "method": "GET",
+        "path": "/availability/:objectId",
+        "query": "SELECT r.*, u.first_name, u.last_name FROM reservations r LEFT JOIN users u ON r.user_id = u.id WHERE r.object_id = :objectId AND r.status IN ('reserved', 'borrowed') ORDER BY r.start_date ASC",
+        "description": "Vérifier la disponibilité d'un objet"
+      }
+    ]
+  },
+  "pages": {
+    "index": {
+      "title": "Réservations & Prêts",
+      "layout": "default",
+      "components": [
+        {
+          "type": "header",
+          "title": "Réservations & Prêts",
+          "subtitle": "Gérez les réservations et prêts de matériel",
+          "actions": [
+            {
+              "label": "Nouvelle réservation",
+              "action": "create",
+              "icon": "Plus",
+              "variant": "primary"
+            }
+          ]
+        },
+        {
+          "type": "stats",
+          "items": [
+            {
+              "label": "Réservées",
+              "source": "reserved_count",
+              "icon": "Calendar",
+              "color": "bg-blue-100 text-blue-600"
+            },
+            {
+              "label": "En prêt",
+              "source": "borrowed_count",
+              "icon": "Package",
+              "color": "bg-yellow-100 text-yellow-600"
+            },
+            {
+              "label": "Retournées",
+              "source": "returned_count",
+              "icon": "CheckCircle",
+              "color": "bg-green-100 text-green-600"
+            },
+            {
+              "label": "En retard",
+              "source": "overdue_count",
+              "icon": "AlertTriangle",
+              "color": "bg-red-100 text-red-600"
+            }
+          ]
+        },
+        {
+          "type": "filters",
+          "fields": [
+            {
+              "name": "search",
+              "label": "Rechercher",
+              "type": "text",
+              "placeholder": "Nom du matériel..."
+            },
+            {
+              "name": "status",
+              "label": "Statut",
+              "type": "select",
+              "options": [
+                { "value": "", "label": "Tous" },
+                { "value": "reserved", "label": "Réservé" },
+                { "value": "borrowed", "label": "En prêt" },
+                { "value": "returned", "label": "Retourné" },
+                { "value": "cancelled", "label": "Annulé" },
+                { "value": "overdue", "label": "En retard" }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "dataTable",
+          "source": "/api/reservations",
+          "emptyMessage": "Aucune réservation trouvée.",
+          "columns": [
+            { "field": "object_name", "label": "Matériel", "sortable": true },
+            { "field": "borrower_first_name", "label": "Emprunteur", "sortable": true },
+            { "field": "start_date", "label": "Début", "format": "date", "sortable": true },
+            { "field": "end_date", "label": "Fin", "format": "date", "sortable": true },
+            { "field": "status", "label": "Statut", "type": "badge" },
+            { "field": "reason", "label": "Motif" }
+          ],
+          "actions": [
+            { "icon": "Check", "action": "approve", "tooltip": "Marquer en prêt" },
+            { "icon": "RotateCcw", "action": "return", "tooltip": "Marquer retourné" },
+            { "icon": "X", "action": "cancel", "tooltip": "Annuler" },
+            { "icon": "Trash2", "action": "delete", "tooltip": "Supprimer", "confirm": true }
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -7,7 +7,7 @@ import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
 export default function ProfilePage() {
-  const { user, setAuth } = useAuthStore()
+  const { user, updateUser } = useAuthStore()
   const [activeTab, setActiveTab] = useState<'info' | 'password'>('info')
   
   // État du formulaire profil
@@ -41,8 +41,7 @@ export default function ProfilePage() {
       })
     },
     onSuccess: (response) => {
-      const updatedUser = response.data.user
-      setAuth(updatedUser, useAuthStore.getState().accessToken!, useAuthStore.getState().refreshToken!)
+      updateUser(response.data.user)
       toast.success('Avatar mis à jour')
     },
     onError: (err: any) => {
@@ -56,14 +55,7 @@ export default function ProfilePage() {
       return api.delete('/auth/avatar')
     },
     onSuccess: () => {
-      const currentUser = useAuthStore.getState().user
-      if (currentUser) {
-        setAuth(
-          { ...currentUser, avatar: undefined },
-          useAuthStore.getState().accessToken!,
-          useAuthStore.getState().refreshToken!
-        )
-      }
+      updateUser({ avatar: undefined })
       toast.success('Avatar supprimé')
     },
     onError: (err: any) => {
@@ -99,8 +91,7 @@ export default function ProfilePage() {
       return api.put('/users/me', data)
     },
     onSuccess: (response) => {
-      const updatedUser = response.data
-      setAuth(updatedUser, useAuthStore.getState().accessToken!, useAuthStore.getState().refreshToken!)
+      updateUser(response.data)
       toast.success('Profil mis à jour')
     },
     onError: (err: any) => {
@@ -163,8 +154,8 @@ export default function ProfilePage() {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* En-tête */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Mon profil</h1>
-        <p className="text-gray-500 mt-1">Gérez vos informations personnelles</p>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Mon profil</h1>
+        <p className="text-gray-500 dark:text-gray-400 mt-1">Gérez vos informations personnelles</p>
       </div>
 
       {/* Avatar et infos de base */}
@@ -193,7 +184,7 @@ export default function ProfilePage() {
                   </div>
                 ) : (
                   <div
-                    className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                    className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center hover-reveal cursor-pointer"
                     onClick={() => fileInputRef.current?.click()}
                   >
                     <Camera className="w-6 h-6 text-white" />
@@ -206,7 +197,7 @@ export default function ProfilePage() {
                 <button
                   onClick={() => deleteAvatarMutation.mutate()}
                   className="absolute -bottom-1 -right-1 w-7 h-7 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center shadow-md transition-colors"
-                  title="Supprimer l'avatar"
+                  title="Supprimer l'avatar" aria-label="Supprimer l'avatar"
                 >
                   <Trash2 className="w-3.5 h-3.5" />
                 </button>
@@ -223,11 +214,11 @@ export default function ProfilePage() {
             </div>
 
             <div>
-              <h2 className="text-xl font-semibold text-gray-900">
+              <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
                 {user?.firstName} {user?.lastName}
               </h2>
-              <p className="text-gray-500">{user?.email}</p>
-              <span className="inline-block mt-2 px-3 py-1 bg-gray-100 text-gray-700 text-sm rounded-full">
+              <p className="text-gray-500 dark:text-gray-400">{user?.email}</p>
+              <span className="inline-block mt-2 px-3 py-1 bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm rounded-full">
                 {getRoleLabel(user?.role || 'user')}
               </span>
             </div>
@@ -236,7 +227,7 @@ export default function ProfilePage() {
       </Card>
 
       {/* Onglets */}
-      <div className="border-b border-gray-200">
+      <div className="border-b border-gray-200 dark:border-gray-700">
         <nav className="flex gap-6 -mb-px">
           <button
             onClick={() => setActiveTab('info')}
@@ -271,7 +262,7 @@ export default function ProfilePage() {
           </CardHeader>
           <CardBody>
             <form onSubmit={handleProfileSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Prénom"
                   value={profileData.firstName}

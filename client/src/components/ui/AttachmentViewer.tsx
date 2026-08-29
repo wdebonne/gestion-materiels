@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Paperclip, FileText, Image as ImageIcon, Eye, Download, X } from 'lucide-react'
+import { Paperclip, FileText, Image as ImageIcon, Download, X } from 'lucide-react'
 import type { UploadedFile } from './FileUpload'
 
 interface AttachmentViewerProps {
@@ -22,7 +22,7 @@ export default function AttachmentViewer({ attachments, compact = false }: Attac
     if (isPdf(mimetype)) {
       return <FileText className="w-4 h-4 text-red-500" />
     }
-    return <FileText className="w-4 h-4 text-gray-500" />
+    return <FileText className="w-4 h-4 text-gray-500 dark:text-gray-400" />
   }
 
   if (compact) {
@@ -31,7 +31,7 @@ export default function AttachmentViewer({ attachments, compact = false }: Attac
         <button
           type="button"
           onClick={() => setPreviewModal(attachments[0])}
-          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded-full text-gray-600 transition-colors"
+          className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded-full text-gray-600 dark:text-gray-300 transition-colors"
           title={`${attachments.length} pièce(s) jointe(s)`}
         >
           <Paperclip className="w-3 h-3" />
@@ -55,11 +55,11 @@ export default function AttachmentViewer({ attachments, compact = false }: Attac
     <>
       <div className="flex flex-wrap gap-2">
         {attachments.map((file, index) => (
-          <button
+          <button aria-label={file.originalName}
             key={file.filename || index}
             type="button"
             onClick={() => setPreviewModal(file)}
-            className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded text-sm text-gray-700 transition-colors"
+            className="flex items-center gap-1.5 px-2 py-1 bg-gray-50 dark:bg-gray-900/40 hover:bg-gray-100 dark:hover:bg-gray-700 border border-gray-200 dark:border-gray-700 rounded text-sm text-gray-700 dark:text-gray-200 transition-colors"
             title={file.originalName}
           >
             {getFileIcon(file.mimetype)}
@@ -102,7 +102,7 @@ function PreviewModal({
     if (isPdf(mimetype)) {
       return <FileText className="w-5 h-5 text-red-500" />
     }
-    return <FileText className="w-5 h-5 text-gray-500" />
+    return <FileText className="w-5 h-5 text-gray-500 dark:text-gray-400" />
   }
 
   const currentIndex = files.findIndex(f => f.filename === file.filename)
@@ -115,18 +115,18 @@ function PreviewModal({
       onClick={onClose}
     >
       <div 
-        className="relative max-w-4xl max-h-[90vh] w-full bg-white rounded-lg shadow-2xl overflow-hidden"
+        className="relative max-w-4xl max-h-[90vh] w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b bg-gray-50">
+        <div className="flex items-center justify-between p-3 border-b bg-gray-50 dark:bg-gray-900/40">
           <div className="flex items-center gap-2 min-w-0">
             {getFileIcon(file.mimetype)}
-            <span className="text-sm font-medium text-gray-700 truncate">
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200 truncate">
               {file.originalName}
             </span>
             {files.length > 1 && (
-              <span className="text-xs text-gray-400">
+              <span className="text-xs text-gray-600 dark:text-gray-300">
                 ({currentIndex + 1}/{files.length})
               </span>
             )}
@@ -141,7 +141,7 @@ function PreviewModal({
                   className={`p-1.5 rounded transition-colors ${
                     hasPrev 
                       ? 'text-gray-600 hover:bg-gray-100' 
-                      : 'text-gray-300 cursor-not-allowed'
+                      : 'text-gray-600 cursor-not-allowed'
                   }`}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -154,7 +154,7 @@ function PreviewModal({
                   className={`p-1.5 rounded transition-colors ${
                     hasNext 
                       ? 'text-gray-600 hover:bg-gray-100' 
-                      : 'text-gray-300 cursor-not-allowed'
+                      : 'text-gray-600 cursor-not-allowed'
                   }`}
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -166,14 +166,14 @@ function PreviewModal({
             <a
               href={file.url}
               download={file.originalName}
-              className="p-2 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
-              title="Télécharger"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+              title="Télécharger" aria-label="Télécharger"
             >
               <Download className="w-5 h-5" />
             </a>
             <button
               onClick={onClose}
-              className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
+              className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -197,7 +197,7 @@ function PreviewModal({
           ) : (
             <div className="text-center py-8">
               <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">Prévisualisation non disponible</p>
+              <p className="text-gray-500 dark:text-gray-400">Prévisualisation non disponible</p>
               <a
                 href={file.url}
                 download={file.originalName}

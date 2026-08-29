@@ -9,7 +9,10 @@ import {
   HardDrive,
   Lock,
   ScrollText,
-  Webhook
+  Webhook,
+  Code2,
+  Key,
+  ShieldCheck
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -30,6 +33,12 @@ const settingsNavItems = [
     to: '/settings/permissions', 
     icon: Lock, 
     label: 'Droits',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/auth', 
+    icon: ShieldCheck, 
+    label: 'Authentification',
     adminOnly: true
   },
   { 
@@ -72,6 +81,18 @@ const settingsNavItems = [
     to: '/settings/webhooks', 
     icon: Webhook, 
     label: 'Webhooks',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/api', 
+    icon: Code2, 
+    label: 'API',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/api-tokens', 
+    icon: Key, 
+    label: 'Tokens API',
     adminOnly: true
   },
 ]

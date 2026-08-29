@@ -3,6 +3,9 @@ import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
+import { ROLES, isRole } from '../config/roles';
+import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.service';
+import { notifierWebhooks } from '../services/webhook.service';
 
 const router = Router();
 
@@ -23,7 +26,7 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
 
     // Filtre par rôles
     if (req.query.roles) {
-      const roles = (req.query.roles as string).split(',').filter(r => ['admin', 'supervisor', 'user'].includes(r));
+      const roles = (req.query.roles as string).split(',').filter(isRole);
       if (roles.length > 0) {
         conditions.push(`role IN (${roles.map(() => '?').join(',')})`);
         params.push(...roles);
@@ -103,13 +106,16 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
 // POST /api/users - Créer un utilisateur
 router.post('/', authenticateToken, requireAdmin, [
   body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
-  body('password').isLength({ min: 8 }).withMessage('Le mot de passe doit contenir au moins 8 caractères'),
-  body('role').isIn(['admin', 'supervisor', 'user']).withMessage('Rôle invalide')
+  // La longueur relève de la politique configurée, pas d'une constante :
+  // sinon un minimum réglé à 10 laisserait passer 8, et un minimum réglé
+  // à 6 serait refusé ici avec un message qui contredirait l'écran.
+  body('password').notEmpty().withMessage('Le mot de passe est obligatoire'),
+  body('role').isIn(ROLES).withMessage('Rôle invalide')
 ], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.status(400).json({ success: false, errors: errors.array() });
+      return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0]?.msg });
     }
 
     const { email, password, firstName, lastName, role } = req.body;
@@ -120,14 +126,24 @@ router.post('/', authenticateToken, requireAdmin, [
       return res.status(400).json({ success: false, message: 'Cet email est déjà utilisé' });
     }
 
+    const controle = verifierMotDePasse(password, await lirePolitique());
+    if (!controle.valide) {
+      return res.status(400).json({ success: false, message: controle.message, manquements: controle.manquements });
+    }
+
     // Hasher le mot de passe
     const hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS || '12'));
 
     // Créer l'utilisateur
     const result = await db.execute(
-      'INSERT INTO users (email, password, first_name, last_name, role) VALUES (?, ?, ?, ?, ?)',
-      [email, hashedPassword, firstName || '', lastName || '', role]
+      `INSERT INTO users (email, password, first_name, last_name, role, password_changed_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [email, hashedPassword, firstName || '', lastName || '', role, new Date().toISOString()]
     );
+
+    // Ni le mot de passe ni son empreinte ne sortent : un webhook part vers un
+    // service tiers, sur lequel personne ici n'a la main.
+    notifierWebhooks('user.created', { id: result.lastInsertRowid, email, role });
 
     res.status(201).json({
       success: true,
@@ -236,11 +252,17 @@ router.put('/me/password', authenticateToken, async (req: AuthRequest, res: Resp
       return res.status(400).json({ success: false, error: 'Mot de passe actuel incorrect' });
     }
 
+    const controle = verifierMotDePasse(newPassword, await lirePolitique());
+    if (!controle.valide) {
+      return res.status(400).json({ success: false, message: controle.message, manquements: controle.manquements });
+    }
+
     // Hasher et mettre à jour le nouveau mot de passe
     const hashedPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS || '12'));
+    const maintenant = new Date().toISOString();
     await db.execute(
-      'UPDATE users SET password = ?, updated_at = ? WHERE id = ?',
-      [hashedPassword, new Date().toISOString(), userId]
+      'UPDATE users SET password = ?, password_changed_at = ?, updated_at = ? WHERE id = ?',
+      [hashedPassword, maintenant, maintenant, userId]
     );
 
     res.json({ success: true, message: 'Mot de passe modifié avec succès' });
@@ -295,12 +317,19 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       values.push(isActive ? 1 : 0);
     }
     if (password) {
-      if (password.length < 8) {
-        return res.status(400).json({ success: false, message: 'Le mot de passe doit contenir au moins 8 caractères' });
+      const controle = verifierMotDePasse(password, await lirePolitique());
+      if (!controle.valide) {
+        return res.status(400).json({ success: false, message: controle.message, manquements: controle.manquements });
       }
       const hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS || '12'));
       updateFields.push('password = ?');
       values.push(hashedPassword);
+      updateFields.push('password_changed_at = ?');
+      values.push(new Date().toISOString());
+      // Un mot de passe réattribué débloque le compte : c'est la voie de sortie
+      // qu'un administrateur utilise quand un agent s'est fait bloquer.
+      updateFields.push('failed_login_attempts = 0');
+      updateFields.push('locked_until = NULL');
     }
 
     updateFields.push('updated_at = ?');

@@ -1,7 +1,9 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
+import { notifierWebhooks } from '../services/webhook.service';
+import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
 
 const router = Router();
 
@@ -175,6 +177,14 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
   try {
     const { id } = req.params;
 
+    // La liste filtrait par catégories accessibles, le détail non : n'importe
+    // quel compte lisait la fiche complète d'un matériel en connaissant son
+    // identifiant.
+    const filtre = await filtreObjets(req, 'o');
+    if (filtre === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
     // Récupérer la catégorie soit directement (o.category_id) soit via la sous-catégorie (s.category_id)
     const obj = await db.queryOne(
       `SELECT o.*, 
@@ -186,8 +196,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
        LEFT JOIN categories c ON c.id = o.category_id
        LEFT JOIN categories c2 ON c2.id = s.category_id
-       WHERE o.id = ?`,
-      [id]
+       WHERE o.id = ?${filtre.sql}`,
+      [id, ...filtre.params]
     );
 
     if (!obj) {
@@ -402,6 +412,8 @@ router.post('/', authenticateToken, requireSupervisor, [
       [req.user?.userId, 'create', 'object', result.lastInsertRowid, `Objet créé: ${name}`]
     );
 
+    notifierWebhooks('object.created', { id: result.lastInsertRowid, name, categoryId, subcategoryId });
+
     res.status(201).json({
       success: true,
       message: 'Objet créé',
@@ -502,6 +514,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       values
     );
 
+    notifierWebhooks('object.updated', { id: Number(id) });
+
     res.json({ success: true, message: 'Objet mis à jour' });
   } catch (error: any) {
     console.error('Erreur update object:', error);
@@ -520,6 +534,8 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
       return res.status(404).json({ success: false, message: 'Objet non trouvé' });
     }
 
+    notifierWebhooks('object.deleted', { id: Number(id) });
+
     res.json({ success: true, message: 'Objet supprimé' });
   } catch (error: any) {
     console.error('Erreur delete object:', error);
@@ -530,8 +546,18 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
 // === PLUGIN: CARBURANT ===
 
 // POST /api/objects/:id/fuel - Ajouter une entrée carburant
-router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/:id/fuel', authenticateToken, requireFieldWrite, [
+  body('quantity').notEmpty().withMessage('La quantité est obligatoire')
+    .isFloat({ gt: 0 }).withMessage('La quantité doit être un nombre supérieur à 0'),
+  body('cost').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Le coût doit être un nombre positif'),
+  body('mileage').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Le kilométrage doit être un entier positif'),
+], async (req: AuthRequest, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+    }
+
     const { id } = req.params;
     // Support des noms de champs du frontend (date, cost) et backend (entryDate, unitPrice)
     const { fuelType, quantity, cost, mileage, station, entryDate, date, notes, attachments } = req.body;
@@ -574,6 +600,8 @@ router.post('/:id/fuel', authenticateToken, requireSupervisor, async (req: AuthR
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, finalFuelType, qty, unitPriceCalculated, totalPrice, mileage || null, station || null, finalEntryDate, notes || null, attachmentsJson]
     );
+
+    notifierWebhooks('fuel.created', { objectId: Number(id), quantity, cost });
 
     res.status(201).json({
       success: true,
@@ -654,12 +682,34 @@ router.get('/fuel-stations/list', authenticateToken, async (req: AuthRequest, re
 });
 
 // POST /api/objects/fuel-stations - Ajouter une station
+/**
+ * Cherche une entree de referentiel en ignorant la casse et les espaces.
+ *
+ * La contrainte UNIQUE de SQLite etant sensible a la casse, « Total Pavilly »
+ * et « TOTAL Pavilly » etaient acceptes tous les deux : les couts se
+ * retrouvaient alors eclates entre deux stations dans le module Suivi.
+ */
+async function trouverEntreeExistante(table: string, nom: string): Promise<{ id: number; name: string } | null> {
+  return db.queryOne(
+    `SELECT id, name FROM ${table} WHERE LOWER(TRIM(name)) = ?`,
+    [nom.trim().toLowerCase()]
+  );
+}
+
 router.post('/fuel-stations', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { name, address } = req.body;
     
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const existante = await trouverEntreeExistante('fuel_stations', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Cette station existe déjà sous le nom « ${existante.name} ».`
+      });
     }
 
     const result = await db.execute(
@@ -753,6 +803,14 @@ router.post('/maintenance-types', authenticateToken, requireAdmin, async (req: A
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
     }
 
+    const existante = await trouverEntreeExistante('maintenance_types', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Ce type d'entretien existe déjà sous le nom « ${existante.name} ».`
+      });
+    }
+
     const result = await db.execute(
       'INSERT INTO maintenance_types (name) VALUES (?)',
       [name.trim()]
@@ -842,6 +900,14 @@ router.post('/maintenance-providers', authenticateToken, requireAdmin, async (re
     
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    }
+
+    const existante = await trouverEntreeExistante('maintenance_providers', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Ce prestataire existe déjà sous le nom « ${existante.name} ».`
+      });
     }
 
     const result = await db.execute(
@@ -935,6 +1001,14 @@ router.post('/control-centers', authenticateToken, requireAdmin, async (req: Aut
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
     }
 
+    const existante = await trouverEntreeExistante('control_centers', name);
+    if (existante) {
+      return res.status(400).json({
+        success: false,
+        message: `Ce centre de contrôle existe déjà sous le nom « ${existante.name} ».`
+      });
+    }
+
     const result = await db.execute(
       'INSERT INTO control_centers (name, address, phone) VALUES (?, ?, ?)',
       [name.trim(), address?.trim() || null, phone?.trim() || null]
@@ -1007,8 +1081,20 @@ router.delete('/control-centers/:centerId', authenticateToken, requireAdmin, asy
 // === PLUGIN: CONTRÔLE TECHNIQUE ===
 
 // POST /api/objects/:id/technical-control - Ajouter un contrôle technique
-router.post('/:id/technical-control', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/:id/technical-control', authenticateToken, requireFieldWrite, [
+  // La route lit `controlDate` / `expiryDate` : c'est ce que le client envoie
+  // après mappage. Valider `date` rejetterait toutes les saisies légitimes.
+  body('controlDate').notEmpty().withMessage('La date du contrôle est obligatoire'),
+  body('expiryDate').notEmpty().withMessage("La date d'expiration est obligatoire"),
+  body('cost').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Le coût doit être un nombre positif'),
+  body('mileage').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Le kilométrage doit être un entier positif'),
+], async (req: AuthRequest, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+    }
+
     const { id } = req.params;
     const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments } = req.body;
 
@@ -1170,8 +1256,18 @@ router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin,
 // === PLUGIN: MAINTENANCE ===
 
 // POST /api/objects/:id/maintenance - Ajouter une maintenance
-router.post('/:id/maintenance', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/:id/maintenance', authenticateToken, requireFieldWrite, [
+  body('maintenanceType').notEmpty().trim().withMessage("Le type d'entretien est obligatoire"),
+  body('maintenanceDate').notEmpty().withMessage("La date de l'entretien est obligatoire"),
+  body('cost').optional({ values: 'falsy' }).isFloat({ min: 0 }).withMessage('Le coût doit être un nombre positif'),
+  body('mileage').optional({ values: 'falsy' }).isInt({ min: 0 }).withMessage('Le kilométrage doit être un entier positif'),
+], async (req: AuthRequest, res: Response) => {
   try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0].msg });
+    }
+
     const { id } = req.params;
     const { 
       maintenanceType, maintenanceDate, nextDate, mileage, nextMileage,
@@ -1232,6 +1328,8 @@ router.post('/:id/maintenance', authenticateToken, requireSupervisor, async (req
         );
       }
     }
+
+    notifierWebhooks('maintenance.created', { objectId: Number(id), maintenanceType, maintenanceDate });
 
     res.status(201).json({
       success: true,

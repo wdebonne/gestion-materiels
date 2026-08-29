@@ -1,6 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import crypto from 'crypto';
 import { db } from '../database';
+import { getJwtSecret } from '../config/secrets';
 
 export interface JwtPayload {
   userId: number;
@@ -21,12 +23,17 @@ export const authenticateToken = async (
   const token = authHeader && authHeader.split(' ')[1];
 
   if (!token) {
+    // Vérifier si un token API est fourni via X-API-Token
+    const apiToken = req.headers['x-api-token'] as string;
+    if (apiToken) {
+      return authenticateApiToken(apiToken, req, res, next);
+    }
     res.status(401).json({ success: false, message: 'Token d\'authentification requis' });
     return;
   }
 
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as JwtPayload;
+    const decoded = jwt.verify(token, getJwtSecret()) as JwtPayload;
     
     // Vérifier que l'utilisateur existe toujours et est actif
     const user = await db.queryOne(
@@ -46,8 +53,132 @@ export const authenticateToken = async (
   }
 };
 
-export const requireRole = (...roles: string[]) => {
-  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+/**
+ * Authentifie une requête via un token API (header X-API-Token)
+ */
+/** Permissions qu'un token API peut porter, telles que proposées à l'administrateur. */
+export const PERMISSIONS_TOKEN = ['read', 'write', 'delete'] as const;
+export type PermissionToken = (typeof PERMISSIONS_TOKEN)[number];
+
+const LIBELLE_PERMISSION: Record<PermissionToken, string> = {
+  read: 'Lecture',
+  write: 'Écriture',
+  delete: 'Suppression',
+};
+
+/**
+ * Permission exigée par une méthode HTTP.
+ *
+ * Le découpage est celui affiché dans l'écran des tokens : lecture pour GET,
+ * écriture pour POST/PUT/PATCH, suppression pour DELETE. Une méthode inconnue
+ * est traitée comme une écriture, pour ne jamais élargir par défaut.
+ */
+export function permissionRequise(methode: string): PermissionToken {
+  switch (methode.toUpperCase()) {
+    case 'GET':
+    case 'HEAD':
+    case 'OPTIONS':
+      return 'read';
+    case 'DELETE':
+      return 'delete';
+    default:
+      return 'write';
+  }
+}
+
+/**
+ * Permissions stockées sur un token, ramenées à une liste sûre.
+ *
+ * Colonne absente, JSON corrompu ou valeur inconnue : on retombe sur la lecture
+ * seule plutôt que d'ouvrir des droits qu'un administrateur n'a pas accordés.
+ */
+export function lirePermissions(brut: unknown): PermissionToken[] {
+  let valeurs: unknown;
+  try {
+    valeurs = typeof brut === 'string' ? JSON.parse(brut) : brut;
+  } catch {
+    return ['read'];
+  }
+
+  if (!Array.isArray(valeurs)) return ['read'];
+
+  const retenues = valeurs.filter((v): v is PermissionToken =>
+    PERMISSIONS_TOKEN.includes(v as PermissionToken)
+  );
+  return retenues.length > 0 ? retenues : ['read'];
+}
+
+async function authenticateApiToken(
+  rawToken: string,
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const tokenHash = crypto.createHash('sha256').update(rawToken).digest('hex');
+
+    const apiToken = await db.queryOne(
+      'SELECT t.*, u.email, u.role, u.is_active FROM api_tokens t JOIN users u ON t.created_by = u.id WHERE t.token_hash = ?',
+      [tokenHash]
+    );
+
+    if (!apiToken || !apiToken.is_active) {
+      res.status(401).json({ success: false, message: 'Token API invalide ou désactivé' });
+      return;
+    }
+
+    if (!apiToken.is_active) {
+      res.status(401).json({ success: false, message: 'Le compte utilisateur associé est désactivé' });
+      return;
+    }
+
+    // Vérifier l'expiration
+    if (apiToken.expires_at && new Date(apiToken.expires_at) < new Date()) {
+      res.status(401).json({ success: false, message: 'Token API expiré' });
+      return;
+    }
+
+    // Mettre à jour last_used_at
+    const now = new Date().toISOString();
+    db.execute('UPDATE api_tokens SET last_used_at = ? WHERE id = ?', [now, apiToken.id]).catch(() => {});
+
+    // Attacher les infos utilisateur (le token hérite du rôle du créateur)
+    req.user = {
+      userId: apiToken.created_by,
+      email: apiToken.email,
+      role: apiToken.role
+    };
+
+    // Les permissions du token limitent ce qu'il peut faire, en plus du rôle
+    // hérité de son créateur. Elles étaient lues puis ignorées : un token
+    // « lecture seule » pouvait supprimer autant que son créateur.
+    const permissions = lirePermissions(apiToken.permissions);
+    (req as any).apiTokenPermissions = permissions;
+
+    const requise = permissionRequise(req.method);
+    if (!permissions.includes(requise)) {
+      res.status(403).json({
+        success: false,
+        message: `Ce token API n'a pas la permission « ${LIBELLE_PERMISSION[requise]} »`
+      });
+      return;
+    }
+
+    next();
+  } catch (error) {
+    res.status(403).json({ success: false, message: 'Erreur de validation du token API' });
+  }
+}
+
+/** Garde de rôle, portant la liste des rôles autorisés pour pouvoir être inspectée. */
+export interface RoleGuard {
+  (req: AuthRequest, res: Response, next: NextFunction): void;
+  /** Rôles acceptés. Exposés pour que les tests vérifient le contrat de chaque route. */
+  allowedRoles: readonly string[];
+}
+
+export const requireRole = (...roles: string[]): RoleGuard => {
+  const guard = (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {
       res.status(401).json({ success: false, message: 'Non authentifié' });
       return;
@@ -60,10 +191,21 @@ export const requireRole = (...roles: string[]) => {
 
     next();
   };
+
+  guard.allowedRoles = roles as readonly string[];
+  return guard;
 };
 
 export const requireAdmin = requireRole('admin');
 export const requireSupervisor = requireRole('admin', 'supervisor');
+
+/**
+ * Saisie de terrain : relever un plein, un entretien, un contrôle, joindre une
+ * photo. Ces gestes sont le quotidien des agents et ne doivent pas exiger le
+ * rôle de superviseur, qui donne au passage la suppression du matériel et la
+ * configuration des seuils d'alerte.
+ */
+export const requireFieldWrite = requireRole('admin', 'supervisor', 'agent');
 
 // ==================== HELPERS PERMISSIONS CATÉGORIES ====================
 

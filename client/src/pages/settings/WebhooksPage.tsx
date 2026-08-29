@@ -363,7 +363,7 @@ export default function WebhooksPage() {
                         </code>
                         <button
                           onClick={() => copyToClipboard(webhook.url)}
-                          className="text-gray-400 hover:text-gray-600"
+                          className="text-gray-600 hover:text-gray-600"
                         >
                           <Copy className="w-4 h-4" />
                         </button>
@@ -492,7 +492,7 @@ export default function WebhooksPage() {
                 Événements à écouter
               </label>
               <div className="border rounded-lg p-4 max-h-48 overflow-y-auto">
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {AVAILABLE_EVENTS.map((event) => (
                     <label key={event.value} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
                       <input

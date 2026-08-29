@@ -47,7 +47,7 @@ JWT_SECRET=votre_secret_jwt_tres_securise_minimum_32_caracteres
 NODE_ENV=production
 
 # Configuration serveur
-PORT=3000
+PORT=3001
 
 # Email (optionnel)
 SMTP_HOST=smtp.exemple.com
@@ -84,7 +84,7 @@ services:
     container_name: gestion-materiels
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "${PORT:-3001}:3001"
     volumes:
       - ./data:/app/data
       - ./uploads:/app/uploads
@@ -93,9 +93,9 @@ services:
     environment:
       - NODE_ENV=production
       - JWT_SECRET=${JWT_SECRET}
-      - PORT=3000
+      - PORT=3001
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -252,7 +252,7 @@ cp backups/backup-YYYYMMDD.sqlite data/database.sqlite
 Modifiez le port dans les variables d'environnement ou le docker-compose :
 ```yaml
 ports:
-  - "8080:3000"  # Utilisez 8080 au lieu de 3000
+  - "8080:3001"  # Utilisez 8080 au lieu de 3001
 ```
 
 ---

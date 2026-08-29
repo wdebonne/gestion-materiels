@@ -521,7 +521,7 @@ export default function LogsPage() {
                     <tr key={log.id} className="hover:bg-gray-50">
                       <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-600">
                         <div className="flex items-center gap-1">
-                          <Clock className="w-4 h-4 text-gray-400" />
+                          <Clock className="w-4 h-4 text-gray-600" />
                           {formatDate(log.createdAt)}
                         </div>
                       </td>
@@ -601,7 +601,7 @@ export default function LogsPage() {
         {showLogDetails && (
           <ModalBody>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-500">Date</label>
                   <p className="mt-1 text-sm text-gray-900">{formatDate(showLogDetails.createdAt)}</p>
@@ -640,7 +640,7 @@ export default function LogsPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {showLogDetails.userEmail && (
                   <div>
                     <label className="block text-sm font-medium text-gray-500">Utilisateur</label>
@@ -691,6 +691,7 @@ export default function LogsPage() {
                   </label>
                   <Input
                     type="number"
+                inputMode="numeric"
                     min="1"
                     max="365"
                     value={settings.retentionDays}
@@ -775,6 +776,7 @@ export default function LogsPage() {
                   </label>
                   <Input
                     type="number"
+                inputMode="numeric"
                     min="1000"
                     max="100000"
                     value={settings.maxLogsPerExport}

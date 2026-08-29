@@ -1,7 +1,8 @@
 import { useState, useRef } from 'react'
-import { Upload, X, Link } from 'lucide-react'
+import { Upload, X, Link, Camera } from 'lucide-react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
+import { resizeImage, isResizableImage, formatFileSize } from '@/lib/imageResize'
 
 interface ImageUploadProps {
   value?: string
@@ -27,17 +28,31 @@ export default function ImageUpload({
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
 
-  const handleFileSelect = async (file: File) => {
-    // Vérifier la taille
-    if (file.size > maxSize * 1024 * 1024) {
-      toast.error(`Le fichier est trop volumineux (max ${maxSize}MB)`)
+  const handleFileSelect = async (brut: File) => {
+    // Vérifier le type avant tout traitement
+    if (!brut.type.startsWith('image/')) {
+      toast.error('Seules les images sont acceptées')
       return
     }
 
-    // Vérifier le type
-    if (!file.type.startsWith('image/')) {
-      toast.error('Seules les images sont acceptées')
+    // Réduire AVANT de contrôler la taille : une photo de téléphone dépasse
+    // souvent le plafond à la prise de vue et tient largement dessous une
+    // fois redimensionnée.
+    let file = brut
+    if (isResizableImage(brut)) {
+      try {
+        file = await resizeImage(brut)
+      } catch {
+        file = brut
+      }
+    }
+
+    if (file.size > maxSize * 1024 * 1024) {
+      toast.error(
+        `L'image est trop volumineuse (${formatFileSize(file.size)}, maximum ${maxSize} Mo).`
+      )
       return
     }
 
@@ -98,7 +113,7 @@ export default function ImageUpload({
   return (
     <div className={className}>
       {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
           {label}
         </label>
       )}
@@ -111,7 +126,7 @@ export default function ImageUpload({
           className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
             mode === 'upload'
               ? 'bg-primary-100 text-primary-700 font-medium'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
         >
           <Upload className="w-4 h-4" />
@@ -123,7 +138,7 @@ export default function ImageUpload({
           className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg transition-colors ${
             mode === 'url'
               ? 'bg-primary-100 text-primary-700 font-medium'
-              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
           }`}
         >
           <Link className="w-4 h-4" />
@@ -141,7 +156,7 @@ export default function ImageUpload({
           className={`relative border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
             dragOver
               ? 'border-primary-500 bg-primary-50'
-              : 'border-gray-300 hover:border-gray-400 hover:bg-gray-50'
+              : 'border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 hover:bg-gray-50 dark:hover:bg-gray-700/50'
           } ${uploading ? 'pointer-events-none opacity-50' : ''}`}
         >
           <input
@@ -155,34 +170,59 @@ export default function ImageUpload({
           {uploading ? (
             <div className="flex flex-col items-center">
               <div className="w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full animate-spin mb-2" />
-              <span className="text-sm text-gray-500">Upload en cours...</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">Upload en cours...</span>
             </div>
           ) : (
             <>
-              <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-              <p className="text-sm text-gray-600">
-                <span className="font-medium text-primary-600">Cliquez pour sélectionner</span>
-                {' '}ou glissez-déposez
+              <Upload className="w-8 h-8 text-gray-600 dark:text-gray-400 mx-auto mb-2" />
+              <p className="text-sm text-gray-600 dark:text-gray-300">
+                <span className="font-medium text-primary-600">Choisir une image</span>
               </p>
-              <p className="text-xs text-gray-400 mt-1">
-                PNG, JPG, GIF jusqu'à {maxSize}MB
+              <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                PNG, JPG ou GIF
               </p>
             </>
           )}
         </div>
       )}
 
+      {/*
+        Prise de vue directe : sur un téléphone, le glisser-déposer n'existe
+        pas et « choisir un fichier » oblige à sortir de l'application.
+      */}
+      {mode === 'upload' && (
+        <>
+          <input
+            ref={cameraInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            onChange={handleFileChange}
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => cameraInputRef.current?.click()}
+            disabled={uploading}
+            className="mt-2 inline-flex min-h-[44px] w-full items-center justify-center gap-2 rounded-lg border border-gray-300 dark:border-gray-600 px-4 font-medium text-gray-700 dark:text-gray-200 transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
+          >
+            <Camera className="w-5 h-5" />
+            Prendre une photo
+          </button>
+        </>
+      )}
+
       {/* Mode URL */}
       {mode === 'url' && (
         <div className="flex gap-2">
           <div className="flex-1 relative">
-            <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Link className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-gray-500" />
             <input
               type="url"
               value={urlInput}
               onChange={(e) => setUrlInput(e.target.value)}
               placeholder="https://..."
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             />
           </div>
           <button
@@ -202,7 +242,7 @@ export default function ImageUpload({
             <img
               src={value}
               alt="Aperçu"
-              className="h-20 w-auto rounded-lg border border-gray-200 object-contain bg-gray-50"
+              className="h-20 w-auto rounded-lg border border-gray-200 dark:border-gray-700 object-contain bg-gray-50 dark:bg-gray-900/40"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="%23ccc" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>'
               }}
@@ -210,19 +250,19 @@ export default function ImageUpload({
             <button
               type="button"
               onClick={handleRemove}
-              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+              className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center hover-reveal hover:bg-red-600"
             >
               <X className="w-4 h-4" />
             </button>
           </div>
-          <p className="text-xs text-gray-500 mt-1 max-w-[200px] truncate">
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-[200px] truncate">
             {value}
           </p>
         </div>
       )}
 
       {hint && !value && (
-        <p className="text-xs text-gray-500 mt-2">{hint}</p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{hint}</p>
       )}
     </div>
   )

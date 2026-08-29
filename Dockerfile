@@ -12,8 +12,10 @@ RUN npm install --legacy-peer-deps
 # Copy client source
 COPY client/ ./
 
-# Build client
-RUN npm run build
+# Build client with type checking. `vite build` transpile sans vérifier les
+# types : le client compte désormais 0 erreur, donc une régression de typage
+# doit arrêter la construction de l'image plutôt que de passer en production.
+RUN npm run build:check
 
 # Build stage for server
 FROM node:20-alpine AS server-builder
@@ -32,10 +34,12 @@ RUN npm install --legacy-peer-deps --include=dev
 # Copy server source
 COPY src/ ./src/
 COPY tsconfig.json ./
-COPY build-server.js ./
 
-# Build server with esbuild (faster, no type checking)
-RUN npm run build:server:fast
+# Build server with tsc. The image was built with esbuild, which strips types
+# without checking them: production was the only place where the code was never
+# type-checked. The server now compiles clean, so a type error must stop the
+# build here rather than surface as a runtime crash in the town hall.
+RUN npm run build:server
 
 # Production stage
 FROM node:20-alpine AS production

@@ -1,16 +1,21 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X, Trash2, Pencil,
-  Image as ImageIcon, Settings2, Search, ArrowUpDown
+  Image as ImageIcon, Settings2, Search, ArrowUpDown, Clock, Star
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
+import QRCodeDisplay from '@/components/QRCodeDisplay'
+import ObjectTimeline from '@/components/ObjectTimeline'
+import Can from '@/components/Can'
+import { useFavoritesStore } from '@/stores/favorites.store'
+import { useValidation, schemaPlein, schemaEntretien, schemaControle } from '@/lib/validation'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select,
   LoadingInline, Alert, Card, CardBody, CardHeader, CardTitle, Tabs, Badge,
-  FileUpload, AttachmentViewer
+  FileUpload, AttachmentViewer, ReferenceSelect
 } from '@/components/ui'
 import type { UploadedFile } from '@/components/ui'
 import api from '@/lib/api'
@@ -19,6 +24,11 @@ import { formatDate, formatCurrency } from '@/lib/utils'
 
 export default function ObjectDetailPage() {
   const { objectId: id } = useParams<{ objectId: string }>()
+  const [parametres, setParametres] = useSearchParams()
+  const { enregistrerConsultation, basculerFavori, estFavori } = useFavoritesStore()
+  const validationPlein = useValidation<typeof fuelData>(schemaPlein)
+  const validationEntretien = useValidation<typeof maintenanceData>(schemaEntretien)
+  const validationControle = useValidation<typeof controlData>(schemaControle)
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { user } = useAuthStore()
@@ -211,6 +221,7 @@ export default function ObjectDetailPage() {
         description?: string;
         image?: string;
         status: string;
+        reference?: string;
         serialNumber?: string;
         purchaseDate?: string;
         purchasePrice?: number;
@@ -231,6 +242,26 @@ export default function ObjectDetailPage() {
     },
     enabled: !!id
   })
+
+  // Mémoriser la consultation : alimente « Consultés récemment » dans la
+  // recherche globale et le raccourci « Faire un plein » de l'accueil.
+  useEffect(() => {
+    if (!object) return
+    enregistrerConsultation({
+      id: object.id,
+      name: object.name,
+      reference: object.reference,
+      categoryName: object.category?.name,
+    })
+  }, [object, enregistrerConsultation])
+
+  // Arrivée depuis le raccourci d'accueil : ouvrir directement la saisie.
+  useEffect(() => {
+    if (!object || parametres.get('action') !== 'plein') return
+    openFuelModal()
+    // On retire le paramètre pour que revenir en arrière ne rouvre pas la modale.
+    setParametres({}, { replace: true })
+  }, [object])
 
   // Récupérer les stations de carburant
   const { data: fuelStations = [], refetch: refetchStations } = useQuery({
@@ -729,6 +760,9 @@ export default function ObjectDetailPage() {
       }
     })
     
+    // Onglet Timeline (toujours visible)
+    baseTabs.push({ id: 'timeline', label: 'Historique' } as any)
+    
     return baseTabs
   }
 
@@ -738,13 +772,13 @@ export default function ObjectDetailPage() {
     <div className="space-y-6">
       {/* Fil d'Ariane */}
       <nav className="flex items-center gap-2 text-sm flex-wrap">
-        <Link to="/categories" className="text-gray-500 hover:text-gray-700">
+        <Link to="/categories" className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
           Catégories
         </Link>
         {object.category && (
           <>
             <ChevronRight className="w-4 h-4 text-gray-400" />
-            <Link to={`/categories/${object.category.slug}`} className="text-gray-500 hover:text-gray-700">
+            <Link to={`/categories/${object.category.slug}`} className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
               {object.category.name}
             </Link>
           </>
@@ -754,14 +788,14 @@ export default function ObjectDetailPage() {
             <ChevronRight className="w-4 h-4 text-gray-400" />
             <Link 
               to={`/categories/${object.category?.slug}/${object.subcategory.slug}`} 
-              className="text-gray-500 hover:text-gray-700"
+              className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
             >
               {object.subcategory.name}
             </Link>
           </>
         )}
         <ChevronRight className="w-4 h-4 text-gray-400" />
-        <span className="text-gray-900 font-medium">{object.name}</span>
+        <span className="text-gray-900 dark:text-gray-100 font-medium">{object.name}</span>
       </nav>
 
       {/* En-tête */}
@@ -769,7 +803,7 @@ export default function ObjectDetailPage() {
         <CardBody className="p-4 sm:p-6">
           <div className="flex flex-col sm:flex-row sm:items-start gap-4 sm:gap-6">
             {/* Image */}
-            <div className="w-28 h-28 sm:w-40 sm:h-40 bg-gray-100 rounded-xl flex-shrink-0 overflow-hidden mx-auto sm:mx-0">
+            <div className="w-28 h-28 sm:w-40 sm:h-40 bg-gray-100 dark:bg-gray-700 rounded-xl flex-shrink-0 overflow-hidden mx-auto sm:mx-0">
               {isEditing ? (
                 <div className="w-full h-full p-2 sm:p-4">
                   <Input
@@ -786,7 +820,7 @@ export default function ObjectDetailPage() {
                   className="w-full h-full object-cover"
                 />
               ) : (
-                <div className="w-full h-full flex items-center justify-center text-gray-400">
+                <div className="w-full h-full flex items-center justify-center text-gray-600 dark:text-gray-300">
                   <Package className="w-16 h-16" />
                 </div>
               )}
@@ -819,7 +853,7 @@ export default function ObjectDetailPage() {
                       {/* Champs personnalisés en mode édition */}
                       {fieldsConfig && fieldsConfig.filter(f => !f.isSystem && f.isVisible).length > 0 && (
                         <div className="pt-4 border-t space-y-4">
-                          <h4 className="font-medium text-gray-700">Champs personnalisés</h4>
+                          <h4 className="font-medium text-gray-700 dark:text-gray-200">Champs personnalisés</h4>
                           {fieldsConfig.filter(f => !f.isSystem && f.isVisible).map((field) => {
                             const value = editFormData?.customFields?.[field.fieldName] || ''
                             const handleFieldChange = (newValue: string) => {
@@ -873,7 +907,7 @@ export default function ObjectDetailPage() {
                   ) : (
                     <>
                       <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
-                        <h1 className="text-xl sm:text-2xl font-bold text-gray-900">{object.name}</h1>
+                        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-gray-100">{object.name}</h1>
                         <Badge variant={
                           object.status === 'active' ? 'success' :
                           object.status === 'maintenance' ? 'warning' :
@@ -883,9 +917,9 @@ export default function ObjectDetailPage() {
                         </Badge>
                       </div>
                       {object.description && (
-                        <p className="text-gray-500 mt-2 text-sm sm:text-base">{object.description}</p>
+                        <p className="text-gray-500 dark:text-gray-400 mt-2 text-sm sm:text-base">{object.description}</p>
                       )}
-                      <p className="text-xs sm:text-sm text-gray-400 mt-2">
+                      <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300 mt-2">
                         Créé le {object.createdAt ? formatDate(object.createdAt) : '-'}
                       </p>
                     </>
@@ -907,9 +941,31 @@ export default function ObjectDetailPage() {
                       <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
                         <ArrowLeft className="w-4 h-4" />
                       </Button>
-                      <Button variant="outline" size="sm" onClick={handleEditStart}>
-                        <Edit2 className="w-4 h-4" />
+                      <QRCodeDisplay objectId={Number(id)} objectName={object?.name || ''} />
+                      {/* Épingler : ce matériel remonte alors en tête de la
+                          recherche et alimente le raccourci d'accueil. */}
+                      <Button
+                        variant={estFavori(object.id) ? 'primary' : 'outline'}
+                        size="sm"
+                        onClick={() =>
+                          basculerFavori({
+                            id: object.id,
+                            name: object.name,
+                            reference: object.reference,
+                            categoryName: object.category?.name,
+                          })
+                        }
+                        title={estFavori(object.id) ? 'Retirer de mes matériels' : 'Ajouter à mes matériels'}
+                        aria-label={estFavori(object.id) ? 'Retirer de mes matériels' : 'Ajouter à mes matériels'}
+                        aria-pressed={estFavori(object.id)}
+                      >
+                        <Star className={estFavori(object.id) ? 'w-4 h-4 fill-current' : 'w-4 h-4'} />
                       </Button>
+                      <Can manage>
+                        <Button variant="outline" size="sm" onClick={handleEditStart} title="Modifier la fiche" aria-label="Modifier la fiche">
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                      </Can>
                     </>
                   )}
                 </div>
@@ -929,19 +985,22 @@ export default function ObjectDetailPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <CardTitle>Informations détaillées</CardTitle>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => {
-                const basePath = object.subcategory 
-                  ? `/categories/${object.category?.slug}/${object.subcategory.slug}`
-                  : `/categories/${object.category?.slug}`
-                navigate(`${basePath}/fields`)
-              }}
-              title="Configurer les champs"
-            >
-              <Settings2 className="w-4 h-4" />
-            </Button>
+            <Can admin>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const basePath = object.subcategory
+                    ? `/categories/${object.category?.slug}/${object.subcategory.slug}`
+                    : `/categories/${object.category?.slug}`
+                  navigate(`${basePath}/fields`)
+                }}
+                title="Configurer les champs"
+                aria-label="Configurer les champs"
+              >
+                <Settings2 className="w-4 h-4" />
+              </Button>
+            </Can>
           </CardHeader>
           <CardBody>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -954,29 +1013,29 @@ export default function ObjectDetailPage() {
                       case 'category':
                         return (
                           <div key={field.fieldName}>
-                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
-                            <p className="text-gray-900">{object.category?.name || '-'}</p>
+                            <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900 dark:text-gray-100">{object.category?.name || '-'}</p>
                           </div>
                         )
                       case 'subcategory':
                         return (
                           <div key={field.fieldName}>
-                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
-                            <p className="text-gray-900">{object.subcategory?.name || '-'}</p>
+                            <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900 dark:text-gray-100">{object.subcategory?.name || '-'}</p>
                           </div>
                         )
                       case 'updatedAt':
                         return (
                           <div key={field.fieldName}>
-                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
-                            <p className="text-gray-900">{object.updatedAt ? formatDate(object.updatedAt) : '-'}</p>
+                            <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900 dark:text-gray-100">{object.updatedAt ? formatDate(object.updatedAt) : '-'}</p>
                           </div>
                         )
                       case 'id':
                         return (
                           <div key={field.fieldName}>
-                            <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
-                            <p className="text-gray-900 font-mono text-sm">#{object.id}</p>
+                            <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{field.fieldLabel}</h4>
+                            <p className="text-gray-900 dark:text-gray-100 font-mono text-sm">#{object.id}</p>
                           </div>
                         )
                       default:
@@ -987,8 +1046,8 @@ export default function ObjectDetailPage() {
                   const value = object.customFields?.[field.fieldName]
                   return (
                     <div key={field.fieldName}>
-                      <h4 className="text-sm font-medium text-gray-500 mb-1">{field.fieldLabel}</h4>
-                      <p className="text-gray-900">
+                      <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{field.fieldLabel}</h4>
+                      <p className="text-gray-900 dark:text-gray-100">
                         {value !== undefined && value !== null && value !== '' 
                           ? (field.fieldType === 'date' ? formatDate(String(value)) : String(value))
                           : '-'
@@ -1001,20 +1060,20 @@ export default function ObjectDetailPage() {
                 // Affichage par défaut si pas de configuration
                 <>
                   <div>
-                    <h4 className="text-sm font-medium text-gray-500 mb-1">Catégorie</h4>
-                    <p className="text-gray-900">{object.category?.name || '-'}</p>
+                    <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Catégorie</h4>
+                    <p className="text-gray-900 dark:text-gray-100">{object.category?.name || '-'}</p>
                   </div>
                   <div>
-                    <h4 className="text-sm font-medium text-gray-500 mb-1">Sous-catégorie</h4>
-                    <p className="text-gray-900">{object.subcategory?.name || '-'}</p>
+                    <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Sous-catégorie</h4>
+                    <p className="text-gray-900 dark:text-gray-100">{object.subcategory?.name || '-'}</p>
                   </div>
                   <div>
-                    <h4 className="text-sm font-medium text-gray-500 mb-1">Dernière modification</h4>
-                    <p className="text-gray-900">{object.updatedAt ? formatDate(object.updatedAt) : '-'}</p>
+                    <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Dernière modification</h4>
+                    <p className="text-gray-900 dark:text-gray-100">{object.updatedAt ? formatDate(object.updatedAt) : '-'}</p>
                   </div>
                   <div>
-                    <h4 className="text-sm font-medium text-gray-500 mb-1">Identifiant</h4>
-                    <p className="text-gray-900 font-mono text-sm">#{object.id}</p>
+                    <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Identifiant</h4>
+                    <p className="text-gray-900 dark:text-gray-100 font-mono text-sm">#{object.id}</p>
                   </div>
                 </>
               )}
@@ -1023,12 +1082,12 @@ export default function ObjectDetailPage() {
             {/* Champs personnalisés non configurés (rétrocompatibilité) */}
             {!fieldsConfig && object.customFields && Object.keys(object.customFields).length > 0 && (
               <div className="mt-6 pt-6 border-t">
-                <h3 className="font-medium text-gray-900 mb-4">Champs personnalisés</h3>
+                <h3 className="font-medium text-gray-900 dark:text-gray-100 mb-4">Champs personnalisés</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {Object.entries(object.customFields).map(([key, value]) => (
                     <div key={key}>
-                      <h4 className="text-sm font-medium text-gray-500 mb-1">{key}</h4>
-                      <p className="text-gray-900">{String(value)}</p>
+                      <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{key}</h4>
+                      <p className="text-gray-900 dark:text-gray-100">{String(value)}</p>
                     </div>
                   ))}
                 </div>
@@ -1053,12 +1112,12 @@ export default function ObjectDetailPage() {
                   placeholder="Filtrer..."
                   value={fuelFilter}
                   onChange={(e) => setFuelFilter(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white dark:bg-gray-800"
                 />
               </div>
-              <button
+              <button aria-label={fuelSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
                 onClick={() => setFuelSortDesc(!fuelSortDesc)}
-                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-target"
                 title={fuelSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
               >
                 <ArrowUpDown className="w-4 h-4" />
@@ -1068,10 +1127,12 @@ export default function ObjectDetailPage() {
                   <Settings2 className="w-4 h-4" />
                 </Button>
               )}
-              <Button size="sm" onClick={openFuelModal}>
-                <Plus className="w-4 h-4 mr-1" />
-                Ajouter un plein
-              </Button>
+              <Can fieldWrite>
+                <Button size="sm" onClick={openFuelModal}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Ajouter un plein
+                </Button>
+              </Can>
             </div>
           </CardHeader>
           <CardBody className="p-0">
@@ -1100,40 +1161,40 @@ export default function ObjectDetailPage() {
                 return sortedFuel.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 dark:bg-gray-900/40">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Quantité</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prix/L</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coût total</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kilométrage</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Station</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pièces jointes</th>
-                      {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Quantité</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prix/L</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Coût total</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Kilométrage</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Station</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pièces jointes</th>
+                      {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {sortedFuel.map((record: any) => (
-                      <tr key={record.id} className="hover:bg-gray-50">
+                      <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.fuelType || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{record.fuelType || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.quantity} L</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.unitPrice ? `${parseFloat(record.unitPrice).toFixed(3)} €/L` : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.station || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{record.station || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {record.attachments && record.attachments.length > 0 ? (
                             <AttachmentViewer attachments={record.attachments} compact />
                           ) : (
-                            <span className="text-gray-300">-</span>
+                            <span className="text-gray-600 dark:text-gray-300">-</span>
                           )}
                         </td>
                         {isAdmin && (
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
+                              <button aria-label="Modifier"
                                 onClick={() => setFuelEditModal({
                                   id: record.id,
                                   date: record.date,
@@ -1145,14 +1206,14 @@ export default function ObjectDetailPage() {
                                   notes: record.notes || '',
                                   attachments: record.attachments || []
                                 })}
-                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded touch-target"
                                 title="Modifier"
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
-                              <button
+                              <button aria-label="Supprimer"
                                 onClick={() => setFuelDeleteConfirm(record.id)}
-                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded touch-target"
                                 title="Supprimer"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1168,14 +1229,14 @@ export default function ObjectDetailPage() {
                 ) : (
                   <div className="text-center py-12">
                     <Fuel className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500">Aucun résultat pour "{fuelFilter}"</p>
+                    <p className="text-gray-500 dark:text-gray-400">Aucun résultat pour "{fuelFilter}"</p>
                   </div>
                 )
               })()
             ) : (
               <div className="text-center py-12">
                 <Fuel className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun enregistrement de carburant</p>
+                <p className="text-gray-500 dark:text-gray-400">Aucun enregistrement de carburant</p>
               </div>
             )}
           </CardBody>
@@ -1197,12 +1258,12 @@ export default function ObjectDetailPage() {
                   placeholder="Filtrer..."
                   value={maintenanceFilter}
                   onChange={(e) => setMaintenanceFilter(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white dark:bg-gray-800"
                 />
               </div>
-              <button
+              <button aria-label={maintenanceSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
                 onClick={() => setMaintenanceSortDesc(!maintenanceSortDesc)}
-                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-target"
                 title={maintenanceSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
               >
                 <ArrowUpDown className="w-4 h-4" />
@@ -1212,10 +1273,12 @@ export default function ObjectDetailPage() {
                   <Settings2 className="w-4 h-4" />
                 </Button>
               )}
-              <Button size="sm" onClick={openMaintenanceModal}>
-                <Plus className="w-4 h-4 mr-1" />
-                Ajouter un entretien
-              </Button>
+              <Can fieldWrite>
+                <Button size="sm" onClick={openMaintenanceModal}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Ajouter un entretien
+                </Button>
+              </Can>
             </div>
           </CardHeader>
           <CardBody className="p-0">
@@ -1244,26 +1307,26 @@ export default function ObjectDetailPage() {
                 return sortedMaintenance.length > 0 ? (
               <div className="overflow-x-auto">
                 <table className="w-full">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 dark:bg-gray-900/40">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Date</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Type</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Coût</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Kilométrage</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prestataire</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Prochain</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Pièces jointes</th>
-                      {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>}
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Coût</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Kilométrage</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prestataire</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prochain</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pièces jointes</th>
+                      {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-200">
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                     {sortedMaintenance.map((record: any) => (
-                      <tr key={record.id} className="hover:bg-gray-50">
+                      <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.type}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{record.provider || '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{record.provider || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {record.nextDate ? (
                             <span className="text-orange-600">{formatDate(record.nextDate)}</span>
@@ -1273,13 +1336,13 @@ export default function ObjectDetailPage() {
                           {record.attachments && record.attachments.length > 0 ? (
                             <AttachmentViewer attachments={record.attachments} compact />
                           ) : (
-                            <span className="text-gray-300">-</span>
+                            <span className="text-gray-600 dark:text-gray-300">-</span>
                           )}
                         </td>
                         {isAdmin && (
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
                             <div className="flex items-center justify-end gap-2">
-                              <button
+                              <button aria-label="Modifier"
                                 onClick={() => setMaintenanceEditModal({
                                   id: record.id,
                                   date: record.date,
@@ -1292,14 +1355,14 @@ export default function ObjectDetailPage() {
                                   notes: record.notes || '',
                                   attachments: record.attachments || []
                                 })}
-                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded touch-target"
                                 title="Modifier"
                               >
                                 <Pencil className="w-4 h-4" />
                               </button>
-                              <button
+                              <button aria-label="Supprimer"
                                 onClick={() => setMaintenanceDeleteConfirm(record.id)}
-                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded touch-target"
                                 title="Supprimer"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1315,14 +1378,14 @@ export default function ObjectDetailPage() {
                 ) : (
                   <div className="text-center py-12">
                     <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500">Aucun résultat pour "{maintenanceFilter}"</p>
+                    <p className="text-gray-500 dark:text-gray-400">Aucun résultat pour "{maintenanceFilter}"</p>
                   </div>
                 )
               })()
             ) : (
               <div className="text-center py-12">
                 <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun entretien enregistré</p>
+                <p className="text-gray-500 dark:text-gray-400">Aucun entretien enregistré</p>
               </div>
             )}
           </CardBody>
@@ -1344,12 +1407,12 @@ export default function ObjectDetailPage() {
                   placeholder="Filtrer..."
                   value={controlFilter}
                   onChange={(e) => setControlFilter(e.target.value)}
-                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white"
+                  className="pl-9 pr-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48 bg-white dark:bg-gray-800"
                 />
               </div>
-              <button
+              <button aria-label={controlSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
                 onClick={() => setControlSortDesc(!controlSortDesc)}
-                className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors touch-target"
                 title={controlSortDesc ? 'Plus récent en premier' : 'Plus ancien en premier'}
               >
                 <ArrowUpDown className="w-4 h-4" />
@@ -1364,10 +1427,12 @@ export default function ObjectDetailPage() {
                   <Settings2 className="w-4 h-4" />
                 </Button>
               )}
-              <Button size="sm" onClick={openControlModal}>
-                <Plus className="w-4 h-4 mr-1" />
-                Ajouter un contrôle
-              </Button>
+              <Can fieldWrite>
+                <Button size="sm" onClick={openControlModal}>
+                  <Plus className="w-4 h-4 mr-1" />
+                  Ajouter un contrôle
+                </Button>
+              </Can>
             </div>
           </CardHeader>
           <CardBody className="p-0">
@@ -1398,25 +1463,25 @@ export default function ObjectDetailPage() {
                 })
                 return sortedControl.length > 0 ? (
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+                  <thead className="bg-gray-50 dark:bg-gray-900/40">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Résultat</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Centre</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Kilométrage</th>
-                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Coût</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Expiration</th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pièces jointes</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Date</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Résultat</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Centre</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Kilométrage</th>
+                      <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Coût</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Expiration</th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Pièces jointes</th>
                       {(user?.role === 'admin' || user?.role === 'supervisor') && (
-                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                        <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
                       )}
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
                     {sortedControl.map((control: any) => (
-                      <tr key={control.id} className="hover:bg-gray-50">
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900">
+                      <tr key={control.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100">
                           {formatDate(control.date)}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap">
@@ -1425,13 +1490,13 @@ export default function ObjectDetailPage() {
                              control.result === 'failed' ? 'Défavorable' : 'Contre-visite'}
                           </Badge>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           {control.centerName || '-'}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           {control.mileage ? `${control.mileage} km` : '-'}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 text-right font-medium">
+                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 text-right font-medium">
                           {formatCurrency(control.cost)}
                         </td>
                         <td className="px-4 py-3 whitespace-nowrap text-sm">
@@ -1445,13 +1510,13 @@ export default function ObjectDetailPage() {
                           {control.attachments && control.attachments.length > 0 ? (
                             <AttachmentViewer attachments={control.attachments} compact />
                           ) : (
-                            <span className="text-gray-300">-</span>
+                            <span className="text-gray-600 dark:text-gray-300">-</span>
                           )}
                         </td>
                         {(user?.role === 'admin' || user?.role === 'supervisor') && (
                           <td className="px-4 py-3 whitespace-nowrap text-right text-sm">
                             <div className="flex items-center justify-end gap-1">
-                              <button
+                              <button aria-label="Modifier"
                                 onClick={() => setControlEditModal({
                                   id: control.id,
                                   date: control.date?.split('T')[0] || '',
@@ -1463,14 +1528,14 @@ export default function ObjectDetailPage() {
                                   notes: control.notes || '',
                                   attachments: control.attachments || []
                                 })}
-                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                                className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded touch-target"
                                 title="Modifier"
                               >
                                 <Edit2 className="w-4 h-4" />
                               </button>
-                              <button
+                              <button aria-label="Supprimer"
                                 onClick={() => setControlDeleteConfirm(control.id)}
-                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                                className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded touch-target"
                                 title="Supprimer"
                               >
                                 <Trash2 className="w-4 h-4" />
@@ -1486,14 +1551,14 @@ export default function ObjectDetailPage() {
                 ) : (
                   <div className="text-center py-12">
                     <ClipboardCheck className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                    <p className="text-gray-500">Aucun résultat pour "{controlFilter}"</p>
+                    <p className="text-gray-500 dark:text-gray-400">Aucun résultat pour "{controlFilter}"</p>
                   </div>
                 )
               })()
             ) : (
               <div className="text-center py-12">
                 <ClipboardCheck className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun contrôle technique enregistré</p>
+                <p className="text-gray-500 dark:text-gray-400">Aucun contrôle technique enregistré</p>
               </div>
             )}
           </CardBody>
@@ -1530,8 +1595,8 @@ export default function ObjectDetailPage() {
             <CardBody className="p-0">
               <div className="text-center py-12">
                 <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500">Aucun entretien enregistré</p>
-                <p className="text-xs text-gray-400 mt-2">
+                <p className="text-gray-500 dark:text-gray-400">Aucun entretien enregistré</p>
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-2">
                   Les données de maintenance seront affichées ici
                 </p>
               </div>
@@ -1542,54 +1607,62 @@ export default function ObjectDetailPage() {
 
       {/* Modal Carburant */}
       <Modal isOpen={fuelModal} onClose={() => setFuelModal(false)} title="Ajouter un plein">
-        <form onSubmit={(e) => { e.preventDefault(); addFuelMutation.mutate(fuelData); }}>
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (!validationPlein.valider(fuelData)) return
+          addFuelMutation.mutate(fuelData)
+        }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
                 value={fuelData.date}
-                onChange={(e) => setFuelData({ ...fuelData, date: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, date: e.target.value }); validationPlein.effacer('date') }}
+                error={validationPlein.erreurs.date}
                 required
               />
               <Input
                 label="Quantité (L)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={fuelData.quantity}
-                onChange={(e) => setFuelData({ ...fuelData, quantity: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, quantity: e.target.value }); validationPlein.effacer('quantity') }}
+                error={validationPlein.erreurs.quantity}
                 required
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={fuelData.cost}
-                onChange={(e) => setFuelData({ ...fuelData, cost: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, cost: e.target.value }); validationPlein.effacer('cost') }}
+                error={validationPlein.erreurs.cost}
+                hint="Montant total payé. Le prix au litre est calculé tout seul."
               />
               <Input
                 label="Kilométrage"
                 type="number"
+                inputMode="numeric"
                 value={fuelData.mileage}
-                onChange={(e) => setFuelData({ ...fuelData, mileage: e.target.value })}
+                onChange={(e) => { setFuelData({ ...fuelData, mileage: e.target.value }); validationPlein.effacer('mileage') }}
+                error={validationPlein.erreurs.mileage}
+                hint="Relevé au compteur. Met à jour la fiche s'il est plus élevé."
               />
             </div>
-            <div className="relative">
-              <Input
-                label="Station"
-                value={fuelData.station}
-                onChange={(e) => setFuelData({ ...fuelData, station: e.target.value })}
-                list="fuel-stations-list"
-                placeholder="Sélectionner ou saisir une station"
-              />
-              <datalist id="fuel-stations-list">
-                {fuelStations.map((s) => (
-                  <option key={s.id} value={s.name} />
-                ))}
-              </datalist>
-            </div>
+            <ReferenceSelect
+              label="Station"
+              value={fuelData.station}
+              onChange={(valeur) => setFuelData({ ...fuelData, station: valeur })}
+              options={fuelStations}
+              nomSingulier="une station"
+              placeholder="Choisir une station"
+              onCreate={async (nom) => { await addStationMutation.mutateAsync({ name: nom }) }}
+            />
             <TextArea
               label="Notes"
               value={fuelData.notes}
@@ -1634,7 +1707,7 @@ export default function ObjectDetailPage() {
             }); 
           }}>
             <ModalBody className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Date"
                   type="date"
@@ -1649,10 +1722,11 @@ export default function ObjectDetailPage() {
                   placeholder="Ex: Diesel, SP95..."
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Quantité (L)"
                   type="number"
+                inputMode="decimal"
                   step="0.01"
                   value={fuelEditModal.quantity}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, quantity: e.target.value })}
@@ -1661,32 +1735,29 @@ export default function ObjectDetailPage() {
                 <Input
                   label="Coût total (€)"
                   type="number"
+                inputMode="decimal"
                   step="0.01"
                   value={fuelEditModal.cost}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, cost: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Kilométrage"
                   type="number"
+                inputMode="numeric"
                   value={fuelEditModal.mileage}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, mileage: e.target.value })}
                 />
-                <div className="relative">
-                  <Input
-                    label="Station"
-                    value={fuelEditModal.station}
-                    onChange={(e) => setFuelEditModal({ ...fuelEditModal, station: e.target.value })}
-                    list="fuel-stations-edit-list"
-                    placeholder="Sélectionner ou saisir une station"
-                  />
-                  <datalist id="fuel-stations-edit-list">
-                    {fuelStations.map((s) => (
-                      <option key={s.id} value={s.name} />
-                    ))}
-                  </datalist>
-                </div>
+                <ReferenceSelect
+                  label="Station"
+                  value={fuelEditModal.station}
+                  onChange={(valeur) => setFuelEditModal({ ...fuelEditModal, station: valeur })}
+                  options={fuelStations}
+                  nomSingulier="une station"
+                  placeholder="Choisir une station"
+                  onCreate={async (nom) => { await addStationMutation.mutateAsync({ name: nom }) }}
+                />
               </div>
               <TextArea
                 label="Notes"
@@ -1716,7 +1787,7 @@ export default function ObjectDetailPage() {
       {/* Modal Confirmation Suppression Carburant */}
       <Modal isOpen={!!fuelDeleteConfirm} onClose={() => setFuelDeleteConfirm(null)} title="Confirmer la suppression">
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer cette entrée carburant ? Cette action est irréversible.
           </p>
         </ModalBody>
@@ -1745,26 +1816,26 @@ export default function ObjectDetailPage() {
           </div>
           
           {fuelStations.length > 0 ? (
-            <div className="divide-y divide-gray-200 border rounded-lg">
+            <div className="divide-y divide-gray-200 dark:divide-gray-700 border rounded-lg">
               {fuelStations.map((station) => (
-                <div key={station.id} className="flex items-center justify-between p-3 hover:bg-gray-50">
+                <div key={station.id} className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <div>
-                    <p className="font-medium text-gray-900">{station.name}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100">{station.name}</p>
                     {station.address && (
-                      <p className="text-sm text-gray-500">{station.address}</p>
+                      <p className="text-sm text-gray-500 dark:text-gray-400">{station.address}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
+                    <button aria-label="Modifier"
                       onClick={() => setStationEditData({ id: station.id, name: station.name, address: station.address || '' })}
-                      className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                      className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded touch-target"
                       title="Modifier"
                     >
                       <Pencil className="w-4 h-4" />
                     </button>
-                    <button
+                    <button aria-label="Supprimer"
                       onClick={() => setStationDeleteConfirm(station.id)}
-                      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                      className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded touch-target"
                       title="Supprimer"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -1774,7 +1845,7 @@ export default function ObjectDetailPage() {
               ))}
             </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400">
               <p>Aucune station enregistrée</p>
               <p className="text-sm mt-1">Ajoutez des stations pour les retrouver facilement lors de vos pleins</p>
             </div>
@@ -1832,7 +1903,7 @@ export default function ObjectDetailPage() {
       {/* Modal Confirmation Suppression Station */}
       <Modal isOpen={!!stationDeleteConfirm} onClose={() => setStationDeleteConfirm(null)} title="Supprimer la station">
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer cette station ? Cette action est irréversible.
           </p>
         </ModalBody>
@@ -1852,8 +1923,9 @@ export default function ObjectDetailPage() {
 
       {/* Modal Entretien */}
       <Modal isOpen={maintenanceModal} onClose={() => setMaintenanceModal(false)} title="Ajouter un entretien">
-        <form onSubmit={(e) => { 
-          e.preventDefault(); 
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (!validationEntretien.valider(maintenanceData)) return
           addMaintenanceMutation.mutate({
             maintenanceDate: maintenanceData.date,
             maintenanceType: maintenanceData.type,
@@ -1866,28 +1938,26 @@ export default function ObjectDetailPage() {
           }); 
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
                 value={maintenanceData.date}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, date: e.target.value })}
+                onChange={(e) => { setMaintenanceData({ ...maintenanceData, date: e.target.value }); validationEntretien.effacer('date') }}
+                error={validationEntretien.erreurs.date}
                 required
               />
-              <div className="relative">
-                <Input
-                  label="Type d'entretien"
-                  value={maintenanceData.type}
-                  onChange={(e) => setMaintenanceData({ ...maintenanceData, type: e.target.value })}
-                  list="maintenance-types-list"
-                  required
-                />
-                <datalist id="maintenance-types-list">
-                  {maintenanceTypes.map((t) => (
-                    <option key={t.id} value={t.name} />
-                  ))}
-                </datalist>
-              </div>
+              <ReferenceSelect
+                label="Type d'entretien"
+                erreur={validationEntretien.erreurs.type}
+                value={maintenanceData.type}
+                onChange={(valeur) => { setMaintenanceData({ ...maintenanceData, type: valeur }); validationEntretien.effacer('type') }}
+                options={maintenanceTypes}
+                nomSingulier="un type"
+                placeholder="Choisir un type"
+                required
+                onCreate={async (nom) => { await addMaintenanceTypeMutation.mutateAsync({ name: nom }) }}
+              />
             </div>
             <TextArea
               label="Description"
@@ -1895,42 +1965,49 @@ export default function ObjectDetailPage() {
               onChange={(e) => setMaintenanceData({ ...maintenanceData, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={maintenanceData.cost}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, cost: e.target.value })}
+                onChange={(e) => { setMaintenanceData({ ...maintenanceData, cost: e.target.value }); validationEntretien.effacer('cost') }}
+                error={validationEntretien.erreurs.cost}
               />
               <Input
                 label="Kilométrage"
                 type="number"
+                inputMode="numeric"
                 value={maintenanceData.mileage}
-                onChange={(e) => setMaintenanceData({ ...maintenanceData, mileage: e.target.value })}
+                onChange={(e) => { setMaintenanceData({ ...maintenanceData, mileage: e.target.value }); validationEntretien.effacer('mileage') }}
+                error={validationEntretien.erreurs.mileage}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="relative">
-                <Input
-                  label="Prestataire"
-                  value={maintenanceData.provider}
-                  onChange={(e) => setMaintenanceData({ ...maintenanceData, provider: e.target.value })}
-                  list="maintenance-providers-list"
-                />
-                <datalist id="maintenance-providers-list">
-                  {maintenanceProviders.map((p) => (
-                    <option key={p.id} value={p.name} />
-                  ))}
-                </datalist>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ReferenceSelect
+                label="Prestataire"
+                value={maintenanceData.provider}
+                onChange={(valeur) => setMaintenanceData({ ...maintenanceData, provider: valeur })}
+                options={maintenanceProviders}
+                nomSingulier="un prestataire"
+                placeholder="Choisir un prestataire"
+                onCreate={async (nom) => { await addMaintenanceProviderMutation.mutateAsync({ name: nom }) }}
+              />
               <Input
                 label="Prochain entretien"
                 type="date"
                 value={maintenanceData.nextDate}
                 onChange={(e) => setMaintenanceData({ ...maintenanceData, nextDate: e.target.value })}
+                hint="C'est cette date qui déclenche le rappel"
               />
             </div>
+            {!maintenanceData.nextDate && (
+              <Alert type="warning">
+                Sans date de prochain entretien, <strong>aucun rappel ne sera envoyé</strong> pour
+                ce matériel. Renseignez-la si un passage est à prévoir.
+              </Alert>
+            )}
             <FileUpload
               label="Pièces jointes"
               value={maintenanceData.attachments}
@@ -1970,7 +2047,7 @@ export default function ObjectDetailPage() {
           }
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
@@ -1978,20 +2055,16 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, date: e.target.value })}
                 required
               />
-              <div className="relative">
-                <Input
-                  label="Type d'entretien"
-                  value={maintenanceEditModal?.type || ''}
-                  onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, type: e.target.value })}
-                  list="maintenance-types-list-edit"
-                  required
-                />
-                <datalist id="maintenance-types-list-edit">
-                  {maintenanceTypes.map((t) => (
-                    <option key={t.id} value={t.name} />
-                  ))}
-                </datalist>
-              </div>
+              <ReferenceSelect
+                label="Type d'entretien"
+                value={maintenanceEditModal?.type || ''}
+                onChange={(valeur) => setMaintenanceEditModal({ ...maintenanceEditModal, type: valeur })}
+                options={maintenanceTypes}
+                nomSingulier="un type"
+                placeholder="Choisir un type"
+                required
+                onCreate={async (nom) => { await addMaintenanceTypeMutation.mutateAsync({ name: nom }) }}
+              />
             </div>
             <TextArea
               label="Description"
@@ -1999,10 +2072,11 @@ export default function ObjectDetailPage() {
               onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={maintenanceEditModal?.cost || ''}
                 onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, cost: e.target.value })}
@@ -2010,24 +2084,21 @@ export default function ObjectDetailPage() {
               <Input
                 label="Kilométrage"
                 type="number"
+                inputMode="numeric"
                 value={maintenanceEditModal?.mileage || ''}
                 onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, mileage: e.target.value })}
               />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="relative">
-                <Input
-                  label="Prestataire"
-                  value={maintenanceEditModal?.provider || ''}
-                  onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, provider: e.target.value })}
-                  list="maintenance-providers-list-edit"
-                />
-                <datalist id="maintenance-providers-list-edit">
-                  {maintenanceProviders.map((p) => (
-                    <option key={p.id} value={p.name} />
-                  ))}
-                </datalist>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ReferenceSelect
+                label="Prestataire"
+                value={maintenanceEditModal?.provider || ''}
+                onChange={(valeur) => setMaintenanceEditModal({ ...maintenanceEditModal, provider: valeur })}
+                options={maintenanceProviders}
+                nomSingulier="un prestataire"
+                placeholder="Choisir un prestataire"
+                onCreate={async (nom) => { await addMaintenanceProviderMutation.mutateAsync({ name: nom }) }}
+              />
               <Input
                 label="Prochain entretien"
                 type="date"
@@ -2056,7 +2127,7 @@ export default function ObjectDetailPage() {
       {/* Modal Confirmation suppression entretien */}
       <Modal isOpen={!!maintenanceDeleteConfirm} onClose={() => setMaintenanceDeleteConfirm(null)} title="Confirmer la suppression">
         <ModalBody>
-          <p className="text-gray-600">Êtes-vous sûr de vouloir supprimer cet entretien ? Cette action est irréversible.</p>
+          <p className="text-gray-600 dark:text-gray-300">Êtes-vous sûr de vouloir supprimer cet entretien ? Cette action est irréversible.</p>
         </ModalBody>
         <ModalFooter>
           <Button type="button" variant="secondary" onClick={() => setMaintenanceDeleteConfirm(null)}>
@@ -2078,7 +2149,7 @@ export default function ObjectDetailPage() {
           {/* Types d'entretien */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-gray-900">Types d'entretien</h4>
+              <h4 className="font-medium text-gray-900 dark:text-gray-100">Types d'entretien</h4>
               <Button 
                 size="sm" 
                 variant="secondary"
@@ -2090,7 +2161,7 @@ export default function ObjectDetailPage() {
             </div>
             
             {maintenanceTypeEditData && !maintenanceTypeEditData.id && (
-              <div className="mb-3 p-3 bg-gray-50 rounded-lg">
+              <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-900/40 rounded-lg">
                 <div className="flex gap-2">
                   <Input
                     placeholder="Nom du type d'entretien"
@@ -2110,10 +2181,10 @@ export default function ObjectDetailPage() {
 
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {maintenanceTypes.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">Aucun type d'entretien configuré</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">Aucun type d'entretien configuré</p>
               ) : (
                 maintenanceTypes.map((type) => (
-                  <div key={type.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <div key={type.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900/40 rounded">
                     {maintenanceTypeEditData?.id === type.id ? (
                       <div className="flex gap-2 flex-1">
                         <Input
@@ -2146,13 +2217,13 @@ export default function ObjectDetailPage() {
                         <div className="flex gap-1">
                           <button
                             onClick={() => setMaintenanceTypeEditData({ id: type.id, name: type.name })}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded touch-target"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setMaintenanceTypeDeleteConfirm(type.id)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            className="p-1 text-red-600 hover:bg-red-50 rounded touch-target"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -2170,7 +2241,7 @@ export default function ObjectDetailPage() {
           {/* Prestataires */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h4 className="font-medium text-gray-900">Prestataires</h4>
+              <h4 className="font-medium text-gray-900 dark:text-gray-100">Prestataires</h4>
               <Button 
                 size="sm" 
                 variant="secondary"
@@ -2182,13 +2253,13 @@ export default function ObjectDetailPage() {
             </div>
             
             {maintenanceProviderEditData && !maintenanceProviderEditData.id && (
-              <div className="mb-3 p-3 bg-gray-50 rounded-lg space-y-2">
+              <div className="mb-3 p-3 bg-gray-50 dark:bg-gray-900/40 rounded-lg space-y-2">
                 <Input
                   placeholder="Nom du prestataire"
                   value={maintenanceProviderEditData.name}
                   onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, name: e.target.value })}
                 />
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   <Input
                     placeholder="Adresse (optionnel)"
                     value={maintenanceProviderEditData.address}
@@ -2213,10 +2284,10 @@ export default function ObjectDetailPage() {
 
             <div className="space-y-2 max-h-48 overflow-y-auto">
               {maintenanceProviders.length === 0 ? (
-                <p className="text-sm text-gray-500 text-center py-4">Aucun prestataire configuré</p>
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">Aucun prestataire configuré</p>
               ) : (
                 maintenanceProviders.map((provider) => (
-                  <div key={provider.id} className="flex items-center justify-between p-2 bg-gray-50 rounded">
+                  <div key={provider.id} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-900/40 rounded">
                     {maintenanceProviderEditData?.id === provider.id ? (
                       <div className="flex-1 space-y-2">
                         <Input
@@ -2224,7 +2295,7 @@ export default function ObjectDetailPage() {
                           onChange={(e) => setMaintenanceProviderEditData({ ...maintenanceProviderEditData, name: e.target.value })}
                           placeholder="Nom"
                         />
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <Input
                             placeholder="Adresse"
                             value={maintenanceProviderEditData.address}
@@ -2262,7 +2333,7 @@ export default function ObjectDetailPage() {
                         <div>
                           <span className="text-sm font-medium">{provider.name}</span>
                           {(provider.address || provider.phone) && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
                               {[provider.address, provider.phone].filter(Boolean).join(' • ')}
                             </p>
                           )}
@@ -2270,13 +2341,13 @@ export default function ObjectDetailPage() {
                         <div className="flex gap-1">
                           <button
                             onClick={() => setMaintenanceProviderEditData({ id: provider.id, name: provider.name, address: provider.address || '', phone: provider.phone || '' })}
-                            className="p-1 text-blue-600 hover:bg-blue-50 rounded"
+                            className="p-1 text-blue-600 hover:bg-blue-50 rounded touch-target"
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => setMaintenanceProviderDeleteConfirm(provider.id)}
-                            className="p-1 text-red-600 hover:bg-red-50 rounded"
+                            className="p-1 text-red-600 hover:bg-red-50 rounded touch-target"
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -2298,9 +2369,13 @@ export default function ObjectDetailPage() {
 
       {/* Modal Contrôle technique */}
       <Modal isOpen={controlModal} onClose={() => setControlModal(false)} title="Ajouter un contrôle technique">
-        <form onSubmit={(e) => { e.preventDefault(); addControlMutation.mutate(controlData); }}>
+        <form onSubmit={(e) => {
+          e.preventDefault()
+          if (!validationControle.valider(controlData)) return
+          addControlMutation.mutate(controlData)
+        }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date du contrôle"
                 type="date"
@@ -2315,7 +2390,10 @@ export default function ObjectDetailPage() {
                     expirationDate = expDate.toISOString().split('T')[0]
                   }
                   setControlData({ ...controlData, date: newDate, expirationDate })
+                  validationControle.effacer('date')
+                  validationControle.effacer('expirationDate')
                 }}
+                error={validationControle.erreurs.date}
                 required
               />
               <Input
@@ -2336,23 +2414,20 @@ export default function ObjectDetailPage() {
                 { value: 'failed', label: 'Défavorable' }
               ]}
             />
-            <div className="grid grid-cols-2 gap-4">
-              <div className="relative">
-                <Input
-                  label="Centre de contrôle"
-                  value={controlData.center}
-                  onChange={(e) => setControlData({ ...controlData, center: e.target.value })}
-                  list="controlCenters-list"
-                />
-                <datalist id="controlCenters-list">
-                  {controlCenters.map((center) => (
-                    <option key={center.id} value={center.name} />
-                  ))}
-                </datalist>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ReferenceSelect
+                label="Centre de contrôle"
+                value={controlData.center}
+                onChange={(valeur) => setControlData({ ...controlData, center: valeur })}
+                options={controlCenters}
+                nomSingulier="un centre"
+                placeholder="Choisir un centre"
+                onCreate={async (nom) => { await addControlCenterMutation.mutateAsync({ name: nom }) }}
+              />
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={controlData.cost}
                 onChange={(e) => setControlData({ ...controlData, cost: e.target.value })}
@@ -2361,6 +2436,7 @@ export default function ObjectDetailPage() {
             <Input
               label="Kilométrage"
               type="number"
+                inputMode="numeric"
               value={controlData.mileage}
               onChange={(e) => setControlData({ ...controlData, mileage: e.target.value })}
             />
@@ -2401,7 +2477,7 @@ export default function ObjectDetailPage() {
           setCustomPluginModal(null)
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
                 type="date"
@@ -2440,10 +2516,11 @@ export default function ObjectDetailPage() {
               onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={customMaintenanceData.cost}
                 onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, cost: e.target.value })}
@@ -2453,6 +2530,7 @@ export default function ObjectDetailPage() {
                 <Input
                   label="Kilométrage"
                   type="number"
+                inputMode="numeric"
                   value={customMaintenanceData.mileage}
                   onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, mileage: e.target.value })}
                 />
@@ -2523,8 +2601,8 @@ export default function ObjectDetailPage() {
             } else {
               addControlCenterMutation.mutate(data)
             }
-            ;(e.target as HTMLFormElement).reset()
-          }} className="mb-6 p-4 bg-gray-50 rounded-lg">
+            (e.target as HTMLFormElement).reset()
+          }} className="mb-6 p-4 bg-gray-50 dark:bg-gray-900/40 rounded-lg">
             <h4 className="font-medium mb-3">
               {controlCenterEditData?.id ? 'Modifier le centre' : 'Ajouter un centre de contrôle'}
             </h4>
@@ -2562,7 +2640,7 @@ export default function ObjectDetailPage() {
           <div>
             <h4 className="font-medium mb-3">Centres de contrôle existants</h4>
             {controlCenters.length === 0 ? (
-              <p className="text-gray-500 text-sm">Aucun centre de contrôle enregistré</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm">Aucun centre de contrôle enregistré</p>
             ) : (
               <div className="space-y-2 max-h-64 overflow-y-auto">
                 {controlCenters.map((center) => (
@@ -2575,7 +2653,7 @@ export default function ObjectDetailPage() {
                     <div>
                       <p className="font-medium">{center.name}</p>
                       {(center.address || center.phone) && (
-                        <p className="text-xs text-gray-500">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
                           {[center.address, center.phone].filter(Boolean).join(' - ')}
                         </p>
                       )}
@@ -2601,16 +2679,16 @@ export default function ObjectDetailPage() {
                       </div>
                     ) : (
                       <div className="flex items-center gap-1">
-                        <button
+                        <button aria-label="Modifier"
                           onClick={() => setControlCenterEditData(center)}
-                          className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded"
+                          className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded touch-target"
                           title="Modifier"
                         >
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button
+                        <button aria-label="Supprimer"
                           onClick={() => setControlCenterDeleteConfirm(center.id)}
-                          className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+                          className="p-1 text-red-600 hover:text-red-800 hover:bg-red-50 rounded touch-target"
                           title="Supprimer"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -2659,7 +2737,7 @@ export default function ObjectDetailPage() {
           }
         }}>
           <ModalBody className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date du contrôle"
                 type="date"
@@ -2695,23 +2773,20 @@ export default function ObjectDetailPage() {
                 { value: 'failed', label: 'Défavorable' }
               ]}
             />
-            <div className="grid grid-cols-2 gap-4">
-              <div className="relative">
-                <Input
-                  label="Centre de contrôle"
-                  value={controlEditModal?.center || ''}
-                  onChange={(e) => setControlEditModal({ ...controlEditModal, center: e.target.value })}
-                  list="controlCenters-edit-list"
-                />
-                <datalist id="controlCenters-edit-list">
-                  {controlCenters.map((center) => (
-                    <option key={center.id} value={center.name} />
-                  ))}
-                </datalist>
-              </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ReferenceSelect
+                label="Centre de contrôle"
+                value={controlEditModal?.center || ''}
+                onChange={(valeur) => setControlEditModal({ ...controlEditModal, center: valeur })}
+                options={controlCenters}
+                nomSingulier="un centre"
+                placeholder="Choisir un centre"
+                onCreate={async (nom) => { await addControlCenterMutation.mutateAsync({ name: nom }) }}
+              />
               <Input
                 label="Coût (€)"
                 type="number"
+                inputMode="decimal"
                 step="0.01"
                 value={controlEditModal?.cost || ''}
                 onChange={(e) => setControlEditModal({ ...controlEditModal, cost: e.target.value })}
@@ -2720,6 +2795,7 @@ export default function ObjectDetailPage() {
             <Input
               label="Kilométrage"
               type="number"
+                inputMode="numeric"
               value={controlEditModal?.mileage || ''}
               onChange={(e) => setControlEditModal({ ...controlEditModal, mileage: e.target.value })}
             />
@@ -2747,6 +2823,21 @@ export default function ObjectDetailPage() {
         </form>
       </Modal>
 
+      {/* Onglet Timeline / Historique */}
+      {activeTab === 'timeline' && object && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Historique complet
+            </CardTitle>
+          </CardHeader>
+          <CardBody>
+            <ObjectTimeline objectId={Number(id)} />
+          </CardBody>
+        </Card>
+      )}
+
       {/* Modal Confirmation suppression contrôle technique */}
       <Modal
         isOpen={!!controlDeleteConfirm}
@@ -2755,7 +2846,7 @@ export default function ObjectDetailPage() {
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer ce contrôle technique ? Cette action est irréversible.
           </p>
         </ModalBody>

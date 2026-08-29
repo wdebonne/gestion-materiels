@@ -391,7 +391,7 @@ export default function CalendarPage() {
   return (
     <div className="flex flex-col h-full -m-6">
       {/* Barre d'outils supérieure */}
-      <div className="bg-white border-b border-gray-200 px-3 sm:px-6 py-2 sm:py-3">
+      <div className="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700 px-3 sm:px-6 py-2 sm:py-3 min-h-[44px]">
         {/* Ligne 1 : Navigation + titre */}
         <div className="flex items-center justify-between gap-2 sm:gap-4">
           {/* Navigation du calendrier */}
@@ -399,8 +399,8 @@ export default function CalendarPage() {
             {/* Toggle mini-calendrier mobile */}
             <button
               onClick={() => setShowMiniCalendar(!showMiniCalendar)}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg text-gray-600"
-              title="Mini-calendrier"
+              className="lg:hidden h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg text-gray-600 dark:text-gray-300"
+              title="Mini-calendrier" aria-label="Mini-calendrier"
             >
               <CalendarIcon className="w-4 h-4" />
             </button>
@@ -413,34 +413,34 @@ export default function CalendarPage() {
               Aujourd'hui
             </Button>
             <div className="flex items-center border rounded-lg overflow-hidden">
-              <button
+              <button aria-label="Année précédente"
                 onClick={goToPrevYear}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-500 border-r hidden sm:block"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-r hidden sm:block touch-target"
                 title="Année précédente"
               >
                 <ChevronLeft className="w-4 h-4" />
                 <ChevronLeft className="w-4 h-4 -ml-3" />
               </button>
-              <button
+              <button aria-label="Mois précédent"
                 onClick={goToPrevMonth}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-600 sm:border-r"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 sm:border-r touch-target"
                 title="Mois précédent"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="px-2 sm:px-4 py-1.5 sm:py-2 font-semibold text-gray-900 text-sm sm:text-base text-center capitalize whitespace-nowrap">
+              <span className="px-2 sm:px-4 py-1.5 sm:py-2 font-semibold text-gray-900 dark:text-gray-100 text-sm sm:text-base text-center capitalize whitespace-nowrap min-h-[44px]">
                 {format(currentDate, 'MMMM yyyy', { locale: fr })}
               </span>
-              <button
+              <button aria-label="Mois suivant"
                 onClick={goToNextMonth}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-600 sm:border-l"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 sm:border-l touch-target"
                 title="Mois suivant"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
-              <button
+              <button aria-label="Année suivante"
                 onClick={goToNextYear}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 text-gray-500 border-l hidden sm:block"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-l hidden sm:block touch-target"
                 title="Année suivante"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -457,7 +457,7 @@ export default function CalendarPage() {
               size="sm"
               onClick={handleSync}
               loading={isSyncing}
-              title="Synchroniser le calendrier"
+              title="Synchroniser le calendrier" aria-label="Synchroniser le calendrier"
             >
               <RefreshCw className={`w-4 h-4 ${isSyncing ? 'animate-spin' : ''}`} />
             </Button>
@@ -467,13 +467,13 @@ export default function CalendarPage() {
               variant="secondary"
               size="sm"
               onClick={() => setShowSyncSettings(true)}
-              title="Paramètres de synchronisation"
+              title="Paramètres de synchronisation" aria-label="Paramètres de synchronisation"
               className="hidden sm:flex"
             >
               {syncStatus?.outlook?.connected || syncStatus?.caldav?.connected ? (
                 <Cloud className="w-4 h-4 text-green-600" />
               ) : (
-                <CloudOff className="w-4 h-4 text-gray-400" />
+                <CloudOff className="w-4 h-4 text-gray-600 dark:text-gray-300" />
               )}
             </Button>
 
@@ -491,7 +491,7 @@ export default function CalendarPage() {
         {/* Ligne 2 : Vue + Recherche/Filtres */}
         <div className="flex items-center justify-between gap-2 mt-2">
           {/* Sélecteur de vue */}
-          <div className="flex items-center gap-0.5 sm:gap-1 bg-gray-100 p-0.5 sm:p-1 rounded-lg overflow-x-auto">
+          <div className="flex items-center gap-0.5 sm:gap-1 bg-gray-100 dark:bg-gray-700 p-0.5 sm:p-1 rounded-lg overflow-x-auto touch-target">
             {viewOptions.map((view) => {
               const Icon = view.icon
               return (
@@ -525,9 +525,9 @@ export default function CalendarPage() {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target"
                 >
-                  <X className="w-3 h-3 text-gray-400" />
+                  <X className="w-3 h-3 text-gray-600 dark:text-gray-300" />
                 </button>
               )}
             </div>
@@ -560,9 +560,9 @@ export default function CalendarPage() {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery('')}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 rounded"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target"
                 >
-                  <X className="w-3 h-3 text-gray-400" />
+                  <X className="w-3 h-3 text-gray-600 dark:text-gray-300" />
                 </button>
               )}
             </div>
@@ -603,21 +603,21 @@ export default function CalendarPage() {
           overflow-hidden`}>
           <div className="p-4 space-y-4 w-72">
             {/* Mini calendrier */}
-            <div className="bg-gray-50 rounded-xl p-3">
+            <div className="bg-gray-50 dark:bg-gray-900/40 rounded-xl p-3">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-gray-700 text-sm capitalize">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-200 text-sm capitalize">
                   {format(currentDate, 'MMMM yyyy', { locale: fr })}
                 </h3>
                 <div className="flex gap-1">
                   <button
                     onClick={goToPrevMonth}
-                    className="p-1 hover:bg-gray-200 rounded"
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded touch-target"
                   >
                     <ChevronLeft className="w-4 h-4" />
                   </button>
                   <button
                     onClick={goToNextMonth}
-                    className="p-1 hover:bg-gray-200 rounded"
+                    className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded touch-target"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
@@ -627,7 +627,7 @@ export default function CalendarPage() {
               {/* En-têtes jours */}
               <div className="grid grid-cols-7 gap-1 mb-1">
                 {WEEKDAYS.map((day) => (
-                  <div key={day} className="text-center text-xs font-medium text-gray-500 py-1">
+                  <div key={day} className="text-center text-xs font-medium text-gray-500 dark:text-gray-400 py-1">
                     {day}
                   </div>
                 ))}
@@ -655,7 +655,7 @@ export default function CalendarPage() {
                       }}
                       className={`
                         relative aspect-square flex items-center justify-center text-sm rounded-lg transition-all
-                        ${!isCurrentMonth ? 'text-gray-300' : 'text-gray-700'}
+                        ${!isCurrentMonth ? 'text-gray-600' : 'text-gray-700'}
                         ${isSelected ? 'bg-primary-600 text-white' : ''}
                         ${isTodayDate && !isSelected ? 'bg-primary-100 text-primary-700 font-bold' : ''}
                         ${!isSelected && isCurrentMonth ? 'hover:bg-gray-200' : ''}
@@ -676,11 +676,11 @@ export default function CalendarPage() {
             {/* Événements du jour sélectionné */}
             {selectedDate && (
               <div>
-                <h3 className="font-semibold text-gray-700 mb-2 text-sm capitalize">
+                <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-2 text-sm capitalize">
                   {format(selectedDate, 'EEEE d MMMM', { locale: fr })}
                 </h3>
                 {selectedDayEvents.length === 0 ? (
-                  <p className="text-sm text-gray-500 text-center py-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
                     Aucun événement ce jour
                   </p>
                 ) : (
@@ -689,7 +689,7 @@ export default function CalendarPage() {
                       <button
                         key={event.id}
                         onClick={() => openModal(event)}
-                        className="w-full text-left p-2 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors"
+                        className="w-full text-left h-11 w-11 flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
                       >
                         <div className="flex items-start gap-2">
                           <div 
@@ -697,11 +697,11 @@ export default function CalendarPage() {
                             style={{ backgroundColor: event.color || '#3B82F6' }}
                           />
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium text-sm text-gray-900 truncate">
+                            <p className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
                               {event.title}
                             </p>
                             {!event.allDay && (
-                              <p className="text-xs text-gray-500">
+                              <p className="text-xs text-gray-500 dark:text-gray-400">
                                 {format(new Date(event.startDate || event.start || ''), 'HH:mm')}
                               </p>
                             )}
@@ -735,10 +735,10 @@ export default function CalendarPage() {
 
             {/* Statut de synchronisation */}
             <div className="border-t pt-4">
-              <h3 className="font-semibold text-gray-700 mb-2 text-sm">Synchronisation</h3>
+              <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-2 text-sm">Synchronisation</h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">Outlook</span>
+                  <span className="text-gray-600 dark:text-gray-300">Outlook</span>
                   {syncStatus?.outlook?.connected ? (
                     <Badge variant="success" size="sm">Connecté</Badge>
                   ) : (
@@ -746,7 +746,7 @@ export default function CalendarPage() {
                   )}
                 </div>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">CalDAV</span>
+                  <span className="text-gray-600 dark:text-gray-300">CalDAV</span>
                   {syncStatus?.caldav?.connected ? (
                     <Badge variant="success" size="sm">Connecté</Badge>
                   ) : (
@@ -776,14 +776,14 @@ export default function CalendarPage() {
           style={{ left: showMiniCalendar ? '288px' : '0' }}
         >
           {showMiniCalendar ? (
-            <ChevronLeft className="w-4 h-4 text-gray-600" />
+            <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-300" />
           ) : (
-            <ChevronRight className="w-4 h-4 text-gray-600" />
+            <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-300" />
           )}
         </button>
 
         {/* Calendrier principal */}
-        <div className="flex-1 bg-white p-1 sm:p-2 md:p-4 overflow-auto min-w-0">
+        <div className="flex-1 bg-white dark:bg-gray-800 p-1 sm:p-2 md:p-4 overflow-auto min-w-0 touch-target">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <LoadingInline message="Chargement du calendrier..." />
@@ -847,7 +847,7 @@ export default function CalendarPage() {
               rows={3}
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
                 label="Type d'événement"
                 value={formData.eventType}
@@ -861,14 +861,14 @@ export default function CalendarPage() {
                     type="checkbox"
                     checked={formData.allDay}
                     onChange={(e) => setFormData({ ...formData, allDay: e.target.checked })}
-                    className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                    className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
                   />
-                  <span className="text-sm text-gray-700">Journée entière</span>
+                  <span className="text-sm text-gray-700 dark:text-gray-200">Journée entière</span>
                 </label>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date de début"
                 type="date"
@@ -886,7 +886,7 @@ export default function CalendarPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date de fin"
                 type="date"
@@ -903,14 +903,14 @@ export default function CalendarPage() {
               )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1.5">
                   Couleur
                 </label>
                 <div className="flex gap-2 flex-wrap">
                   {colorOptions.map((color) => (
-                    <button
+                    <button aria-label={color.label}
                       key={color.value}
                       type="button"
                       onClick={() => setFormData({ ...formData, color: color.value })}
@@ -975,7 +975,7 @@ export default function CalendarPage() {
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
+          <p className="text-gray-600 dark:text-gray-300">
             Êtes-vous sûr de vouloir supprimer l'événement <strong>{deleteConfirm?.title}</strong> ?
           </p>
         </ModalBody>
@@ -1135,9 +1135,9 @@ function CalendarSyncSettings({
         {/* Outlook Configuration */}
         {activeTab === 'outlook' && (
           <div className="space-y-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 rounded-lg p-4">
               <h4 className="font-medium text-blue-800 mb-2">Configuration Microsoft Outlook</h4>
-              <p className="text-sm text-blue-700">
+              <p className="text-sm text-blue-700 dark:text-blue-300">
                 Pour synchroniser avec Outlook, vous devez créer une application dans le portail Azure AD.{' '}
                 <a 
                   href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" 
@@ -1177,9 +1177,9 @@ function CalendarSyncSettings({
                 type="checkbox"
                 checked={outlookConfig.enabled}
                 onChange={(e) => setOutlookConfig({ ...outlookConfig, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
               />
-              <span className="text-sm text-gray-700">Activer la synchronisation Outlook</span>
+              <span className="text-sm text-gray-700 dark:text-gray-200">Activer la synchronisation Outlook</span>
             </label>
 
             <div className="flex gap-2 pt-2">
@@ -1201,9 +1201,9 @@ function CalendarSyncSettings({
         {/* CalDAV Configuration */}
         {activeTab === 'caldav' && (
           <div className="space-y-4">
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 rounded-lg p-4">
               <h4 className="font-medium text-green-800 mb-2">Configuration CalDAV</h4>
-              <p className="text-sm text-green-700">
+              <p className="text-sm text-green-700 dark:text-green-300">
                 CalDAV est compatible avec de nombreux services : Nextcloud, Synology, iCloud, Google Calendar, etc.
               </p>
             </div>
@@ -1215,7 +1215,7 @@ function CalendarSyncSettings({
               placeholder="https://example.com/remote.php/dav"
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Nom d'utilisateur"
                 value={caldavConfig.username}
@@ -1244,9 +1244,9 @@ function CalendarSyncSettings({
                 type="checkbox"
                 checked={caldavConfig.enabled}
                 onChange={(e) => setCaldavConfig({ ...caldavConfig, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
               />
-              <span className="text-sm text-gray-700">Activer la synchronisation CalDAV</span>
+              <span className="text-sm text-gray-700 dark:text-gray-200">Activer la synchronisation CalDAV</span>
             </label>
 
             <div className="flex gap-2 pt-2">

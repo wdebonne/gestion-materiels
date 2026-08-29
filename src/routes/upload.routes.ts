@@ -3,7 +3,8 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { authenticateToken, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, requireSupervisor, requireFieldWrite } from '../middleware/auth.middleware';
+import { normalizeImage } from '../services/imageNormalize.service';
 
 const router = Router();
 
@@ -57,7 +58,7 @@ const uploadImage = multer({
   storage,
   fileFilter: imageFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB max
+    fileSize: 25 * 1024 * 1024 // filet de sécurité : le client réduit déjà les photos
   }
 });
 
@@ -66,16 +67,19 @@ const uploadFile = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 10 * 1024 * 1024 // 10MB max
+    fileSize: 25 * 1024 * 1024 // filet de sécurité : le client réduit déjà les photos
   }
 });
 
 // POST /api/upload/image - Upload une image
-router.post('/image', authenticateToken, requireSupervisor, uploadImage.single('image'), (req: Request, res: Response) => {
+router.post('/image', authenticateToken, requireFieldWrite, uploadImage.single('image'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
     }
+
+    // Redresse les photos couchées (EXIF) et plafonne la taille
+    const tailleNormalisee = await normalizeImage(req.file.path, req.file.mimetype);
 
     // Construire l'URL
     const url = `/uploads/${req.file.filename}`;
@@ -85,7 +89,7 @@ router.post('/image', authenticateToken, requireSupervisor, uploadImage.single('
       url,
       filename: req.file.filename,
       originalName: req.file.originalname,
-      size: req.file.size,
+      size: tailleNormalisee ?? req.file.size,
       mimetype: req.file.mimetype
     });
   } catch (error: any) {
@@ -95,11 +99,14 @@ router.post('/image', authenticateToken, requireSupervisor, uploadImage.single('
 });
 
 // POST /api/upload/file - Upload un fichier (image ou PDF)
-router.post('/file', authenticateToken, requireSupervisor, uploadFile.single('file'), (req: Request, res: Response) => {
+router.post('/file', authenticateToken, requireFieldWrite, uploadFile.single('file'), async (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
     }
+
+    // Sans effet sur les PDF : seules les images matricielles sont traitées
+    const tailleNormalisee = await normalizeImage(req.file.path, req.file.mimetype);
 
     // Construire l'URL
     const url = `/uploads/${req.file.filename}`;
@@ -109,7 +116,7 @@ router.post('/file', authenticateToken, requireSupervisor, uploadFile.single('fi
       url,
       filename: req.file.filename,
       originalName: req.file.originalname,
-      size: req.file.size,
+      size: tailleNormalisee ?? req.file.size,
       mimetype: req.file.mimetype
     });
   } catch (error: any) {
@@ -119,21 +126,21 @@ router.post('/file', authenticateToken, requireSupervisor, uploadFile.single('fi
 });
 
 // POST /api/upload/images - Upload plusieurs images
-router.post('/images', authenticateToken, requireSupervisor, uploadImage.array('images', 10), (req: Request, res: Response) => {
+router.post('/images', authenticateToken, requireFieldWrite, uploadImage.array('images', 10), async (req: Request, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
-    
+
     if (!files || files.length === 0) {
       return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
     }
 
-    const uploadedFiles = files.map(file => ({
+    const uploadedFiles = await Promise.all(files.map(async file => ({
       url: `/uploads/${file.filename}`,
       filename: file.filename,
       originalName: file.originalname,
-      size: file.size,
+      size: (await normalizeImage(file.path, file.mimetype)) ?? file.size,
       mimetype: file.mimetype
-    }));
+    })));
 
     res.json({
       success: true,
@@ -170,7 +177,7 @@ router.delete('/:filename', authenticateToken, requireSupervisor, (req: Request,
 router.use((error: any, req: Request, res: Response, next: any) => {
   if (error instanceof multer.MulterError) {
     if (error.code === 'LIMIT_FILE_SIZE') {
-      return res.status(400).json({ success: false, message: 'Le fichier est trop volumineux (max 10MB)' });
+      return res.status(400).json({ success: false, message: 'Le fichier est trop volumineux (maximum 25 Mo).' });
     }
     return res.status(400).json({ success: false, message: error.message });
   }

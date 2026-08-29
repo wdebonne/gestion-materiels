@@ -5,15 +5,17 @@ interface BadgeProps {
   variant?: 'default' | 'success' | 'warning' | 'danger' | 'info'
   size?: 'sm' | 'md'
   className?: string
+  /** Infobulle. Elle était passée par les appelants sans jamais être transmise. */
+  title?: string
 }
 
-export default function Badge({ children, variant = 'default', size = 'md', className }: BadgeProps) {
+export default function Badge({ children, variant = 'default', size = 'md', className, title }: BadgeProps) {
   const variantClasses = {
-    default: 'bg-gray-100 text-gray-700',
-    success: 'bg-green-100 text-green-700',
-    warning: 'bg-yellow-100 text-yellow-700',
-    danger: 'bg-red-100 text-red-700',
-    info: 'bg-blue-100 text-blue-700'
+    default: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200',
+    success: 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300',
+    warning: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300',
+    danger: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
+    info: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
   }
 
   const sizeClasses = {
@@ -23,6 +25,7 @@ export default function Badge({ children, variant = 'default', size = 'md', clas
 
   return (
     <span
+      title={title}
       className={cn(
         "inline-flex items-center font-medium rounded-full",
         variantClasses[variant],

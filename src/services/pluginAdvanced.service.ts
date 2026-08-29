@@ -350,6 +350,50 @@ function copyDirRecursive(src: string, dest: string): void {
   }
 }
 
+/**
+ * Instructions SQL interdites dans une requête de plugin, quelle que soit la
+ * méthode : elles permettraient de modifier le schéma, d'exfiltrer des données
+ * ou de manipuler les comptes.
+ */
+const FORBIDDEN_SQL = /\b(DROP|ALTER|CREATE|TRUNCATE|GRANT|REVOKE|ATTACH|DETACH|PRAGMA|VACUUM|LOAD_FILE|INTO\s+(OUT|DUMP)FILE)\b/i;
+
+/** Tables du cœur applicatif, hors d'atteinte des plugins. */
+const PROTECTED_TABLES = /\b(users|api_tokens|group_permissions|user_permissions|module_permissions|plugin_permissions|user_plugin_permissions|settings|auth_config|plugins)\b/i;
+
+/**
+ * Vérifie qu'une requête de plugin est une instruction unique, cohérente avec
+ * la méthode HTTP de son endpoint, et qu'elle ne touche ni au schéma ni aux
+ * tables sensibles.
+ *
+ * Ces requêtes proviennent du fichier de configuration d'un plugin installé par
+ * un administrateur, mais elles sont déclenchables par n'importe quel compte
+ * authentifié : il faut donc les contraindre.
+ */
+function assertQueryIsAllowed(pluginSlug: string, method: string, query: string): void {
+  const normalized = query.trim().replace(/;\s*$/, '');
+
+  if (normalized.includes(';')) {
+    throw new Error(`Plugin "${pluginSlug}": une requête ne peut contenir qu'une seule instruction SQL.`);
+  }
+
+  if (FORBIDDEN_SQL.test(normalized)) {
+    throw new Error(`Plugin "${pluginSlug}": instruction SQL non autorisée.`);
+  }
+
+  if (PROTECTED_TABLES.test(normalized)) {
+    throw new Error(`Plugin "${pluginSlug}": accès refusé aux tables système.`);
+  }
+
+  const verb = normalized.split(/\s+/)[0]?.toUpperCase();
+  const allowedVerbs = method === 'GET'
+    ? ['SELECT', 'WITH']
+    : ['INSERT', 'UPDATE', 'DELETE', 'SELECT', 'WITH'];
+
+  if (!verb || !allowedVerbs.includes(verb)) {
+    throw new Error(`Plugin "${pluginSlug}": instruction "${verb ?? '?'}" interdite pour un endpoint ${method}.`);
+  }
+}
+
 // Exécuter une requête dynamique pour un endpoint de plugin
 export async function executePluginQuery(
   pluginSlug: string,
@@ -359,6 +403,8 @@ export async function executePluginQuery(
   if (!endpoint.query) {
     return null;
   }
+
+  assertQueryIsAllowed(pluginSlug, endpoint.method, endpoint.query);
 
   // Remplacer les paramètres dans la requête
   let query = endpoint.query;

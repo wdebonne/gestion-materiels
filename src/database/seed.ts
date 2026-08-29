@@ -1,10 +1,20 @@
 import bcrypt from 'bcryptjs';
 import { db } from './index';
 
+/**
+ * URL publique utilisée dans les liens des emails, semée à la première
+ * installation puis modifiable dans Paramètres.
+ *
+ * La valeur codée en dur pointait sur le port 3000 alors que le serveur écoute
+ * sur 3001 : sur une installation neuve, tous les liens des emails menaient
+ * vers un port fermé.
+ */
+const URL_PAR_DEFAUT = process.env.SITE_URL || `http://localhost:${process.env.PORT || 3001}`;
+
 const DEFAULT_SETTINGS = [
   { key: 'site_name', value: 'Gestion Matériels', type: 'string', description: 'Nom du site' },
   { key: 'site_version', value: '1.0.0', type: 'string', description: 'Version du site' },
-  { key: 'site_url', value: 'http://localhost:3000', type: 'string', description: 'URL du site' },
+  { key: 'site_url', value: URL_PAR_DEFAUT, type: 'string', description: 'URL du site' },
   { key: 'site_logo', value: '', type: 'string', description: 'Logo du site' },
   { key: 'site_favicon', value: '', type: 'string', description: 'Favicon du site' },
   { key: 'default_image', value: '', type: 'string', description: 'Image par défaut' },
@@ -306,6 +316,7 @@ const DEFAULT_PLUGINS = [
     description: 'Calendrier avec agenda pour planifier les événements',
     author: 'Système',
     icon: 'calendar',
+    plugin_type: 'menu',
     is_system: 1,
     is_active: 1,
     config: JSON.stringify({
@@ -317,6 +328,107 @@ const DEFAULT_PLUGINS = [
         fuel: '#22c55e',
         other: '#3b82f6'
       }
+    })
+  },
+  {
+    name: 'Réservations',
+    slug: 'reservations',
+    version: '1.0.0',
+    description: 'Gestion des réservations et prêts de matériel entre services',
+    author: 'Système',
+    icon: 'calendar-clock',
+    plugin_type: 'menu',
+    route: 'reservations',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      statuses: ['pending', 'approved', 'active', 'returned', 'overdue', 'cancelled'],
+      require_approval: true,
+      overdue_check_cron: '0 8 * * *'
+    })
+  },
+  {
+    name: 'Amortissement',
+    slug: 'depreciation',
+    version: '1.0.0',
+    description: 'Calcul de la dépréciation et valeur résiduelle du matériel',
+    author: 'Système',
+    icon: 'trending-down',
+    plugin_type: 'menu',
+    route: 'depreciation',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      default_lifespan_years: 5,
+      depreciation_method: 'linear'
+    })
+  },
+  {
+    name: 'Cartographie',
+    slug: 'map',
+    version: '1.0.0',
+    description: 'Localisation géographique des équipements sur carte interactive',
+    author: 'Système',
+    icon: 'map-pin',
+    plugin_type: 'menu',
+    route: 'map',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      default_center: [49.5833, 0.9500],
+      default_zoom: 13,
+      tile_provider: 'openstreetmap'
+    })
+  },
+  {
+    name: 'Import / Export',
+    slug: 'import-export',
+    version: '1.0.0',
+    description: 'Import et export de matériels au format Excel ou CSV',
+    author: 'Système',
+    icon: 'FileSpreadsheet',
+    plugin_type: 'menu',
+    route: 'import-export',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      max_file_size_mb: 10,
+      allowed_formats: ['csv', 'xlsx', 'xls'],
+      export_formats: ['xlsx', 'csv']
+    })
+  },
+  {
+    name: 'Manifestations',
+    slug: 'manifestations',
+    version: '1.0.0',
+    description: 'Gestion des manifestations avec prêt et suivi de matériel, stock, livraison et récupération',
+    author: 'Système',
+    icon: 'party-popper',
+    plugin_type: 'menu',
+    route: 'manifestations',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      statuses: ['draft', 'validated', 'delivered', 'recovered', 'archived', 'cancelled'],
+      enable_pdf_export: true,
+      enable_stock_management: true
+    })
+  },
+  {
+    name: 'Espaces Verts',
+    slug: 'espaces-verts',
+    version: '1.0.0',
+    description: 'Gestion des espaces verts, arbres, mobilier urbain et interventions',
+    author: 'Système',
+    icon: 'tree-pine',
+    plugin_type: 'menu',
+    route: 'espaces-verts',
+    is_system: 1,
+    is_active: 1,
+    config: JSON.stringify({
+      space_types: ['parc', 'jardin', 'square', 'rond_point', 'allee', 'autre'],
+      element_types: ['arbre', 'haie', 'massif', 'pelouse', 'mobilier', 'eclairage', 'arrosage', 'cloture', 'autre'],
+      condition_states: ['bon', 'moyen', 'mauvais', 'danger', 'remplace']
     })
   }
 ];
@@ -368,8 +480,8 @@ export async function seedDatabase(): Promise<void> {
     const existing = await db.queryOne('SELECT id FROM plugins WHERE slug = ?', [plugin.slug]);
     if (!existing) {
       await db.execute(
-        `INSERT INTO plugins (name, slug, version, description, author, icon, is_system, is_active, config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [plugin.name, plugin.slug, plugin.version, plugin.description, plugin.author, plugin.icon, plugin.is_system, plugin.is_active || 0, plugin.config]
+        `INSERT INTO plugins (name, slug, version, description, author, icon, plugin_type, route, is_system, is_active, config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [plugin.name, plugin.slug, plugin.version, plugin.description, plugin.author, plugin.icon, (plugin as any).plugin_type || 'object', (plugin as any).route || plugin.slug, plugin.is_system, plugin.is_active || 0, plugin.config]
       );
     }
   }

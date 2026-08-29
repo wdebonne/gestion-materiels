@@ -15,7 +15,7 @@ export default function Spinner({ size = 'md', className }: SpinnerProps) {
 
   return (
     <Loader2 
-      className={cn("animate-spin text-primary-600", sizeClasses[size], className)} 
+      className={cn("animate-spin text-primary-600 dark:text-primary-400", sizeClasses[size], className)} 
     />
   )
 }
@@ -27,9 +27,9 @@ interface LoadingScreenProps {
 
 export function LoadingScreen({ message = 'Chargement...' }: LoadingScreenProps) {
   return (
-    <div className="fixed inset-0 bg-white flex flex-col items-center justify-center z-50">
+    <div className="fixed inset-0 bg-white dark:bg-gray-900 flex flex-col items-center justify-center z-50">
       <Spinner size="lg" />
-      <p className="mt-4 text-gray-600">{message}</p>
+      <p className="mt-4 text-gray-600 dark:text-gray-300">{message}</p>
     </div>
   )
 }
@@ -41,7 +41,7 @@ export function LoadingInline({ message }: { message?: string }) {
       <div className="text-center">
         <Spinner size="lg" />
         {message && (
-          <p className="mt-3 text-sm text-gray-500">{message}</p>
+          <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{message}</p>
         )}
       </div>
     </div>

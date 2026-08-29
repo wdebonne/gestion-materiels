@@ -1,0 +1,95 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "create": "Create",
+    "search": "Search",
+    "filter": "Filter",
+    "export": "Export",
+    "import": "Import",
+    "loading": "Loading...",
+    "noResults": "No results",
+    "confirm": "Confirm",
+    "close": "Close",
+    "back": "Back",
+    "actions": "Actions",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "categories": "Categories",
+    "alerts": "Alerts",
+    "tracking": "Tracking",
+    "calendar": "Calendar",
+    "reservations": "Reservations",
+    "map": "Map",
+    "depreciation": "Depreciation",
+    "importExport": "Import / Export",
+    "settings": "Settings",
+    "profile": "My Profile",
+    "logout": "Logout",
+    "collapse": "Collapse",
+    "expand": "Expand menu",
+    "tracking": "Tracking"
+  },
+  "auth": {
+    "login": "Login",
+    "email": "Email address",
+    "password": "Password",
+    "forgotPassword": "Forgot password?",
+    "resetPassword": "Reset password",
+    "loginButton": "Sign in"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "totalCategories": "Categories",
+    "totalObjects": "Equipment",
+    "activeAlerts": "Active Alerts",
+    "eventsThisMonth": "Events this month",
+    "totalValue": "Total Value"
+  },
+  "objects": {
+    "title": "Equipment",
+    "name": "Name",
+    "reference": "Reference",
+    "serialNumber": "Serial Number",
+    "status": "Status",
+    "location": "Location",
+    "purchaseDate": "Purchase Date",
+    "purchasePrice": "Purchase Price",
+    "qrCode": "QR Code"
+  },
+  "reservations": {
+    "title": "Reservations & Loans",
+    "subtitle": "Manage equipment borrowing and reservations",
+    "newReservation": "New Reservation",
+    "borrower": "Borrower",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "reason": "Reason",
+    "status": {
+      "reserved": "Reserved",
+      "borrowed": "Borrowed",
+      "returned": "Returned",
+      "cancelled": "Cancelled",
+      "overdue": "Overdue"
+    }
+  },
+  "depreciation": {
+    "title": "Depreciation",
+    "subtitle": "Calculate equipment depreciation and residual value",
+    "lifespan": "Depreciation Period",
+    "residualValue": "Residual Value",
+    "purchaseValue": "Purchase Value",
+    "fullyDepreciated": "Fully Depreciated"
+  },
+  "theme": {
+    "title": "Theme",
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  }
+}

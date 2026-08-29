@@ -132,7 +132,7 @@ export default function SmtpSettingsPage() {
                 placeholder="smtp.example.com"
                 hint="Adresse du serveur SMTP"
               />
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
                   label="Port"
                   value={formData.port}

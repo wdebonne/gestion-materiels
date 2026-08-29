@@ -129,4 +129,87 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
   }
 });
 
+// GET /api/dashboard/depreciation - Calcul d'amortissement des matériels
+router.get('/depreciation', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { categoryId } = req.query;
+    const defaultLifespan = Number(req.query.lifespan) || 5; // Durée de vie en années par défaut
+
+    let sql = `
+      SELECT o.id, o.name, o.reference, o.purchase_date, o.purchase_price, 
+             o.status, c.name as category_name
+      FROM objects o
+      LEFT JOIN categories c ON o.category_id = c.id
+      WHERE o.purchase_price IS NOT NULL AND o.purchase_price > 0
+        AND o.purchase_date IS NOT NULL
+    `;
+    const params: any[] = [];
+
+    if (categoryId) {
+      sql += ' AND o.category_id = ?';
+      params.push(categoryId);
+    }
+
+    sql += ' ORDER BY o.purchase_date DESC';
+
+    const objects = await db.query(sql, params);
+    const now = new Date();
+
+    const depreciationData = objects.map((obj: any) => {
+      const purchaseDate = new Date(obj.purchase_date);
+      const purchasePrice = Number(obj.purchase_price);
+      const lifespanYears = defaultLifespan;
+
+      // Amortissement linéaire
+      const ageInDays = (now.getTime() - purchaseDate.getTime()) / (1000 * 60 * 60 * 24);
+      const ageInYears = ageInDays / 365.25;
+      const annualDepreciation = purchasePrice / lifespanYears;
+      const totalDepreciation = Math.min(annualDepreciation * ageInYears, purchasePrice);
+      const residualValue = Math.max(purchasePrice - totalDepreciation, 0);
+      const depreciationPercent = (totalDepreciation / purchasePrice) * 100;
+      const isFullyDepreciated = residualValue <= 0;
+
+      return {
+        id: obj.id,
+        name: obj.name,
+        reference: obj.reference,
+        categoryName: obj.category_name,
+        purchaseDate: obj.purchase_date,
+        purchasePrice,
+        lifespanYears,
+        ageInYears: Math.round(ageInYears * 10) / 10,
+        annualDepreciation: Math.round(annualDepreciation * 100) / 100,
+        totalDepreciation: Math.round(totalDepreciation * 100) / 100,
+        residualValue: Math.round(residualValue * 100) / 100,
+        depreciationPercent: Math.round(depreciationPercent * 10) / 10,
+        isFullyDepreciated,
+        status: obj.status
+      };
+    });
+
+    // Statistiques globales
+    const totalPurchaseValue = depreciationData.reduce((sum: number, d: any) => sum + d.purchasePrice, 0);
+    const totalResidualValue = depreciationData.reduce((sum: number, d: any) => sum + d.residualValue, 0);
+    const fullyDepreciatedCount = depreciationData.filter((d: any) => d.isFullyDepreciated).length;
+
+    res.json({
+      success: true,
+      data: depreciationData,
+      summary: {
+        totalItems: depreciationData.length,
+        totalPurchaseValue: Math.round(totalPurchaseValue * 100) / 100,
+        totalResidualValue: Math.round(totalResidualValue * 100) / 100,
+        totalDepreciation: Math.round((totalPurchaseValue - totalResidualValue) * 100) / 100,
+        fullyDepreciatedCount,
+        averageDepreciationPercent: depreciationData.length > 0 
+          ? Math.round(depreciationData.reduce((sum: number, d: any) => sum + d.depreciationPercent, 0) / depreciationData.length * 10) / 10
+          : 0
+      }
+    });
+  } catch (error: any) {
+    console.error('Erreur amortissement:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 export default router;

@@ -1,0 +1,95 @@
+{
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "create": "Créer",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "export": "Exporter",
+    "import": "Importer",
+    "loading": "Chargement...",
+    "noResults": "Aucun résultat",
+    "confirm": "Confirmer",
+    "close": "Fermer",
+    "back": "Retour",
+    "actions": "Actions",
+    "yes": "Oui",
+    "no": "Non"
+  },
+  "nav": {
+    "dashboard": "Tableau de bord",
+    "categories": "Catégories",
+    "alerts": "Alertes",
+    "tracking": "Suivi",
+    "calendar": "Calendrier",
+    "reservations": "Réservations",
+    "map": "Cartographie",
+    "depreciation": "Amortissement",
+    "importExport": "Import / Export",
+    "settings": "Paramètres",
+    "profile": "Mon profil",
+    "logout": "Déconnexion",
+    "collapse": "Réduire",
+    "expand": "Agrandir le menu",
+    "tracking": "Suivi"
+  },
+  "auth": {
+    "login": "Connexion",
+    "email": "Adresse email",
+    "password": "Mot de passe",
+    "forgotPassword": "Mot de passe oublié ?",
+    "resetPassword": "Réinitialiser le mot de passe",
+    "loginButton": "Se connecter"
+  },
+  "dashboard": {
+    "title": "Tableau de bord",
+    "totalCategories": "Catégories",
+    "totalObjects": "Matériels",
+    "activeAlerts": "Alertes actives",
+    "eventsThisMonth": "Événements ce mois",
+    "totalValue": "Valeur totale"
+  },
+  "objects": {
+    "title": "Matériels",
+    "name": "Nom",
+    "reference": "Référence",
+    "serialNumber": "Numéro de série",
+    "status": "Statut",
+    "location": "Localisation",
+    "purchaseDate": "Date d'achat",
+    "purchasePrice": "Prix d'achat",
+    "qrCode": "QR Code"
+  },
+  "reservations": {
+    "title": "Réservations & Prêts",
+    "subtitle": "Gérer les emprunts et réservations de matériel",
+    "newReservation": "Nouvelle réservation",
+    "borrower": "Emprunteur",
+    "startDate": "Date de début",
+    "endDate": "Date de fin",
+    "reason": "Motif",
+    "status": {
+      "reserved": "Réservé",
+      "borrowed": "En prêt",
+      "returned": "Retourné",
+      "cancelled": "Annulé",
+      "overdue": "En retard"
+    }
+  },
+  "depreciation": {
+    "title": "Amortissement",
+    "subtitle": "Calcul de la dépréciation et valeur résiduelle des matériels",
+    "lifespan": "Durée d'amortissement",
+    "residualValue": "Valeur résiduelle",
+    "purchaseValue": "Valeur d'achat",
+    "fullyDepreciated": "Entièrement amortis"
+  },
+  "theme": {
+    "title": "Thème",
+    "light": "Clair",
+    "dark": "Sombre",
+    "system": "Système"
+  }
+}

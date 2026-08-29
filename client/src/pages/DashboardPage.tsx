@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { 
@@ -11,15 +12,19 @@ import {
   Euro,
   Clock
 } from 'lucide-react'
-import { StatCard, Card, CardBody, CardHeader, CardTitle, ImageCard, LoadingInline, Alert } from '@/components/ui'
+import { StatCard, Card, CardBody, CardHeader, CardTitle, ImageCard, LoadingInline } from '@/components/ui'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
+import QuickActions from '@/components/QuickActions'
+import GlobalSearch from '@/components/GlobalSearch'
+import HelpSheet from '@/components/HelpSheet'
 
 export default function DashboardPage() {
+  const [rechercheOuverte, setRechercheOuverte] = useState(false)
   const navigate = useNavigate()
 
   // Récupérer les statistiques
-  const { data: stats, isLoading: statsLoading } = useQuery({
+  const { data: stats } = useQuery({
     queryKey: ['dashboard-stats'],
     queryFn: async () => {
       const response = await api.get('/dashboard/stats')
@@ -68,10 +73,26 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       {/* En-tête */}
+<div className="flex items-start justify-between gap-2">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">Tableau de bord</h1>
-        <p className="text-gray-500 mt-1">Vue d'ensemble de votre gestion de matériels</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Tableau de bord</h1>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Vue d'ensemble de votre gestion de matériels</p>
+        </div>
+        <HelpSheet
+          titre="Le tableau de bord"
+          points={[
+              "Les quatre tuiles du haut sont les gestes du quotidien : scanner une étiquette, faire un plein, chercher un matériel.",
+              "« Faire un plein » vous emmène directement sur votre matériel épinglé, formulaire ouvert.",
+              "Pour épingler un matériel, ouvrez sa fiche et touchez l'étoile.",
+              "Les chiffres en dessous donnent l'état du parc : catégories, matériels, alertes en cours.",
+              "La pastille rouge sur « Alertes » compte les contrôles et entretiens à prévoir.",
+          ]}
+        />
       </div>
+
+      {/* Ce que l'agent vient faire, avant les chiffres */}
+      <QuickActions onOuvrirRecherche={() => setRechercheOuverte(true)} />
+      <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />
 
       {/* Statistiques */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -116,7 +137,7 @@ export default function DashboardPage() {
               <CardTitle>Catégories</CardTitle>
               <button 
                 onClick={() => navigate('/categories')}
-                className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                className="inline-flex min-h-[44px] items-center px-2 -mx-2 rounded-lg text-sm text-primary-600 hover:bg-primary-50 hover:text-primary-700 font-medium dark:hover:bg-primary-900/30"
               >
                 Voir tout →
               </button>
@@ -125,7 +146,7 @@ export default function DashboardPage() {
               {categoriesLoading ? (
                 <LoadingInline />
               ) : categories?.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
                   Aucune catégorie créée
                 </p>
               ) : (
@@ -153,7 +174,7 @@ export default function DashboardPage() {
               <CardTitle>Alertes récentes</CardTitle>
               <button 
                 onClick={() => navigate('/alerts')}
-                className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+                className="inline-flex min-h-[44px] items-center px-2 -mx-2 rounded-lg text-sm text-primary-600 hover:bg-primary-50 hover:text-primary-700 font-medium dark:hover:bg-primary-900/30"
               >
                 Voir tout →
               </button>
@@ -162,13 +183,13 @@ export default function DashboardPage() {
               {alertsLoading ? (
                 <div className="p-4"><LoadingInline /></div>
               ) : alerts?.length === 0 ? (
-                <p className="text-gray-500 text-center py-8">
+                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
                   Aucune alerte active
                 </p>
               ) : (
                 <div className="divide-y divide-gray-100">
                   {alerts?.map((alert: any) => (
-                    <div key={alert.id} className="p-4 hover:bg-gray-50 transition-colors">
+                    <div key={alert.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                       <div className="flex items-start gap-3">
                         <div className={`p-2 rounded-lg ${
                           alert.type === 'technical_control' ? 'bg-blue-100 text-blue-600' :
@@ -182,13 +203,13 @@ export default function DashboardPage() {
                            <AlertTriangle className="w-4 h-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 truncate">
+                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
                             {alert.title}
                           </p>
-                          <p className="text-sm text-gray-500 mt-0.5">
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
                             {alert.objectName}
                           </p>
-                          <p className="text-xs text-gray-400 mt-1">
+                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
                             {formatDate(alert.dueDate)}
                           </p>
                         </div>
@@ -210,7 +231,7 @@ export default function DashboardPage() {
             <CardTitle>Événements à venir</CardTitle>
             <button 
               onClick={() => navigate('/calendar')}
-              className="text-sm text-primary-600 hover:text-primary-700 font-medium"
+              className="inline-flex min-h-[44px] items-center px-2 -mx-2 rounded-lg text-sm text-primary-600 hover:bg-primary-50 hover:text-primary-700 font-medium dark:hover:bg-primary-900/30"
             >
               Voir calendrier →
             </button>
@@ -219,26 +240,26 @@ export default function DashboardPage() {
             {eventsLoading ? (
               <div className="p-4"><LoadingInline /></div>
             ) : upcomingEvents?.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
                 Aucun événement cette semaine
               </p>
             ) : (
               <div className="divide-y divide-gray-100">
                 {upcomingEvents?.map((event: any) => (
-                  <div key={event.id} className="p-4 hover:bg-gray-50 transition-colors flex items-center gap-3">
+                  <div key={event.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors flex items-center gap-3">
                     <div className="flex-shrink-0 w-12 text-center">
-                      <div className="text-2xl font-bold text-gray-900">
+                      <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
                         {new Date(event.startDate).getDate()}
                       </div>
-                      <div className="text-xs text-gray-500 uppercase">
+                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase">
                         {new Date(event.startDate).toLocaleDateString('fr-FR', { month: 'short' })}
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
+                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
                         {event.title}
                       </p>
-                      <p className="text-sm text-gray-500 truncate">
+                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
                         {event.description}
                       </p>
                     </div>
@@ -262,7 +283,7 @@ export default function DashboardPage() {
             {objectsLoading ? (
               <div className="p-4"><LoadingInline /></div>
             ) : recentObjects?.length === 0 ? (
-              <p className="text-gray-500 text-center py-8">
+              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
                 Aucune activité récente
               </p>
             ) : (
@@ -270,25 +291,25 @@ export default function DashboardPage() {
                 {recentObjects?.map((obj: any) => (
                   <div 
                     key={obj.id} 
-                    className="p-4 hover:bg-gray-50 transition-colors cursor-pointer flex items-center gap-3"
+                    className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer flex items-center gap-3"
                     onClick={() => navigate(`/objects/${obj.id}`)}
                   >
-                    <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
                       {obj.image ? (
                         <img src={obj.image} alt={obj.name} className="w-full h-full object-cover rounded-lg" />
                       ) : (
-                        <Package className="w-5 h-5 text-gray-400" />
+                        <Package className="w-5 h-5 text-gray-600 dark:text-gray-300" />
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
+                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
                         {obj.name}
                       </p>
-                      <p className="text-sm text-gray-500">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">
                         {obj.categoryName}
                       </p>
                     </div>
-                    <div className="text-xs text-gray-400 flex items-center gap-1">
+                    <div className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
                       <Clock className="w-3 h-3" />
                       {formatDate(obj.updatedAt)}
                     </div>
@@ -307,37 +328,37 @@ export default function DashboardPage() {
         </CardHeader>
         <CardBody>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="flex items-center gap-4 p-4 bg-green-50 rounded-xl">
-              <div className="p-3 bg-green-100 rounded-lg">
+            <div className="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/30 rounded-xl">
+              <div className="p-3 bg-green-100 dark:bg-green-900/40 rounded-lg">
                 <Fuel className="w-6 h-6 text-green-600" />
               </div>
               <div>
-                <p className="text-sm text-green-700">Carburant ce mois</p>
-                <p className="text-2xl font-bold text-green-900">
+                <p className="text-sm text-green-700 dark:text-green-300">Carburant ce mois</p>
+                <p className="text-2xl font-bold text-green-900 dark:text-green-200">
                   {stats?.fuelThisMonth?.toFixed(0) || 0} L
                 </p>
               </div>
             </div>
             
-            <div className="flex items-center gap-4 p-4 bg-blue-50 rounded-xl">
-              <div className="p-3 bg-blue-100 rounded-lg">
+            <div className="flex items-center gap-4 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
+              <div className="p-3 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
                 <ClipboardCheck className="w-6 h-6 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-blue-700">Contrôles à venir</p>
-                <p className="text-2xl font-bold text-blue-900">
+                <p className="text-sm text-blue-700 dark:text-blue-300">Contrôles à venir</p>
+                <p className="text-2xl font-bold text-blue-900 dark:text-blue-200">
                   {stats?.upcomingControls || 0}
                 </p>
               </div>
             </div>
             
-            <div className="flex items-center gap-4 p-4 bg-orange-50 rounded-xl">
+            <div className="flex items-center gap-4 p-4 bg-orange-50 dark:bg-orange-900/30 rounded-xl">
               <div className="p-3 bg-orange-100 rounded-lg">
                 <Wrench className="w-6 h-6 text-orange-600" />
               </div>
               <div>
-                <p className="text-sm text-orange-700">Entretiens à prévoir</p>
-                <p className="text-2xl font-bold text-orange-900">
+                <p className="text-sm text-orange-700 dark:text-orange-300">Entretiens à prévoir</p>
+                <p className="text-2xl font-bold text-orange-900 dark:text-orange-200">
                   {stats?.upcomingMaintenance || 0}
                 </p>
               </div>

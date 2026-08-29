@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import mysql, { Pool, PoolConnection } from 'mysql2/promise';
 import path from 'path';
 import fs from 'fs';
+import { appliquerMigrations } from './migrationRunner';
 
 export type DatabaseType = 'sqlite' | 'mysql';
 
@@ -48,13 +49,18 @@ class DatabaseManager {
     return DatabaseManager.instance;
   }
 
-  public async init(): Promise<void> {
+  /**
+   * `migrationsAuto: false` ouvre la connexion et crée les tables sans appliquer
+   * les migrations versionnées. La commande `db:migrate --dry-run` en a besoin :
+   * inspecter ce qui reste à faire ne doit rien modifier.
+   */
+  public async init(options: { migrationsAuto?: boolean } = {}): Promise<void> {
     if (this.config.type === 'sqlite') {
       await this.initSQLite();
     } else {
       await this.initMySQL();
     }
-    await this.createTables();
+    await this.createTables(options.migrationsAuto ?? true);
   }
 
   private async initSQLite(): Promise<void> {
@@ -99,6 +105,11 @@ class DatabaseManager {
 
   public getType(): DatabaseType {
     return this.config.type;
+  }
+
+  /** Chemin du fichier SQLite, `null` sur MySQL. */
+  public getSQLitePath(): string | null {
+    return this.config.type === 'sqlite' ? this.config.sqlite!.path : null;
   }
 
   public getSQLiteDb(): Database.Database {
@@ -149,7 +160,7 @@ class DatabaseManager {
     }
   }
 
-  private async createTables(): Promise<void> {
+  private async createTables(migrationsAuto = true): Promise<void> {
     const isSQLite = this.config.type === 'sqlite';
     const autoIncrement = isSQLite ? 'AUTOINCREMENT' : 'AUTO_INCREMENT';
     const textType = isSQLite ? 'TEXT' : 'LONGTEXT';
@@ -442,6 +453,26 @@ class DatabaseManager {
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
       )`,
 
+      /*
+       * État de lecture des alertes, par utilisateur.
+       *
+       * La colonne alerts.is_read est globale : « tout marquer comme lu »
+       * vidait la pastille de toute la collectivité. Une ligne ici signifie
+       * « cet agent a vu cette alerte », sans effet pour les autres.
+       *
+       * `is_dismissed` reste global : ignorer une alerte, c'est déclarer que
+       * la situation est traitée — ce qui vaut pour tout le monde.
+       */
+      `CREATE TABLE IF NOT EXISTS alert_reads (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        alert_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        read_at DATETIME ${timestampDefault},
+        UNIQUE (alert_id, user_id),
+        FOREIGN KEY (alert_id) REFERENCES alerts(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
       // Table des sauvegardes
       `CREATE TABLE IF NOT EXISTS backups (
         id INTEGER PRIMARY KEY ${autoIncrement},
@@ -527,6 +558,420 @@ class DatabaseManager {
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
         UNIQUE(user_id, module_name)
+      )`,
+
+      // Table des tokens API (pour les applications externes)
+      `CREATE TABLE IF NOT EXISTS api_tokens (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        token_hash VARCHAR(64) NOT NULL UNIQUE,
+        token_prefix VARCHAR(8) NOT NULL,
+        permissions ${textType} DEFAULT '["read"]',
+        is_active ${boolType} DEFAULT 1,
+        expires_at DATETIME,
+        last_used_at DATETIME,
+        created_by INTEGER NOT NULL,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
+      // Table des réservations / prêts de matériel
+      `CREATE TABLE IF NOT EXISTS reservations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        object_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        start_date DATETIME NOT NULL,
+        end_date DATETIME NOT NULL,
+        actual_return_date DATETIME,
+        reason ${textType},
+        status VARCHAR(20) DEFAULT 'reserved',
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Table du stock matériel manifestations
+      `CREATE TABLE IF NOT EXISTS manifestation_stock (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        description ${textType},
+        category VARCHAR(100) DEFAULT '',
+        quantity_total INTEGER NOT NULL DEFAULT 0,
+        unit VARCHAR(50) DEFAULT 'unité',
+        etat VARCHAR(50) DEFAULT 'bon',
+        lieu VARCHAR(255) DEFAULT '',
+        stock_type VARCHAR(100) DEFAULT '',
+        price REAL DEFAULT 0,
+        category_id INTEGER,
+        subcategory_id INTEGER,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
+        FOREIGN KEY (subcategory_id) REFERENCES subcategories(id) ON DELETE SET NULL
+      )`,
+
+      // Table des manifestations
+      `CREATE TABLE IF NOT EXISTS manifestations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        title VARCHAR(255) NOT NULL,
+        name VARCHAR(255),
+        description ${textType},
+        date_start DATE NOT NULL,
+        date_end DATE,
+        start_date DATE,
+        end_date DATE,
+        start_time VARCHAR(10),
+        end_time VARCHAR(10),
+        expected_people INTEGER DEFAULT 0,
+        contact VARCHAR(255),
+        contact_name VARCHAR(255),
+        contact_phone VARCHAR(50),
+        contact_email VARCHAR(255),
+        location VARCHAR(255),
+        delivery_address ${textType},
+        delivery_date DATE,
+        notes_interior ${textType},
+        notes_exterior ${textType},
+        status VARCHAR(20) DEFAULT 'draft',
+        created_by INTEGER,
+        archived_at DATETIME,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Table de liaison matériel ↔ manifestation
+      `CREATE TABLE IF NOT EXISTS manifestation_materials (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        stock_id INTEGER NOT NULL,
+        quantity_requested INTEGER NOT NULL DEFAULT 0,
+        quantity_delivered INTEGER NOT NULL DEFAULT 0,
+        quantity_recovered INTEGER NOT NULL DEFAULT 0,
+        unit_value REAL DEFAULT 0,
+        notes ${textType},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE
+      )`,
+
+      // Table des items de manifestation (objets du parc)
+      `CREATE TABLE IF NOT EXISTS manifestation_items (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        object_id INTEGER NOT NULL,
+        quantity INTEGER DEFAULT 1,
+        quantity_delivered INTEGER DEFAULT 0,
+        quantity_returned INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
+      )`,
+
+      // Table historique des manifestations
+      `CREATE TABLE IF NOT EXISTS manifestation_history (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        user_id INTEGER,
+        action VARCHAR(100) NOT NULL,
+        from_status VARCHAR(50),
+        to_status VARCHAR(50),
+        comment ${textType},
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Table de configuration de l'authentification (SSO, LDAP, Passkey)
+      `CREATE TABLE IF NOT EXISTS auth_config (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        provider VARCHAR(50) NOT NULL,
+        is_active ${boolType} DEFAULT 0,
+        config ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
+      // Permissions d'accès aux plugins par rôle
+      `CREATE TABLE IF NOT EXISTS plugin_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        plugin_id INTEGER NOT NULL,
+        role VARCHAR(50) NOT NULL,
+        can_access ${boolType} DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (plugin_id) REFERENCES plugins(id) ON DELETE CASCADE,
+        UNIQUE(plugin_id, role)
+      )`,
+
+      // Permissions d'accès aux plugins par utilisateur (override individuel)
+      `CREATE TABLE IF NOT EXISTS user_plugin_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        user_id INTEGER NOT NULL,
+        plugin_id INTEGER NOT NULL,
+        can_access ${boolType} DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (plugin_id) REFERENCES plugins(id) ON DELETE CASCADE,
+        UNIQUE(user_id, plugin_id)
+      )`,
+
+      // ======================== ESPACES VERTS ========================
+
+      // Table principale des espaces verts
+      `CREATE TABLE IF NOT EXISTS green_spaces (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        description ${textType},
+        address VARCHAR(500),
+        latitude DECIMAL(10,8),
+        longitude DECIMAL(11,8),
+        area_m2 DECIMAL(12,2) DEFAULT 0,
+        space_type VARCHAR(100) DEFAULT 'parc',
+        soil_type VARCHAR(100) DEFAULT '',
+        status VARCHAR(50) DEFAULT 'actif',
+        image VARCHAR(500),
+        plan_image VARCHAR(500),
+        custom_fields ${textType} DEFAULT '{}',
+        cloned_from_id INTEGER,
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (cloned_from_id) REFERENCES green_spaces(id) ON DELETE SET NULL
+      )`,
+
+      // Éléments placés dans un espace vert (arbres, bancs, poubelles, etc.)
+      `CREATE TABLE IF NOT EXISTS green_space_elements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        object_id INTEGER,
+        label VARCHAR(255) NOT NULL,
+        code VARCHAR(100) DEFAULT '',
+        element_type VARCHAR(100) DEFAULT 'autre',
+        description ${textType},
+        image VARCHAR(500),
+        pos_x DECIMAL(10,4),
+        pos_y DECIMAL(10,4),
+        quantity INTEGER DEFAULT 1,
+        purchase_price DECIMAL(10,2),
+        maintenance_notes ${textType},
+        species VARCHAR(255) DEFAULT '',
+        planting_date DATE,
+        last_maintenance_date DATE,
+        next_maintenance_date DATE,
+        condition_state VARCHAR(50) DEFAULT 'bon',
+        custom_fields ${textType} DEFAULT '{}',
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE SET NULL
+      )`,
+
+      // Annotations visuelles sur le plan
+      `CREATE TABLE IF NOT EXISTS green_space_annotations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        element_id INTEGER,
+        pos_x DECIMAL(10,4) NOT NULL,
+        pos_y DECIMAL(10,4) NOT NULL,
+        label VARCHAR(255) DEFAULT '',
+        icon VARCHAR(50) DEFAULT 'circle',
+        color VARCHAR(20) DEFAULT '#22c55e',
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (element_id) REFERENCES green_space_elements(id) ON DELETE SET NULL
+      )`,
+
+      // Suivi saisonnier
+      `CREATE TABLE IF NOT EXISTS green_space_seasons (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        season VARCHAR(20) NOT NULL,
+        year INTEGER NOT NULL,
+        notes ${textType},
+        actions_done ${textType},
+        actions_planned ${textType},
+        photos ${textType} DEFAULT '[]',
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Documents légaux et pièces jointes
+      `CREATE TABLE IF NOT EXISTS green_space_documents (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        doc_type VARCHAR(100) DEFAULT 'autre',
+        file_path VARCHAR(500),
+        expiry_date DATE,
+        notes ${textType},
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Groupes de composition (massif, haie composée, etc.)
+      `CREATE TABLE IF NOT EXISTS green_space_groups (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        group_type VARCHAR(100) DEFAULT 'massif',
+        description ${textType},
+        color VARCHAR(20) DEFAULT '#8b5cf6',
+        icon VARCHAR(50) DEFAULT 'layers',
+        pos_x DECIMAL(10,4),
+        pos_y DECIMAL(10,4),
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
+      )`,
+
+      // Entretiens des espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_maintenances (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        maintenance_type VARCHAR(100) NOT NULL,
+        title VARCHAR(255),
+        description ${textType},
+        performed_date DATE,
+        next_maintenance_date DATE,
+        performed_by VARCHAR(255),
+        duration_minutes INTEGER,
+        cost DECIMAL(10,2),
+        notes ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
+      )`,
+
+      // Liaison entretien <-> éléments
+      `CREATE TABLE IF NOT EXISTS green_space_maintenance_elements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        maintenance_id INTEGER NOT NULL,
+        element_id INTEGER NOT NULL,
+        FOREIGN KEY (maintenance_id) REFERENCES green_space_maintenances(id) ON DELETE CASCADE,
+        FOREIGN KEY (element_id) REFERENCES green_space_elements(id) ON DELETE CASCADE
+      )`,
+
+      // Liaison entretien <-> documents
+      `CREATE TABLE IF NOT EXISTS green_space_maintenance_documents (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        maintenance_id INTEGER NOT NULL,
+        document_id INTEGER NOT NULL,
+        FOREIGN KEY (maintenance_id) REFERENCES green_space_maintenances(id) ON DELETE CASCADE,
+        FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE
+      )`,
+
+      // Liaison documents <-> éléments
+      `CREATE TABLE IF NOT EXISTS green_space_document_elements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        document_id INTEGER NOT NULL,
+        element_id INTEGER NOT NULL,
+        FOREIGN KEY (document_id) REFERENCES green_space_documents(id) ON DELETE CASCADE,
+        FOREIGN KEY (element_id) REFERENCES green_space_elements(id) ON DELETE CASCADE
+      )`,
+
+      // Snapshots / Archives d'un espace vert
+      `CREATE TABLE IF NOT EXISTS green_space_snapshots (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        green_space_id INTEGER NOT NULL,
+        label VARCHAR(255) NOT NULL,
+        snapshot_date DATETIME NOT NULL,
+        plan_image VARCHAR(500),
+        elements_data ${textType} DEFAULT '[]',
+        annotations_data ${textType} DEFAULT '[]',
+        groups_data ${textType} DEFAULT '[]',
+        notes ${textType},
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
+      )`,
+
+      // Types d'espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        icon VARCHAR(10) DEFAULT '🌳',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Statuts d'espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_statuses (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        color VARCHAR(50) DEFAULT '',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Types de documents pour espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_doc_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Types d'entretien pour espaces verts
+      `CREATE TABLE IF NOT EXISTS green_space_maintenance_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        icon VARCHAR(10) DEFAULT '🔧',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Types de groupes de composition
+      `CREATE TABLE IF NOT EXISTS green_space_group_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        icon VARCHAR(10) DEFAULT '🌺',
+        color VARCHAR(20) DEFAULT '#8b5cf6',
+        is_default INTEGER DEFAULT 0,
+        disabled INTEGER DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Historique de remplacement d'éléments
+      `CREATE TABLE IF NOT EXISTS green_space_element_replacements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        element_id INTEGER NOT NULL,
+        green_space_id INTEGER NOT NULL,
+        group_id INTEGER,
+        replaced_at DATETIME ${timestampDefault},
+        season VARCHAR(50) DEFAULT '',
+        year INTEGER,
+        reason TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        previous_label VARCHAR(255),
+        previous_species VARCHAR(255),
+        previous_element_type VARCHAR(100),
+        previous_description TEXT,
+        previous_condition_state VARCHAR(50),
+        previous_image VARCHAR(500),
+        previous_quantity INTEGER,
+        previous_purchase_price DECIMAL(10,2),
+        previous_planting_date DATE,
+        previous_custom_fields TEXT DEFAULT '{}',
+        previous_data TEXT DEFAULT '{}',
+        created_at DATETIME ${timestampDefault}
       )`
     ];
 
@@ -536,6 +981,91 @@ class DatabaseManager {
 
     // Exécuter les migrations pour ajouter les colonnes manquantes
     await this.runMigrations();
+
+    await this.createIndexes();
+
+    // Migrations versionnées. Elles s'exécutent au démarrage parce que le
+    // conteneur ne lance que `node dist/server.js` : une évolution de schéma
+    // qui dépendrait d'une commande manuelle ne serait jamais appliquée.
+    if (!migrationsAuto) return;
+
+    const resultat = await appliquerMigrations(this, {
+      cheminSqlite: this.getSQLitePath() ?? undefined,
+      journaliser: (message) => console.log(`[migration] ${message}`),
+    });
+    if (resultat.appliquees.length > 0) {
+      console.log(`[migration] ${resultat.appliquees.length} migration(s) appliquée(s)`);
+    }
+  }
+
+  /**
+   * Index de recherche.
+   *
+   * Le schéma n'en déclarait aucun sur ses 54 tables : chaque lecture par clé
+   * étrangère balayait la table entière. Le coût se voyait surtout à
+   * l'ouverture d'une fiche matériel et lors de la vérification horaire des
+   * alertes, qui parcourt `technical_controls` et `maintenances` en entier.
+   *
+   * `IF NOT EXISTS` est accepté par SQLite comme par MySQL 8 : la méthode est
+   * rejouable à chaque démarrage, comme `createTables`.
+   */
+  private async createIndexes(): Promise<void> {
+    const indexes: Array<[string, string, string]> = [
+      // [nom, table, colonnes]
+
+      // Relevés de terrain — lus à chaque ouverture de fiche
+      ['idx_fuel_object', 'fuel_entries', 'object_id, entry_date'],
+      ['idx_maintenance_object', 'maintenances', 'object_id'],
+      ['idx_control_object', 'technical_controls', 'object_id'],
+
+      // Échéances — parcourues chaque heure par le cron
+      ['idx_maintenance_next', 'maintenances', 'next_date'],
+      ['idx_control_expiry', 'technical_controls', 'expiry_date'],
+      ['idx_greenspace_maint_next', 'green_space_maintenances', 'next_maintenance_date'],
+      ['idx_calendar_start', 'calendar_events', 'start_date'],
+
+      // Navigation dans le parc
+      ['idx_objects_category', 'objects', 'category_id'],
+      ['idx_objects_subcategory', 'objects', 'subcategory_id'],
+      ['idx_objects_status', 'objects', 'status'],
+      ['idx_subcategories_category', 'subcategories', 'category_id'],
+
+      // Alertes et pastille
+      ['idx_alerts_etat', 'alerts', 'is_dismissed, is_read'],
+      ['idx_alerts_reference', 'alerts', 'plugin_reference, plugin_reference_id'],
+      ['idx_alerts_object', 'alerts', 'object_id'],
+      ['idx_alert_reads_user', 'alert_reads', 'user_id'],
+      ['idx_alert_reads_alert', 'alert_reads', 'alert_id'],
+
+      // Espaces verts
+      ['idx_gs_elements_space', 'green_space_elements', 'green_space_id'],
+      ['idx_gs_maint_space', 'green_space_maintenances', 'green_space_id'],
+      ['idx_gs_documents_space', 'green_space_documents', 'green_space_id'],
+
+      // Manifestations
+      ['idx_manif_materials', 'manifestation_materials', 'manifestation_id'],
+
+      // Droits — consultés à chaque requête filtrée par catégorie
+      ['idx_user_permissions_user', 'user_permissions', 'user_id'],
+      ['idx_group_permissions_role', 'group_permissions', 'role'],
+
+      // Authentification par jeton API
+      ['idx_api_tokens_hash', 'api_tokens', 'token_hash'],
+
+      // Réservations
+      ['idx_reservations_object', 'reservations', 'object_id'],
+      ['idx_reservations_status', 'reservations', 'status'],
+    ];
+
+    for (const [nom, table, colonnes] of indexes) {
+      try {
+        await this.execute(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`);
+      } catch (error: any) {
+        // Une table absente (module non déployé) ne doit pas empêcher le
+        // démarrage : on note et on continue.
+        console.warn(`Index ${nom} non créé : ${error.message}`);
+      }
+    }
   }
 
   // Méthode pour ajouter les colonnes manquantes aux tables existantes
@@ -576,6 +1106,107 @@ class DatabaseManager {
         table: 'custom_fields_config',
         column: 'applicable_subcategories',
         type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // Manifestation stock: ajout champ état
+      {
+        table: 'manifestation_stock',
+        column: 'etat',
+        type: "VARCHAR(50) DEFAULT 'bon'"
+      },
+      // Manifestation stock: ajout champ lieu
+      {
+        table: 'manifestation_stock',
+        column: 'lieu',
+        type: "VARCHAR(255) DEFAULT ''"
+      },
+      // Manifestation stock: ajout champ type
+      {
+        table: 'manifestation_stock',
+        column: 'stock_type',
+        type: "VARCHAR(100) DEFAULT ''"
+      },
+      // Manifestation stock: lien catégorie
+      {
+        table: 'manifestation_stock',
+        column: 'category_id',
+        type: 'INTEGER'
+      },
+      // Manifestation stock: lien sous-catégorie
+      {
+        table: 'manifestation_stock',
+        column: 'subcategory_id',
+        type: 'INTEGER'
+      },
+      // Manifestation stock: prix unitaire
+      {
+        table: 'manifestation_stock',
+        column: 'price',
+        type: 'REAL DEFAULT 0'
+      },
+      // Groupe de composition pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'group_id',
+        type: 'INTEGER'
+      },
+      // Superficie en m² pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'area_m2',
+        type: 'DECIMAL(12,2)'
+      },
+      // Points de zone (polygone) pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'zone_points',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // Superficie en m² pour les groupes de composition
+      {
+        table: 'green_space_groups',
+        column: 'area_m2',
+        type: 'DECIMAL(12,2)'
+      },
+      // Points de zone (polygone) pour les groupes de composition
+      {
+        table: 'green_space_groups',
+        column: 'zone_points',
+        type: this.config.type === 'sqlite' ? 'TEXT' : 'LONGTEXT'
+      },
+      // is_default pour types de documents
+      {
+        table: 'green_space_doc_types',
+        column: 'is_default',
+        type: 'INTEGER DEFAULT 0'
+      },
+      // disabled pour types de documents
+      {
+        table: 'green_space_doc_types',
+        column: 'disabled',
+        type: 'INTEGER DEFAULT 0'
+      },
+      // is_default pour types d'entretien
+      {
+        table: 'green_space_maintenance_types',
+        column: 'is_default',
+        type: 'INTEGER DEFAULT 0'
+      },
+      // disabled pour types d'entretien
+      {
+        table: 'green_space_maintenance_types',
+        column: 'disabled',
+        type: 'INTEGER DEFAULT 0'
+      },
+      // Coordonnées GPS pour les éléments d'espace vert
+      {
+        table: 'green_space_elements',
+        column: 'latitude',
+        type: 'DECIMAL(10,7)'
+      },
+      {
+        table: 'green_space_elements',
+        column: 'longitude',
+        type: 'DECIMAL(10,7)'
       }
     ];
 
@@ -608,6 +1239,118 @@ class DatabaseManager {
           console.error(`Erreur migration ${migration.table}.${migration.column}:`, error.message);
         }
       }
+    }
+
+    // Seed types par défaut si la table est vide
+    await this.seedDefaultTypes();
+  }
+
+  private async seedDefaultTypes(): Promise<void> {
+    const defaultSpaceTypes = [
+      { value: 'parc', label: 'Parc', icon: '🌳' },
+      { value: 'jardin', label: 'Jardin public', icon: '🌺' },
+      { value: 'square', label: 'Square', icon: '🏛️' },
+      { value: 'aire_jeux', label: 'Aire de jeux', icon: '🎠' },
+      { value: 'espace_naturel', label: 'Espace naturel', icon: '🌿' },
+      { value: 'rond_point', label: 'Rond-point', icon: '🔄' },
+      { value: 'allee', label: 'Allée / Promenade', icon: '🚶' },
+      { value: 'berge', label: 'Berge / Bord de rivière', icon: '🌊' },
+      { value: 'cimetiere', label: 'Cimetière végétalisé', icon: '⚱️' },
+      { value: 'terrain_sport', label: 'Terrain de sport', icon: '⚽' },
+      { value: 'autre', label: 'Autre', icon: '📍' },
+    ];
+
+    const defaultStatuses = [
+      { value: 'actif', label: 'Actif', color: 'green' },
+      { value: 'en_travaux', label: 'En travaux', color: 'orange' },
+      { value: 'ferme', label: 'Fermé au public', color: 'red' },
+      { value: 'projet', label: 'En projet', color: 'blue' },
+    ];
+
+    for (const st of defaultSpaceTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_types (value, label, icon, is_default) VALUES (?, ?, ?, 1)',
+          [st.value, st.label, st.icon]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    for (const s of defaultStatuses) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_statuses (value, label, color, is_default) VALUES (?, ?, ?, 1)',
+          [s.value, s.label, s.color]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    const defaultDocTypes = [
+      { value: 'plan', label: 'Plan / Cadastre' },
+      { value: 'permis', label: 'Permis / Autorisation' },
+      { value: 'diagnostic', label: 'Diagnostic phytosanitaire' },
+      { value: 'conformite', label: 'Certificat de conformité' },
+      { value: 'securite', label: 'Rapport de sécurité' },
+      { value: 'accessibilite', label: 'Accessibilité PMR' },
+      { value: 'contrat', label: "Contrat d'entretien" },
+      { value: 'facture', label: 'Facture' },
+      { value: 'photo', label: 'Photo / Relevé' },
+      { value: 'autre', label: 'Autre' },
+    ];
+
+    const defaultMaintenanceTypes = [
+      { value: 'tonte', label: 'Tonte', icon: '🌿' },
+      { value: 'elagage', label: 'Élagage', icon: '✂️' },
+      { value: 'taille', label: 'Taille', icon: '🌳' },
+      { value: 'arrosage', label: 'Arrosage', icon: '💧' },
+      { value: 'desherbage', label: 'Désherbage', icon: '🌱' },
+      { value: 'fertilisation', label: 'Fertilisation', icon: '🧪' },
+      { value: 'traitement_phytosanitaire', label: 'Traitement phytosanitaire', icon: '🧴' },
+      { value: 'plantation', label: 'Plantation', icon: '🌺' },
+      { value: 'ramassage_feuilles', label: 'Ramassage de feuilles', icon: '🍂' },
+      { value: 'nettoyage', label: 'Nettoyage', icon: '🧹' },
+      { value: 'reparation', label: 'Réparation', icon: '🔧' },
+      { value: 'inspection', label: 'Inspection', icon: '🔍' },
+      { value: 'autre', label: 'Autre', icon: '📋' },
+    ];
+
+    for (const dt of defaultDocTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_doc_types (value, label, is_default) VALUES (?, ?, 1)',
+          [dt.value, dt.label]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    for (const mt of defaultMaintenanceTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_maintenance_types (value, label, icon, is_default) VALUES (?, ?, ?, 1)',
+          [mt.value, mt.label, mt.icon]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    // Types de groupes de composition par défaut
+    const defaultGroupTypes = [
+      { value: 'massif', label: 'Massif floral', icon: '🌺', color: '#ec4899' },
+      { value: 'haie', label: 'Haie composée', icon: '🌲', color: '#15803d' },
+      { value: 'bosquet', label: 'Bosquet', icon: '🌳', color: '#16a34a' },
+      { value: 'rocaille', label: 'Rocaille', icon: '🪨', color: '#78716c' },
+      { value: 'jardiniere', label: 'Jardinière', icon: '🌷', color: '#f472b6' },
+      { value: 'plate_bande', label: 'Plate-bande', icon: '🌸', color: '#a855f7' },
+      { value: 'mixed_border', label: 'Mixed-border', icon: '🌼', color: '#f59e0b' },
+      { value: 'autre', label: 'Autre', icon: '📍', color: '#6b7280' },
+    ];
+
+    for (const gt of defaultGroupTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO green_space_group_types (value, label, icon, color, is_default) VALUES (?, ?, ?, ?, 1)',
+          [gt.value, gt.label, gt.icon, gt.color]
+        );
+      } catch { /* ignore duplicates */ }
     }
   }
 

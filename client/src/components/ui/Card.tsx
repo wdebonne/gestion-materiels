@@ -12,7 +12,7 @@ export default function Card({ children, className, onClick, hoverable = false }
   return (
     <div
       className={cn(
-        "bg-white rounded-xl border border-gray-100 shadow-soft overflow-hidden",
+        "bg-white rounded-xl border border-gray-100 shadow-soft overflow-hidden dark:bg-gray-800 dark:border-gray-700",
         hoverable && "transition-all duration-300 hover:shadow-medium hover:-translate-y-1 cursor-pointer",
         onClick && "cursor-pointer",
         className
@@ -26,7 +26,7 @@ export default function Card({ children, className, onClick, hoverable = false }
 
 export function CardHeader({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <div className={cn("px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100", className)}>
+    <div className={cn("px-4 sm:px-6 py-3 sm:py-4 border-b border-gray-100 dark:border-gray-700", className)}>
       {children}
     </div>
   )
@@ -34,7 +34,7 @@ export function CardHeader({ children, className }: { children: ReactNode; class
 
 export function CardTitle({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <h3 className={cn("text-lg font-semibold text-gray-900", className)}>
+    <h3 className={cn("text-lg font-semibold text-gray-900 dark:text-gray-100", className)}>
       {children}
     </h3>
   )
@@ -42,7 +42,7 @@ export function CardTitle({ children, className }: { children: ReactNode; classN
 
 export function CardDescription({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("text-sm text-gray-500 mt-1", className)}>
+    <p className={cn("text-sm text-gray-500 mt-1 dark:text-gray-400", className)}>
       {children}
     </p>
   )
@@ -91,7 +91,7 @@ export function ImageCard({ title, description, image, icon, count, onClick, cla
             className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : icon ? (
-          <div className="w-full h-full flex items-center justify-center text-gray-400">
+          <div className="w-full h-full flex items-center justify-center text-gray-600 dark:text-gray-300">
             <div className="w-16 h-16">{icon}</div>
           </div>
         ) : null}
@@ -106,11 +106,11 @@ export function ImageCard({ title, description, image, icon, count, onClick, cla
 
       {/* Contenu */}
       <div className="p-4 text-center">
-        <h3 className="font-semibold text-gray-900 group-hover:text-primary-600 transition-colors">
+        <h3 className="font-semibold text-gray-900 dark:text-gray-100 group-hover:text-primary-600 transition-colors">
           {title}
         </h3>
         {description && (
-          <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">
             {description}
           </p>
         )}
@@ -147,8 +147,8 @@ export function StatCard({ title, value, icon, change, color = 'blue', className
       <CardBody>
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-gray-500">{title}</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+            <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{title}</p>
+            <p className="text-2xl font-bold text-gray-900 dark:text-gray-100 mt-1">{value}</p>
             {change && (
               <div className={cn(
                 "flex items-center gap-1 text-sm mt-2",
@@ -156,7 +156,7 @@ export function StatCard({ title, value, icon, change, color = 'blue', className
               )}>
                 <span>{change.type === 'increase' ? '↑' : '↓'}</span>
                 <span>{Math.abs(change.value)}%</span>
-                <span className="text-gray-400">vs mois dernier</span>
+                <span className="text-gray-600 dark:text-gray-300">vs mois dernier</span>
               </div>
             )}
           </div>

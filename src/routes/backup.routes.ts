@@ -9,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import multer from 'multer';
 import { sendBackupEmail, sendBackupDownloadLink } from '../services/email.service';
 import { logService } from '../services/log.service';
+import { notifierWebhooks } from '../services/webhook.service';
 
 // Stockage des tokens de téléchargement temporaires (en mémoire)
 // Format: { token: { backupId, expiresAt, createdBy } }
@@ -214,6 +215,8 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       emailError,
       downloadLink
     });
+
+    notifierWebhooks('backup.created', { filename, fileSize: stats.size, emailSent });
 
     // Logger la création de backup
     await logService.success('backup', 'Sauvegarde créée avec succès', {

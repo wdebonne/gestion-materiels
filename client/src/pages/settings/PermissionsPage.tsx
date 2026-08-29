@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { 
-  Shield, Users, User,  
+  Shield, Users, User, HardHat,
   Eye, Edit2, Trash2, Save, Search, FolderOpen,
-  BarChart3, Download, ArrowRightLeft
+  BarChart3, Download, ArrowRightLeft, Plug
 } from 'lucide-react'
 import { 
   Card, CardBody, CardHeader, CardTitle, Button, Badge, 
-  LoadingInline, Alert, Tabs, Tab, Input
+  LoadingInline, Alert, Tabs, Tab, Input, Select
 } from '@/components/ui'
 import api, { User as UserType, Category } from '@/lib/api'
 import toast from 'react-hot-toast'
+import { ROLE_LABELS, type Role } from '@/lib/permissions'
 
 interface Permission {
   categoryId: number
@@ -52,7 +53,7 @@ function CategoryPermissionRow({
             <img src={category.image} alt="" className="w-8 h-8 rounded object-cover" />
           ) : (
             <div className="w-8 h-8 bg-gray-100 rounded flex items-center justify-center">
-              <FolderOpen className="w-4 h-4 text-gray-400" />
+              <FolderOpen className="w-4 h-4 text-gray-600" />
             </div>
           )}
           <span className="font-medium text-gray-900">{category.name}</span>
@@ -494,7 +495,7 @@ function UserPermissionsTab() {
                 <Alert type="info" className="m-4">
                   <span className="text-sm">
                     Les permissions individuelles s'ajoutent aux permissions du groupe 
-                    ({selectedUser.role === 'supervisor' ? 'Superviseurs' : 'Utilisateurs'}).
+                    ({ROLE_LABELS[selectedUser.role as Role] ?? 'Utilisateurs'}).
                     Cochez les catégories que cet utilisateur peut voir en plus.
                   </span>
                 </Alert>
@@ -628,7 +629,7 @@ function ModulePermissionsTab() {
     }
   })
 
-  const handleChange = (role: 'supervisor' | 'user', moduleName: string, field: string, value: boolean) => {
+  const handleChange = (role: Role, moduleName: string, field: string, value: boolean) => {
     if (role === 'supervisor') {
       setSupervisorPerms(prev => ({
         ...prev,
@@ -798,6 +799,327 @@ function ModulePermissionsTab() {
   )
 }
 
+// Onglet pour les permissions des plugins
+function PluginPermissionsTab() {
+  const queryClient = useQueryClient()
+  const [activeSubTab, setActiveSubTab] = useState<'roles' | 'individual'>('roles')
+  const [selectedUserId, setSelectedUserId] = useState<number | null>(null)
+  const [userPluginPerms, setUserPluginPerms] = useState<Record<number, boolean>>({})
+  const [hasUserChanges, setHasUserChanges] = useState(false)
+
+  // Récupérer les plugins avec leurs permissions par rôle
+  const { data: pluginPermsData, isLoading } = useQuery({
+    queryKey: ['plugin-permissions'],
+    queryFn: async () => {
+      const response = await api.get('/permissions/plugins')
+      return response.data
+    }
+  })
+
+  // Récupérer la liste des utilisateurs non-admin
+  const { data: usersData } = useQuery({
+    queryKey: ['users-for-plugins'],
+    queryFn: async () => {
+      const response = await api.get('/users')
+      return response.data
+    },
+    enabled: activeSubTab === 'individual'
+  })
+
+  // Récupérer les permissions plugin d'un utilisateur
+  const { data: userPermsData } = useQuery({
+    queryKey: ['user-plugin-permissions', selectedUserId],
+    queryFn: async () => {
+      const response = await api.get(`/permissions/plugins/user/${selectedUserId}`)
+      return response.data
+    },
+    enabled: !!selectedUserId
+  })
+
+  useEffect(() => {
+    if (userPermsData?.permissions) {
+      setUserPluginPerms(userPermsData.permissions)
+      setHasUserChanges(false)
+    }
+  }, [userPermsData])
+
+  // Mutation pour changer permission par rôle
+  const toggleRoleMutation = useMutation({
+    mutationFn: async ({ pluginId, role, canAccess }: { pluginId: number; role: string; canAccess: boolean }) => {
+      return api.put(`/permissions/plugins/${pluginId}/role/${role}`, { canAccess })
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['plugin-permissions'] })
+      queryClient.invalidateQueries({ queryKey: ['menuPlugins'] })
+      toast.success('Permission mise à jour')
+    },
+    onError: () => toast.error('Erreur lors de la mise à jour')
+  })
+
+  // Mutation pour sauvegarder les permissions individuelles
+  const saveUserPermsMutation = useMutation({
+    mutationFn: async () => {
+      const plugins = pluginPermsData?.plugins || []
+      const promises = plugins.map((p: any) => {
+        if (userPluginPerms[p.id] !== undefined) {
+          return api.put(`/permissions/plugins/${p.id}/user/${selectedUserId}`, {
+            canAccess: userPluginPerms[p.id]
+          })
+        }
+        // Pas de config individuelle → supprimer l'override éventuel
+        return api.put(`/permissions/plugins/${p.id}/user/${selectedUserId}`, { remove: true })
+      })
+      return Promise.all(promises)
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['user-plugin-permissions', selectedUserId] })
+      queryClient.invalidateQueries({ queryKey: ['menuPlugins'] })
+      toast.success('Permissions individuelles sauvegardées')
+      setHasUserChanges(false)
+    },
+    onError: () => toast.error('Erreur lors de la sauvegarde')
+  })
+
+  const plugins = pluginPermsData?.plugins || []
+  const nonAdminUsers = (usersData?.users || []).filter((u: any) => u.role !== 'admin')
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center gap-3">
+        <div className="p-2 rounded-lg bg-purple-100">
+          <Plug className="w-5 h-5 text-purple-600" />
+        </div>
+        <div>
+          <h3 className="font-medium text-gray-900 dark:text-gray-100">Permissions des plugins</h3>
+          <p className="text-sm text-gray-500">
+            Contrôlez quels rôles et utilisateurs ont accès à chaque plugin
+          </p>
+        </div>
+      </div>
+
+      <Alert type="info">
+        <ul className="text-sm space-y-1 list-disc list-inside">
+          <li><strong>Administrateurs</strong> ont toujours accès à tous les plugins</li>
+          <li><strong>Par rôle</strong> : définit l'accès par défaut pour superviseurs et utilisateurs</li>
+          <li><strong>Individuel</strong> : permet d'overrider la permission du rôle pour un utilisateur précis</li>
+          <li>Un plugin sans configuration de permission est <strong>accessible par défaut</strong></li>
+        </ul>
+      </Alert>
+
+      {/* Sous-onglets */}
+      <div className="flex gap-2 border-b dark:border-gray-700 pb-2">
+        <button
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg ${activeSubTab === 'roles' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          onClick={() => setActiveSubTab('roles')}
+        >
+          <div className="flex items-center gap-2"><Shield className="w-4 h-4" /> Par rôle</div>
+        </button>
+        <button
+          className={`px-4 py-2 text-sm font-medium rounded-t-lg ${activeSubTab === 'individual' ? 'bg-primary-100 text-primary-700 dark:bg-primary-900 dark:text-primary-300' : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'}`}
+          onClick={() => setActiveSubTab('individual')}
+        >
+          <div className="flex items-center gap-2"><User className="w-4 h-4" /> Par utilisateur</div>
+        </button>
+      </div>
+
+      {isLoading ? (
+        <div className="py-8"><LoadingInline /></div>
+      ) : plugins.length === 0 ? (
+        <Alert type="info">Aucun plugin configuré</Alert>
+      ) : activeSubTab === 'roles' ? (
+        /* ===== Permissions par rôle ===== */
+        <Card>
+          <CardBody>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50 dark:bg-gray-800">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Type</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Actif</th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      <div className="flex items-center justify-center gap-1">
+                        <Shield className="w-4 h-4 text-amber-600" />
+                        <span>Superviseurs</span>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      <div className="flex items-center justify-center gap-1">
+                        <HardHat className="w-4 h-4 text-emerald-600" />
+                        <span>Agents</span>
+                      </div>
+                    </th>
+                    <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                      <div className="flex items-center justify-center gap-1">
+                        <Users className="w-4 h-4 text-blue-600" />
+                        <span>Utilisateurs</span>
+                      </div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                  {plugins.map((p: any) => (
+                    <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-gray-900 dark:text-gray-100">{p.name}</div>
+                        <div className="text-xs text-gray-500">{p.slug}</div>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge variant={p.pluginType === 'menu' ? 'info' : 'default'}>
+                          {p.pluginType === 'menu' ? 'Menu' : 'Objet'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <Badge variant={p.isActive ? 'success' : 'default'}>
+                          {p.isActive ? 'Actif' : 'Inactif'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          checked={p.permissions.supervisor}
+                          onChange={(e) => toggleRoleMutation.mutate({
+                            pluginId: p.id, role: 'supervisor', canAccess: e.target.checked
+                          })}
+                          className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Accès au plugin ${p.name} pour les agents de terrain`}
+                          checked={!!p.permissions.agent}
+                          onChange={(e) => toggleRoleMutation.mutate({
+                            pluginId: p.id, role: 'agent', canAccess: e.target.checked
+                          })}
+                          className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <input
+                          type="checkbox"
+                          aria-label={`Accès au plugin ${p.name} pour les utilisateurs`}
+                          checked={p.permissions.user}
+                          onChange={(e) => toggleRoleMutation.mutate({
+                            pluginId: p.id, role: 'user', canAccess: e.target.checked
+                          })}
+                          className="w-5 h-5 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </CardBody>
+        </Card>
+      ) : (
+        /* ===== Permissions individuelles ===== */
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            <Select
+              label="Sélectionner un utilisateur"
+              value={String(selectedUserId || '')}
+              onChange={(e) => {
+                setSelectedUserId(e.target.value ? parseInt(e.target.value) : null)
+                setHasUserChanges(false)
+              }}
+              options={[
+                { value: '', label: '— Choisir un utilisateur —' },
+                ...nonAdminUsers.map((u: any) => ({
+                  value: u.id,
+                  label: `${u.first_name || ''} ${u.last_name || ''} (${u.email}) — ${u.role}`
+                }))
+              ]}
+            />
+            {hasUserChanges && (
+              <Button
+                icon={<Save className="w-4 h-4" />}
+                onClick={() => saveUserPermsMutation.mutate()}
+                loading={saveUserPermsMutation.isPending}
+              >
+                Sauvegarder
+              </Button>
+            )}
+          </div>
+
+          {selectedUserId && (
+            <Card>
+              <CardBody>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead className="bg-gray-50 dark:bg-gray-800">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plugin</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Perm. rôle</th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">
+                          <div className="flex items-center justify-center gap-1">
+                            <Eye className="w-4 h-4" />
+                            <span>Accès individuel</span>
+                          </div>
+                        </th>
+                        <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase">Résultat</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
+                      {plugins.filter((p: any) => p.isActive).map((p: any) => {
+                        const selectedUser = nonAdminUsers.find((u: any) => u.id === selectedUserId)
+                        const rolePerm = selectedUser?.role === 'supervisor' ? p.permissions.supervisor : p.permissions.user
+                        const hasOverride = userPluginPerms[p.id] !== undefined
+                        const effectiveAccess = hasOverride ? userPluginPerms[p.id] : rolePerm
+
+                        return (
+                          <tr key={p.id} className="hover:bg-gray-50 dark:hover:bg-gray-800">
+                            <td className="px-4 py-3">
+                              <div className="font-medium text-gray-900 dark:text-gray-100">{p.name}</div>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <Badge variant={rolePerm ? 'success' : 'danger'}>
+                                {rolePerm ? 'Autorisé' : 'Refusé'}
+                              </Badge>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <select
+                                value={hasOverride ? (userPluginPerms[p.id] ? '1' : '0') : ''}
+                                onChange={(e) => {
+                                  const val = e.target.value
+                                  if (val === '') {
+                                    // Retirer l'override
+                                    const next = { ...userPluginPerms }
+                                    delete next[p.id]
+                                    setUserPluginPerms(next)
+                                  } else {
+                                    setUserPluginPerms({ ...userPluginPerms, [p.id]: val === '1' })
+                                  }
+                                  setHasUserChanges(true)
+                                }}
+                                className="px-2 py-1 text-sm border border-gray-300 rounded dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200"
+                              >
+                                <option value="">— Hérité du rôle —</option>
+                                <option value="1">✅ Autoriser</option>
+                                <option value="0">❌ Refuser</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-3 text-center">
+                              <Badge variant={effectiveAccess ? 'success' : 'danger'}>
+                                {effectiveAccess ? '✓ Accès' : '✗ Bloqué'}
+                              </Badge>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PermissionsPage() {
   const [activeTab, setActiveTab] = useState('supervisors')
 
@@ -818,6 +1140,7 @@ export default function PermissionsPage() {
           <ul className="text-sm space-y-1 list-disc list-inside">
             <li><strong>Administrateurs</strong> : Accès complet à toutes les catégories et modules (non configurable)</li>
             <li><strong>Superviseurs</strong> : Permissions définies dans l'onglet "Superviseurs"</li>
+            <li><strong>Agents de terrain</strong> : Saisissent pleins, entretiens, contrôles et photos sur les catégories cochées dans l'onglet "Agents de terrain"</li>
             <li><strong>Utilisateurs</strong> : Permissions définies dans l'onglet "Utilisateurs"</li>
             <li><strong>Permissions individuelles</strong> : S'ajoutent aux permissions du groupe de l'utilisateur</li>
             <li><strong>Modules</strong> : Permissions spécifiques pour les modules comme le Suivi des coûts</li>
@@ -830,14 +1153,19 @@ export default function PermissionsPage() {
         <CardBody>
           <Tabs value={activeTab} onChange={setActiveTab}>
             <Tab value="supervisors" label="Superviseurs" icon={<Shield className="w-4 h-4" />} />
+            <Tab value="agents" label="Agents de terrain" icon={<HardHat className="w-4 h-4" />} />
             <Tab value="users" label="Utilisateurs" icon={<Users className="w-4 h-4" />} />
             <Tab value="individual" label="Permissions individuelles" icon={<User className="w-4 h-4" />} />
             <Tab value="modules" label="Modules" icon={<BarChart3 className="w-4 h-4" />} />
+            <Tab value="plugins" label="Plugins" icon={<Plug className="w-4 h-4" />} />
           </Tabs>
 
           <div className="mt-6">
             {activeTab === 'supervisors' && (
               <GroupPermissionsTab role="supervisor" title="Groupe Superviseurs" icon={Shield} />
+            )}
+            {activeTab === 'agents' && (
+              <GroupPermissionsTab role="agent" title="Groupe Agents de terrain" icon={HardHat} />
             )}
             {activeTab === 'users' && (
               <GroupPermissionsTab role="user" title="Groupe Utilisateurs" icon={Users} />
@@ -847,6 +1175,9 @@ export default function PermissionsPage() {
             )}
             {activeTab === 'modules' && (
               <ModulePermissionsTab />
+            )}
+            {activeTab === 'plugins' && (
+              <PluginPermissionsTab />
             )}
           </div>
         </CardBody>

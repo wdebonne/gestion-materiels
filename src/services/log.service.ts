@@ -46,7 +46,11 @@ export interface LogSettings {
 const DEFAULT_SETTINGS: LogSettings = {
   retentionDays: 90,
   enabledLevels: ['info', 'warning', 'error', 'success'],
-  enabledCategories: ['auth', 'system', 'user', 'backup', 'plugin', 'database', 'email', 'api', 'security'],
+  // 'other' manquait ici alors que le type la déclare et que l'écran des
+  // journaux la propose en filtre sous le nom « Autre ». Les 13 appels qui
+  // l'utilisaient — espaces verts, manifestations, réservations, import/export —
+  // étaient donc écartés avant écriture, et le filtre ne montrait jamais rien.
+  enabledCategories: ['auth', 'system', 'user', 'backup', 'plugin', 'database', 'email', 'api', 'security', 'other'],
   autoCleanup: true,
   logApiRequests: true,
   logAuthAttempts: true,

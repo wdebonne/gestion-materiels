@@ -1,8 +1,8 @@
 # 🔐 Guide de Rotation des Secrets JWT
 
 **Date de création** : 6 février 2026  
-**Projet** : Gestion Matériels  
-**Version** : 1.2.38
+**Révision** : 29 août 2026  
+**Projet** : Gestion Matériels
 
 ---
 
@@ -44,7 +44,7 @@ Ce document décrit la procédure de rotation des secrets JWT implémentée dans
 ### Variables d'environnement
 
 ```env
-# Secret JWT principal (OBLIGATOIRE en production)
+# Secret JWT principal (OBLIGATOIRE en production, 32 caractères minimum)
 JWT_SECRET=votre_secret_tres_securise_64_caracteres_minimum
 
 # Durée de validité des tokens
@@ -54,6 +54,10 @@ JWT_REFRESH_EXPIRES_IN=30d
 # Confiance aux proxies (pour rate limiting)
 TRUST_PROXY=true
 ```
+
+> **Depuis août 2026**, le secret est résolu par `getJwtSecret()` (`src/config/secrets.ts`) et non plus par `process.env.JWT_SECRET || 'secret'`. En production, le serveur **refuse de démarrer** si le secret est absent, fait moins de 32 caractères, ou correspond à une valeur d'exemple. En développement, un secret de repli est utilisé avec un avertissement en console.
+>
+> Le jeton de rafraîchissement est signé avec **le même** secret : `JWT_REFRESH_SECRET`, présent dans `docker-compose.yml`, n'est lu par aucun code. Une rotation change donc les deux jetons ensemble.
 
 ---
 

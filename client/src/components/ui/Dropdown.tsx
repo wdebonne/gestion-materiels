@@ -36,14 +36,14 @@ export default function Dropdown({ items, trigger, align = 'right', className }:
     <div ref={dropdownRef} className={cn("relative", className)}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+        className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
       >
         {trigger || <MoreHorizontal className="w-5 h-5" />}
       </button>
 
       {isOpen && (
         <div className={cn(
-          "absolute top-full mt-1 bg-white rounded-lg shadow-lg border border-gray-200 py-1 z-50 min-w-[160px]",
+          "absolute top-full mt-1 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 py-1 z-50 min-w-[160px]",
           align === 'right' ? 'right-0' : 'left-0'
         )}>
           {items.map((item, index) => (
@@ -58,7 +58,7 @@ export default function Dropdown({ items, trigger, align = 'right', className }:
                 "w-full flex items-center gap-2 px-3 py-2 text-sm transition-colors text-left",
                 item.variant === 'danger'
                   ? "text-red-600 hover:bg-red-50"
-                  : "text-gray-700 hover:bg-gray-50",
+                  : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50",
                 item.disabled && "opacity-50 cursor-not-allowed"
               )}
             >

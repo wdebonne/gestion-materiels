@@ -7,6 +7,337 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Ergonomie terrain
+
+> L'application est utilisée par des agents de métier manuel — jardiniers, mécaniciens, chauffeurs — sur téléphone, dehors, parfois avec des gants et sans réseau. Cet ensemble de changements part de cet usage.
+
+#### Ajouté
+
+- **Rôle « agent de terrain »** : quatrième rôle, entre utilisateur et superviseur. Il peut relever un plein, un entretien, un contrôle technique, un entretien d'espace vert, joindre une photo et demander une réservation. Le référentiel (types, statuts, groupes, seuils) et toutes les suppressions restent au superviseur. Auparavant, pour saisir un plein, un jardinier devait être promu superviseur — ce qui lui donnait au passage la suppression des espaces verts et la gestion du stock des manifestations
+  - Garde serveur unique `requireFieldWrite`, pour que le retour arrière tienne en une ligne
+  - Hook `usePermissions()` et composant `<Can>` côté client, au lieu de recopier `user?.role === 'admin' || …` page par page
+  - Déploiement en deux temps : d'abord les boutons honnêtes sans changement de droits, puis l'ouverture des droits une fois la matrice de tests écrite
+- **Saisie hors réseau** (`lib/offlineQueue.ts`) : un relevé saisi sans connexion est conservé et renvoyé automatiquement au retour du réseau
+  - Liste blanche stricte d'URL, jamais de `DELETE` mis en file
+  - Bandeau permanent tant que la file n'est pas vide, avec le nombre de saisies en attente et un bouton d'envoi manuel
+  - Une erreur 4xx abandonne la saisie et le signale ; une erreur réseau arrête le traitement pour préserver l'ordre
+  - Persistance IndexedDB avec repli en mémoire
+- **Scan de QR code** : page `/scan` utilisant le décodeur natif du navigateur (`BarcodeDetector`). Le QR code était généré depuis toujours et n'était scannable depuis nulle part
+- **Position GPS** (`useGeolocation`, `LocationPicker`) : bouton « Utiliser ma position » avec précision affichée et aperçu OpenStreetMap, au lieu d'une latitude et d'une longitude à recopier. `navigator.geolocation` n'était jamais appelé
+- **Photo** : bouton « Prendre une photo » ouvrant l'appareil, redimensionnement avant envoi (12 Mo → ~400 Ko), redressement EXIF côté serveur via `sharp` — installé et inutilisé jusqu'ici
+- **Listes fermées** (`ReferenceSelect`) pour station-service, prestataire et centre de contrôle. « Total Pavilly », « TOTAL Pavilly » et « total pavilly » formaient trois stations distinctes et fragmentaient les rapports de coûts
+- **Recherche globale** : une seule recherche sur tout le parc. Il n'en existait aucune, seulement 19 champs de recherche locaux indépendants
+- **Actions rapides** sur l'accueil, **favoris personnels**, **barre de navigation basse sur mobile**, **aide contextuelle** par page
+- **Préférences d'affichage** : taille du texte (normal / grand / très grand) et contraste renforcé, pour le travail en plein soleil
+- **Rester connecté** : coché, la session survit à la fermeture du navigateur ; décoché, elle passe en `sessionStorage` et disparaît avec l'onglet. La case existait sans état ni gestionnaire, et la session était de toute façon écrite en `localStorage` : sur le PC partagé de l'atelier, l'agent suivant héritait de la session du précédent
+- **Fenêtre de session expirée** : reconnexion par-dessus l'écran courant, sans détruire le formulaire en cours de saisie
+- **Écran d'erreur avec bouton Réessayer** (`ErrorBoundary`) : une erreur de rendu donnait une page blanche
+- **Page 404** : une URL inconnue redirigeait silencieusement vers l'accueil
+- **Bandeau de mise à jour** : la PWA se rechargeait au milieu d'une saisie
+
+#### Corrigé
+
+- **45 mutations muettes** : la page Espaces Verts comptait 45 `useMutation`, aucun `onError`, aucun message. Enregistrer, supprimer, cloner ou archiver un espace vert ne produisait aucun retour, ni en succès ni en échec. Corrigé par un `MutationCache` global, en une dizaine de lignes
+- **Boutons qui mentaient** : un compte sans droits d'écriture voyait quand même « Ajouter un plein ». Il remplissait le formulaire, appuyait sur Ajouter, et rien ne se passait — le 403 n'était pas intercepté. Les boutons sont désormais masqués, et un refus affiche « Vous n'avez pas les droits… »
+- **Perte de réseau silencieuse** : l'absence de réponse n'était signalée nulle part
+- **Messages d'erreur techniques** : `getErrorMessage()` filtre les messages SQLite, MySQL et les traces avant affichage, et traduit chaque code HTTP en français
+- **`confirm()` natif** remplacé sur 12 sites par une boîte de dialogue expliquant ce qui va être perdu
+- **Cibles tactiles** portées à 44 px minimum ; les actions Modifier et Supprimer des cartes étaient en `opacity-0 group-hover:opacity-100`, donc invisibles et inaccessibles sur écran tactile
+- **Contraste et typographie** : `text-gray-400` (2,8:1, échec WCAG AA) était utilisé 339 fois ; l'échelle typographique a été remontée d'un cran dans `tailwind.config.js`, ce qui corrige 716 `text-sm` et 424 `text-xs` en une fois
+- **Mode sombre** complété sur 8 pages et 6 primitives qui n'avaient aucune classe `dark:`
+- **Langue verrouillée en français** : la détection automatique basculait toute l'interface en anglais sur une tablette configurée en anglais, alors que `useTranslation` n'est utilisé que dans 1 fichier sur 60
+- **Alertes marquées comme lues pour tout le monde** : `PUT /alerts/read-all` faisait `UPDATE alerts SET is_read = 1` sans filtre utilisateur — un agent qui vidait sa pastille vidait celle de toute la collectivité. Table `alert_reads` par utilisateur
+- **Emails d'alerte** envoyés aussi à la personne qui entretient le matériel, et plus seulement aux administrateurs et superviseurs
+- **`emitAlert()` jamais appelé** dans le cron : il était importé et inutilisé, donc aucune alerte n'arrivait en temps réel
+- **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
+- **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
+
+### Sécurité — portée des matériels
+
+- **Revue systématique de la portée par catégorie.** Trois défauts identiques trouvés séparément — tokens API, export, génération de QR codes — n'étant pas une coïncidence, les treize fichiers touchant la table `objects` ont été revus, puis sondés avec un compte sans aucune permission. Quatre endpoints rendaient des matériels hors périmètre :
+  - `GET /objects/:id` — la liste filtrait, le détail non : la fiche complète était lisible en connaissant l'identifiant
+  - `GET /green-spaces/search/objects` — recherche libre sur tout le parc, prix d'achat compris
+  - `GET /reservations` — nom et référence via les réservations
+  - `GET /calendar/events` — nom via les événements, sur quatre requêtes
+  - La règle est désormais écrite une seule fois, dans `middleware/objectScope.ts`. Une variante distincte traite les tables qui *référencent* un matériel : un événement de calendrier sans matériel reste visible de tous, sinon la protection deviendrait une régression
+  - Un test de contrat énumère les fichiers lisant `objects` et échoue dès que l'un d'eux n'applique ni la portée ni une exemption motivée. Cinq fichiers sont exemptés, chacun avec sa raison
+  - La première sonde avait sous-estimé le problème : deux endpoints ne laissaient rien fuir **faute de données**. Il a fallu créer une réservation et un événement pour que la fuite apparaisse
+
+### Étiquettes QR
+
+- **Impression en lot.** `POST /api/qrcode/batch` renvoyait jusqu'à 100 étiquettes depuis toujours et n'était appelé par aucun écran : les QR codes s'imprimaient un par un depuis la fiche de chaque matériel. Étiqueter un parc de cinquante machines demandait cinquante allers-retours
+  - Bouton « Étiquettes QR » sur une catégorie ou une sous-catégorie, sélection des matériels, planche A4 de deux colonnes en 95 × 52 mm avec QR code, nom et référence
+  - Les lots de plus de 100 matériels sont découpés automatiquement — la limite du serveur ne doit pas se traduire par un découpage à la main
+  - Une étiquette n'est jamais coupée entre deux pages, et un nom trop long ne pousse pas le QR code hors du cadre
+- **Génération cloisonnée par les permissions de catégorie.** Les deux routes QR n'avaient que `authenticateToken`, et la génération en lot renvoyait nom, référence et numéro de série pour des identifiants arbitraires : un compte sans aucune permission pouvait énumérer l'inventaire complet en incrémentant des nombres, sans voir un seul matériel à l'écran
+
+### Webhooks
+
+- **Les webhooks partent enfin.** Le CRUD, le bouton de test et la journalisation existaient depuis toujours, mais `POST /webhooks/trigger` n'était appelé par aucune route ni tâche planifiée : un administrateur configurait une URL, la testait avec succès, et plus jamais rien ne partait. L'écran proposait pourtant douze événements
+  - Les douze sont branchés : création, modification et suppression de matériel et de catégorie, alerte, entretien, plein de carburant, sauvegarde, création d'utilisateur et connexion
+  - Les alertes passent par `emitAlert`, déjà le signal commun : elles naissent à cinq endroits, et brancher chaque `INSERT` aurait été le meilleur moyen d'en oublier un
+  - La livraison, jusqu'ici écrite dans le corps de la route, vit dans `webhook.service.ts` — c'est précisément ce qui la rendait inaccessible au reste du code
+- **Délai maximal réel.** `fetch(url, { timeout: 10000 })` n'existe pas : l'option était ignorée, et une URL qui accepte la connexion sans jamais répondre bloquait indéfiniment. Un `AbortSignal.timeout` abandonne au bout de dix secondes et enregistre l'échec
+- **Envoi sans attente.** Un agent qui enregistre un plein n'attend pas qu'un service externe réponde, et une URL cassée ne fait pas échouer sa saisie. Vérifié : avec un destinataire muet, la création rend la main en 8 ms et l'échec est noté dix secondes plus tard
+- **Un destinataire injoignable n'empêche pas les autres de recevoir** : le try/catch est à l'intérieur de la boucle
+
+### Authentification
+
+- **Les quatre écrans SSO disent ce qu'ils font.** SAML, OIDC, LDAP et Passkey enregistrent leur configuration dans `auth_config`, qu'aucun fichier de `src/` n'interroge en dehors de sa propre route : la connexion reste en bcrypt local. Un bandeau l'indique désormais sur chacun. Un écran qui *simule* un SSO est plus dangereux qu'une absence de SSO — il fait croire à un administrateur que l'authentification est déléguée à son annuaire, et le dissuade de chercher une autre protection. La décision de finir ou de retirer ces écrans reste ouverte
+
+### Manifestations
+
+- **Historique horodaté.** La table `manifestation_history` était créée depuis le début et n'était ni écrite ni lue, alors que le README et la feuille de route annonçaient une « timeline complète de toutes les actions ». Un prêt de matériel pour un événement municipal engage la collectivité : savoir qui a validé, qui a livré et à quelle date n'est pas un confort
+  - Création, modification, validation, livraison, récupération, annulation, archivage et mise à jour des quantités sont consignés, avec l'auteur, la date et un commentaire facultatif
+  - Le changement de statut accepte un commentaire — « validée en commission du 12 septembre » vaut mieux qu'une date seule
+  - La timeline s'affiche dans le détail d'une manifestation, et `GET /:id/history` la sert seule
+  - L'écriture de l'historique ne peut pas faire échouer l'action qu'elle décrit : perdre une ligne d'historique est moins grave que perdre une livraison
+- **Fiche PDF branchée.** `ManifestationPDFExport.tsx` existait sans être importé nulle part, et il lisait des champs qui n'existent pas : `name` au lieu de `title`, `items` au lieu de `materials`, `object_name` au lieu de `stock_name`, `res.data` au lieu de `res.data.data`, et des statuts en français là où le serveur stocke `draft`, `validated`, `delivered`… Chaque champ serait ressorti vide, et la génération se serait arrêtée sur `detail.name.replace`. La fiche contient désormais les informations générales, le matériel avec ses totaux et l'historique
+- **`PUT /:id/materials` refuse une mise à jour qui ne touche aucune ligne** au lieu de répondre 200 : c'était le cas quand un identifiant de stock était envoyé à la place de l'identifiant de ligne
+
+### Import / Export
+
+- **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier
+- **Nombre de matériels annoncé** avant le téléchargement, et bouton inactif quand aucun ne correspond : sans ce décompte, on récupère un classeur vide sans comprendre pourquoi
+- **Export cloisonné par les permissions de catégorie**, comme la liste des matériels. La route n'avait que `authenticateToken` et construisait sa requête sur `WHERE 1=1` : un compte dont l'écran ne montre aucune catégorie récupérait l'inventaire complet — nom, référence, numéro de série, localisation et prix d'achat de chaque matériel
+- **Correspondance des colonnes à l'import.** L'import était positionnel strict sur onze colonnes : le fichier devait suivre le modèle au caractère près
+  - Les colonnes sont reconnues par leur intitulé — accents, astérisques et parenthèses ignorés — quel que soit leur ordre. « Désignation », « Libellé » ou « Matériel » valent « Nom » ; « Famille » vaut « Catégorie »
+  - Une colonne inconnue est écartée au lieu de tout décaler
+  - **L'export de l'application est enfin réimportable.** Il commence par une colonne `ID` absente du modèle : elle décalait tout d'un cran et chaque ligne échouait sur « Catégorie introuvable ». Exporter, corriger dans un tableur, réimporter — le geste d'un inventaire annuel — était impossible
+  - La reconnaissance est affichée avant l'import, avec le nombre de lignes et la première ligne telle qu'elle sera lue ; chaque colonne reste corrigeable
+  - Un fichier sans ligne d'en-tête est toujours lu dans l'ordre du modèle
+  - Une colonne obligatoire non reconnue est refusée avec la liste des intitulés trouvés, au lieu d'un échec ligne par ligne
+- **Insertions réellement attendues.** `db.execute` était lancé dans `eachRow`, qui est synchrone : les promesses n'étaient pas attendues, le `try/catch` ne rattrapait aucune erreur d'insertion, le compteur annonçait des lignes qui n'existaient pas et la réponse partait avant la fin du travail
+
+- **Double en-tête CSV corrigé** : le second classeur recevait `columns`, qui pose déjà une ligne d'en-tête, puis recopiait aussi la ligne 1 de la source. Chaque CSV exporté commençait par deux en-têtes identiques, ce qui décale toute relecture et fait échouer un réimport
+
+### Réservations
+
+- **Disponibilité affichée pendant la saisie.** `GET /reservations/availability/:objectId` existait depuis toujours et n'était appelé par aucun écran : un créneau déjà pris n'apparaissait qu'en erreur 409, après avoir rempli et envoyé le formulaire. L'agent découvrait le conflit une fois son travail perdu, sans savoir quand le matériel serait libre
+  - Les créneaux occupés sont listés avec leur période et leur emprunteur
+  - Le bouton de création reste inactif tant que la période demandée est prise
+  - Les demandes en attente de validation sont signalées sans bloquer : elles n'empêchent pas la création, mais deux agents qui demandent le même créneau sans le savoir aboutissent à une demande validée et une autre qui reste en attente
+- **Filtre de chevauchement partagé** entre la vérification et la création. Ils étaient écrits séparément ; s'ils avaient divergé, l'écran aurait annoncé « disponible » puis le serveur aurait refusé — pire que de ne rien annoncer. Un test vérifie que le filtre n'est écrit qu'à un seul endroit
+- **Nom de l'emprunteur chargé en une requête** pour l'ensemble des créneaux, et non une par ligne
+
+### Sécurité
+
+- **Politique de mot de passe appliquée.** L'écran Paramètres > Authentification permettait de régler la longueur minimale, la complexité, l'expiration et le blocage après N tentatives. Rien n'était appliqué : la configuration était écrite dans `auth_config` et relue par personne, et un administrateur qui réglait « blocage après 5 tentatives » croyait disposer d'un contrôle qui n'existait pas
+  - Longueur et complexité vérifiées aux **six** endroits où un mot de passe est défini : inscription, réinitialisation, changement, création par un administrateur, changement de son propre mot de passe, réattribution par un administrateur
+  - Les quatre contrôles de longueur codés en dur ont été retirés — un minimum réglé à 10 aurait laissé passer 8, et un minimum réglé à 6 aurait été refusé avec un message contredisant l'écran
+  - Tous les manquements sont rendus d'un coup plutôt qu'un par un : redemander trois fois de suite pousse à écrire le mot de passe sur un papier
+  - Une configuration illisible retombe sur les valeurs par défaut, jamais sur « aucune exigence »
+- **Blocage du compte après N échecs**, pendant la durée configurée, réponse `423`. Ce contrôle protège un compte précis, là où le rate limiting protège l'API dans son ensemble. Le nombre d'essais restants n'est pas révélé, car il indiquerait qu'un email existe. Un administrateur débloque en réattribuant un mot de passe, et une réinitialisation réussie débloque aussi
+- **Expiration du mot de passe signalée**, par un bandeau invitant à le changer. Elle ne bloque pas : refuser l'accès à un agent au fond d'un parc parce que son mot de passe a 91 jours l'empêcherait de travailler sans rien protéger de plus. Un compte sans date de changement connue — tous ceux créés avant la migration — n'est jamais déclaré expiré
+- **Trois réglages retirés du formulaire**, remplacés par un encart qui explique pourquoi plutôt que par des interrupteurs sans effet : la 2FA (aucun second facteur n'existe), le timeout de session (demanderait un suivi d'inactivité), et la connexion locale (la désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne)
+
+### Ajouté
+
+- **Migration `002_politique_connexion`** : colonnes `failed_login_attempts`, `locked_until` et `password_changed_at` sur `users`. Première utilisation réelle du système de migration
+- **`passwordPolicy.service.ts`** : lecture de la politique avec cache court, invalidé dès qu'un administrateur enregistre — sans quoi il verrait son nouveau seuil ignoré pendant trente secondes
+- **21 tests** figeant les exigences, la lecture d'une configuration corrompue et l'expiration
+
+### Corrigé
+
+- **Réponses de validation sans message** : six routes renvoyaient `{ success: false, errors: [...] }` sans champ `message`, et le client affichait une erreur vide
+
+### Structure et fiabilité
+
+#### Ajouté
+
+- **Système de migration versionné** : `npm run db:migrate` pointait vers `src/database/migrate.ts`, un fichier qui n'existait pas — la commande échouait depuis toujours. Journal `schema_migrations`, sauvegarde SQLite préalable par `VACUUM INTO`, application au démarrage du serveur (le conteneur ne lance que `node dist/server.js`), et `--dry-run` qui n'écrit rien
+- **25 index de base de données** sur 54 tables qui n'en comptaient aucun
+- **Découpage du bundle** : 33 des 37 pages en chargement différé. L'écran de connexion téléchargeait leaflet, fullcalendar, recharts, jspdf et html2canvas
+- **Validation serveur des écritures de terrain** : une charge incomplète produisait un 500 « Erreur serveur », la contrainte `NOT NULL` de SQLite remontant jusqu'au gestionnaire générique. Réponses 400 avec un message en français
+- **Chargement groupé** (`utils/batchQuery.ts`) remplaçant les requêtes N+1
+- **131 tests** contre 36 : matrice rôle × endpoint, validation des saisies, portée des tokens API, migrations, chargement groupé, noms de colonnes, magasin d'authentification, file hors ligne
+
+#### Modifié
+
+- **L'image Docker vérifie les types** : le serveur était compilé par esbuild, qui retire les types sans les vérifier — la production était le seul endroit où le code n'était jamais type-checké. Serveur compilé par `tsc`, client par `build:check`
+- **Erreurs de type du client : 76 → 0**
+- **Configuration ESLint ajoutée** : le script `lint` existait et les plugins étaient installés, mais aucun fichier de configuration — la commande échouait immédiatement, donc personne ne lintait
+- **better-sqlite3** monté en v12, `engines.node` porté à `>= 20`
+- **Cache API de la PWA** porté de 5 minutes à 24 heures, pour qu'une fiche consultée le matin s'ouvre l'après-midi en zone blanche
+- **`.env.example`** : port corrigé de 3000 à 3001, qui est le port réellement utilisé partout ailleurs
+
+#### Performance
+
+- **Requêtes N+1 supprimées** sur la fiche d'espace vert et les manifestations. Sur un espace de 60 entretiens, la seule partie « entretiens » émettait 120 requêtes ; mesuré à 120 requêtes / 1,25 ms contre 2 requêtes / 0,16 ms après regroupement, avec vérification que les deux motifs rendent les mêmes lignes
+
+### Sécurité
+
+- **Portée des tokens API appliquée** : les permissions d'un token étaient analysées puis rangées dans la requête, et plus aucune ligne ne les lisait — 0 référence dans les 25 fichiers de routes. Un token créé « lecture seule » par un administrateur pouvait supprimer tout ce que son créateur pouvait supprimer, puisqu'il hérite de son rôle
+- **`JWT_SECRET` obligatoire** : le repli vers un secret codé en dur a été supprimé. Le serveur refuse de démarrer en production si le secret est absent, trop court ou laissé à sa valeur d'exemple
+- **SQL des plugins verrouillé** : `pluginAdvanced.service.ts` exécutait du SQL stocké en base, atteignable avec un simple `authenticateToken`
+- **`/plugins` placé derrière authentification**
+- **Cascade de déconnexion** : `logout()` envoyait la requête puis effaçait l'état, donc elle partait sans en-tête d'autorisation et prenait un 401 ; ce 401 relançait `logout()`, qui rappelait `/auth/logout` — une dizaine de requêtes jusqu'au 429. Comme le limiteur couvre tout `/api/auth` à 10 requêtes par quart d'heure, se déconnecter — ou simplement se tromper de mot de passe — interdisait de se reconnecter pendant 15 minutes
+- **Déconnexion enfin journalisée** : elle prenait un 401 systématique, donc rien n'était enregistré et le cookie d'authentification n'était jamais effacé. Le journal d'audit ne contenait que des connexions
+
+### Corrigé (divers)
+
+- **Changer sa photo de profil déconnectait l'utilisateur** : la page profil lisait `useAuthStore.getState().accessToken`, un champ qui n'existe pas — le vrai s'appelle `token` — et le passait à `setAuth` avec un `!` pour forcer le type. Le magasin se retrouvait avec `token: undefined` et la requête suivante partait sans autorisation
+- **Synchronisation Outlook et CalDAV inutilisable** : les 18 requêtes de configuration interrogeaient `key` et `value` alors que la table `settings` a pour colonnes `setting_key` et `setting_value`. SQLite répondait « no such column », la route renvoyait un 500 générique, et aucune configuration ne pouvait être enregistrée
+- **Journal muet sur 13 actions** : la catégorie `'other'` est déclarée dans le type et proposée dans l'écran des journaux sous le nom « Autre », mais manquait dans les catégories activées par défaut. Création et suppression d'espace vert, cycle de vie des manifestations, import/export et réservations n'écrivaient rien, et le filtre « Autre » ne montrait jamais rien
+- **Changement de configuration d'authentification non tracé** : l'appel au journal passait `action` et omettait `level` ; `log()` filtre sur les niveaux activés, `includes(undefined)` est faux, et l'entrée était jetée
+- **Liens des emails vers un port fermé** : le réglage `site_url` était semé sur `http://localhost:3000` alors que le serveur écoute sur 3001. La valeur initiale suit désormais `SITE_URL` puis `PORT`
+- **`Badge`** ne transmettait pas la prop `title` que ses appelants lui passaient : l'infobulle explicative des champs personnalisés n'existait pas
+- **Onglet « Espaces verts » du module Suivi** absent du type de `activeTab`
+- **Code mort livré en production** : `ObjectDetailPage-FREDERICDEBONNE.tsx` (1 435 lignes), `object.routes-FREDERICDEBONNE.ts` (811 lignes) et `index-FREDERICDEBONNE.ts` (552 lignes), non référencés mais compilés
+- **Artefacts Playwright** sortis du suivi Git
+
+### Supprimé
+
+- Affichage de la description des sous-catégories, lu à deux endroits alors qu'il n'existe ni colonne en base, ni champ de route, ni champ de formulaire : il ne pouvait jamais rien rendre
+- `DOC_TYPES`, `updateDocMutation` et `getRoleIcon` : intentions jamais branchées à aucun contrôle
+
+---
+
+### Ajouté
+- **Module Espaces Verts — Plugin système complet** : Gestion des espaces verts municipaux avec plan interactif annoté, composition botanique, entretiens et documents :
+  - **Tables base de données** : `green_spaces` (informations générales, type, superficie, localisation, plan), `green_space_elements` (éléments du plan : arbres, massifs, mobilier...), `green_space_annotations` (annotations textuelles sur le plan), `green_space_seasons` (gestion saisonnière), `green_space_documents` (documents et fichiers), `green_space_element_groups` (groupes d'éléments), `green_space_maintenances` (entretiens programmés), `green_space_maintenance_elements` (éléments concernés), `green_space_maintenance_documents` (documents liés aux entretiens)
+  - **Routes API complètes** (`/api/green-spaces`) : CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types personnalisés, statistiques
+  - **Plan interactif** : Upload d'image du plan, placement de repères par clic avec drag & drop, popup persistant au clic affichant le détail de chaque élément (espèce, état, dimensions, photo)
+  - **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec icônes dédiées, état de santé (excellent/bon/moyen/mauvais/critique/mort), gestion d'images par élément
+  - **Groupes de composition** : Regroupement logique d'éléments (massif, zone, alignement, haie, autre) avec couleur et description
+  - **Zones polygonales** : Dessin de zones par clics successifs sur le plan avec couleur, opacité et légende
+  - **Légende interactive** : Légende du plan avec filtrage par type d'élément et groupe, codes couleur des états
+  - **Entretiens** : Historique des interventions avec type, date, intervenant, durée, coût, éléments concernés, documents joints (upload direct)
+  - **Export PDF du plan** (`PlanPDFExport.tsx`) : Export via jsPDF + html2canvas avec le plan annoté en paysage, légende, tableaux détaillés des éléments/groupes/annotations, options de sélection des sections
+  - **Upload de documents** : Possibilité de joindre directement des fichiers (PDF, images, docs) lors de la création d'un entretien
+  - **Intégration Alertes** : Les entretiens avec date d'échéance prochaine génèrent automatiquement des alertes dans le module Alertes (via `cron.service.ts` + `plugin_reference: 'green-space-maintenance'`)
+  - **Intégration Calendrier** : Les entretiens avec `next_maintenance_date` créent automatiquement un événement dans le calendrier (🌿 icône verte, type maintenance)
+  - **Intégration Suivi (Tracking)** : Les coûts et données d'entretien des espaces verts apparaissent dans le module Suivi avec filtre dédié "Espaces verts" (icône TreePine), carte statistique et tableau détaillé
+  - **Suppression avec nettoyage** : La suppression d'un entretien nettoie aussi les événements calendrier et alertes associés
+  - **Clonage d'espace** (`CloneSpaceModal`) : Copie vierge ou avec éléments sélectionnés, statut initial configurable (projet → travaux → actif), snapshot automatique de l'espace source créé avant le clonage, copie des annotations et groupes liés aux éléments copiés
+  - **Archives & Snapshots** (`ArchivesTab`) : Nouvel onglet "Archives" avec capture de l'état complet (plan, éléments, annotations, groupes) à un instant T sous forme de snapshot JSON, liste chronologique des snapshots avec label/date/notes, vue détaillée du plan archivé avec superposition des annotations
+  - **Comparaison de versions** : Mode côte-à-côte entre un snapshot archivé et l'état actuel — affichage simultané des plans annotés avec résumé des différences (nombre d'éléments, annotations, groupes ajoutés/supprimés)
+  - **Historique de l'espace source** : Si l'espace est un clone, accès aux documents et entretiens de l'espace vert original (via `cloned_from_id` FK)
+  - **Table `green_space_snapshots`** : id, green_space_id (FK), label, snapshot_date, plan_image, elements_data (JSON), annotations_data (JSON), groups_data (JSON), notes, created_at
+  - **Colonne `cloned_from_id`** : Ajout d'une FK auto-référentielle sur `green_spaces` pour tracer la filiation des clones
+  - **7 nouvelles routes API** : POST/GET `/:id/snapshots`, GET/DELETE `/snapshots/:snapshotId`, POST `/:id/clone`, GET `/:id/archives`
+  - **Liaison documents-éléments** : Table de jonction `green_space_document_elements`, association de documents à des éléments spécifiques, affichage croisé dans DocumentsTab et ElementFormModal
+  - **Options d'espace** (`SpaceSettingsModal`) : Modale de gestion des types et statuts d'espaces verts (ajout, modification, activation/désactivation) depuis la barre d'outils
+  - **Gestion des types de groupes** (`GroupTypesSettingsModal`) : Modale CRUD pour les types de groupes de composition (massif, haie, bosquet, rocaille, jardinière, plate-bande, mixed border, autre) — ajout, modification (icône/label/couleur), activation/désactivation, suppression — bouton ⚙️ à côté de « Nouveau groupe »
+  - **Table `green_space_group_types`** : Nouvelle table pour stocker les types de groupes avec icône, couleur, label, état d'activation et 8 types par défaut
+  - **Remplacement d'éléments avec historique** (`ReplaceElementModal`) : Archivage automatique de l'état complet de l'élément (label, espèce, type, état, quantité, prix, date plantation, image, champs personnalisés) avant remplacement — contexte saisonnier (printemps/été/automne/hiver/annuel), année, raison et notes
+  - **Historique des remplacements** (`ElementHistoryModal`) : Timeline visuelle avec état actuel (encart vert) et chronologie des versions précédentes — saison/année, données archivées, raison du remplacement
+  - **Table `green_space_element_replacements`** : Nouvelle table d'archivage avec toutes les données précédentes de l'élément, saison, année, raison et notes
+  - **Routes API remplacement** : POST `/elements/:id/replace` (archive + mise à jour), GET `/elements/:id/history` (historique par élément), GET `/:id/replacement-history` (historique global par espace)
+  - **Routes API types de groupes** : GET/POST/PUT/DELETE `/group-types` avec CRUD complet
+- **Module Manifestations — Page dédiée complète** : Gestion des manifestations (prêts de matériel pour événements) avec page dédiée accessible depuis la navigation principale :
+  - **3 tables base de données** : `manifestations` (informations générales, statut, contact, lieu), `manifestation_items` (articles liés avec quantités commandées/livrées/retournées), `manifestation_history` (historique horodaté de chaque action)
+  - **Routes API complètes** (`/api/manifestations`) : CRUD, stats par statut, changement de statut avec validation des transitions, historique, recherche d'objets du parc
+  - **Workflow en 5 étapes** : Brouillon → Validée → Livrée → Récupérée → Archivée (+ Refusée → retour Brouillon) avec transitions contrôlées côté serveur
+  - **ManifestationsPage.tsx** (~700 lignes) : Cartes statistiques, onglets (Manifestations/Stock/Archives), recherche debounce, filtre par statut
+  - **Cartes colorées par statut** : Bordure gauche colorée, fond teinté, badge, barre de progression du workflow
+  - **Modales de changement de statut** : Validation/Refus avec commentaire, Livraison/Récupération avec gestion des quantités (individuel ou global)
+  - **Modale de création/édition** : Formulaire avec recherche d'objets par autocomplete, ajout/suppression d'articles
+  - **Modale de détail** : Tableau des articles (commandé/livré/récupéré), timeline historique horodatée
+  - **Export PDF** (`ManifestationPDFExport.tsx`) : Rapport via jsPDF avec en-tête, articles, et historique
+- **Page Authentification** : Nouveau menu « Authentification » dans Paramètres avec 5 onglets de configuration :
+  - **Général** : Politique de connexion (connexion locale, inscription publique, 2FA obligatoire, timeout session, blocage après tentatives échouées) et politique de mot de passe (longueur min, complexité, expiration)
+  - **LDAP / Active Directory** : Connexion à un annuaire LDAP avec mapping d'attributs (uid, mail, givenName, sn), mapping de groupes vers rôles (admin, superviseur), création automatique d'utilisateurs, STARTTLS
+  - **SAML 2.0 SSO** : Authentification via fournisseur SAML (Azure AD, Google Workspace, Okta, Keycloak) avec certificat X.509, mapping d'attributs, algorithme de signature configurable
+  - **OpenID Connect** : Authentification OIDC avec URL de découverte, scopes configurables, type de réponse (Authorization Code / Implicit), mapping des claims
+  - **Passkey (WebAuthn / FIDO2)** : Authentification sans mot de passe via empreinte digitale, reconnaissance faciale ou clé USB — utilisable comme méthode principale ou second facteur (2FA)
+- **Table `auth_config`** : Nouvelle table base de données pour stocker la configuration par fournisseur d'authentification (provider, is_active, config JSON)
+- **Routes API `/api/settings/auth`** : GET (liste), GET/:provider, PUT/:provider (mise à jour avec préservation des secrets), POST/:provider/test (test de connexion)
+- **Plugin Import/Export** : Import/Export converti en plugin système de type `menu` (`is_system: 1`, `is_active: 1`) — activable/désactivable depuis Paramètres > Plugins
+- **Fichiers plugin JSON** : Ajout de `plugin.json` et `index.json` pour les 4 plugins système : Réservations (`plugins/pages/reservations/`), Amortissement (`plugins/pages/depreciation/`), Cartographie (`plugins/pages/map/`), Import/Export (`plugins/pages/import-export/`)
+- **Documentation plugins système** : Section dédiée dans `docs/PLUGIN_STRUCTURE.md` décrivant l'architecture built-in vs personnalisé, la navigation dynamique et l'activation/désactivation
+
+### Modifié
+- **cron.service.ts** : Ajout de la vérification des entretiens espaces verts (`green_space_maintenances.next_maintenance_date`) — création d'alertes automatiques avec `plugin_reference: 'green-space-maintenance'`
+- **espaceVert.routes.ts** : Création/mise à jour/suppression d'événements calendrier et d'alertes lors des opérations sur les entretiens
+- **AlertsPage.tsx** : Ajout du champ `pluginReference` dans l'interface Alert, lien "Voir l'espace vert" pour les alertes d'espaces verts
+- **TrackingPage.tsx** : Ajout du type de données "Espaces verts" (`green_space`) avec carte statistique, onglet dédié et tableau détaillé
+- **tracking.routes.ts** : Ajout du type `green_space` dans les filtres de suivi, requête des `green_space_maintenances` avec coûts et résumé
+- **database/index.ts** : Ajout des 9 tables espaces verts + table `green_space_document_elements` (liaison documents-éléments) + table `green_space_snapshots` (archives) + colonne `cloned_from_id` (FK auto-référentielle sur `green_spaces`) + table `green_space_group_types` (types de groupes) + table `green_space_element_replacements` (historique remplacements)
+- **server.ts** : Route `/api/green-spaces` câblée
+- **Layout.tsx** : Entrée de navigation « Espaces Verts » ajoutée avec icône TreePine
+- **App.tsx** : Route frontend `/espaces-verts` ajoutée
+- **database/index.ts** : Ajout des 3 tables `manifestations`, `manifestation_items`, `manifestation_history`
+- **server.ts** : Route `/api/manifestations` câblée
+- **Layout.tsx** : Icône `CalendarDays` ajoutée, entrée de navigation « Manifestations » ajoutée
+- **App.tsx** : Route frontend `/manifestations` ajoutée
+- **pages/index.ts** : Export `ManifestationsPage` ajouté
+- **seed.ts** : Nouveau plugin `import-export` ajouté aux `DEFAULT_PLUGINS` avec config JSON (formats autorisés, taille max)
+- **Layout.tsx** : Import/Export retiré du `baseNavigation` codé en dur — ajouté à `builtInPluginSlugs` (`['calendar', 'reservations', 'depreciation', 'map', 'import-export']`) — sa visibilité dans la sidebar dépend désormais de l'activation du plugin — icône `FileSpreadsheet` ajoutée au `iconMap`
+- **ROADMAP_FONCTIONNALITES.md** : Import/Export marqué comme « Plugin système » au lieu de « Fait »
+- **README.md** : Section Import/Export mise à jour pour refléter son statut de plugin système activable/désactivable
+- **examples/plugins/README.md** : Ajout de la liste des 4 plugins système built-in avec explication de la différence entre plugins système et plugins personnalisés
+
+## [1.3.1] - 2026-03-06
+
+### Ajouté
+- **PWA complète** : Génération des icônes PNG (`pwa-192x192.png`, `pwa-512x512.png`, `apple-touch-icon.png`, `favicon.ico`, `favicon.svg`) dans `client/public/` via script `scripts/generate-icons.js` (Sharp)
+- **Meta tags PWA** dans `index.html` : `theme-color`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, `apple-mobile-web-app-title`, `apple-touch-icon`, `mask-icon`
+- **Plugins système** : Réservations, Amortissement et Cartographie convertis en plugins de type `menu` (`is_system: 1`, `is_active: 1`) — activables/désactivables depuis Paramètres > Plugins
+- **Exports pages** : Ajout de `TrackingPage`, `ReservationsPage`, `DepreciationPage`, `ImportExportPage`, `MapPage` dans `client/src/pages/index.ts`
+
+### Modifié
+- **seed.ts** : 3 nouveaux plugins ajoutés (`reservations`, `depreciation`, `map`) avec config JSON (statuts, durée amortissement, coordonnées par défaut) — INSERT inclut désormais `plugin_type` et `route` pour tous les plugins
+- **Layout.tsx** : Réservations, Amortissement et Cartographie retirés de `baseNavigation` — apparaissent désormais via `pluginNavigation` (visibles uniquement si le plugin est actif) — `builtInPluginSlugs` étendu à `['calendar', 'reservations', 'depreciation', 'map']` — `iconMap` enrichi (`calendar-clock`, `trending-down`, `map-pin`)
+- **vite.config.ts** : Manifest PWA corrigé pour pointer vers les fichiers PNG réels, `includeAssets` mis à jour
+
+### Dépendances
+- Ajout dev : `sharp` (génération icônes PNG)
+
+## [1.3.0] - 2026-03-06
+
+### Ajouté — 12 nouvelles fonctionnalités
+
+#### 🔴 Priorité Haute
+- **QR Codes matériels** : Génération de QR codes par matériel (`/api/qrcode/:id`), composant React `QRCodeDisplay`, affichage et téléchargement depuis la fiche objet — librairies `qrcode` (backend) et `react-qr-code` (frontend)
+- **Import/Export CSV & Excel** : Import massif de matériels depuis fichiers CSV/Excel avec validation, export filtrable par catégorie au format CSV ou XLSX — route `/api/import-export`, page `ImportExportPage` — librairie `exceljs`
+- **Tests automatisés** : 36 tests (15 backend + 21 frontend) — Jest + ts-jest + supertest côté serveur (tests slugify, routes API, WebSocket service), Vitest + @testing-library/react côté client (tests Badge, Button, Card)
+
+#### 🟠 Priorité Moyenne
+- **Réservation / Prêt de matériel** : Module complet avec table `reservations`, routes CRUD (`/api/reservations`), statuts (pending/approved/active/returned/overdue/cancelled), vérification CRON des retours en retard, page `ReservationsPage` avec filtres
+- **Amortissement / Dépréciation** : Endpoint `/api/dashboard/depreciation` avec calcul linéaire de la valeur résiduelle, page `DepreciationPage` avec graphiques Recharts (barres + camembert)
+- **PWA (Progressive Web App)** : Configuration `vite-plugin-pwa` avec manifest, service worker Workbox, cache intelligent, app installable sur mobile
+
+#### 🟡 Priorité Basse
+- **Cartographie GPS (Leaflet)** : Page `MapPage` avec carte interactive OpenStreetMap via `react-leaflet`, affichage des matériels géolocalisés avec filtres par catégorie
+- **Timeline historique matériel** : Composant `ObjectTimeline` affichant la frise chronologique consolidée (créations, maintenances, contrôles, carburant, alertes), intégré comme onglet dans la fiche objet
+- **Reporting périodique automatique** : Tâche CRON hebdomadaire (lundi 7h) envoyant un rapport HTML par email aux admins/superviseurs (stats objets, alertes, réservations)
+
+#### 🟢 Optionnel
+- **Dark Mode** : Hook `useDarkMode` avec persistance localStorage, sélecteur de thème (clair/sombre/système) dans le header, classes `dark:` appliquées à tous les composants UI (Card, Modal, Input, Select, TextArea, Button, Tabs) et au Layout
+- **Internationalisation (i18n)** : Configuration `react-i18next` avec fichiers de traduction FR/EN, détection automatique de la langue navigateur, traduction de la navigation et des menus dans le Layout
+- **WebSocket temps réel** : Service `websocket.service.ts` avec Socket.io, émission d'alertes en temps réel lors de la création, hook `useRealtimeAlerts` invalidant le cache React Query, fonctions `emitToAll`, `emitToRole`, `emitToUser`, `emitAlert`
+
+### Dépendances
+- Ajout backend : `qrcode`, `exceljs`, `socket.io`
+- Ajout frontend : `react-qr-code`, `react-leaflet`, `leaflet`, `react-i18next`, `i18next`, `i18next-browser-languagedetector`, `socket.io-client`, `vite-plugin-pwa`
+- Ajout dev/test : `jest`, `ts-jest`, `supertest`, `@types/supertest`, `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom`
+
+### Corrigé
+- `req.user?.id` → `req.user?.userId` dans les routes importExport et reservation (conformité `JwtPayload`)
+- Catégories de log invalides (`'export'`, `'import'`, `'reservation'`) → `'other'`
+- Imports inutilisés nettoyés dans ObjectTimeline, useWebSocket, DepreciationPage, MapPage, ImportExportPage, ReservationsPage
+- Composant `Select` remplacé par `<select>` natif dans ReservationsPage et ImportExportPage (incompatibilité props)
+- Limite Workbox `maximumFileSizeToCacheInBytes` augmentée à 5 Mo pour le service worker PWA
+- Typo `setupFilesAfterSetup` → `setupFilesAfterEnv` dans jest.config.ts
+
+## [1.2.60] - 2026-03-06
+
+### Ajouté
+- **Page Paramètres > API** : Nouvelle section dans les paramètres d'administration affichant les informations complètes de l'API REST (nombre d'endpoints, version, format, authentification)
+- **Documentation Swagger UI** : Interface interactive accessible via `/api-docs` permettant d'explorer et tester tous les endpoints de l'API directement depuis le navigateur
+- **Spécification OpenAPI 3.0** : Endpoint `/api/swagger.json` fournissant la spec complète importable dans Postman, Insomnia ou tout client compatible
+- **Endpoint `/api/api-info`** : Retourne les métadonnées de l'API (nombre d'endpoints, répartition par méthode HTTP et par module, tags, URLs)
+- **Configuration Swagger** (`src/config/swagger.ts`) : Documentation centralisée des ~90 endpoints organisés en 18 tags (Auth, Users, Categories, Objects, Calendar, Alerts, Tracking, Dashboard, Upload, Settings, Plugins, Email Templates, Backup, Permissions, Custom Fields, Logs, Webhooks, Security)
+- **Statistiques API** : Cartes affichant le nombre total d'endpoints, la version, le format REST et le type d'authentification JWT
+- **URLs copiables** : Base URL, Swagger UI et OpenAPI Spec avec bouton de copie dans le presse-papiers
+- **Guide d'authentification** : Bloc de code intégré montrant le flux complet (login → token → refresh)
+- **Tableau Rate Limiting** : Récapitulatif des limites de requêtes par route (global, auth, upload, backup)
+- **Modules API** : Grille listant tous les modules avec le nombre d'endpoints par module
+
+### Dépendances
+- Ajout de `swagger-jsdoc` et `swagger-ui-express` (+ types `@types/swagger-jsdoc`, `@types/swagger-ui-express`)
+
 ## [1.2.59] - 2026-03-04
 
 ### Ajouté

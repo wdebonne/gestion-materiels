@@ -1,8 +1,11 @@
 # 🔒 Rapport d'Audit de Sécurité des API
 
-**Date de l'audit** : 6 février 2026  
+**Date de l'audit initial** : 6 février 2026  
+**Révision** : 29 août 2026  
 **Projet** : Gestion Matériels  
 **Version auditée** : Branche `main`
+
+> ⚠️ La conclusion de l'audit initial (« score 9,5/10 ») portait sur la protection des routes, qui était effectivement bonne. Elle ne couvrait pas ce que faisaient les contrôles une fois passés. La révision d'août 2026 a trouvé quatre défauts que l'audit de février n'avait pas vus, tous listés plus bas.
 
 ---
 
@@ -33,8 +36,14 @@ Le middleware implémente les contrôles suivants :
 
 ```typescript
 // Hiérarchie des rôles
-admin > supervisor > user
+admin > supervisor > agent > user
 ```
+
+Le rôle **agent de terrain** a été ajouté en août 2026. Il ouvre uniquement les écritures du quotidien — relevé de plein, entretien, contrôle technique, entretien d'espace vert, pièce jointe, demande de réservation — via un garde unique `requireFieldWrite`. Le référentiel et toutes les suppressions restent au superviseur.
+
+Avant lui, saisir un plein exigeait le rôle superviseur, qui donnait au passage la suppression des espaces verts, la gestion du stock des manifestations et les seuils d'alerte : la pratique était donc de sur-privilégier les agents.
+
+La matrice complète est figée par `tests/roles.test.ts`, qui vérifie à la fois les gardes et le contrat déclaré de chaque route protégée.
 
 ---
 
@@ -60,10 +69,19 @@ admin > supervisor > user
 |-------|---------|-------------|
 | `POST /api/objects` | `object.routes.ts` | Création d'objets |
 | `PUT /api/objects/:id` | `object.routes.ts` | Modification d'objets |
-| `POST /api/objects/:id/fuel` | `object.routes.ts` | Ajout de carburant |
-| `POST /api/objects/:id/maintenance` | `object.routes.ts` | Ajout de maintenance |
 | `POST /api/calendar/events` | `calendar.routes.ts` | Création d'événements |
 | `PUT /api/alerts/settings` | `alert.routes.ts` | Configuration des alertes |
+
+### 🔵 Niveau Agent de terrain requis (`requireFieldWrite`)
+
+| Route | Fichier | Description |
+|-------|---------|-------------|
+| `POST /api/objects/:id/fuel` | `object.routes.ts` | Relevé de plein |
+| `POST /api/objects/:id/maintenance` | `object.routes.ts` | Relevé d'entretien |
+| `POST /api/objects/:id/technical-control` | `object.routes.ts` | Relevé de contrôle technique |
+| `POST /api/green-spaces/:id/maintenances` | `espaceVert.routes.ts` | Entretien d'espace vert |
+| `POST /api/upload/*` | `upload.routes.ts` | Pièces jointes |
+| `POST /api/reservations` | `reservation.routes.ts` | Demande de réservation (statut forcé à `pending` si non-superviseur) |
 
 ### 🟢 Authentification simple (`authenticateToken`)
 
@@ -125,7 +143,10 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
   }
 
   try {
-    jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    // Depuis août 2026 : plus de repli codé en dur, le secret vient de
+    // getJwtSecret() qui refuse de démarrer en production s'il est absent,
+    // trop court ou laissé à sa valeur d'exemple.
+    jwt.verify(token, getJwtSecret());
     next();
   } catch (error) {
     res.status(403).json({ success: false, message: 'Token invalide ou expiré' });
@@ -159,6 +180,9 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 | Logging des actions | ✅ | Service de logs dédié |
 | HTTPS forcé | ✅ | Redirection automatique en production |
 | Rotation JWT | ✅ | Service de rotation avec période de grâce |
+| Secret JWT obligatoire | ✅ | Plus de secret de repli codé en dur ; démarrage refusé en production |
+| Portée des tokens API | ✅ | Appliquée depuis août 2026 (voir ci-dessous) |
+| SQL des plugins | ✅ | Tables système protégées, écritures interdites |
 
 ### ✅ Recommandations implémentées (06/02/2026)
 
@@ -187,19 +211,151 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 
 ---
 
+## 🔎 Révision d'août 2026 — défauts trouvés après le premier audit
+
+L'audit de février portait sur *quelles routes sont protégées*. Ces défauts concernent *ce que font les contrôles une fois franchis*, et aucun n'était visible depuis la liste des routes.
+
+### 1. Portée des tokens API analysée puis ignorée — **corrigé**
+
+`authenticateApiToken` lisait les permissions du token, les rangeait dans `req.apiTokenPermissions`, et **plus aucune ligne ne les relisait** : zéro référence dans les 25 fichiers de routes. Or un token hérite du rôle complet de son créateur.
+
+Un token créé « lecture seule » par un administrateur pouvait donc supprimer tout ce que cet administrateur pouvait supprimer. L'écran des tokens proposait pourtant trois cases distinctes et affichait la portée sur chaque ligne.
+
+**Correction** : contrôle unique dans `authenticateApiToken`, avant que la requête n'atteigne la moindre route. GET/HEAD/OPTIONS exigent « Lecture », POST/PUT/PATCH « Écriture », DELETE « Suppression » — le découpage annoncé par l'écran. Une méthode inattendue est traitée comme une écriture, jamais comme une lecture. Un JSON corrompu ou une permission inventée ramènent à la lecture seule.
+
+**Vérifié** sur trois tokens créés par un administrateur : lecture seule refusée en POST et en DELETE, lecture+écriture refusée en DELETE. Figé par `tests/apiTokens.test.ts` (10 tests).
+
+### 2. La déconnexion épuisait le limiteur d'authentification — **corrigé**
+
+`logout()` envoyait `POST /auth/logout` puis effaçait l'état. Les intercepteurs axios étant asynchrones, l'état était nul avant que la requête ne parte : elle partait sans en-tête d'autorisation et prenait un 401. Ce 401 déclenchait la reprise de session, qui rappelait `logout()`, qui rappelait `/auth/logout` — une dizaine de requêtes en cascade jusqu'au 429.
+
+Comme `authLimiter` couvre **tout** `/api/auth` à 10 requêtes par quart d'heure, la cascade épuisait le quota : se déconnecter, ou simplement se tromper de mot de passe, **interdisait de se reconnecter pendant 15 minutes**. Sur un poste partagé, cela bloque la personne suivante.
+
+Le limiteur faisait donc exactement son travail, contre l'application elle-même. C'est le type de défaut qu'une revue de la configuration du rate limiting ne peut pas voir.
+
+**Correction** : le jeton est joint explicitement à la requête de déconnexion, et un 401 sur `/auth/logout`, `/auth/refresh` ou `/auth/login` ne déclenche plus de reprise de session — ces routes ne décrivent pas une session à récupérer.
+
+**Mesuré** : déconnexion passée de ~10 requêtes (401 puis 429) à 1 requête en 200 ; mot de passe erroné passé d'une cascade à zéro requête de déconnexion.
+
+### 3. Aucune déconnexion n'était journalisée — **corrigé**
+
+Conséquence du point précédent : `POST /auth/logout` prenant un 401 systématique, la route n'était jamais exécutée. La déconnexion n'était pas enregistrée dans `logs` ni dans `activity_logs`, et le cookie `auth_token` n'était jamais effacé côté serveur.
+
+Le journal d'audit ne contenait donc que des connexions — un défaut de traçabilité invisible tant qu'on ne cherche pas les déconnexions manquantes.
+
+### 4. Politique de mot de passe et blocage jamais appliqués — **corrigé**
+
+L'écran **Paramètres > Authentification** permet de configurer la longueur minimale, la complexité, l'expiration des mots de passe, le blocage après N tentatives échouées, la 2FA obligatoire et le timeout de session.
+
+Aucune de ces règles n'était appliquée : zéro référence dans `auth.routes.ts` et `user.routes.ts`. Un administrateur qui configurait « blocage après 5 tentatives » croyait disposer d'un contrôle qui n'existait pas, et seul le rate limiting global protégeait du bourrinage.
+
+**Correction** : `src/services/passwordPolicy.service.ts` lit la configuration et l'applique.
+
+- **Longueur et complexité** vérifiées aux six endroits où un mot de passe est défini : inscription, réinitialisation, changement, création par un administrateur, changement de son propre mot de passe, réattribution par un administrateur. Les quatre contrôles de longueur codés en dur ont été retirés — ils auraient contredit un minimum configuré différemment.
+- **Blocage du compte** après N échecs, pendant la durée configurée, réponse `423`. Ce contrôle protège un compte précis, là où le rate limiting protège l'API dans son ensemble. Le nombre d'essais restants n'est pas révélé : il indiquerait qu'un email existe. Un administrateur débloque en réattribuant un mot de passe, et une réinitialisation réussie débloque aussi.
+- **Expiration** signalée à la connexion par un drapeau `passwordExpired`, affiché en bandeau. Elle ne bloque pas : refuser l'accès à un agent en extérieur parce que son mot de passe a 91 jours coûterait plus que cela ne protège. Un compte sans date de changement connue — tous ceux créés avant la migration — n'est jamais déclaré expiré.
+- **Configuration illisible** : une valeur absente, d'un type inattendu ou négative retombe sur la valeur par défaut, jamais sur « aucune exigence ».
+
+Colonnes ajoutées par la migration `002_politique_connexion` : `failed_login_attempts`, `locked_until`, `password_changed_at`.
+
+**Trois réglages restent inapplicables** et ont été retirés du formulaire, remplacés par un encart qui dit pourquoi plutôt que par des interrupteurs sans effet : la 2FA (aucun second facteur n'existe), le timeout de session (demanderait un suivi d'inactivité), et la connexion locale (la désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne).
+
+**Vérifié** : blocage au 3ᵉ échec avec le seuil réglé à 3, bon mot de passe refusé pendant le blocage, déblocage par un administrateur, et signalement d'expiration sur un mot de passe daté de 100 jours avec un seuil à 90. 21 tests figent le contrat.
+
+### 5. L'export ignorait les permissions de catégorie — **corrigé**
+
+`GET /api/import-export/export` n'avait que `authenticateToken`. Il construisait
+sa requête sur `WHERE 1=1`, sans le filtrage par catégories accessibles
+qu'applique `GET /objects`.
+
+Un compte dont l'écran ne montre aucune catégorie récupérait donc l'inventaire
+complet dans un classeur — nom, référence, numéro de série, localisation, prix
+d'achat de chaque matériel. La route était bien authentifiée, ce qui explique
+qu'elle figure dans la liste des routes protégées de l'audit de février : c'est
+le contrôle *après* l'authentification qui manquait.
+
+**Correction** : le même filtre que `GET /objects`, et un 403 explicite quand
+aucune catégorie n'est accessible.
+
+**Vérifié** : un compte `user` sans permission voit 0 matériel à l'écran et
+reçoit désormais `403 Aucune catégorie ne vous est accessible` sur l'export, là
+où il obtenait auparavant les 57 matériels du parc.
+
+### 6. La génération de QR codes ignorait les permissions — **corrigé**
+
+`GET /api/qrcode/:objectId` et `POST /api/qrcode/batch` n'avaient que
+`authenticateToken`. La génération en lot accepte jusqu'à 100 identifiants et
+renvoie, pour chacun, le nom, la référence et le numéro de série du matériel.
+
+Un compte sans aucune permission de catégorie pouvait donc énumérer l'inventaire
+complet en incrémentant des nombres, sans jamais voir un seul matériel à
+l'écran. Même schéma que l'export : la route est authentifiée, mais le contrôle
+qui suit l'authentification manquait.
+
+**Correction** : le même filtre que `GET /objects` sur les deux routes, et un
+403 explicite quand aucune catégorie n'est accessible.
+
+### 7. Revue systématique : quatre routes rendaient des matériels hors périmètre — **corrigé**
+
+Les constats 1, 5 et 6 décrivaient le même schéma : une route authentifiée où le
+contrôle *suivant* l'authentification manquait. Trois occurrences n'étant pas
+une coïncidence, les treize fichiers touchant la table `objects` ont été revus
+un par un, puis sondés avec un compte sans aucune permission de catégorie.
+
+Quatre endpoints rendaient des données qu'il n'a pas le droit de consulter :
+
+| Route | Ce qui sortait |
+|-------|----------------|
+| `GET /api/objects/:id` | La fiche complète. La liste filtrait, le détail non |
+| `GET /api/green-spaces/search/objects` | Recherche libre sur tout le parc : nom, référence, prix d'achat, description |
+| `GET /api/reservations` | Nom et référence des matériels réservés |
+| `GET /api/calendar/events` | Nom des matériels liés aux événements (quatre requêtes concernées) |
+
+La sonde initiale avait sous-estimé le problème : `/reservations` et
+`/calendar/events` répondaient sans rien laisser fuir **faute de données**. Il a
+fallu créer une réservation et un événement sur un matériel témoin pour que la
+fuite apparaisse. Une absence de fuite sur un jeu de données vide ne prouve rien.
+
+**Correction** : `src/middleware/objectScope.ts` écrit la règle une seule fois.
+`filtreObjets` pour les requêtes sur `objects`, `filtreObjetsLies` pour les
+tables qui *référencent* un matériel — un événement sans matériel reste visible
+de tous, sinon la protection deviendrait une régression.
+
+**Vérifié** : les huit sondes rendues avec le compte restreint ne contiennent
+plus le nom du matériel témoin, et l'événement sans matériel reste visible.
+
+**Ce qui empêche la récidive** : `tests/objectScope.test.ts` énumère les
+fichiers qui lisent `objects` et échoue dès que l'un d'eux n'applique ni la
+portée ni une exemption motivée. Vérifié en introduisant volontairement un
+fichier non filtré : le test échoue et le nomme.
+
+Cinq fichiers sont exemptés, chacun avec sa raison — comptages déjà restreints,
+configuration de champs sans données de matériel, jointures d'espaces verts
+gouvernées par leur propre modèle d'accès, et deux services sans requête ni
+utilisateur.
+
+### Journalisation muette — **corrigé**
+
+Deux défauts indépendants faisaient disparaître des entrées de journal sans erreur :
+
+- La catégorie `'other'`, déclarée dans le type et proposée en filtre sous le nom « Autre », manquait dans les catégories activées par défaut. Les 13 appels qui l'utilisaient — création et suppression d'espace vert, cycle de vie des manifestations, import/export, réservations — n'écrivaient rien.
+- L'appel journalisant les changements de configuration d'authentification passait `action` et omettait `level` ; `log()` filtre sur les niveaux activés, `includes(undefined)` est faux, et l'entrée était jetée.
+
+---
+
 ## 📈 Matrice de conformité
 
 | Critère OWASP | Statut | Notes |
 |---------------|--------|-------|
-| A01 - Broken Access Control | ✅ | Uploads protégés par JWT |
+| A01 - Broken Access Control | ✅ | Uploads protégés par JWT. La portée par catégorie, absente de sept endpoints jusqu'en août 2026, est désormais appliquée partout et gardée par un test de contrat |
 | A02 - Cryptographic Failures | ✅ | Bcrypt + JWT avec rotation |
 | A03 - Injection | ✅ | Requêtes paramétrées |
 | A04 - Insecure Design | ✅ | Architecture sécurisée |
-| A05 - Security Misconfiguration | ✅ | Headers OK, HTTPS forcé |
+| A05 - Security Misconfiguration | ✅ | Headers OK, HTTPS forcé, secret JWT obligatoire. La politique de mot de passe et le blocage après N tentatives sont appliqués depuis août 2026 |
 | A06 - Vulnerable Components | ⚠️ | Audit npm recommandé |
-| A07 - Authentication Failures | ✅ | Rate limiting + audit complet |
+| A07 - Authentication Failures | ✅ | Rate limiting + audit complet. Corrigé en août 2026 : la cascade de déconnexion épuisait le limiteur et bloquait la reconnexion 15 minutes, et aucune déconnexion n'était journalisée |
 | A08 - Data Integrity Failures | ✅ | Validation des entrées |
-| A09 - Security Logging | ✅ | Service de logs complet |
+| A09 - Security Logging | ✅ | Service de logs complet. Corrigé en août 2026 : la catégorie « Autre » n'était pas activée, ce qui faisait disparaître 13 types d'événements |
 | A10 - SSRF | ✅ | Non applicable |
 
 ---
@@ -220,8 +376,15 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 ### Priorité basse (dans les 90 jours)
 
 - [x] ~~Implémenter la détection de tentatives de brute force~~ ✅ Via rate limiting
-- [ ] Ajouter des tests de sécurité automatisés
+- [x] ~~Ajouter des tests de sécurité automatisés~~ ✅ Août 2026 — `roles.test.ts` (31 tests, matrice rôle × endpoint) et `apiTokens.test.ts` (10 tests, portée des tokens)
 - [ ] Mettre en place un WAF (Web Application Firewall)
+
+### Ouvert après la révision d'août 2026
+
+- [x] ~~**Appliquer ou retirer la politique de mot de passe et le blocage après N tentatives**~~ ✅ Août 2026 — appliqués ; les trois réglages inapplicables ont été retirés du formulaire
+- [ ] **Finir ou retirer les écrans SSO SAML / OIDC / LDAP / Passkey** — `auth_config` est écrite et relue par personne
+- [ ] **Séparer le secret du jeton de rafraîchissement** — `JWT_REFRESH_SECRET` est déclaré dans `docker-compose.yml` et lu par personne : les deux jetons sont signés avec `JWT_SECRET`, donc une fuite du secret d'accès permet aussi de forger des jetons de rafraîchissement
+- [ ] Exécuter `npm audit` et corriger les vulnérabilités
 
 ---
 
@@ -243,10 +406,18 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 
 ## 📝 Conclusion
 
-L'application **Gestion Matériels** présente un **excellent niveau de sécurité** avec une architecture d'authentification solide et des contrôles de sécurité avancés. Toutes les recommandations critiques ont été implémentées.
+**Le contrôle d'accès aux routes est solide** : toutes les routes sont protégées, les rôles sont vérifiés et désormais figés par une matrice de tests, le rate limiting et les en-têtes de sécurité sont en place.
 
-**Score de sécurité global** : 🟢 **9.5/10**
+La révision d'août 2026 montre en revanche que la protection des routes ne dit rien de ce qui se passe une fois le contrôle franchi. C'est là que se trouvaient tous les défauts : portée des tokens API ignorée, export et génération de QR codes non cloisonnés, quatre routes rendant des matériels hors périmètre, cascade de déconnexion bloquant la reconnexion quinze minutes, déconnexions jamais journalisées. Aucun n'était visible depuis la liste des endpoints — ils étaient tous authentifiés.
+
+La leçon tient en une phrase : **une route protégée n'est pas une route qui protège**. Un audit qui s'arrête à « qui peut appeler quoi » manque « ce que l'appel rend ».
+
+**Le point ouvert le plus sérieux n'est pas un défaut de code mais un écart entre l'interface et la réalité.** La politique de mot de passe et le blocage après N tentatives, qui étaient dans ce cas, sont désormais appliqués ; les réglages inapplicables ont été retirés du formulaire.
+
+Restent les **écrans SSO SAML, OIDC, LDAP et Passkey**, qui enregistrent une configuration que personne ne relit. Ils affichent désormais un bandeau disant que le flux n'est pas implémenté et que la connexion reste locale : ils ne font plus croire que l'authentification est déléguée, ce qui était le vrai risque — un administrateur rassuré à tort cherche moins d'autres protections.
+
+**Priorité suivante** : décider de finir ou de retirer ces quatre écrans. Les implémenter suppose trois dépendances supplémentaires, des routes de rappel et une gestion de certificats ; les retirer prend une heure. Tant que la décision n'est pas prise, le bandeau tient lieu d'avertissement.
 
 ---
 
-*Rapport mis à jour le 06/02/2026 - Audit réalisé par GitHub Copilot*
+*Audit initial du 06/02/2026 par GitHub Copilot — révision du 29/08/2026 après vérification du comportement réel dans le navigateur et en base.*
