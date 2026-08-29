@@ -250,6 +250,237 @@ const DEFAULT_EMAIL_TEMPLATES = [
 </html>`,
     variables: JSON.stringify(['site_name', 'backup_filename', 'backup_date', 'backup_size', 'site_url', 'year']),
     description: 'Email envoyé lors de l\'envoi d\'une sauvegarde par email'
+  },
+  // ---------------------------------------------------------------- Manifestations
+  //
+  // Un service ne reçoit ces messages que s'il est concerné par la
+  // manifestation — c'est-à-dire si elle demande du matériel de ses catégories.
+  // Voir `manifestationServices.service.ts`.
+  {
+    name: 'manifestation_approval_request',
+    subject: '✅ Votre approbation est attendue — {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #0284c7; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Approbation attendue</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Bonjour,</p>
+      <p>La manifestation <strong>{{manifestation_title}}</strong> demande du matériel relevant de
+         <strong>{{service_name}}</strong>. Votre approbation est attendue.</p>
+      {{#if comment}}<p style="background: #eff6ff; border-left: 3px solid #0284c7; padding: 10px;">{{comment}}</p>{{/if}}
+      <p>Vous pouvez approuver, refuser, ou indiquer que votre service n'est pas concerné —
+         et préciser vos propres dates de livraison et de récupération.</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #0284c7; color: white; text-decoration: none; border-radius: 4px;">Voir la manifestation</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'service_name', 'comment', 'manifestation_url', 'year']),
+    description: "Demande d'approbation envoyée à un service concerné par une manifestation"
+  },
+  {
+    name: 'manifestation_information_request',
+    subject: 'ℹ️ Demande d\'information — {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #6366f1; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Demande d'information</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Bonjour,</p>
+      <p>Votre avis est demandé sur la manifestation <strong>{{manifestation_title}}</strong>.</p>
+      {{#if comment}}<p style="background: #eef2ff; border-left: 3px solid #6366f1; padding: 10px;">{{comment}}</p>{{/if}}
+      <p>Cette demande n'est pas bloquante : la manifestation peut être validée sans votre réponse.</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #6366f1; color: white; text-decoration: none; border-radius: 4px;">Répondre</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'comment', 'manifestation_url', 'year']),
+    description: "Demande d'avis non bloquante sur une manifestation"
+  },
+  {
+    name: 'manifestation_decision',
+    subject: '📋 {{service_name}} {{decision}} {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #0f766e; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Décision d'un service</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p><strong>{{service_name}}</strong> {{decision}} la manifestation <strong>{{manifestation_title}}</strong>.</p>
+      {{#if comment}}<p style="background: #f0fdfa; border-left: 3px solid #0f766e; padding: 10px;">{{comment}}</p>{{/if}}
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #0f766e; color: white; text-decoration: none; border-radius: 4px;">Voir le suivi</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'service_name', 'decision', 'comment', 'manifestation_url', 'year']),
+    description: 'Décision rendue par un service sur une manifestation'
+  },
+  {
+    name: 'manifestation_message',
+    subject: '💬 Nouveau message — {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #7c3aed; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Nouveau message</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Un message a été ajouté au suivi de <strong>{{manifestation_title}}</strong> :</p>
+      <p style="background: #f5f3ff; border-left: 3px solid #7c3aed; padding: 12px; white-space: pre-wrap;">{{message}}</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #7c3aed; color: white; text-decoration: none; border-radius: 4px;">Répondre</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'message', 'manifestation_url', 'year']),
+    description: 'Message ajouté au fil de suivi d\'une manifestation'
+  },
+  {
+    name: 'manifestation_date_changed',
+    subject: '📅 Dates modifiées — {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #d97706; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Dates modifiées</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Les dates de <strong>{{manifestation_title}}</strong> ont changé :</p>
+      <p style="background: #fffbeb; border-left: 3px solid #d97706; padding: 12px;">{{changes}}</p>
+      <p>Si votre service avait réservé un créneau ou une équipe, il est temps de le revoir.</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #d97706; color: white; text-decoration: none; border-radius: 4px;">Voir la manifestation</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'changes', 'manifestation_url', 'year']),
+    description: 'Changement de date, de livraison ou de récupération sur une manifestation'
+  },
+  {
+    name: 'manifestation_material_changed',
+    subject: '📦 Matériel modifié — {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #0369a1; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Matériel modifié</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Le matériel demandé pour <strong>{{manifestation_title}}</strong> a été modifié :</p>
+      <p style="background: #f0f9ff; border-left: 3px solid #0369a1; padding: 12px;">{{changes}}</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #0369a1; color: white; text-decoration: none; border-radius: 4px;">Voir le détail</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'changes', 'manifestation_url', 'year']),
+    description: 'Ajout ou retrait de matériel sur une manifestation'
+  },
+  {
+    name: 'manifestation_delivery_reminder',
+    subject: '🚚 Livraison dans {{days}} jour(s) — {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #ca8a04; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Livraison à préparer</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>La livraison de <strong>{{manifestation_title}}</strong> est prévue le <strong>{{delivery_date}}</strong>,
+         dans {{days}} jour(s).</p>
+      <p><strong>Lieu :</strong> {{delivery_address}}</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #ca8a04; color: white; text-decoration: none; border-radius: 4px;">Voir la manifestation</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'delivery_date', 'delivery_address', 'days', 'manifestation_url', 'year']),
+    description: 'Rappel envoyé quelques jours avant la livraison d\'une manifestation'
+  },
+  {
+    name: 'manifestation_recovery_overdue',
+    subject: '⚠️ Matériel non récupéré — {{manifestation_title}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #dc2626; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Matériel non récupéré</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>La récupération du matériel de <strong>{{manifestation_title}}</strong> était prévue le
+         <strong>{{recovery_date}}</strong>. Elle n'a pas été enregistrée.</p>
+      <p>Tant qu'elle ne l'est pas, le stock considère ce matériel comme encore dehors et
+         il reste indisponible pour les autres manifestations.</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{manifestation_url}}" style="display: inline-block; padding: 12px 24px; background: #dc2626; color: white; text-decoration: none; border-radius: 4px;">Saisir la récupération</a>
+      </p>
+    </div>
+    <div style="text-align: center; padding: 20px; color: #666; font-size: 12px;">
+      <p>© {{year}} {{site_name}}</p>
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_name', 'manifestation_title', 'recovery_date', 'manifestation_url', 'year']),
+    description: 'Alerte de récupération en retard sur une manifestation'
   }
 ];
 

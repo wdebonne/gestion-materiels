@@ -1,5 +1,6 @@
 import { db } from '../database';
 import { AuthRequest, getAccessibleCategoryIds } from './auth.middleware';
+import { manifestationsVisiblesParService } from '../services/manifestationServices.service';
 
 /**
  * Restriction des lectures du module Manifestations aux catégories du compte.
@@ -40,6 +41,11 @@ export type PorteeStock =
  * redevenait visible de tous.
  */
 export async function porteeStock(req: AuthRequest, alias = 'ms'): Promise<PorteeStock> {
+  // Le catalogue de stock n'est pas l'affaire d'un service partenaire : il voit
+  // le matériel *des manifestations qui le concernent*, dans leur détail, pas
+  // l'inventaire de la collectivité.
+  if (req.user!.role === 'service') return { type: 'aucune' };
+
   const accessibles = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
   if (accessibles === null) return { type: 'tout' };
   if (accessibles.length === 0) return { type: 'aucune' };
@@ -79,10 +85,28 @@ export async function filtreManifestations(
   req: AuthRequest,
   alias = 'm'
 ): Promise<{ sql: string; params: any[] } | null> {
+  const prefixe = alias ? `${alias}.` : '';
+
+  // Un compte « service » ne suit pas des catégories de matériel : il suit les
+  // manifestations où il est sollicité, observateur, ou mis en copie. La portée
+  // par catégorie ne dit rien de cela, et l'appliquer lui montrerait des
+  // manifestations qui ne le concernent pas tout en lui en cachant qui le
+  // concernent.
+  if (req.user!.role === 'service') {
+    const visibles = await manifestationsVisiblesParService(req.user!.userId);
+    if (visibles.length === 0) {
+      // Aucune manifestation : une condition toujours fausse, plutôt qu'un
+      // `IN ()` que SQLite refuse.
+      return { sql: ' AND 1 = 0', params: [] };
+    }
+    return {
+      sql: ` AND ${prefixe}id IN (${visibles.map(() => '?').join(',')})`,
+      params: visibles,
+    };
+  }
+
   const accessibles = await getAccessibleCategoryIds(req.user!.userId, req.user!.role);
   if (accessibles === null) return { sql: '', params: [] };
-
-  const prefixe = alias ? `${alias}.` : '';
 
   if (accessibles.length === 0) {
     // Aucune catégorie : seules les manifestations sans matériel subsistent.

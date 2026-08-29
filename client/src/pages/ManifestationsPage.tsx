@@ -10,6 +10,7 @@ import {
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
 import ManifestationPDFExport from '@/components/ManifestationPDFExport'
+import ManifestationSuivi from '@/components/ManifestationSuivi'
 import api from '@/lib/api'
 import {
   manifestationApi,
@@ -1288,6 +1289,9 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
               </CardBody>
             </Card>
           )}
+          {/* Approbations, échanges et copies : le suivi partagé entre services. */}
+          <ManifestationSuivi manifestationId={m.id} />
+
           <Card>
             <CardHeader><CardTitle className="text-sm">Historique</CardTitle></CardHeader>
             <CardBody>

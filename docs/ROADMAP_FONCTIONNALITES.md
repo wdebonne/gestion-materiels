@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
-| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée des demandes et stock réel/prévisionnel — août 2026 |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations — août 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -210,9 +210,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
   - **Filtres** : Par statut, dates, recherche textuelle
   - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
-- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`
+- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
-- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, écran Réglages › Réception manifestations
+- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
 
 > ✅ **Complété en août 2026 :** chaque action est consignée dans `manifestation_history` — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et un commentaire facultatif. La timeline s'affiche dans le détail, et `GET /:id/history` la sert seule.
@@ -229,7 +229,13 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > ⚠️ **Fuite fermée :** `GET /manifestations`, `GET /:id`, `/stock` et `/stock/availability` étaient lisibles par tout compte authentifié — seules les écritures étaient gardées. `objectScope.ts` ne couvrait que la table `objects`, et son test de non-régression ne cherche que cette chaîne. Règle écrite dans `manifestationScope.ts`.
 >
-> ⏳ **Reste à faire :** services et approbations par service concerné, conversation par manifestation, accès cloisonné au seul module Manifestations, export Excel vers Nextcloud. La table `manifestation_items` reste inutilisée.
+> ✅ **Services et suivi partagé, août 2026 :** un service est un groupe de personnes *et* un périmètre de catégories. C'est ce périmètre qui décide de tout — un service n'est sollicité, alerté et destinataire que si la manifestation demande du matériel de ses catégories. Avant, le choix se réduisait à « tout le monde reçoit tout » ou « personne ne reçoit rien » : `group_permissions.role` désigne un rôle, pas un groupe de personnes.
+>
+> Chaque service concerné approuve sa part, avec ses propres dates de livraison et de récupération, et la validation reste bloquée tant qu'il n'a pas répondu. Les services échangent dans un fil consigné à l'historique ; une direction générale ou des élus peuvent être mis en copie sans rien approuver.
+>
+> Le rôle `service` ouvre le seul module Manifestations. Le cloisonnement est **fermé par défaut** — tout `/api/*` est refusé sauf une liste blanche — et appliqué au point unique où le rôle devient connu, jetons API compris.
+>
+> ⏳ **Reste à faire :** export Excel des manifestations vers Nextcloud. La table `manifestation_items` reste inutilisée.
 >
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 

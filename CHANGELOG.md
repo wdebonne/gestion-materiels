@@ -136,6 +136,36 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Le commentaire de transition était jeté par le client** : le serveur l'accepte et le consigne depuis toujours, `updateStatus` ne le transmettait pas — aucune validation ni annulation ne pouvait être motivée
 - **Les regex de `tests/webhooks.test.ts` ignoraient tout événement comportant un tiret bas.** La parité entre l'écran et le service qu'elles vérifient serait devenue muette précisément sur les événements qu'on venait d'ajouter
 
+### Manifestations — services concernés, approbations et suivi partagé
+
+> Une manifestation municipale engage plusieurs services : le festif prête les tables, l'informatique le vidéoprojecteur, la restauration les boissons. Aucun modèle ne permettait de dire « ce service est concerné » — `group_permissions.role` désigne un rôle, pas un groupe de personnes, et il n'existait ni entité de service, ni destinataire collectif, ni approbation. Le choix se réduisait donc à « tout le monde reçoit tout » ou « personne ne reçoit rien ».
+
+#### Ajouté
+
+- **Services.** Un service est un groupe de personnes **et** un périmètre de catégories de matériel. C'est ce périmètre qui décide de tout : un service n'est sollicité, alerté et destinataire que si la manifestation demande du matériel de ses catégories. Le service informatique ne reçoit rien d'une brocante sans matériel informatique, la restauration rien d'une réunion sans repas — c'est exactement ce qui fait qu'on cesse de lire ses alertes et qu'on rate celle qui comptait
+  - Boîte partagée facultative : elle survit aux départs, contrairement à l'adresse d'un agent. Les membres reçoivent dans tous les cas
+  - Services **observateurs** — direction générale, maire, élus — sans périmètre : ils suivent tout, sans rien approuver
+  - Un service qui a rendu des décisions est **désactivé, jamais supprimé** : l'effacer réécrirait la traçabilité d'une manifestation
+- **Approbations par service concerné.** Créées automatiquement à la création d'une manifestation et à chaque modification du matériel. Chaque service porte ses propres dates de livraison et de récupération : l'informatique installe le vidéoprojecteur le matin, le festif livre les tables la veille
+  - Une manifestation ne peut pas être validée tant qu'un service concerné n'a pas répondu — réglable par `manifestation_require_all_approvals`. La valider avant reviendrait à promettre à sa place, et c'est le jour de la livraison qu'on découvrirait que le vidéoprojecteur n'était pas disponible
+  - Un service ne peut décider **que pour lui-même** ; l'administrateur peut toujours trancher, c'est lui qui débloque quand un service ne répond pas
+  - Sollicitation manuelle possible vers un service ou une personne, en **approbation** (bloquante) ou en **information** (non bloquante) : un avis laissé sans réponse ne doit pas retenir une manifestation
+- **Conversation par manifestation.** Les services s'y répondent — changement de date, matériel à ajouter ou à retirer. Chaque message est aussi consigné dans l'historique, pour que la chronologie reste l'unique source du suivi, et se retrouve dans l'archive
+- **Mise en copie.** Un DGS, un maire, un élu suivent l'intégralité des échanges sans rien avoir à approuver
+- **Rôle « service partenaire ».** Ce n'est pas un cran de plus sur l'échelle des pouvoirs mais un accès *latéral* : il écrit dans les manifestations qui le concernent et ne voit rien du parc, des entretiens ni de la configuration
+  - Cloisonnement **fermé par défaut** : tout `/api/*` lui est refusé sauf une liste blanche explicite. Une route ajoutée demain sera inaccessible tant que quelqu'un n'en aura pas décidé autrement — l'inverse d'une liste noire, qu'on oublie de compléter
+  - Appliqué au point unique où le rôle devient connu, la fin de `authenticateToken` — y compris pour les jetons API, sans quoi un token créé par un compte cloisonné contournerait tout
+  - La navigation se réduit à Manifestations : afficher les autres entrées promettrait des pages qui répondent 403
+- **Déclencheurs réglables par service** : sollicitation, statut et dates, matériel, messages. Un service coupe ce qui ne l'intéresse pas sans perdre les demandes qui le concernent
+- **Deux rappels planifiés** (7h30) : livraison à J-3 (réglable) et récupération en retard. Aucun des deux n'existait — une manifestation validée n'avertissait personne avant le jour J, et un matériel jamais récupéré restait compté comme sorti indéfiniment, donc indisponible pour les autres, sans que quiconque sache pourquoi
+- **Huit gabarits de courriel** semés : demande d'approbation, demande d'information, décision, message, changement de dates, changement de matériel, rappel de livraison, récupération en retard
+- **Trois événements de webhook** : `manifestation.approval_requested`, `.approval_decided`, `.dates_changed`
+
+#### Corrigé
+
+- **La validation n'était pas réellement bloquée.** Les approbations étaient créées *après* la transition, si bien que le contrôle ne trouvait rien à attendre et laissait passer — puis les créait, trop tard. Trouvé à l'essai sur l'application, pas au typecheck. Elles sont désormais créées à la création de la manifestation, et rafraîchies avant le contrôle
+- **Un compte « service » ne doit pas être filtré par catégorie de matériel** : il suit les manifestations où il est sollicité, observateur ou en copie. Lui appliquer la portée par catégorie lui aurait montré des manifestations qui ne le concernent pas tout en lui cachant les siennes
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

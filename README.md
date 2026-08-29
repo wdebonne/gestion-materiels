@@ -35,6 +35,8 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 Pour relever un plein, un jardinier devait auparavant être promu **superviseur**, ce qui lui donnait au passage la suppression des espaces verts, la gestion du stock des manifestations et les seuils d'alerte.
 
+Un cinquième rôle, **service partenaire**, ouvre le seul module Manifestations : le service communication suit les manifestations, le service informatique approuve le prêt d'un vidéoprojecteur. Ni l'un ni l'autre n'a à voir le parc, les entretiens ou les pleins de carburant. Le cloisonnement est fermé par défaut — tout `/api/*` lui est refusé sauf une liste blanche explicite.
+
 L'agent de terrain peut faire les gestes du quotidien — relevé de plein, entretien, contrôle technique, entretien d'espace vert, photo jointe, demande de réservation — et rien d'autre. Le référentiel (types, statuts, groupes, seuils) et toutes les suppressions restent au superviseur.
 
 | Geste | Utilisateur | Agent | Superviseur | Admin |
@@ -117,6 +119,10 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 📥 **Réception de demandes** : une application de formulaires dépose ses demandes sur une adresse signée (HMAC-SHA256). Elles arrivent « À confirmer » et réservent le matériel au prévisionnel. La correspondance entre le JSON reçu et les champs d'une manifestation se règle dans l'interface, pas dans le code
 - 📈 **Stock prévisionnel et réel** : ce qui est promis sur une période et ce qui est physiquement sorti sont comptés séparément, jamais deux fois. Interrogeable à une date ou sur une période — « aurai-je 200 chaises le 14 juillet ? »
 - 🪑 **Quantités réelles** : demandé, livré, récupéré et **perdu**. Une chaise cassée ou volée diminue le stock physique et laisse un mouvement tracé
+- 🏛️ **Services concernés** : un service est un groupe de personnes et un périmètre de catégories. Il n'est sollicité, alerté et destinataire que si la manifestation demande du matériel de son périmètre — le service informatique ne reçoit rien d'une brocante sans matériel informatique
+- ✅ **Approbations** : chaque service concerné approuve sa part, avec ses propres dates de livraison et de récupération. La validation reste bloquée tant qu'un service n'a pas répondu
+- 💬 **Conversation** : les services échangent dans le fil de la manifestation ; tout est consigné dans l'historique et dans l'archive
+- 👀 **Mise en copie** : une direction générale, un maire ou un élu suit l'intégralité des échanges sans rien approuver
 - 🎨 **Indicateurs visuels** : Cartes colorées par statut (bordure, fond, badge) avec barre de progression du workflow
 - ✅ **Modales de changement de statut** :
   - Refus/Validation avec commentaire optionnel
@@ -556,6 +562,29 @@ POST   /api/manifestations/stock/:id/aliases   # Ajouter un alias
 DELETE /api/manifestations/stock/aliases/:id   # Retirer un alias
 ```
 
+**Services, approbations et suivi**
+
+```
+GET    /api/services                   # Liste des services
+GET    /api/services/mine              # Services du compte courant
+GET    /api/services/:id               # Détail : périmètre et membres (admin)
+POST   /api/services                   # Créer un service
+PUT    /api/services/:id               # Nom, boîte partagée, observateur, déclencheurs
+DELETE /api/services/:id               # Supprime, ou désactive s'il a rendu des décisions
+PUT    /api/services/:id/categories    # Périmètre de matériel
+POST   /api/services/:id/members       # Ajouter un membre
+DELETE /api/services/:id/members/:userId
+
+GET    /api/manifestations/:id/approvals      # Approbations et sollicitations
+POST   /api/manifestations/:id/approvals      # Solliciter un service ou une personne
+PUT    /api/manifestations/:id/approvals/:approvalId  # Rendre sa décision
+GET    /api/manifestations/:id/messages       # Fil d'échange
+POST   /api/manifestations/:id/messages       # Écrire dans le fil
+GET    /api/manifestations/:id/watchers       # Personnes et services en copie
+POST   /api/manifestations/:id/watchers       # Mettre en copie
+DELETE /api/manifestations/:id/watchers/:watcherId
+```
+
 **Réception des demandes**
 
 ```
@@ -741,6 +770,8 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - `PUT /api/manifestations/:id` ne lit pas le champ `status` : le statut se change uniquement via `PUT /:id/status`
 - La table `manifestation_items`, qui rattacherait à une manifestation un matériel du parc identifié individuellement — plutôt qu'une quantité — existe depuis l'origine et n'est ni lue ni écrite. Le README annonçait jusqu'ici une « recherche d'objets du parc pour ajout aux manifestations » et l'API une route `GET /api/manifestations/search/objects` : ni l'une ni l'autre n'existent
 - La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
+- L'export Excel des manifestations vers Nextcloud n'est pas encore fait : les manifestations s'exportent seulement en fiche PDF
+- Un service ne peut être mis en copie que globalement ; il n'existe pas encore de mise en copie d'une personne depuis l'écran (l'API l'accepte : `POST /:id/watchers` avec `user_id`)
 - Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`
 
 ## 🛠️ Développement

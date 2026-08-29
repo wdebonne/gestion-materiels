@@ -747,6 +747,91 @@ class DatabaseManager {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
+      // Services concernés par une manifestation. Voir la migration 004 :
+      // un service est un groupe de personnes ET un périmètre de catégories,
+      // et c'est ce périmètre qui décide qui est sollicité.
+      `CREATE TABLE IF NOT EXISTS services (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        slug VARCHAR(100) NOT NULL UNIQUE,
+        email VARCHAR(255),
+        description ${textType},
+        is_observer ${boolType} DEFAULT 0,
+        is_active ${boolType} DEFAULT 1,
+        notify_new_request ${boolType} DEFAULT 1,
+        notify_status_change ${boolType} DEFAULT 1,
+        notify_material_change ${boolType} DEFAULT 1,
+        notify_message ${boolType} DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS service_categories (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        category_id INTEGER NOT NULL,
+        UNIQUE(service_id, category_id),
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS service_members (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        is_manager ${boolType} DEFAULT 0,
+        created_at DATETIME ${timestampDefault},
+        UNIQUE(service_id, user_id),
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_approvals (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        service_id INTEGER,
+        user_id INTEGER,
+        kind VARCHAR(20) NOT NULL DEFAULT 'approbation',
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        requested_by INTEGER,
+        requested_at DATETIME ${timestampDefault},
+        decided_by INTEGER,
+        decided_at DATETIME,
+        comment ${textType},
+        delivery_date DATE,
+        recovery_date DATE,
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_messages (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        user_id INTEGER,
+        service_id INTEGER,
+        body ${textType} NOT NULL,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_watchers (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        user_id INTEGER,
+        service_id INTEGER,
+        added_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
       // Table de configuration de l'authentification (SSO, LDAP, Passkey)
       `CREATE TABLE IF NOT EXISTS auth_config (
         id INTEGER PRIMARY KEY ${autoIncrement},
@@ -1109,6 +1194,12 @@ class DatabaseManager {
       ['idx_manif_intake_external', 'manifestation_intake_requests', 'external_id'],
       ['idx_manif_movements_stock', 'manifestation_stock_movements', 'stock_id'],
       ['idx_manif_alias_stock', 'manifestation_stock_aliases', 'stock_id'],
+      ['idx_manif_approvals', 'manifestation_approvals', 'manifestation_id'],
+      ['idx_manif_approvals_service', 'manifestation_approvals', 'service_id, status'],
+      ['idx_manif_messages', 'manifestation_messages', 'manifestation_id'],
+      ['idx_manif_watchers', 'manifestation_watchers', 'manifestation_id'],
+      ['idx_service_categories', 'service_categories', 'category_id'],
+      ['idx_service_members_user', 'service_members', 'user_id'],
 
       // Droits — consultés à chaque requête filtrée par catégorie
       ['idx_user_permissions_user', 'user_permissions', 'user_id'],

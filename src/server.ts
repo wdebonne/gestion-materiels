@@ -48,6 +48,7 @@ import reservationRoutes from './routes/reservation.routes';
 import authSettingsRoutes from './routes/authSettings.routes';
 import manifestationRoutes from './routes/manifestation.routes';
 import manifestationIntakeRoutes from './routes/manifestationIntake.routes';
+import serviceRoutes from './routes/service.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
 
 // Import des services
@@ -270,6 +271,7 @@ app.use('/api/settings/auth', authSettingsRoutes);
 // authentifié, et ne doit pas passer par les gardes du routeur principal.
 app.use('/api/manifestations/intake', intakeLimiter, manifestationIntakeRoutes);
 app.use('/api/manifestations', manifestationRoutes);
+app.use('/api/services', serviceRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
 
 // Servir le frontend en production

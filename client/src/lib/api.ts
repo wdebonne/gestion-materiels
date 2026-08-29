@@ -631,3 +631,119 @@ export const intakeApi = {
     return api.get<{ success: boolean; data: IntakeRequest[] }>(`/manifestations/intake/requests${requete}`)
   },
 }
+
+
+// ======================== SERVICES ET APPROBATIONS ========================
+
+export interface Service {
+  id: number
+  name: string
+  slug: string
+  email: string | null
+  description: string | null
+  is_observer: number
+  is_active: number
+  notify_new_request: number
+  notify_status_change: number
+  notify_material_change: number
+  notify_message: number
+  members_count?: number
+  categories_count?: number
+  categories?: Array<{ id: number; name: string }>
+  members?: Array<{
+    id: number
+    email: string
+    first_name: string
+    last_name: string
+    role: string
+    is_manager: number
+  }>
+  is_manager?: number
+}
+
+export type StatutApprobation = 'pending' | 'approved' | 'rejected' | 'not_concerned'
+
+export interface Approbation {
+  id: number
+  manifestation_id: number
+  service_id: number | null
+  service_name: string | null
+  user_id: number | null
+  user_name: string | null
+  kind: 'approbation' | 'information'
+  status: StatutApprobation
+  requested_at: string
+  decided_by: number | null
+  decided_by_name: string | null
+  decided_at: string | null
+  comment: string | null
+  delivery_date: string | null
+  recovery_date: string | null
+}
+
+export interface MessageManifestation {
+  id: number
+  manifestation_id: number
+  user_id: number | null
+  author_name: string | null
+  service_name: string | null
+  body: string
+  created_at: string
+}
+
+export interface Suiveur {
+  id: number
+  user_id: number | null
+  user_name: string | null
+  user_email: string | null
+  service_id: number | null
+  service_name: string | null
+}
+
+export const serviceApi = {
+  getAll: () => api.get<{ success: boolean; data: Service[] }>('/services'),
+  getMine: () => api.get<{ success: boolean; data: Service[] }>('/services/mine'),
+  getById: (id: number) => api.get<{ success: boolean; data: Service }>(`/services/${id}`),
+  create: (data: { name: string; email?: string; description?: string; is_observer?: boolean }) =>
+    api.post<{ success: boolean; data: Service }>('/services', data),
+  update: (id: number, data: Partial<Service> & { name: string }) =>
+    api.put<{ success: boolean; data: Service }>(`/services/${id}`, data),
+  remove: (id: number) =>
+    api.delete<{ success: boolean; desactive?: boolean; message?: string }>(`/services/${id}`),
+  setCategories: (id: number, category_ids: number[]) =>
+    api.put<{ success: boolean; data: Service }>(`/services/${id}/categories`, { category_ids }),
+  addMember: (id: number, user_id: number, is_manager = false) =>
+    api.post<{ success: boolean; data: Service }>(`/services/${id}/members`, { user_id, is_manager }),
+  removeMember: (id: number, userId: number) =>
+    api.delete<{ success: boolean; data: Service }>(`/services/${id}/members/${userId}`),
+}
+
+export const suiviApi = {
+  getApprovals: (manifestationId: number) =>
+    api.get<{ success: boolean; data: Approbation[] }>(`/manifestations/${manifestationId}/approvals`),
+  requestApproval: (
+    manifestationId: number,
+    data: { service_id?: number; user_id?: number; kind?: 'approbation' | 'information'; comment?: string }
+  ) => api.post<{ success: boolean; data: Approbation[] }>(`/manifestations/${manifestationId}/approvals`, data),
+  decide: (
+    manifestationId: number,
+    approvalId: number,
+    data: { status: StatutApprobation; comment?: string; delivery_date?: string; recovery_date?: string }
+  ) =>
+    api.put<{ success: boolean; data: Approbation[] }>(
+      `/manifestations/${manifestationId}/approvals/${approvalId}`,
+      data
+    ),
+
+  getMessages: (manifestationId: number) =>
+    api.get<{ success: boolean; data: MessageManifestation[] }>(`/manifestations/${manifestationId}/messages`),
+  postMessage: (manifestationId: number, body: string) =>
+    api.post<{ success: boolean }>(`/manifestations/${manifestationId}/messages`, { body }),
+
+  getWatchers: (manifestationId: number) =>
+    api.get<{ success: boolean; data: Suiveur[] }>(`/manifestations/${manifestationId}/watchers`),
+  addWatcher: (manifestationId: number, data: { user_id?: number; service_id?: number }) =>
+    api.post<{ success: boolean }>(`/manifestations/${manifestationId}/watchers`, data),
+  removeWatcher: (manifestationId: number, watcherId: number) =>
+    api.delete<{ success: boolean }>(`/manifestations/${manifestationId}/watchers/${watcherId}`),
+}

@@ -35,6 +35,9 @@ export const EVENEMENTS_WEBHOOK = [
   'manifestation.updated',
   'manifestation.status_changed',
   'manifestation.materials_updated',
+  'manifestation.approval_requested',
+  'manifestation.approval_decided',
+  'manifestation.dates_changed',
 ] as const;
 
 export type EvenementWebhook = (typeof EVENEMENTS_WEBHOOK)[number];

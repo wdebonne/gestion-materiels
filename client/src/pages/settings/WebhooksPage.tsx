@@ -71,7 +71,10 @@ const AVAILABLE_EVENTS = [
   { value: 'manifestation.created', label: 'Manifestation créée' },
   { value: 'manifestation.updated', label: 'Manifestation modifiée' },
   { value: 'manifestation.status_changed', label: 'Statut de manifestation modifié' },
-  { value: 'manifestation.materials_updated', label: 'Quantités de matériel mises à jour' }
+  { value: 'manifestation.materials_updated', label: 'Quantités de matériel mises à jour' },
+  { value: 'manifestation.approval_requested', label: 'Approbation demandée à un service' },
+  { value: 'manifestation.approval_decided', label: 'Décision rendue par un service' },
+  { value: 'manifestation.dates_changed', label: 'Dates de manifestation modifiées' }
 ]
 
 const initialFormData: WebhookFormData = {

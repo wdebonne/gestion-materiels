@@ -38,6 +38,7 @@ const DatabasePage = lazy(() => import('@/pages/settings/DatabasePage'))
 const LogsPage = lazy(() => import('@/pages/settings/LogsPage'))
 const WebhooksPage = lazy(() => import('@/pages/settings/WebhooksPage'))
 const ManifestationIntakePage = lazy(() => import('@/pages/settings/ManifestationIntakePage'))
+const ServicesPage = lazy(() => import('@/pages/settings/ServicesPage'))
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
 const ApiTokensPage = lazy(() => import('@/pages/settings/ApiTokensPage'))
 const AuthSettingsPage = lazy(() => import('@/pages/settings/AuthSettingsPage'))
@@ -155,6 +156,7 @@ function App() {
             <Route path="logs" element={<LogsPage />} />
             <Route path="webhooks" element={<WebhooksPage />} />
             <Route path="manifestations-reception" element={<ManifestationIntakePage />} />
+            <Route path="services" element={<ServicesPage />} />
             <Route path="api" element={<ApiPage />} />
             <Route path="api-tokens" element={<ApiTokensPage />} />
           </Route>

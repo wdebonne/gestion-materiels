@@ -1,5 +1,6 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
+import { usePermissions } from '@/lib/permissions'
 import { useSettingsStore } from '@/stores/settings.store'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
@@ -50,6 +51,7 @@ import PasswordExpiredBanner from '@/components/PasswordExpiredBanner'
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
+  const { isService } = usePermissions()
   const { settings, fetchSettings } = useSettingsStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -192,7 +194,13 @@ export default function Layout() {
       }
     })
 
-  const navigation = [...baseNavigation, ...pluginNavigation]
+  // Un compte « service » n'a accès qu'aux manifestations : le serveur refuse
+  // tout le reste (`cloisonnementService.ts`). Afficher les autres entrées lui
+  // promettrait des pages qui répondront 403 — c'est le problème des « boutons
+  // qui mentent », déjà corrigé ailleurs.
+  const navigation = isService
+    ? [{ name: 'Manifestations', href: '/manifestations', icon: CalendarDays }]
+    : [...baseNavigation, ...pluginNavigation]
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">

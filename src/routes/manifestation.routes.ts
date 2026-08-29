@@ -9,6 +9,21 @@ import {
   REFUS_PORTEE_MANIFESTATION,
 } from '../middleware/manifestationScope';
 import { logService } from '../services/log.service';
+import {
+  approbationsDe,
+  approbationsEnAttente,
+  creerApprobationsManquantes,
+  peutDeciderPour,
+  servicesDe,
+} from '../services/manifestationServices.service';
+import {
+  notifierDecision,
+  notifierMessage,
+  notifierSollicitation,
+  notifierServicesConcernes,
+  notifierChangementDates,
+  notifierChangementMateriel,
+} from '../services/manifestationNotify.service';
 import { notifierWebhooks } from '../services/webhook.service';
 import {
   aujourdHui,
@@ -420,6 +435,24 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
+/**
+ * Faut-il toutes les approbations avant de valider ?
+ *
+ * Réglage `manifestation_require_all_approvals`, sur le même mécanisme clé/valeur
+ * que `alert_settings`. Vrai par défaut : c'est le comportement qui protège, et
+ * l'assouplir doit être une décision consciente.
+ */
+async function exigerToutesLesApprobations(): Promise<boolean> {
+  try {
+    const reglage = await db.queryOne(
+      "SELECT setting_value FROM settings WHERE setting_key = 'manifestation_require_all_approvals'"
+    );
+    return reglage?.setting_value !== 'false';
+  } catch {
+    return true;
+  }
+}
+
 /** Libellé lisible de chaque transition, pour que l'historique se lise sans décodeur. */
 const LIBELLES_TRANSITION: Record<string, string> = {
   pending: 'Retour en attente de confirmation',
@@ -581,6 +614,11 @@ router.post('/', authenticateToken, requireSupervisor,
         manifestationId
       );
 
+      // Les services concernés sont sollicités dès la création : c'est ce qui
+      // rend le tableau des approbations lisible avant même la validation.
+      const sollicites = await creerApprobationsManquantes(manifestationId, req.user!.userId);
+      notifierServicesConcernes(manifestationId, title, sollicites);
+
       notifierWebhooks('manifestation.created', { id: manifestationId, title, status: 'draft' });
       res.status(201).json({ success: true, data: created, conflits });
     } catch (error: any) {
@@ -649,6 +687,23 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     await logService.info('other', `Manifestation modifiée: ${title}`, { userId: req.user!.userId });
 
     const apres = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [req.params.id]);
+
+    // Un changement de date est la modification qui coûte le plus cher : un
+    // service qui a bloqué une équipe sur un créneau doit l'apprendre autrement
+    // qu'en se déplaçant le mauvais jour.
+    notifierChangementDates(
+      req.params.id,
+      apres.title,
+      { debut: existing.date_start, livraison: existing.delivery_date, recuperation: existing.recovery_date },
+      { debut: apres.date_start, livraison: apres.delivery_date, recuperation: apres.recovery_date }
+    );
+
+    // Le matériel a pu changer : de nouveaux services peuvent être concernés.
+    if (Array.isArray(materials)) {
+      const nouvelles = await creerApprobationsManquantes(req.params.id, req.user!.userId);
+      notifierServicesConcernes(req.params.id, apres.title, nouvelles);
+      notifierChangementMateriel(req.params.id, apres.title, `${materials.length} ligne(s) de matériel`);
+    }
     const periode = periodeDe(apres);
     const conflits = await detecterConflits(
       Array.isArray(materials) ? materials : [],
@@ -700,6 +755,35 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
         });
       }
 
+      // Confirmer une manifestation, c'est engager les services qui la
+      // servent. Tant que l'un d'eux n'a pas répondu, la valider reviendrait à
+      // promettre à sa place — et c'est le jour de la livraison qu'on
+      // découvrirait que le vidéoprojecteur n'était pas disponible.
+      //
+      // Les sollicitations manquantes sont créées **avant** le contrôle : une
+      // manifestation créée directement en brouillon n'en avait aucune, si bien
+      // que le contrôle ne trouvait rien à attendre et laissait passer la
+      // validation — puis créait les approbations juste après, trop tard.
+      //
+      // Le blocage est réglable : certaines collectivités préfèrent valider
+      // d'abord et régulariser ensuite.
+      if (status === 'validated') {
+        const nouvelles = await creerApprobationsManquantes(req.params.id, req.user!.userId);
+        notifierServicesConcernes(req.params.id, m.title, nouvelles);
+
+        if (await exigerToutesLesApprobations()) {
+          const attendues = await approbationsEnAttente(req.params.id);
+          if (attendues.length > 0) {
+            const noms = attendues.map((a: any) => a.service_name || 'un destinataire').join(', ');
+            return res.status(409).json({
+              success: false,
+              message: `En attente de : ${noms}`,
+              approbations_en_attente: attendues,
+            });
+          }
+        }
+      }
+
       // Si on passe en "delivered", enregistrer les quantités livrées depuis les quantités demandées si pas déjà fait
       if (status === 'delivered') {
         const materials = await db.query(
@@ -733,6 +817,14 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
         from: m.status,
         to: status,
       });
+
+      // Une demande reprise en brouillon sollicite aussi les services concernés :
+      // c'est le moment où quelqu'un s'en saisit pour la compléter.
+      if (status === 'draft') {
+        const nouvelles = await creerApprobationsManquantes(req.params.id, req.user!.userId);
+        notifierServicesConcernes(req.params.id, m.title, nouvelles);
+      }
+
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
@@ -835,6 +927,260 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
     });
 
     res.json({ success: true, updated: modifiees });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== APPROBATIONS PAR SERVICE ========================
+//
+// Une manifestation municipale engage plusieurs services. Chacun ne doit être
+// sollicité que s'il est concerné — c'est-à-dire si la demande porte du matériel
+// de ses catégories. Un service informatique alerté d'une brocante sans matériel
+// informatique cesse vite de lire ses alertes, et rate celle qui comptait.
+
+// GET /:id/approvals - Approbations et sollicitations d'une manifestation
+router.get('/:id/approvals', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+    res.json({ success: true, data: await approbationsDe(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/approvals - Solliciter un service ou une personne.
+ *
+ * Sert aussi bien à demander une approbation qu'un simple avis. La distinction
+ * compte : une demande d'information laissée sans réponse ne doit pas bloquer
+ * une manifestation.
+ */
+router.post('/:id/approvals', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { service_id, user_id, kind, comment } = req.body;
+    if (!service_id && !user_id) {
+      return res.status(400).json({ success: false, message: 'Indiquez un service ou une personne' });
+    }
+
+    const m = await db.queryOne('SELECT * FROM manifestations WHERE id = ?', [req.params.id]);
+    if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
+
+    const type = kind === 'information' ? 'information' : 'approbation';
+    const resultat = await db.execute(
+      `INSERT INTO manifestation_approvals
+         (manifestation_id, service_id, user_id, kind, status, requested_by, requested_at, comment)
+       VALUES (?, ?, ?, ?, 'pending', ?, ?, ?)`,
+      [
+        req.params.id, service_id || null, user_id || null, type,
+        req.user!.userId, new Date().toISOString(), comment?.trim() || null,
+      ]
+    );
+
+    const libelle = type === 'information' ? "Demande d'information" : "Demande d'approbation";
+    await consignerHistorique(req.params.id, req.user!.userId, libelle, { comment: comment?.trim() || null });
+    notifierSollicitation(req.params.id, resultat.lastInsertRowid, m.title);
+
+    res.status(201).json({ success: true, data: await approbationsDe(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /:id/approvals/:approvalId - Rendre sa décision.
+ *
+ * Chaque service porte ses propres dates de livraison et de récupération : le
+ * service informatique installe le vidéoprojecteur le matin, le service festif
+ * livre les tables la veille.
+ */
+router.put('/:id/approvals/:approvalId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { status, comment, delivery_date, recovery_date } = req.body;
+    if (!['approved', 'rejected', 'not_concerned'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Décision invalide' });
+    }
+
+    const approbation = await db.queryOne(
+      'SELECT * FROM manifestation_approvals WHERE id = ? AND manifestation_id = ?',
+      [req.params.approvalId, req.params.id]
+    );
+    if (!approbation) {
+      return res.status(404).json({ success: false, message: 'Sollicitation non trouvée' });
+    }
+
+    // On ne décide que pour soi : sans cette garde, n'importe quel compte
+    // pourrait approuver à la place du service informatique.
+    const autorise = approbation.service_id
+      ? await peutDeciderPour(req.user!.userId, req.user!.role, approbation.service_id)
+      : approbation.user_id === req.user!.userId || req.user!.role === 'admin';
+
+    if (!autorise) {
+      return res.status(403).json({
+        success: false,
+        message: 'Vous ne pouvez répondre que pour votre service',
+      });
+    }
+
+    await db.execute(
+      `UPDATE manifestation_approvals
+       SET status = ?, decided_by = ?, decided_at = ?, comment = ?, delivery_date = ?, recovery_date = ?
+       WHERE id = ?`,
+      [
+        status, req.user!.userId, new Date().toISOString(), comment?.trim() || null,
+        delivery_date || null, recovery_date || null, req.params.approvalId,
+      ]
+    );
+
+    const service = approbation.service_id
+      ? await db.queryOne('SELECT name FROM services WHERE id = ?', [approbation.service_id])
+      : null;
+    const LIBELLES_DECISION: Record<string, string> = {
+      approved: 'Approbation accordée',
+      rejected: 'Approbation refusée',
+      not_concerned: 'Service non concerné',
+    };
+    await consignerHistorique(req.params.id, req.user!.userId, LIBELLES_DECISION[status], {
+      comment: [service?.name, comment?.trim()].filter(Boolean).join(' — ') || null,
+    });
+
+    const m = await db.queryOne('SELECT title FROM manifestations WHERE id = ?', [req.params.id]);
+    notifierDecision(req.params.id, m?.title ?? '', status, service?.name ?? null, comment?.trim() || null);
+
+    res.json({ success: true, data: await approbationsDe(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== CONVERSATION ========================
+
+// GET /:id/messages - Fil d'échange d'une manifestation
+router.get('/:id/messages', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    const messages = await db.query(
+      `SELECT msg.*, (u.first_name || ' ' || u.last_name) as author_name, u.email as author_email,
+              s.name as service_name
+       FROM manifestation_messages msg
+       LEFT JOIN users u ON u.id = msg.user_id
+       LEFT JOIN services s ON s.id = msg.service_id
+       WHERE msg.manifestation_id = ?
+       ORDER BY msg.created_at, msg.id`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: messages });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/messages - Écrire dans le fil.
+ *
+ * Ouvert à tout compte qui voit la manifestation, rôle « service » compris :
+ * c'est précisément ce que ces comptes viennent faire — signaler un changement
+ * de date, demander un matériel de plus. Chaque message est aussi consigné dans
+ * l'historique, pour que la chronologie reste l'unique source du suivi.
+ */
+router.post('/:id/messages', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const body = String(req.body.body ?? '').trim();
+    if (!body) {
+      return res.status(400).json({ success: false, message: 'Le message ne peut pas être vide' });
+    }
+
+    const m = await db.queryOne('SELECT id, title FROM manifestations WHERE id = ?', [req.params.id]);
+    if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    // Le message est attribué au premier service de son auteur : dans le fil,
+    // « Service informatique » est plus parlant qu'un nom seul.
+    const [service] = await servicesDe(req.user!.userId);
+
+    await db.execute(
+      'INSERT INTO manifestation_messages (manifestation_id, user_id, service_id, body, created_at) VALUES (?, ?, ?, ?, ?)',
+      [req.params.id, req.user!.userId, service?.id ?? null, body, new Date().toISOString()]
+    );
+
+    await consignerHistorique(req.params.id, req.user!.userId, 'Message', {
+      comment: body.length > 120 ? `${body.slice(0, 117)}…` : body,
+    });
+    notifierMessage(req.params.id, m.title, body);
+
+    res.status(201).json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== SUIVEURS ========================
+
+// GET /:id/watchers - Personnes et services en copie du suivi
+router.get('/:id/watchers', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    const suiveurs = await db.query(
+      `SELECT w.*, (u.first_name || ' ' || u.last_name) as user_name, u.email as user_email,
+              s.name as service_name
+       FROM manifestation_watchers w
+       LEFT JOIN users u ON u.id = w.user_id
+       LEFT JOIN services s ON s.id = w.service_id
+       WHERE w.manifestation_id = ?`,
+      [req.params.id]
+    );
+    res.json({ success: true, data: suiveurs });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /:id/watchers - Mettre en copie du suivi : un DGS, un maire, un élu
+router.post('/:id/watchers', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { user_id, service_id } = req.body;
+    if (!user_id && !service_id) {
+      return res.status(400).json({ success: false, message: 'Indiquez une personne ou un service' });
+    }
+
+    const deja = await db.queryOne(
+      `SELECT id FROM manifestation_watchers
+       WHERE manifestation_id = ? AND user_id IS ? AND service_id IS ?`,
+      [req.params.id, user_id || null, service_id || null]
+    );
+    if (deja) return res.json({ success: true });
+
+    await db.execute(
+      'INSERT INTO manifestation_watchers (manifestation_id, user_id, service_id, added_by, created_at) VALUES (?, ?, ?, ?, ?)',
+      [req.params.id, user_id || null, service_id || null, req.user!.userId, new Date().toISOString()]
+    );
+    await consignerHistorique(req.params.id, req.user!.userId, 'Mise en copie');
+    res.status(201).json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/:id/watchers/:watcherId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const resultat = await db.execute(
+      'DELETE FROM manifestation_watchers WHERE id = ? AND manifestation_id = ?',
+      [req.params.watcherId, req.params.id]
+    );
+    if (resultat.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Suiveur non trouvé' });
+    }
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -8,7 +8,7 @@ import { useAuthStore } from '@/stores/auth.store'
  * que pas de bouton du tout — l'utilisateur remplit un formulaire pour rien.
  */
 
-export const ROLES = ['admin', 'supervisor', 'agent', 'user'] as const
+export const ROLES = ['admin', 'supervisor', 'agent', 'user', 'service'] as const
 
 export type Role = (typeof ROLES)[number]
 
@@ -17,6 +17,7 @@ export const ROLE_LABELS: Record<Role, string> = {
   supervisor: 'Superviseur',
   agent: 'Agent de terrain',
   user: 'Utilisateur',
+  service: 'Service partenaire',
 }
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
@@ -25,10 +26,12 @@ export const ROLE_DESCRIPTIONS: Record<Role, string> = {
   agent:
     'Saisit sur le terrain : pleins, entretiens, contrôles et photos. Ne peut ni configurer ni supprimer.',
   user: 'Consultation seule.',
+  service:
+    'Ne voit que les manifestations qui le concernent : suivi, approbations et échanges.',
 }
 
 /** Rôles configurables dans l'écran Droits (l'administrateur a tout par construction). */
-export const CONFIGURABLE_ROLES = ['supervisor', 'agent', 'user'] as const
+export const CONFIGURABLE_ROLES = ['supervisor', 'agent', 'user', 'service'] as const
 
 /**
  * Rôles autorisés à saisir des données de terrain.
@@ -45,6 +48,8 @@ const MANAGE_ROLES: readonly Role[] = ['admin', 'supervisor']
 export interface Permissions {
   /** Relever un plein, un entretien, un contrôle, joindre une photo. */
   canFieldWrite: boolean
+  /** Cloisonné au seul module Manifestations : la navigation doit s'y réduire. */
+  isService: boolean
   /** Créer ou modifier du matériel, gérer les référentiels et les listes. */
   canManage: boolean
   /** Supprimer, configurer l'application, gérer les comptes. */
@@ -58,6 +63,7 @@ export function usePermissions(): Permissions {
 
   return {
     canFieldWrite: !!role && FIELD_WRITE_ROLES.includes(role),
+    isService: role === 'service',
     canManage: !!role && MANAGE_ROLES.includes(role),
     canAdmin: role === 'admin',
     role,

@@ -2,6 +2,7 @@ import type { Migration } from './types';
 import baseline from './001_baseline';
 import politiqueConnexion from './002_politique_connexion';
 import manifestationsReception from './003_manifestations_reception';
+import servicesApprobations from './004_services_approbations';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -16,6 +17,7 @@ export const MIGRATIONS: readonly Migration[] = [
   baseline,
   politiqueConnexion,
   manifestationsReception,
+  servicesApprobations,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';
