@@ -185,7 +185,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Tables BDD :** `auth_config` (provider, is_active, config JSON)
 - **Routes API :** `/api/settings/auth` — GET, GET/:provider, PUT/:provider, POST/:provider/test
 
-> ⚠️ **État réel des fournisseurs SSO :** seuls les écrans de configuration existent. La partie de `auth_config` qui les concerne est écrite par cette page et **relue par personne** — aucun fichier de `src/` ne l'interroge en dehors de sa propre route. La connexion reste en bcrypt local, et le bouton « Tester » ne fait que vérifier la forme de l'URL saisie.
+> ⚠️ **État réel des fournisseurs SSO :** seuls les écrans de configuration existent. Chacun affiche désormais un bandeau qui le dit — la décision de finir ou de retirer ces écrans reste ouverte, mais ils ne laissent plus croire que l'authentification est déléguée. La partie de `auth_config` qui les concerne est écrite par cette page et **relue par personne** — aucun fichier de `src/` ne l'interroge en dehors de sa propre route. La connexion reste en bcrypt local, et le bouton « Tester » ne fait que vérifier la forme de l'URL saisie.
 >
 > Un écran qui *simule* un SSO est plus dangereux qu'une absence de SSO : il fait croire à un administrateur que l'authentification est déléguée alors qu'elle ne l'est pas. À finir ou à retirer.
 >

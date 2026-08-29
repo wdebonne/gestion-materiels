@@ -5,6 +5,7 @@ import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
 import { ROLES, isRole } from '../config/roles';
 import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.service';
+import { notifierWebhooks } from '../services/webhook.service';
 
 const router = Router();
 
@@ -139,6 +140,10 @@ router.post('/', authenticateToken, requireAdmin, [
        VALUES (?, ?, ?, ?, ?, ?)`,
       [email, hashedPassword, firstName || '', lastName || '', role, new Date().toISOString()]
     );
+
+    // Ni le mot de passe ni son empreinte ne sortent : un webhook part vers un
+    // service tiers, sur lequel personne ici n'a la main.
+    notifierWebhooks('user.created', { id: result.lastInsertRowid, email, role });
 
     res.status(201).json({
       success: true,

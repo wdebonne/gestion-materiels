@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
+import { notifierWebhooks } from '../services/webhook.service';
 
 const router = Router();
 
@@ -402,6 +403,8 @@ router.post('/', authenticateToken, requireSupervisor, [
       [req.user?.userId, 'create', 'object', result.lastInsertRowid, `Objet créé: ${name}`]
     );
 
+    notifierWebhooks('object.created', { id: result.lastInsertRowid, name, categoryId, subcategoryId });
+
     res.status(201).json({
       success: true,
       message: 'Objet créé',
@@ -502,6 +505,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       values
     );
 
+    notifierWebhooks('object.updated', { id: Number(id) });
+
     res.json({ success: true, message: 'Objet mis à jour' });
   } catch (error: any) {
     console.error('Erreur update object:', error);
@@ -519,6 +524,8 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
     if (result.changes === 0) {
       return res.status(404).json({ success: false, message: 'Objet non trouvé' });
     }
+
+    notifierWebhooks('object.deleted', { id: Number(id) });
 
     res.json({ success: true, message: 'Objet supprimé' });
   } catch (error: any) {
@@ -584,6 +591,8 @@ router.post('/:id/fuel', authenticateToken, requireFieldWrite, [
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [id, finalFuelType, qty, unitPriceCalculated, totalPrice, mileage || null, station || null, finalEntryDate, notes || null, attachmentsJson]
     );
+
+    notifierWebhooks('fuel.created', { objectId: Number(id), quantity, cost });
 
     res.status(201).json({
       success: true,
@@ -1310,6 +1319,8 @@ router.post('/:id/maintenance', authenticateToken, requireFieldWrite, [
         );
       }
     }
+
+    notifierWebhooks('maintenance.created', { objectId: Number(id), maintenanceType, maintenanceDate });
 
     res.status(201).json({
       success: true,

@@ -13,6 +13,7 @@ import { sendEmail } from '../services/email.service';
 import { logService } from '../services/log.service';
 import { getJwtSecret } from '../config/secrets';
 import { lirePolitique, verifierMotDePasse, motDePasseExpire } from '../services/passwordPolicy.service';
+import { notifierWebhooks } from '../services/webhook.service';
 
 const router = Router();
 
@@ -192,6 +193,8 @@ router.post('/login', loginValidation, async (req: AuthRequest, res: Response) =
       ipAddress: req.ip,
       userAgent: req.headers['user-agent']
     });
+
+    notifierWebhooks('user.login', { id: user.id, email: user.email, role: user.role });
 
     // Définir un cookie HttpOnly pour l'accès aux fichiers uploadés
     res.cookie('auth_token', tokens.accessToken, {

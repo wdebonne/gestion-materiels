@@ -2,6 +2,7 @@ import { Server as HTTPServer } from 'http';
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../config/secrets';
+import { notifierWebhooks } from './webhook.service';
 
 let io: Server | null = null;
 
@@ -67,6 +68,11 @@ export function emitToUser(userId: number, event: string, data: any): void {
 // Émettre une notification d'alerte
 export function emitAlert(alert: Record<string, any>): void {
   io?.emit('alert:new', alert);
+
+  // Même signal, deux destinataires : l'interface via WebSocket, les services
+  // externes via webhook. Les alertes naissent à cinq endroits différents ;
+  // brancher ici évite d'en oublier un.
+  notifierWebhooks('alert.created', alert);
 }
 
 // Émettre une mise à jour du compteur d'alertes

@@ -359,9 +359,9 @@ La révision d'août 2026 montre en revanche que la protection des routes ne dit
 
 **Le point ouvert le plus sérieux n'est pas un défaut de code mais un écart entre l'interface et la réalité.** La politique de mot de passe et le blocage après N tentatives, qui étaient dans ce cas, sont désormais appliqués ; les réglages inapplicables ont été retirés du formulaire.
 
-Restent les **écrans SSO SAML, OIDC, LDAP et Passkey** : ils font croire à un administrateur que l'authentification est déléguée alors qu'elle reste en bcrypt local. Tant qu'ils sont affichés sans être appliqués, ils réduisent la sécurité effective plutôt que de l'augmenter, parce qu'ils dissuadent de chercher une autre protection.
+Restent les **écrans SSO SAML, OIDC, LDAP et Passkey**, qui enregistrent une configuration que personne ne relit. Ils affichent désormais un bandeau disant que le flux n'est pas implémenté et que la connexion reste locale : ils ne font plus croire que l'authentification est déléguée, ce qui était le vrai risque — un administrateur rassuré à tort cherche moins d'autres protections.
 
-**Priorité suivante** : finir ou retirer ces quatre écrans.
+**Priorité suivante** : décider de finir ou de retirer ces quatre écrans. Les implémenter suppose trois dépendances supplémentaires, des routes de rappel et une gestion de certificats ; les retirer prend une heure. Tant que la décision n'est pas prise, le bandeau tient lieu d'avertissement.
 
 ---
 

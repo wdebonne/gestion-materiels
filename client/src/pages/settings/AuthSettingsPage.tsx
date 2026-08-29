@@ -128,6 +128,35 @@ function ReglagesNonAppliques({ titre, elements }: { titre: string; elements: [s
   )
 }
 
+/**
+ * Fournisseur configurable mais jamais consulté à la connexion.
+ *
+ * Les écrans SAML, OIDC, LDAP et Passkey enregistrent leur configuration dans
+ * `auth_config`, qu'aucun fichier de `src/` n'interroge en dehors de sa propre
+ * route. La connexion reste en bcrypt local.
+ *
+ * Un écran qui *simule* un SSO est plus dangereux qu'une absence de SSO : il
+ * fait croire à un administrateur que l'authentification est déléguée à son
+ * annuaire alors qu'elle ne l'est pas, et le dissuade de chercher une autre
+ * protection. Tant que le flux n'existe pas, l'écran doit le dire.
+ */
+function FournisseurNonBranche({ nom }: { nom: string }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+      <div className="mb-1 flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
+        <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+        Configuration enregistrée, mais pas encore appliquée
+      </div>
+      <p className="text-sm text-amber-800 dark:text-amber-300">
+        Le flux d'authentification {nom} n'est pas implémenté : la configuration
+        ci-dessous est conservée, mais la connexion continue de passer
+        exclusivement par email et mot de passe. Le bouton « Tester » vérifie la
+        forme des valeurs saisies, pas une connexion réelle au fournisseur.
+      </p>
+    </div>
+  )
+}
+
 // ==================== SECTION GÉNÉRALE ====================
 
 function GeneralAuthSection({ config, queryClient }: { config: any; queryClient: any }) {
@@ -345,6 +374,8 @@ function LdapSection({ config, queryClient }: { config: any; queryClient: any })
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
+          <FournisseurNonBranche nom="LDAP" />
+
           <ToggleSwitch
             enabled={isActive}
             onChange={setIsActive}
@@ -613,6 +644,8 @@ function SamlSection({ config, queryClient }: { config: any; queryClient: any })
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
+          <FournisseurNonBranche nom="SAML 2.0" />
+
           <ToggleSwitch
             enabled={isActive}
             onChange={setIsActive}
@@ -838,6 +871,8 @@ function OidcSection({ config, queryClient }: { config: any; queryClient: any })
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
+          <FournisseurNonBranche nom="OpenID Connect" />
+
           <ToggleSwitch
             enabled={isActive}
             onChange={setIsActive}
@@ -1065,6 +1100,8 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
+          <FournisseurNonBranche nom="Passkey" />
+
           <ToggleSwitch
             enabled={isActive}
             onChange={setIsActive}

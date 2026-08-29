@@ -4,6 +4,7 @@ import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, checkCategoryAccess } from '../middleware/auth.middleware';
 import { handleUpload } from '../services/upload.service';
 import slugify from '../utils/slugify';
+import { notifierWebhooks } from '../services/webhook.service';
 
 const router = Router();
 
@@ -290,6 +291,8 @@ router.post('/', authenticateToken, requireSupervisor, [
       [name, slug, description || null, finalImage, hasSubcategories ? 1 : 0, sortOrder]
     );
 
+    notifierWebhooks('category.created', { id: result.lastInsertRowid, name, slug });
+
     res.status(201).json({
       success: true,
       message: 'Catégorie créée',
@@ -364,6 +367,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       values
     );
 
+    notifierWebhooks('category.updated', { id: Number(id) });
+
     res.json({ success: true, message: 'Catégorie mise à jour' });
   } catch (error: any) {
     console.error('Erreur update category:', error);
@@ -381,6 +386,8 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
     if (result.changes === 0) {
       return res.status(404).json({ success: false, message: 'Catégorie non trouvée' });
     }
+
+    notifierWebhooks('category.deleted', { id: Number(id) });
 
     res.json({ success: true, message: 'Catégorie supprimée' });
   } catch (error: any) {

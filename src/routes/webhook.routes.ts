@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
+import { envoyerWebhooks } from '../services/webhook.service';
 
 const router = Router();
 
@@ -265,99 +266,20 @@ router.post('/:id/test', authenticateToken, requireAdmin, async (req: AuthReques
   }
 });
 
-// POST /api/webhooks/trigger - Déclencher tous les webhooks pour un événement (usage interne)
+// POST /api/webhooks/trigger - Déclencher tous les webhooks pour un événement
 router.post('/trigger', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { event, data } = req.body;
-    
+
     if (!event) {
       return res.status(400).json({ success: false, message: 'Événement requis' });
     }
-    
-    // Récupérer les webhooks actifs qui écoutent cet événement
-    const webhooks = await db.query(
-      `SELECT * FROM webhooks WHERE is_active = 1`
-    );
-    
-    const results: Array<{ webhookId: number; success: boolean; status: number }> = [];
-    
-    for (const webhook of webhooks) {
-      // Vérifier si le webhook écoute cet événement
-      let events: string[] = [];
-      try {
-        events = webhook.events ? JSON.parse(webhook.events) : [];
-      } catch {
-        events = [];
-      }
-      
-      // Si pas d'événements spécifiés ou l'événement est dans la liste
-      if (events.length === 0 || events.includes(event) || events.includes('*')) {
-        const payload = {
-          event,
-          timestamp: new Date().toISOString(),
-          data
-        };
-        
-        let customHeaders: Record<string, string> = {};
-        try {
-          customHeaders = webhook.headers ? JSON.parse(webhook.headers) : {};
-        } catch {
-          customHeaders = {};
-        }
-        
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-          'User-Agent': 'GestionMateriels-Webhook/1.0',
-          ...customHeaders
-        };
-        
-        if (webhook.secret) {
-          const crypto = await import('crypto');
-          const signature = crypto.createHmac('sha256', webhook.secret)
-            .update(JSON.stringify(payload))
-            .digest('hex');
-          headers['X-Webhook-Signature'] = `sha256=${signature}`;
-        }
-        
-        try {
-          const response = await fetch(webhook.url, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(payload),
-            timeout: 10000
-          } as any);
-          
-          const responseBody = await response.text();
-          
-          const now = new Date().toISOString();
-          await db.execute(
-            `UPDATE webhooks SET 
-              last_triggered_at = ?,
-              last_status = ?,
-              last_response = ?,
-              updated_at = ?
-             WHERE id = ?`,
-            [now, response.status, responseBody.substring(0, 1000), now, webhook.id]
-          );
-          
-          results.push({ webhookId: webhook.id, success: response.ok, status: response.status });
-        } catch (fetchError: any) {
-          const now = new Date().toISOString();
-          await db.execute(
-            `UPDATE webhooks SET 
-              last_triggered_at = ?,
-              last_status = 0,
-              last_response = ?,
-              updated_at = ?
-             WHERE id = ?`,
-            [now, fetchError.message.substring(0, 1000), now, webhook.id]
-          );
-          
-          results.push({ webhookId: webhook.id, success: false, status: 0 });
-        }
-      }
-    }
-    
+
+    // La livraison vit dans `webhook.service.ts` : elle était écrite ici, donc
+    // inaccessible depuis les routes et les tâches planifiées qui devraient la
+    // déclencher. C'est pourquoi aucun webhook ne partait jamais.
+    const results = await envoyerWebhooks(event, data);
+
     res.json({ success: true, results });
   } catch (error: any) {
     console.error('Erreur trigger webhooks:', error);

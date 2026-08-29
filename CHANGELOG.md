@@ -52,6 +52,20 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
 - **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
 
+### Webhooks
+
+- **Les webhooks partent enfin.** Le CRUD, le bouton de test et la journalisation existaient depuis toujours, mais `POST /webhooks/trigger` n'était appelé par aucune route ni tâche planifiée : un administrateur configurait une URL, la testait avec succès, et plus jamais rien ne partait. L'écran proposait pourtant douze événements
+  - Les douze sont branchés : création, modification et suppression de matériel et de catégorie, alerte, entretien, plein de carburant, sauvegarde, création d'utilisateur et connexion
+  - Les alertes passent par `emitAlert`, déjà le signal commun : elles naissent à cinq endroits, et brancher chaque `INSERT` aurait été le meilleur moyen d'en oublier un
+  - La livraison, jusqu'ici écrite dans le corps de la route, vit dans `webhook.service.ts` — c'est précisément ce qui la rendait inaccessible au reste du code
+- **Délai maximal réel.** `fetch(url, { timeout: 10000 })` n'existe pas : l'option était ignorée, et une URL qui accepte la connexion sans jamais répondre bloquait indéfiniment. Un `AbortSignal.timeout` abandonne au bout de dix secondes et enregistre l'échec
+- **Envoi sans attente.** Un agent qui enregistre un plein n'attend pas qu'un service externe réponde, et une URL cassée ne fait pas échouer sa saisie. Vérifié : avec un destinataire muet, la création rend la main en 8 ms et l'échec est noté dix secondes plus tard
+- **Un destinataire injoignable n'empêche pas les autres de recevoir** : le try/catch est à l'intérieur de la boucle
+
+### Authentification
+
+- **Les quatre écrans SSO disent ce qu'ils font.** SAML, OIDC, LDAP et Passkey enregistrent leur configuration dans `auth_config`, qu'aucun fichier de `src/` n'interroge en dehors de sa propre route : la connexion reste en bcrypt local. Un bandeau l'indique désormais sur chacun. Un écran qui *simule* un SSO est plus dangereux qu'une absence de SSO — il fait croire à un administrateur que l'authentification est déléguée à son annuaire, et le dissuade de chercher une autre protection. La décision de finir ou de retirer ces écrans reste ouverte
+
 ### Manifestations
 
 - **Historique horodaté.** La table `manifestation_history` était créée depuis le début et n'était ni écrite ni lue, alors que le README et la feuille de route annonçaient une « timeline complète de toutes les actions ». Un prêt de matériel pour un événement municipal engage la collectivité : savoir qui a validé, qui a livré et à quelle date n'est pas un confort

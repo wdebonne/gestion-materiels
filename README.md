@@ -180,7 +180,7 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 🔄 Migration SQLite vers MySQL/MariaDB
 - 🔐 Gestion des permissions par catégorie
 - 📋 **Journal des logs** avec filtrage, export et paramètres avancés
-- 🔗 **Webhooks** : écran de création et de test complet, mais **aucun événement ne les déclenche** — voir « État réel » ci-dessous
+- 🔗 **Webhooks** : notifications HTTP vers des services externes sur douze événements (matériel, catégorie, alerte, entretien, plein, sauvegarde, utilisateur, connexion), signées en HMAC-SHA256 quand un secret est configuré
 - 📖 **API** : Documentation interactive Swagger UI, spécification OpenAPI, statistiques
 
 ### 📦 QR Codes
@@ -683,7 +683,7 @@ Ces écrans existent dans **Paramètres > Authentification**, enregistrent leur 
 | LDAP / Active Directory | Écran de configuration uniquement |
 | Passkey (WebAuthn / FIDO2) | Écran de configuration uniquement |
 
-Le bouton « Tester » de chaque fournisseur ne fait que vérifier la forme de l'URL saisie.
+Chacun de ces quatre écrans affiche désormais un bandeau qui l'indique : la configuration est conservée, mais la connexion continue de passer exclusivement par email et mot de passe. Le bouton « Tester » ne fait que vérifier la forme des valeurs saisies, pas une connexion réelle au fournisseur.
 
 La politique de mot de passe et le blocage après N tentatives, qui étaient dans le même cas, sont désormais appliqués. Les trois réglages qui ne peuvent pas l'être — connexion locale, 2FA, timeout de session — ont été retirés du formulaire et remplacés par un encart qui dit pourquoi, plutôt que par des interrupteurs sans effet.
 
@@ -695,7 +695,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 |----------|---------------|---------------|
 | **SSO SAML / OIDC / LDAP / Passkey** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local |
 | **2FA, timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Aucun second facteur n'est implémenté ; le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
-| **Webhooks** | CRUD complet, bouton de test, journalisation | Aucune route ni tâche planifiée n'appelle `POST /trigger` : aucun webhook ne part jamais |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
 | **Impression d'étiquettes QR en lot** | `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes | Aucun écran ne l'appelle : les QR codes s'impriment un par un |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
