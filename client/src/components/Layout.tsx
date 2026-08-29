@@ -46,6 +46,7 @@ import { useRealtimeAlerts } from '@/lib/useWebSocket'
 import MobileBottomBar from '@/components/MobileBottomBar'
 import GlobalSearch from '@/components/GlobalSearch'
 import OfflineBanner from '@/components/OfflineBanner'
+import PasswordExpiredBanner from '@/components/PasswordExpiredBanner'
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
@@ -386,6 +387,7 @@ export default function Layout() {
         </header>
 
         <OfflineBanner />
+        <PasswordExpiredBanner />
 
         {/* Page content — la marge basse dégage la barre d'onglets mobile */}
         <main className="p-4 pb-24 sm:p-6 lg:p-8 lg:pb-8">

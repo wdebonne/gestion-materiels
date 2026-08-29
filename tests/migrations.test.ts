@@ -138,9 +138,38 @@ describe('Migrations livrées', () => {
     for (const m of MIGRATIONS) expect(m.id).toMatch(/^\d{3}_[a-z0-9_]+$/);
   });
 
-  it('s’applique sur une base vide', async () => {
-    // Le point de départ doit tenir sur une installation neuve comme sur une
-    // base déjà déployée.
+  it('s’applique sur le schéma que crée l’application', async () => {
+    // `init()` appelle `createTables()` puis les migrations : celles-ci ne
+    // tournent jamais sur une base réellement vide, et peuvent donc modifier
+    // les tables du schéma de base. Ce test reproduit cet ordre.
+    await base.execute(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'user'
+      )
+    `);
+
+    const resultat = await appliquerMigrations(base);
+    expect(resultat.appliquees).toEqual(MIGRATIONS.map((m) => m.id));
+  });
+
+  it('est rejouable sur une base déjà migrée', async () => {
+    // Une base peut déjà porter les colonnes, ajoutées à la main ou par une
+    // exécution précédente dont le journal a été perdu. Rejouer ne doit pas
+    // échouer sur « duplicate column ».
+    await base.execute(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        failed_login_attempts INTEGER DEFAULT 0,
+        locked_until DATETIME,
+        password_changed_at DATETIME
+      )
+    `);
+
     const resultat = await appliquerMigrations(base);
     expect(resultat.appliquees).toEqual(MIGRATIONS.map((m) => m.id));
   });

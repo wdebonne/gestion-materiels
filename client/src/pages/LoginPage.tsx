@@ -9,7 +9,7 @@ import api from '@/lib/api'
 import toast from 'react-hot-toast'
 
 export default function LoginPage() {
-  const { setAuth } = useAuthStore()
+  const { setAuth, setPasswordExpired } = useAuthStore()
   const { settings } = useSettingsStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -31,6 +31,7 @@ export default function LoginPage() {
       // `isAuthenticated` passe à true et renvoie vers la page initialement
       // demandée (ex. la fiche d'un matériel ouverte via un QR code).
       definirSouvenir(souvenir)
+      setPasswordExpired(response.data.passwordExpired === true)
       setAuth(user, accessToken, refreshToken)
       toast.success(`Bienvenue, ${user.firstName} !`)
     } catch (err: any) {

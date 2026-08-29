@@ -81,6 +81,12 @@ interface AuthState {
    * à la reconnexion.
    */
   sessionExpired: boolean
+  /**
+   * Mot de passe plus ancien que la durée configurée. Signalé, jamais bloquant :
+   * refuser l'accès à un agent en extérieur parce que son mot de passe a
+   * 91 jours coûte plus qu'il ne protège.
+   */
+  passwordExpired: boolean
 
   // Actions
   login: (email: string, password: string) => Promise<void>
@@ -90,6 +96,7 @@ interface AuthState {
   setTokens: (token: string, refreshToken: string) => void
   updateUser: (user: Partial<User>) => void
   setSessionExpired: (expired: boolean) => void
+  setPasswordExpired: (expired: boolean) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -101,6 +108,7 @@ export const useAuthStore = create<AuthState>()(
       isAuthenticated: false,
       isLoading: true,
       sessionExpired: false,
+      passwordExpired: false,
 
       login: async (email: string, password: string) => {
         const response = await api.post('/auth/login', { email, password })
@@ -190,6 +198,10 @@ export const useAuthStore = create<AuthState>()(
 
       setSessionExpired: (expired: boolean) => {
         set({ sessionExpired: expired })
+      },
+
+      setPasswordExpired: (expired: boolean) => {
+        set({ passwordExpired: expired })
       }
     }),
     {

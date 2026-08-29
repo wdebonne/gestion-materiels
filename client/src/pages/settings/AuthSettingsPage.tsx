@@ -101,6 +101,33 @@ function StatusBadge({ active }: { active: boolean }) {
   )
 }
 
+/**
+ * Réglages qu'un administrateur pourrait croire actifs.
+ *
+ * Ces contrôles existaient sous forme d'interrupteurs enregistrés dans
+ * `auth_config` et relus par personne. Les afficher comme réglables était pire
+ * que de ne pas les afficher : un administrateur qui coupe « connexion locale »
+ * croit fermer une porte, et rien ne se ferme.
+ */
+function ReglagesNonAppliques({ titre, elements }: { titre: string; elements: [string, string][] }) {
+  return (
+    <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-900/20">
+      <div className="mb-2 flex items-center gap-2 font-medium text-amber-900 dark:text-amber-200">
+        <AlertTriangle className="h-4 w-4" />
+        {titre}
+      </div>
+      <dl className="space-y-2 text-sm text-amber-900 dark:text-amber-200">
+        {elements.map(([nom, raison]) => (
+          <div key={nom}>
+            <dt className="font-medium">{nom}</dt>
+            <dd className="text-amber-800 dark:text-amber-300">{raison}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
+  )
+}
+
 // ==================== SECTION GÉNÉRALE ====================
 
 function GeneralAuthSection({ config, queryClient }: { config: any; queryClient: any }) {
@@ -153,45 +180,34 @@ function GeneralAuthSection({ config, queryClient }: { config: any; queryClient:
           </CardTitle>
         </CardHeader>
         <CardBody className="space-y-4">
-          <ToggleSwitch
-            enabled={formData.allow_local_login}
-            onChange={(v) => setFormData({ ...formData, allow_local_login: v })}
-            label="Autoriser la connexion locale (email / mot de passe)"
-          />
-          <ToggleSwitch
-            enabled={formData.allow_registration}
-            onChange={(v) => setFormData({ ...formData, allow_registration: v })}
-            label="Autoriser l'inscription publique"
-          />
-          <ToggleSwitch
-            enabled={formData.enforce_2fa}
-            onChange={(v) => setFormData({ ...formData, enforce_2fa: v })}
-            label="Exiger l'authentification à deux facteurs (2FA)"
-          />
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
-            <Input
-              label="Timeout session (minutes)"
-              type="number"
-                inputMode="numeric"
-              value={String(formData.session_timeout_minutes)}
-              onChange={(e) => setFormData({ ...formData, session_timeout_minutes: parseInt(e.target.value) || 480 })}
-              hint="0 = pas d'expiration"
-            />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <Input
               label="Tentatives max avant blocage"
               type="number"
-                inputMode="numeric"
+              inputMode="numeric"
               value={String(formData.max_login_attempts)}
               onChange={(e) => setFormData({ ...formData, max_login_attempts: parseInt(e.target.value) || 5 })}
+              hint="0 = pas de blocage"
             />
             <Input
               label="Durée du blocage (minutes)"
               type="number"
-                inputMode="numeric"
+              inputMode="numeric"
               value={String(formData.lockout_duration_minutes)}
               onChange={(e) => setFormData({ ...formData, lockout_duration_minutes: parseInt(e.target.value) || 15 })}
+              hint="Un administrateur peut débloquer en réattribuant un mot de passe"
             />
           </div>
+
+          <ReglagesNonAppliques
+            titre="Réglages non appliqués"
+            elements={[
+              ['Connexion locale', "Seule méthode de connexion existante. La désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne."],
+              ['Inscription publique', "Il n'existe pas de page d'inscription : la création de comptes passe par un administrateur."],
+              ['Authentification à deux facteurs', "Aucun second facteur n'est implémenté."],
+              ['Timeout de session', "Non appliqué. La durée de vie des jetons est réglée par JWT_EXPIRES_IN."],
+            ]}
+          />
         </CardBody>
       </Card>
 
@@ -218,7 +234,7 @@ function GeneralAuthSection({ config, queryClient }: { config: any; queryClient:
                 inputMode="numeric"
               value={String(formData.password_expiry_days)}
               onChange={(e) => setFormData({ ...formData, password_expiry_days: parseInt(e.target.value) || 0 })}
-              hint="0 = jamais"
+              hint="0 = jamais. Au-delà, un bandeau invite l'utilisateur à changer son mot de passe sans bloquer l'accès"
             />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

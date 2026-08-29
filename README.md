@@ -664,6 +664,9 @@ POST   /api/backup/migrate    # Migrer vers MySQL
 - Rotation automatique des secrets JWT avec période de grâce
 - Headers de sécurité HTTP (Helmet), CORS, HTTPS forcé en production
 - Validation des entrées côté serveur sur les écritures de terrain
+- **Politique de mot de passe appliquée** : longueur et complexité configurables, vérifiées aux six endroits où un mot de passe est défini (inscription, réinitialisation, changement, création et modification par un administrateur)
+- **Blocage du compte** après N échecs pendant une durée configurable, indépendamment du rate limiting qui protège l'API dans son ensemble. Un administrateur débloque en réattribuant un mot de passe
+- **Expiration du mot de passe** signalée par un bandeau, sans bloquer l'accès
 - Journal d'audit : connexions, échecs, déconnexions, changements de configuration
 
 ### Écrans de configuration sans effet ⚠️
@@ -676,10 +679,10 @@ Ces écrans existent dans **Paramètres > Authentification**, enregistrent leur 
 | SSO OpenID Connect | Écran de configuration uniquement |
 | LDAP / Active Directory | Écran de configuration uniquement |
 | Passkey (WebAuthn / FIDO2) | Écran de configuration uniquement |
-| Politique de mot de passe (longueur, complexité, expiration) | Configurable, **jamais appliquée** à la création ni au changement de mot de passe |
-| Blocage après N tentatives échouées, 2FA, timeout de session | Configurable, **jamais appliqué** — seul le rate limiting global protège du bourrinage |
 
 Le bouton « Tester » de chaque fournisseur ne fait que vérifier la forme de l'URL saisie.
+
+La politique de mot de passe et le blocage après N tentatives, qui étaient dans le même cas, sont désormais appliqués. Les trois réglages qui ne peuvent pas l'être — connexion locale, 2FA, timeout de session — ont été retirés du formulaire et remplacés par un encart qui dit pourquoi, plutôt que par des interrupteurs sans effet.
 
 ## 🚧 État réel
 
@@ -688,7 +691,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | Fonction | Ce qui existe | Ce qui manque |
 |----------|---------------|---------------|
 | **SSO SAML / OIDC / LDAP / Passkey** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local |
-| **Politique de mot de passe et de connexion** | Écran de configuration (longueur, complexité, expiration, blocage après N tentatives, 2FA, timeout) | Aucune règle n'est appliquée à la création ni au changement de mot de passe |
+| **2FA, timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Aucun second facteur n'est implémenté ; le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
 | **Webhooks** | CRUD complet, bouton de test, journalisation | Aucune route ni tâche planifiée n'appelle `POST /trigger` : aucun webhook ne part jamais |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
 | **Impression d'étiquettes QR en lot** | `POST /api/qrcode/batch` renvoie jusqu'à 100 étiquettes | Aucun écran ne l'appelle : les QR codes s'impriment un par un |

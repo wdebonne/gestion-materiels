@@ -52,6 +52,27 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Pagination invisible** : au-delà du vingtième matériel, les suivants n'étaient pas affichés
 - **Réponses API mal déballées** : `res.data.data || res.data` renvoyait l'objet de réponse entier, et les pages Cartographie et Suivi plantaient sur `categories.map is not a function`
 
+### Sécurité
+
+- **Politique de mot de passe appliquée.** L'écran Paramètres > Authentification permettait de régler la longueur minimale, la complexité, l'expiration et le blocage après N tentatives. Rien n'était appliqué : la configuration était écrite dans `auth_config` et relue par personne, et un administrateur qui réglait « blocage après 5 tentatives » croyait disposer d'un contrôle qui n'existait pas
+  - Longueur et complexité vérifiées aux **six** endroits où un mot de passe est défini : inscription, réinitialisation, changement, création par un administrateur, changement de son propre mot de passe, réattribution par un administrateur
+  - Les quatre contrôles de longueur codés en dur ont été retirés — un minimum réglé à 10 aurait laissé passer 8, et un minimum réglé à 6 aurait été refusé avec un message contredisant l'écran
+  - Tous les manquements sont rendus d'un coup plutôt qu'un par un : redemander trois fois de suite pousse à écrire le mot de passe sur un papier
+  - Une configuration illisible retombe sur les valeurs par défaut, jamais sur « aucune exigence »
+- **Blocage du compte après N échecs**, pendant la durée configurée, réponse `423`. Ce contrôle protège un compte précis, là où le rate limiting protège l'API dans son ensemble. Le nombre d'essais restants n'est pas révélé, car il indiquerait qu'un email existe. Un administrateur débloque en réattribuant un mot de passe, et une réinitialisation réussie débloque aussi
+- **Expiration du mot de passe signalée**, par un bandeau invitant à le changer. Elle ne bloque pas : refuser l'accès à un agent au fond d'un parc parce que son mot de passe a 91 jours l'empêcherait de travailler sans rien protéger de plus. Un compte sans date de changement connue — tous ceux créés avant la migration — n'est jamais déclaré expiré
+- **Trois réglages retirés du formulaire**, remplacés par un encart qui explique pourquoi plutôt que par des interrupteurs sans effet : la 2FA (aucun second facteur n'existe), le timeout de session (demanderait un suivi d'inactivité), et la connexion locale (la désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne)
+
+### Ajouté
+
+- **Migration `002_politique_connexion`** : colonnes `failed_login_attempts`, `locked_until` et `password_changed_at` sur `users`. Première utilisation réelle du système de migration
+- **`passwordPolicy.service.ts`** : lecture de la politique avec cache court, invalidé dès qu'un administrateur enregistre — sans quoi il verrait son nouveau seuil ignoré pendant trente secondes
+- **21 tests** figeant les exigences, la lecture d'une configuration corrompue et l'expiration
+
+### Corrigé
+
+- **Réponses de validation sans message** : six routes renvoyaient `{ success: false, errors: [...] }` sans champ `message`, et le client affichait une erreur vide
+
 ### Structure et fiabilité
 
 #### Ajouté

@@ -243,15 +243,24 @@ Conséquence du point précédent : `POST /auth/logout` prenant un 401 systémat
 
 Le journal d'audit ne contenait donc que des connexions — un défaut de traçabilité invisible tant qu'on ne cherche pas les déconnexions manquantes.
 
-### 4. Politique de mot de passe et blocage jamais appliqués — **non corrigé**
+### 4. Politique de mot de passe et blocage jamais appliqués — **corrigé**
 
 L'écran **Paramètres > Authentification** permet de configurer la longueur minimale, la complexité, l'expiration des mots de passe, le blocage après N tentatives échouées, la 2FA obligatoire et le timeout de session.
 
-Aucune de ces règles n'est appliquée : zéro référence dans `auth.routes.ts` et `user.routes.ts`. La table `auth_config` est écrite par cette page et relue par personne — les fournisseurs SAML, OIDC, LDAP et Passkey sont dans le même cas.
+Aucune de ces règles n'était appliquée : zéro référence dans `auth.routes.ts` et `user.routes.ts`. Un administrateur qui configurait « blocage après 5 tentatives » croyait disposer d'un contrôle qui n'existait pas, et seul le rate limiting global protégeait du bourrinage.
 
-Un administrateur qui configure « blocage après 5 tentatives » croit disposer d'un contrôle qui n'existe pas. Seul le rate limiting global protège du bourrinage.
+**Correction** : `src/services/passwordPolicy.service.ts` lit la configuration et l'applique.
 
-**Recommandation** : appliquer ces règles, ou retirer les écrans. Un écran qui simule un contrôle de sécurité est plus dangereux que son absence.
+- **Longueur et complexité** vérifiées aux six endroits où un mot de passe est défini : inscription, réinitialisation, changement, création par un administrateur, changement de son propre mot de passe, réattribution par un administrateur. Les quatre contrôles de longueur codés en dur ont été retirés — ils auraient contredit un minimum configuré différemment.
+- **Blocage du compte** après N échecs, pendant la durée configurée, réponse `423`. Ce contrôle protège un compte précis, là où le rate limiting protège l'API dans son ensemble. Le nombre d'essais restants n'est pas révélé : il indiquerait qu'un email existe. Un administrateur débloque en réattribuant un mot de passe, et une réinitialisation réussie débloque aussi.
+- **Expiration** signalée à la connexion par un drapeau `passwordExpired`, affiché en bandeau. Elle ne bloque pas : refuser l'accès à un agent en extérieur parce que son mot de passe a 91 jours coûterait plus que cela ne protège. Un compte sans date de changement connue — tous ceux créés avant la migration — n'est jamais déclaré expiré.
+- **Configuration illisible** : une valeur absente, d'un type inattendu ou négative retombe sur la valeur par défaut, jamais sur « aucune exigence ».
+
+Colonnes ajoutées par la migration `002_politique_connexion` : `failed_login_attempts`, `locked_until`, `password_changed_at`.
+
+**Trois réglages restent inapplicables** et ont été retirés du formulaire, remplacés par un encart qui dit pourquoi plutôt que par des interrupteurs sans effet : la 2FA (aucun second facteur n'existe), le timeout de session (demanderait un suivi d'inactivité), et la connexion locale (la désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne).
+
+**Vérifié** : blocage au 3ᵉ échec avec le seuil réglé à 3, bon mot de passe refusé pendant le blocage, déblocage par un administrateur, et signalement d'expiration sur un mot de passe daté de 100 jours avec un seuil à 90. 21 tests figent le contrat.
 
 ### Journalisation muette — **corrigé**
 
@@ -270,7 +279,7 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 | A02 - Cryptographic Failures | ✅ | Bcrypt + JWT avec rotation |
 | A03 - Injection | ✅ | Requêtes paramétrées |
 | A04 - Insecure Design | ✅ | Architecture sécurisée |
-| A05 - Security Misconfiguration | ⚠️ | Headers OK, HTTPS forcé, secret JWT obligatoire. Mais la politique de mot de passe et le blocage après N tentatives sont configurables sans être appliqués |
+| A05 - Security Misconfiguration | ✅ | Headers OK, HTTPS forcé, secret JWT obligatoire. La politique de mot de passe et le blocage après N tentatives sont appliqués depuis août 2026 |
 | A06 - Vulnerable Components | ⚠️ | Audit npm recommandé |
 | A07 - Authentication Failures | ✅ | Rate limiting + audit complet. Corrigé en août 2026 : la cascade de déconnexion épuisait le limiteur et bloquait la reconnexion 15 minutes, et aucune déconnexion n'était journalisée |
 | A08 - Data Integrity Failures | ✅ | Validation des entrées |
@@ -300,7 +309,7 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 
 ### Ouvert après la révision d'août 2026
 
-- [ ] **Appliquer ou retirer la politique de mot de passe et le blocage après N tentatives** — configurables, jamais appliqués
+- [x] ~~**Appliquer ou retirer la politique de mot de passe et le blocage après N tentatives**~~ ✅ Août 2026 — appliqués ; les trois réglages inapplicables ont été retirés du formulaire
 - [ ] **Finir ou retirer les écrans SSO SAML / OIDC / LDAP / Passkey** — `auth_config` est écrite et relue par personne
 - [ ] **Séparer le secret du jeton de rafraîchissement** — `JWT_REFRESH_SECRET` est déclaré dans `docker-compose.yml` et lu par personne : les deux jetons sont signés avec `JWT_SECRET`, donc une fuite du secret d'accès permet aussi de forger des jetons de rafraîchissement
 - [ ] Exécuter `npm audit` et corriger les vulnérabilités
@@ -329,9 +338,11 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 
 La révision d'août 2026 montre en revanche que la protection des routes ne dit rien de ce qui se passe une fois le contrôle franchi. Trois défauts corrigés depuis — portée des tokens API ignorée, cascade de déconnexion bloquant la reconnexion 15 minutes, déconnexions jamais journalisées — étaient invisibles depuis la liste des endpoints.
 
-**Le point ouvert le plus sérieux n'est pas un défaut de code mais un écart entre l'interface et la réalité** : les écrans SSO, la politique de mot de passe et le blocage après N tentatives font croire à un administrateur qu'il dispose de contrôles qui n'existent pas. Tant qu'ils sont affichés sans être appliqués, ils réduisent la sécurité effective plutôt que de l'augmenter, parce qu'ils dissuadent de chercher une autre protection.
+**Le point ouvert le plus sérieux n'est pas un défaut de code mais un écart entre l'interface et la réalité.** La politique de mot de passe et le blocage après N tentatives, qui étaient dans ce cas, sont désormais appliqués ; les réglages inapplicables ont été retirés du formulaire.
 
-**Priorité suivante** : appliquer ou retirer ces écrans.
+Restent les **écrans SSO SAML, OIDC, LDAP et Passkey** : ils font croire à un administrateur que l'authentification est déléguée alors qu'elle reste en bcrypt local. Tant qu'ils sont affichés sans être appliqués, ils réduisent la sécurité effective plutôt que de l'augmenter, parce qu'ils dissuadent de chercher une autre protection.
+
+**Priorité suivante** : finir ou retirer ces quatre écrans.
 
 ---
 

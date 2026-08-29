@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
+import { invaliderPolitique } from '../services/passwordPolicy.service';
 
 const router = Router();
 
@@ -205,6 +206,11 @@ router.put('/:provider', authenticateToken, requireAdmin, async (req: AuthReques
         [provider, is_active ? 1 : 0, configJson, now, now]
       );
     }
+
+    // La politique est mise en cache 30 secondes côté service : sans cette
+    // invalidation, un administrateur enregistrerait un nouveau seuil et le
+    // verrait ignoré, ce qui est exactement ce que ce lot corrige.
+    invaliderPolitique();
 
     // L'appel précédent passait `action` et omettait `level` : `log()` filtre sur
     // les niveaux activés, `includes(undefined)` est faux, et l'entrée était
