@@ -278,6 +278,8 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > ⚠️ **Réglage invisible à la relecture :** les lectures de catégorie et de sous-catégorie ne rendaient ni `is_prestation` ni `available_for_manifestations`. La valeur était enregistrée, mais le formulaire réaffichait « Hérité » à la réouverture — on ne pouvait pas vérifier ce qu'on avait coché.
 >
+> ⚠️ **Sous-catégories homonymes confondues :** le slug d'une sous-catégorie n'est unique que dans sa catégorie — « Technique › Prestations » et « Urbanisme › Prestations » doivent coexister — mais `GET /subcategories/by-slug/:slug` rendait la première venue. Les deux écrans montraient le même matériel. La route cadrée existait et était juste ; l'écran y passe désormais, sa clé de cache porte les deux slugs, et `by-slug` refuse un slug ambigu au lieu de le trancher.
+>
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 
 ### 15. Espaces Verts (gestion espaces verts municipaux)

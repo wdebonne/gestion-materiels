@@ -262,6 +262,19 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
 - **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
 
+### Parc — deux catégories peuvent nommer pareillement une sous-catégorie
+
+> « Technique › Prestations » et « Urbanisme › Prestations » affichaient le même matériel, comme si les deux sous-catégories avaient fusionné. Elles étaient pourtant bien distinctes en base : c'est la lecture qui se trompait.
+
+#### Corrigé
+
+- **Le slug d'une sous-catégorie n'est unique que dans sa catégorie**, et une des deux routes de lecture l'ignorait. `GET /subcategories/by-slug/:slug` rendait la **première venue** : ouvrir « Technique › Prestations » affichait le contenu d'« Urbanisme › Prestations », sans le moindre signe que quelque chose clochait
+  - Le défaut ne demandait aucune erreur de saisie : seulement deux catégories nommant pareillement une de leurs branches — ce qui est précisément l'organisation recommandée, où la catégorie est le service
+  - La contrainte d'unicité posée à la création disait déjà la règle (`WHERE category_id = ? AND slug = ?`) ; la lecture ne la suivait pas
+  - L'écran passe désormais par la route cadrée `GET /categories/:categorySlug/:subcategorySlug`, qui existait et était juste. Sa **clé de cache** porte les deux slugs, sans quoi les deux écrans se seraient servi mutuellement leur contenu
+  - `by-slug` **refuse de trancher au hasard** : un slug porté par plusieurs catégories rend une erreur qui les nomme et demande `?category=`. Une erreur explicite vaut mieux qu'une réponse fausse qu'on croira juste
+- La route cadrée rend aussi ce que l'écran attendait de l'autre : nom et slug de la catégorie parente, nombre de matériels, et les réglages *prestation* et *disponible pour les manifestations*
+
 ### Parc — le prêt se règle sur la fiche, et une manifestation se chiffre
 
 > La disponibilité pour les manifestations ne se réglait que dans un écran d'arbre, sous Réglages. Or la question se pose au moment où l'on crée le matériel : on sait alors très bien si le réfrigérateur part pour la brocante et si le grill reste à la cuisine. La régler ailleurs, plus tard, c'est ne jamais la régler.

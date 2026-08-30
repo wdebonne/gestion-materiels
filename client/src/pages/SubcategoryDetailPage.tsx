@@ -49,14 +49,21 @@ export default function SubcategoryDetailPage() {
     enabled: !!categorySlug
   })
 
-  // Récupérer la sous-catégorie
+  /**
+   * Récupérer la sous-catégorie, **dans sa catégorie**.
+   *
+   * Le slug n'est unique que dans une catégorie : « Technique › Prestations » et
+   * « Urbanisme › Prestations » en portent le même. Chercher par le seul slug
+   * rendait la première venue, et les deux écrans montraient le même matériel.
+   * La clé de cache porte les deux slugs pour la même raison.
+   */
   const { data: subcategory, isLoading, error } = useQuery({
-    queryKey: ['subcategory', subcategorySlug],
+    queryKey: ['subcategory', categorySlug, subcategorySlug],
     queryFn: async () => {
-      const response = await api.get(`/subcategories/by-slug/${subcategorySlug}`)
-      return response.data as Subcategory
+      const response = await api.get(`/categories/${categorySlug}/${subcategorySlug}`)
+      return response.data.subcategory as Subcategory
     },
-    enabled: !!subcategorySlug
+    enabled: !!categorySlug && !!subcategorySlug
   })
 
   // Récupérer les objets de la sous-catégorie, page par page
@@ -92,7 +99,7 @@ export default function SubcategoryDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['objects', subcategory?.id] })
-      queryClient.invalidateQueries({ queryKey: ['subcategory', subcategorySlug] })
+      queryClient.invalidateQueries({ queryKey: ['subcategory', categorySlug, subcategorySlug] })
       toast.success(editingObject ? 'Matériel modifié' : 'Matériel créé')
       closeModal()
     },
@@ -108,7 +115,7 @@ export default function SubcategoryDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['objects', subcategory?.id] })
-      queryClient.invalidateQueries({ queryKey: ['subcategory', subcategorySlug] })
+      queryClient.invalidateQueries({ queryKey: ['subcategory', categorySlug, subcategorySlug] })
       toast.success('Matériel supprimé')
       setDeleteConfirm(null)
     },

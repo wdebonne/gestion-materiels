@@ -182,7 +182,12 @@ router.get('/:categorySlug/:subcategorySlug', authenticateToken, async (req: Aut
       return res.status(404).json({ success: false, message: 'Catégorie non trouvée' });
     }
 
-    // Trouver la sous-catégorie par slug dans cette catégorie
+    // Trouver la sous-catégorie par slug dans cette catégorie.
+    //
+    // Le slug d'une sous-catégorie n'est unique QUE dans sa catégorie : deux
+    // catégories peuvent légitimement porter chacune une « Prestations », et
+    // c'est même l'organisation recommandée. Toute lecture doit donc être
+    // cadrée par la catégorie, sinon elle rend la première venue.
     const subcategory = await db.queryOne(
       'SELECT * FROM subcategories WHERE category_id = ? AND slug = ?',
       [category.id, subcategorySlug]
@@ -191,15 +196,25 @@ router.get('/:categorySlug/:subcategorySlug', authenticateToken, async (req: Aut
       return res.status(404).json({ success: false, message: 'Sous-catégorie non trouvée' });
     }
 
+    const compte = await db.queryOne(
+      'SELECT COUNT(*) as count FROM objects WHERE subcategory_id = ?',
+      [subcategory.id]
+    );
+
     res.json({
       success: true,
       subcategory: {
         id: subcategory.id,
         categoryId: subcategory.category_id,
+        categoryName: category.name,
+        categorySlug: category.slug,
         name: subcategory.name,
         slug: subcategory.slug,
         image: subcategory.image,
+        isPrestation: troisEtats(subcategory.is_prestation),
+        availableForManifestations: troisEtats(subcategory.available_for_manifestations),
         sortOrder: subcategory.sort_order,
+        objectCount: compte?.count || 0,
         createdAt: subcategory.created_at,
         updatedAt: subcategory.updated_at
       }
@@ -665,18 +680,43 @@ router.delete('/:categoryId/subcategories/:id', authenticateToken, requireAdmin,
 // Créer un router séparé pour les sous-catégories
 export const subcategoryRouter = Router();
 
-// GET /api/subcategories/by-slug/:slug - Récupérer une sous-catégorie par son slug
+/**
+ * GET /api/subcategories/by-slug/:slug - Sous-catégorie par son slug.
+ *
+ * **Le slug n'est unique que dans une catégorie.** Deux catégories peuvent
+ * légitimement porter chacune une « Prestations » — c'est même l'organisation
+ * recommandée, où la catégorie est le service. Cette route rendait la première
+ * venue : ouvrir « Technique › Prestations » affichait le contenu d'« Urbanisme
+ * › Prestations », sans le moindre signe que quelque chose clochait.
+ *
+ * `?category=<slug>` lève l'ambiguïté. Sans lui, un slug porté par plusieurs
+ * catégories est refusé plutôt que tranché au hasard : une erreur explicite vaut
+ * mieux qu'une réponse fausse qu'on croira juste.
+ */
 subcategoryRouter.get('/by-slug/:slug', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { slug } = req.params;
+    const categorieDemandee = req.query.category ? String(req.query.category) : null;
 
-    const subcategory = await db.queryOne(
-      `SELECT s.*, c.name as category_name, c.slug as category_slug 
+    const candidates = await db.query(
+      `SELECT s.*, c.name as category_name, c.slug as category_slug
        FROM subcategories s
        JOIN categories c ON c.id = s.category_id
-       WHERE s.slug = ?`,
-      [slug]
+       WHERE s.slug = ?${categorieDemandee ? ' AND c.slug = ?' : ''}`,
+      categorieDemandee ? [slug, categorieDemandee] : [slug]
     );
+
+    if (candidates.length > 1) {
+      return res.status(400).json({
+        success: false,
+        message:
+          `Plusieurs catégories portent une sous-catégorie « ${slug} » : ` +
+          `précisez laquelle avec ?category=<slug de la catégorie>.`,
+        categories: candidates.map((c: any) => c.category_slug),
+      });
+    }
+
+    const subcategory = candidates[0];
 
     if (!subcategory) {
       return res.status(404).json({ success: false, message: 'Sous-catégorie non trouvée' });
