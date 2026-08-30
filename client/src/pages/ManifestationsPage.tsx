@@ -13,7 +13,10 @@ import ManifestationPDFExport from '@/components/ManifestationPDFExport'
 import ManifestationSuivi from '@/components/ManifestationSuivi'
 import ManifestationDocuments from '@/components/ManifestationDocuments'
 import ManifestationObjetsParc, { type ObjetChoisi } from '@/components/ManifestationObjetsParc'
-import { objetManifestationApi, documentManifestationApi, suiviApi } from '@/lib/api'
+import { objetManifestationApi, documentManifestationApi, suiviApi,
+  type CoutManifestation,
+  type LigneCout,
+} from '@/lib/api'
 import { usePermissions } from '@/lib/permissions'
 import api from '@/lib/api'
 import {
@@ -1396,6 +1399,8 @@ function OngletResume({ manif: m }: { manif: Manifestation }) {
         </CardBody>
       </Card>
 
+      <CoutManifestationCard cout={m.cout} />
+
       {(m.notes_interior || m.notes_exterior) && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {m.notes_interior && (
@@ -1934,5 +1939,99 @@ function DeliveryModal({ manif, onClose, onSave, loading }: {
         <Button loading={loading} onClick={() => onSave(materials)}>Enregistrer</Button>
       </ModalFooter>
     </Modal>
+  )
+}
+
+/** Montant en euros, à la française : « 1 250,50 € ». */
+const enEuros = (valeur: number): string =>
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(valeur ?? 0)
+
+/**
+ * Ce que la manifestation coûte.
+ *
+ * Deux natures, séparées à dessein : ce qu'on **déploie** — trois agents, un
+ * raccordement — et ce qui ne **revient pas** — dix chaises prêtées, neuf
+ * rendues. Les additionner sans les distinguer donnerait un total juste et une
+ * lecture fausse : on ne négocie pas une casse comme on budgète une vacation.
+ *
+ * Tant que la manifestation n'est pas récupérée, ce qui est sorti n'est pas
+ * perdu : il est montré à part, sans entrer dans le total. Compter la
+ * différence dès la livraison afficherait 1 500 € de casse le jour où l'on sort
+ * trente chaises.
+ */
+function CoutManifestationCard({ cout }: { cout?: CoutManifestation }) {
+  if (!cout) return null
+
+  const rien =
+    cout.prestations.length === 0 &&
+    cout.pertes.length === 0 &&
+    cout.en_attente_de_retour.length === 0
+  if (rien) return null
+
+  const Section = ({ titre, lignes, ton }: { titre: string; lignes: LigneCout[]; ton: string }) =>
+    lignes.length === 0 ? null : (
+      <div>
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{titre}</p>
+        <div className="space-y-1">
+          {lignes.map((ligne, i) => (
+            <div key={`${ligne.libelle}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span className="text-gray-900 dark:text-gray-100">
+                {ligne.libelle}
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{ligne.motif}</span>
+              </span>
+              <strong className={ton}>{enEuros(ligne.total)}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-sm">Coût de la manifestation</CardTitle>
+        <strong className="text-lg text-gray-900 dark:text-gray-100">{enEuros(cout.total)}</strong>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <Section titre="Prestations déployées" lignes={cout.prestations} ton="text-gray-900 dark:text-gray-100" />
+        <Section titre="Casse et matériel non revenu" lignes={cout.pertes} ton="text-red-600 dark:text-red-400" />
+
+        {cout.en_attente_de_retour.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Sorti, pas encore revenu — non compté
+            </p>
+            <div className="space-y-1">
+              {cout.en_attente_de_retour.map((ligne, i) => (
+                <div key={`${ligne.libelle}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                  <span className="text-gray-600 dark:text-gray-300">
+                    {ligne.libelle}
+                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{ligne.motif}</span>
+                  </span>
+                  <span className="text-gray-400 dark:text-gray-500">{enEuros(ligne.total)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(cout.total_prestations > 0 || cout.total_pertes > 0) && (
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <span className="text-gray-600 dark:text-gray-300">
+              Prestations : <strong>{enEuros(cout.total_prestations)}</strong>
+            </span>
+            <span className="text-gray-600 dark:text-gray-300">
+              Pertes : <strong>{enEuros(cout.total_pertes)}</strong>
+            </span>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {cout.definitif
+            ? 'Décompte définitif : la manifestation est récupérée, ce qui n’est pas revenu ne reviendra plus.'
+            : 'Décompte provisoire : ce qui est sorti ne sera compté comme perdu qu’une fois la manifestation récupérée.'}
+        </p>
+      </CardBody>
+    </Card>
   )
 }

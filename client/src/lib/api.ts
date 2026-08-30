@@ -160,6 +160,8 @@ export interface Category {
   sortOrder: number
   /** Cette catégorie ne contient que des prestations. Elle donne le ton à ses sous-catégories. */
   isPrestation?: boolean
+  /** Son matériel est proposé dans les manifestations. Jamais nul : c'est la valeur de référence. */
+  availableForManifestations?: boolean
   objectCount?: number
   subcategoryCount?: number
   createdAt: string
@@ -179,6 +181,8 @@ export interface Subcategory {
    * toucher à « Technique › Mobilier ».
    */
   isPrestation?: boolean | null
+  /** Trois états, comme `isPrestation` : `null` hérite de la catégorie. */
+  availableForManifestations?: boolean | null
   objectCount?: number
   createdAt: string
   updatedAt: string
@@ -222,6 +226,15 @@ export interface GestionObject {
   quantityLent?: number
   quantityReservedFuture?: number
   quantityAvailable?: number
+  /**
+   * Ce que vaut une unité, pour chiffrer une manifestation : le prix d'une
+   * chaise, le coût d'une vacation, la valeur de remplacement d'un exemplaire.
+   */
+  unitCost?: number
+  /** Choix propre au matériel ; `null` = il hérite de sa branche. */
+  availableForManifestations?: boolean | null
+  /** Résultat effectif après héritage : ce qui s'applique vraiment. */
+  pretable?: boolean
   createdAt: string
   updatedAt: string
   plugins?: Plugin[]
@@ -452,6 +465,8 @@ export interface Manifestation {
   objects?: ObjetManifestation[]
   /** Lignes reçues d'un formulaire qu'aucun article du stock n'a permis de rattacher. */
   intake_unmatched?: string | null
+  /** Décompte des coûts, joint au détail. */
+  cout?: CoutManifestation
 }
 
 export interface ManifestationStats {
@@ -907,6 +922,36 @@ export interface ObjetParc {
 export type EtatRetour = 'intact' | 'abime' | 'perdu'
 
 /** Matériel unique rattaché à une manifestation. */
+
+/** Une ligne du décompte d'une manifestation. */
+export interface LigneCout {
+  libelle: string
+  nature: 'prestation' | 'lot' | 'unique' | 'stock'
+  quantite: number
+  cout_unitaire: number
+  total: number
+  /** Ce qui fonde la ligne, en clair : un montant ne doit jamais être opaque. */
+  motif: string
+}
+
+/**
+ * Ce qu'une manifestation coûte.
+ *
+ * Deux natures, jamais confondues : ce qu'on **déploie** — des agents, un
+ * raccordement — et ce qui ne **revient pas** — dix chaises prêtées, neuf
+ * rendues. On ne négocie pas une casse comme on budgète une vacation.
+ */
+export interface CoutManifestation {
+  prestations: LigneCout[]
+  pertes: LigneCout[]
+  total_prestations: number
+  total_pertes: number
+  total: number
+  /** `false` tant que la manifestation n'est pas récupérée : le manque n'est pas encore une perte. */
+  definitif: boolean
+  en_attente_de_retour: LigneCout[]
+}
+
 export interface ObjetManifestation {
   id: number
   manifestation_id: number

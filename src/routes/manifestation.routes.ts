@@ -70,6 +70,7 @@ import {
   produireEtNotifier,
 } from '../services/generationDocuments.service';
 import { manquesSurLots } from '../services/lotParc.service';
+import { coutDe } from '../services/coutManifestation.service';
 
 const router = Router();
 
@@ -686,7 +687,12 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       req.user!.role
     );
 
-    res.json({ success: true, data: { ...m, materials, objects, documents, history } });
+    // Le coût est calculé à la lecture plutôt que stocké : les prix bougent,
+    // les retours se saisissent après coup, et une valeur figée mentirait dès
+    // la première correction.
+    const cout = await coutDe(m.id);
+
+    res.json({ success: true, data: { ...m, materials, objects, documents, history, cout } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

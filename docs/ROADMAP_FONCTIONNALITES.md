@@ -270,6 +270,14 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > 🟡 **Limite connue :** « dehors en ce moment » se calcule sur la journée courante. Une manifestation livrée dont la période est passée sans avoir été marquée récupérée n'apparaît pas comme sortie — comportement hérité du stock des manifestations, inchangé.
 >
+> ✅ **Coût réel d'une manifestation, août 2026 :** un coût unitaire sur la fiche du matériel — prix d'une unité pour un lot, vacation pour une prestation, valeur de remplacement pour un exemplaire — et un décompte sur la manifestation, en deux natures jamais confondues : ce qu'on déploie et ce qui ne revient pas. Chaque ligne dit sur quoi elle repose. Le calcul se fait à la lecture, jamais stocké : les prix bougent et les retours se saisissent après coup.
+>
+> Le point qui compte : une chaise sortie n'est pas une chaise perdue. Le manque n'entre au total qu'une fois la manifestation récupérée — sauf `quantity_lost`, saisie à la main, qui est déjà un constat. Trois colonnes d'export s'ajoutent, calculées seulement si le profil les retient.
+>
+> ✅ **Disponibilité en prêt sur la fiche, août 2026 :** le réglage ne vivait que dans l'écran d'arbre des réglages, alors que la question se pose au moment où l'on crée le matériel. Il est désormais sur la fiche du matériel, de la sous-catégorie et de la catégorie, avec le même héritage à trois niveaux ; l'écran d'arbre reste pour trancher en masse.
+>
+> ⚠️ **Réglage invisible à la relecture :** les lectures de catégorie et de sous-catégorie ne rendaient ni `is_prestation` ni `available_for_manifestations`. La valeur était enregistrée, mais le formulaire réaffichait « Hérité » à la réouverture — on ne pouvait pas vérifier ce qu'on avait coché.
+>
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 
 ### 15. Espaces Verts (gestion espaces verts municipaux)

@@ -10,6 +10,7 @@ import {
   versColonnePrestation,
 } from '../services/prestationParc.service';
 import { enrichirLots, expressionNature } from '../services/lotParc.service';
+import { expressionDisponibilite } from '../services/materielPretable.service';
 
 const router = Router();
 
@@ -178,6 +179,11 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         nature: o.nature,
         materialType: o.material_type ?? 'unique',
         quantityTotal: o.quantity_total ?? 0,
+        unitCost: o.unit_cost ?? 0,
+        availableForManifestations:
+          o.available_for_manifestations === null || o.available_for_manifestations === undefined
+            ? null
+            : Boolean(o.available_for_manifestations),
         createdAt: o.created_at,
         updatedAt: o.updated_at
       })),
@@ -215,7 +221,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
               COALESCE(c.id, c2.id) as resolved_category_id,
               s.name as subcategory_name, s.slug as subcategory_slug,
               ${expressionPrestation('o', 's', 'pc')} as prestation,
-              ${expressionNature('o', 's', 'pc')} as nature
+              ${expressionNature('o', 's', 'pc')} as nature,
+              ${expressionDisponibilite('o', 's', 'pc')} as pretable
        FROM objects o
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
        LEFT JOIN categories c ON c.id = o.category_id
@@ -335,6 +342,14 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         nature: obj.nature,
         materialType: obj.material_type ?? 'unique',
         quantityTotal: obj.quantity_total ?? 0,
+        unitCost: obj.unit_cost ?? 0,
+        availableForManifestations:
+          obj.available_for_manifestations === null || obj.available_for_manifestations === undefined
+            ? null
+            : Boolean(obj.available_for_manifestations),
+        // Ce qui s'applique vraiment après héritage : la case cochée sur le
+        // matériel ne dit rien tant qu'on ignore ce que sa branche décide.
+        pretable: Boolean(obj.pretable),
         // Stock d'un lot, lu directement sur sa fiche de parc : ce qui est
         // dehors aujourd'hui, ce qui est promis, ce qui reste.
         ...(await stockDuLot(obj)),
@@ -425,7 +440,7 @@ router.post('/', authenticateToken, requireSupervisor, [
       categoryId, subcategoryId, name, description, image,
       reference, serialNumber, purchaseDate, purchasePrice,
       status = 'active', location, notes, customFields, isPrestation,
-      materialType, quantityTotal
+      materialType, quantityTotal, unitCost, availableForManifestations
     } = req.body;
 
     // Vérifier la permission d'édition sur la catégorie cible
@@ -449,8 +464,8 @@ router.post('/', authenticateToken, requireSupervisor, [
     const result = await db.execute(
       `INSERT INTO objects (category_id, subcategory_id, name, description, image, 
        reference, serial_number, purchase_date, purchase_price, status, location, notes, custom_fields,
-       is_prestation, material_type, quantity_total)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       is_prestation, material_type, quantity_total, unit_cost, available_for_manifestations)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         categoryId || null, subcategoryId || null, name, description || null, finalImage,
         reference || null, serialNumber || null, purchaseDate || null, purchasePrice || null,
@@ -462,7 +477,11 @@ router.post('/', authenticateToken, requireSupervisor, [
         materialType === 'lot' ? 'lot' : 'unique',
         // La quantité n'a de sens que pour un lot : un exemplaire vaut 1, et
         // laisser saisir « 12 » sur un camion ferait croire qu'on en a douze.
-        materialType === 'lot' ? Math.max(0, Number(quantityTotal) || 0) : 0
+        materialType === 'lot' ? Math.max(0, Number(quantityTotal) || 0) : 0,
+        Math.max(0, Number(unitCost) || 0),
+        // Trois états ici aussi : `null` laisse hériter de la branche, ce qui
+        // reste le cas le plus fréquent.
+        versColonnePrestation(lireChoixPrestation(availableForManifestations))
       ]
     );
 
@@ -492,7 +511,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     const {
       categoryId, subcategoryId, name, description, image,
       reference, serialNumber, purchaseDate, purchasePrice,
-      status, location, notes, customFields, isPrestation, materialType, quantityTotal
+      status, location, notes, customFields, isPrestation, materialType, quantityTotal,
+      unitCost, availableForManifestations
     } = req.body;
 
     const obj = await db.queryOne('SELECT id, category_id, subcategory_id FROM objects WHERE id = ?', [id]);
@@ -581,6 +601,14 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     if (quantityTotal !== undefined && materialType !== 'unique') {
       updateFields.push('quantity_total = ?');
       values.push(Math.max(0, Number(quantityTotal) || 0));
+    }
+    if (unitCost !== undefined) {
+      updateFields.push('unit_cost = ?');
+      values.push(Math.max(0, Number(unitCost) || 0));
+    }
+    if (availableForManifestations !== undefined) {
+      updateFields.push('available_for_manifestations = ?');
+      values.push(versColonnePrestation(lireChoixPrestation(availableForManifestations)));
     }
 
     updateFields.push('updated_at = ?');

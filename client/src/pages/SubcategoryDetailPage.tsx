@@ -13,6 +13,8 @@ import api, { Subcategory, GestionObject as EquipmentObject } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import ChoixPrestation, { BadgePrestation } from '@/components/ChoixPrestation'
 import ChoixTypeMateriel, { BadgeLot } from '@/components/ChoixTypeMateriel'
+import ChoixPretable from '@/components/ChoixPretable'
+import CoutUnitaire from '@/components/CoutUnitaire'
 import toast from 'react-hot-toast'
 import Can from '@/components/Can'
 import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
@@ -31,7 +33,9 @@ export default function SubcategoryDetailPage() {
     status: 'active',
     isPrestation: null as boolean | null,
     materialType: 'unique' as 'unique' | 'lot',
-    quantityTotal: 0
+    quantityTotal: 0,
+    unitCost: 0,
+    availableForManifestations: null as boolean | null
   })
   const [deleteConfirm, setDeleteConfirm] = useState<EquipmentObject | null>(null)
 
@@ -123,11 +127,13 @@ export default function SubcategoryDetailPage() {
         status: obj.status || 'active',
         isPrestation: obj.isPrestation ?? null,
         materialType: obj.materialType ?? 'unique',
-        quantityTotal: obj.quantityTotal ?? 0
+        quantityTotal: obj.quantityTotal ?? 0,
+        unitCost: obj.unitCost ?? 0,
+        availableForManifestations: obj.availableForManifestations ?? null
       })
     } else {
       setEditingObject(null)
-      setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0 })
+      setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0, unitCost: 0, availableForManifestations: null })
     }
     setIsModalOpen(true)
   }
@@ -135,7 +141,7 @@ export default function SubcategoryDetailPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingObject(null)
-    setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0 })
+    setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0, unitCost: 0, availableForManifestations: null })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -410,6 +416,30 @@ export default function SubcategoryDetailPage() {
               onChange={(isPrestation) => setFormData({ ...formData, isPrestation })}
               heriteDe={{ prestation: estBranchePrestation, source: 'sa sous-catégorie' }}
               aide="Une prestation ne se stocke pas et n’immobilise rien : elle est demandée, puis réalisée."
+            />
+
+            {/* La question se pose ici, au moment où l'on crée le matériel :
+                on sait alors si le réfrigérateur part pour la brocante et si le
+                grill reste à la cuisine. La régler ailleurs, plus tard, c'est ne
+                jamais la régler. */}
+            <ChoixPretable
+              valeur={formData.availableForManifestations}
+              onChange={(availableForManifestations) =>
+                setFormData({ ...formData, availableForManifestations })
+              }
+              heriteDe={{ pretable: true, source: 'sa sous-catégorie' }}
+            />
+
+            <CoutUnitaire
+              valeur={formData.unitCost}
+              nature={
+                (formData.isPrestation ?? estBranchePrestation)
+                  ? 'prestation'
+                  : formData.materialType === 'lot'
+                    ? 'lot'
+                    : 'unique'
+              }
+              onChange={(unitCost) => setFormData({ ...formData, unitCost })}
             />
           </ModalBody>
 

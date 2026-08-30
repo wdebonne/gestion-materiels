@@ -262,6 +262,36 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
 - **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
 
+### Parc — le prêt se règle sur la fiche, et une manifestation se chiffre
+
+> La disponibilité pour les manifestations ne se réglait que dans un écran d'arbre, sous Réglages. Or la question se pose au moment où l'on crée le matériel : on sait alors très bien si le réfrigérateur part pour la brocante et si le grill reste à la cuisine. La régler ailleurs, plus tard, c'est ne jamais la régler.
+
+#### Ajouté
+
+- **« Disponible pour les manifestations » sur la fiche du matériel**, de la sous-catégorie et de la catégorie. Trois états — *prêtable*, *non prêtable*, *hérité* — et l'écran dit ce qui s'appliquerait si l'on laisse hériter
+  - L'écran d'arbre (Réglages › Matériel prêtable) reste : il sert à ouvrir ou fermer une branche entière, ce qu'on ne fait pas fiche par fiche. Les deux écrivent la même colonne
+- **Coût unitaire**, dont le sens suit la nature du matériel — et c'est ce qui permet de chiffrer une manifestation
+  - **lot** : le prix d'une unité, 50 € la chaise
+  - **prestation** : le coût d'une unité déployée, la vacation d'un agent
+  - **exemplaire** : la valeur de remplacement, retenue s'il revient perdu
+  - Laisser zéro n'est pas une erreur : le matériel n'entre alors dans aucun calcul. Mieux vaut cela qu'un tarif inventé, qui se retrouverait dans un décompte présenté à un organisateur
+- **Coût d'une manifestation**, sur sa fiche, en deux natures qu'il ne faut jamais confondre
+  - **ce qu'on déploie** : trois agents à 120 €, un raccordement. Connu dès la demande, c'est une dépense décidée
+  - **ce qui ne revient pas** : dix chaises prêtées, neuf rendues — la dixième coûte 50 €. C'est une perte subie
+  - Les additionner sans les distinguer donnerait un total juste et une lecture fausse : on ne négocie pas une casse comme on budgète une vacation
+  - Chaque ligne dit sur quoi elle repose — « 1 non revenue(s) sur 10 livrée(s), à 50 € ». Un montant ne doit jamais être opaque
+- **Une chaise sortie n'est pas une chaise perdue.** Tant que la manifestation n'est pas récupérée, ce qui est dehors est montré à part, sans entrer dans le total : compter la différence dès la livraison afficherait 1 500 € de casse le jour où l'on sort trente chaises. Le manque devient une perte quand l'application déclare le retour fait
+  - Exception : sur le catalogue des manifestations, `quantity_lost` est saisie **à la main**. C'est déjà un constat, pas une déduction — elle compte tout de suite
+  - Un exemplaire revenu **perdu** est chiffré à sa valeur ; **abîmé** ne l'est pas, faute d'un coût de réparation que personne n'a saisi. L'inventer serait pire que de se taire, et le constat reste visible sur la fiche
+  - Une manifestation annulée ne coûte rien
+- Le coût est **calculé à la lecture** plutôt que stocké : les prix bougent, les retours se saisissent après coup, et une valeur figée mentirait dès la première correction
+- **Trois colonnes d'export** : coût des prestations, coût des pertes, coût total. Elles ne sont calculées que si le profil les retient — un export de cent lignes n'a pas à faire cent requêtes pour des colonnes qu'il n'affiche pas
+
+#### Corrigé
+
+- **Les lectures de catégorie et de sous-catégorie ne rendaient ni `is_prestation` ni `available_for_manifestations`.** Le réglage était bien enregistré, mais le formulaire réaffichait « Hérité » à la réouverture : on ne pouvait pas vérifier ce qu'on avait coché, et on recochait
+- Les trois états sont rendus **tels quels** sur une sous-catégorie : les aplatir en booléen ferait disparaître la différence entre « non » et « je n'ai rien dit », et l'écran afficherait « Non prêtable » sur une branche que personne n'a réglée
+
 ### Parc — un matériel peut être un lot, avec sa quantité et son stock
 
 > Le parc ne savait compter que des **exemplaires** : ce camion-là, avec son numéro de série, ses pleins et ses contrôles techniques. Cinquante chaises identiques n'ont rien à faire dans ce moule — les saisir une par une donnerait cinquante fiches, cinquante QR codes et cinquante historiques d'entretien pour un même modèle. Les quantités existaient, mais dans un catalogue séparé, ce qui obligeait à tenir ses chaises à deux endroits selon qu'on les regardait comme du parc ou comme du prêt.

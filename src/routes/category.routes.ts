@@ -10,6 +10,16 @@ import {
 import slugify from '../utils/slugify';
 import { notifierWebhooks } from '../services/webhook.service';
 
+/**
+ * Trois états rendus tels quels : `null` signifie « hérite du niveau au-dessus ».
+ *
+ * Les aplatir en booléen ferait disparaître la différence entre « non » et
+ * « je n'ai rien dit », et l'écran réafficherait « Non » sur une branche qui
+ * n'a jamais été réglée.
+ */
+const troisEtats = (valeur: unknown): boolean | null =>
+  valeur === null || valeur === undefined ? null : Boolean(valeur);
+
 const router = Router();
 
 // GET /api/categories/all - Liste de toutes les catégories (admin uniquement, pour les permissions)
@@ -27,6 +37,8 @@ router.get('/all', authenticateToken, requireAdmin, async (req: AuthRequest, res
         slug: c.slug,
         image: c.image,
         hasSubcategories: !!c.has_subcategories,
+        isPrestation: !!c.is_prestation,
+        availableForManifestations: c.available_for_manifestations !== 0,
         sortOrder: c.sort_order,
         createdAt: c.created_at,
         updatedAt: c.updated_at
@@ -57,6 +69,8 @@ router.get('/all-with-subcategories', authenticateToken, requireAdmin, async (re
       slug: c.slug,
       image: c.image,
       hasSubcategories: !!c.has_subcategories,
+      isPrestation: !!c.is_prestation,
+      availableForManifestations: c.available_for_manifestations !== 0,
       sortOrder: c.sort_order,
       createdAt: c.created_at,
       updatedAt: c.updated_at,
@@ -67,6 +81,8 @@ router.get('/all-with-subcategories', authenticateToken, requireAdmin, async (re
           name: s.name,
           slug: s.slug,
           image: s.image,
+          isPrestation: troisEtats(s.is_prestation),
+          availableForManifestations: troisEtats(s.available_for_manifestations),
           categoryId: s.category_id,
           sortOrder: s.sort_order,
           createdAt: s.created_at,
@@ -135,6 +151,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         image: c.image,
         description: c.description || null,
         hasSubcategories: !!c.has_subcategories,
+        isPrestation: !!c.is_prestation,
+        availableForManifestations: c.available_for_manifestations !== 0,
         sortOrder: c.sort_order,
         objectCount: objectCounts.get(c.id) || 0,
         subcategoryCount: subcategoryCounts.get(c.id) || 0,
@@ -234,6 +252,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         image: category.image,
         description: category.description || null,
         hasSubcategories: !!category.has_subcategories,
+        isPrestation: !!category.is_prestation,
+        availableForManifestations: category.available_for_manifestations !== 0,
         sortOrder: category.sort_order,
         createdAt: category.created_at,
         updatedAt: category.updated_at,
@@ -242,6 +262,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           name: s.name,
           slug: s.slug,
           image: s.image,
+          isPrestation: troisEtats(s.is_prestation),
+          availableForManifestations: troisEtats(s.available_for_manifestations),
           sortOrder: s.sort_order
         })),
         plugins: plugins.map((p: any) => ({
@@ -268,7 +290,7 @@ router.post('/', authenticateToken, requireSupervisor, [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { name, image, description, hasSubcategories, isPrestation } = req.body;
+    const { name, image, description, hasSubcategories, isPrestation, availableForManifestations } = req.body;
     const slug = slugify(name);
 
     // Vérifier l'unicité du slug
@@ -291,8 +313,11 @@ router.post('/', authenticateToken, requireSupervisor, [
     const sortOrder = (lastOrder?.maxOrder || 0) + 1;
 
     const result = await db.execute(
-      'INSERT INTO categories (name, slug, description, image, has_subcategories, sort_order, is_prestation) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [name, slug, description || null, finalImage, hasSubcategories ? 1 : 0, sortOrder, isPrestation ? 1 : 0]
+      'INSERT INTO categories (name, slug, description, image, has_subcategories, sort_order, is_prestation, available_for_manifestations) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, slug, description || null, finalImage, hasSubcategories ? 1 : 0, sortOrder, isPrestation ? 1 : 0,
+       // Une catégorie porte la valeur de référence : jamais nulle, et prêtable
+       // par défaut, ce qui est le comportement d'avant ce réglage.
+       availableForManifestations === false ? 0 : 1]
     );
 
     notifierWebhooks('category.created', { id: result.lastInsertRowid, name, slug });
@@ -320,7 +345,7 @@ router.post('/', authenticateToken, requireSupervisor, [
 router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, image, description, hasSubcategories, sortOrder, isPrestation } = req.body;
+    const { name, image, description, hasSubcategories, sortOrder, isPrestation, availableForManifestations } = req.body;
 
     // Vérifier que la catégorie existe
     const category = await db.queryOne('SELECT * FROM categories WHERE id = ?', [id]);
@@ -367,6 +392,10 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     if (isPrestation !== undefined) {
       updateFields.push('is_prestation = ?');
       values.push(isPrestation ? 1 : 0);
+    }
+    if (availableForManifestations !== undefined) {
+      updateFields.push('available_for_manifestations = ?');
+      values.push(availableForManifestations === false ? 0 : 1);
     }
 
     updateFields.push('updated_at = ?');
@@ -454,6 +483,8 @@ router.get('/:categoryId/subcategories', authenticateToken, async (req: AuthRequ
         name: s.name,
         slug: s.slug,
         image: s.image,
+        isPrestation: troisEtats(s.is_prestation),
+        availableForManifestations: troisEtats(s.available_for_manifestations),
         sortOrder: s.sort_order,
         objectCount: objectCounts.get(s.id) || 0,
         createdAt: s.created_at,
@@ -477,7 +508,7 @@ router.post('/:categoryId/subcategories', authenticateToken, requireSupervisor, 
     }
 
     const { categoryId } = req.params;
-    const { name, image, isPrestation } = req.body;
+    const { name, image, isPrestation, availableForManifestations } = req.body;
     const slug = slugify(name);
 
     // Vérifier que la catégorie existe et a des sous-catégories
@@ -515,8 +546,10 @@ router.post('/:categoryId/subcategories', authenticateToken, requireSupervisor, 
     const sortOrder = (lastOrder?.maxOrder || 0) + 1;
 
     const result = await db.execute(
-      'INSERT INTO subcategories (category_id, name, slug, image, sort_order, is_prestation) VALUES (?, ?, ?, ?, ?, ?)',
-      [categoryId, name, slug, finalImage, sortOrder, versColonnePrestation(lireChoixPrestation(isPrestation))]
+      'INSERT INTO subcategories (category_id, name, slug, image, sort_order, is_prestation, available_for_manifestations) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [categoryId, name, slug, finalImage, sortOrder,
+       versColonnePrestation(lireChoixPrestation(isPrestation)),
+       versColonnePrestation(lireChoixPrestation(availableForManifestations))]
     );
 
     res.status(201).json({
@@ -541,7 +574,7 @@ router.post('/:categoryId/subcategories', authenticateToken, requireSupervisor, 
 router.put('/:categoryId/subcategories/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { categoryId, id } = req.params;
-    const { name, image, sortOrder, isPrestation } = req.body;
+    const { name, image, sortOrder, isPrestation, availableForManifestations } = req.body;
 
     const subcategory = await db.queryOne(
       'SELECT * FROM subcategories WHERE id = ? AND category_id = ?',
@@ -583,6 +616,10 @@ router.put('/:categoryId/subcategories/:id', authenticateToken, requireSuperviso
     if (isPrestation !== undefined) {
       updateFields.push('is_prestation = ?');
       values.push(versColonnePrestation(lireChoixPrestation(isPrestation)));
+    }
+    if (availableForManifestations !== undefined) {
+      updateFields.push('available_for_manifestations = ?');
+      values.push(versColonnePrestation(lireChoixPrestation(availableForManifestations)));
     }
 
     updateFields.push('updated_at = ?');
@@ -665,6 +702,8 @@ subcategoryRouter.get('/by-slug/:slug', authenticateToken, async (req: AuthReque
       name: subcategory.name,
       slug: subcategory.slug,
       image: subcategory.image,
+      isPrestation: troisEtats(subcategory.is_prestation),
+      availableForManifestations: troisEtats(subcategory.available_for_manifestations),
       sortOrder: subcategory.sort_order,
       objectCount: countResult?.count || 0,
       createdAt: subcategory.created_at,
@@ -707,6 +746,8 @@ subcategoryRouter.get('/:id', authenticateToken, async (req: AuthRequest, res: R
       name: subcategory.name,
       slug: subcategory.slug,
       image: subcategory.image,
+      isPrestation: troisEtats(subcategory.is_prestation),
+      availableForManifestations: troisEtats(subcategory.available_for_manifestations),
       sortOrder: subcategory.sort_order,
       createdAt: subcategory.created_at,
       updatedAt: subcategory.updated_at

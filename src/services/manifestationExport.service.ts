@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import { db } from '../database';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
+import { coutDe } from './coutManifestation.service';
 
 /**
  * Export des manifestations en feuille de calcul.
@@ -35,6 +36,9 @@ export type ChampExport =
   | 'materials_delivered'
   | 'materials_recovered'
   | 'materials_lost'
+  | 'cost_services'
+  | 'cost_losses'
+  | 'cost_total'
   | 'materials_detail'
   | 'approvals'
   | 'approvals_pending'
@@ -69,6 +73,9 @@ export const CHAMPS_EXPORT: DefinitionExport[] = [
   { champ: 'materials_delivered', libelle: 'Livré', largeur: 10 },
   { champ: 'materials_recovered', libelle: 'Récupéré', largeur: 10 },
   { champ: 'materials_lost', libelle: 'Perdu', largeur: 10 },
+  { champ: 'cost_services', libelle: 'Coût des prestations (€)', largeur: 18 },
+  { champ: 'cost_losses', libelle: 'Coût des pertes (€)', largeur: 16 },
+  { champ: 'cost_total', libelle: 'Coût total (€)', largeur: 14 },
   { champ: 'materials_detail', libelle: 'Détail du matériel', largeur: 45 },
   { champ: 'approvals', libelle: 'Approbations', largeur: 40 },
   { champ: 'approvals_pending', libelle: 'En attente de', largeur: 28 },
@@ -124,8 +131,14 @@ export function resoudreColonnes(colonnes?: ColonneProfil[] | null): DefinitionE
     .filter((d): d is DefinitionExport => d !== null);
 }
 
-/** Manifestations à exporter, avec leur matériel et leurs approbations. */
-async function lireDonnees(filtres: FiltresExport): Promise<any[]> {
+/**
+ * Manifestations à exporter, avec leur matériel et leurs approbations.
+ *
+ * `avecCout` est décidé par les colonnes retenues : le coût demande une lecture
+ * par manifestation, et un export de cent lignes n'a pas à faire cent requêtes
+ * pour des colonnes que le profil n'affiche pas.
+ */
+async function lireDonnees(filtres: FiltresExport, avecCout = false): Promise<any[]> {
   let sql = `
     SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
     FROM manifestations m
@@ -180,10 +193,19 @@ async function lireDonnees(filtres: FiltresExport): Promise<any[]> {
     ),
   ]);
 
+  // Le coût demande une lecture par manifestation : il n'est calculé que si une
+  // colonne de coût figure au profil, sinon un export de cent lignes ferait
+  // cent requêtes pour rien.
+  const couts = new Map<number, any>();
+  if (avecCout) {
+    for (const id of ids) couts.set(id, await coutDe(id));
+  }
+
   return manifestations.map((m: any) => ({
     ...m,
     materials: enfantsDe<any>(materiels, m.id),
     approvals: enfantsDe<any>(approbations, m.id),
+    cout: couts.get(m.id),
   }));
 }
 
@@ -207,6 +229,15 @@ export function valeurDe(manifestation: any, champ: ChampExport): string | numbe
       return somme(materiels, 'quantity_recovered');
     case 'materials_lost':
       return somme(materiels, 'quantity_lost');
+
+    // Le coût est joint à la manifestation par l'appelant : le recalculer ici
+    // ferait une requête par ligne exportée, sur un fichier de cent lignes.
+    case 'cost_services':
+      return manifestation.cout?.total_prestations ?? 0;
+    case 'cost_losses':
+      return manifestation.cout?.total_pertes ?? 0;
+    case 'cost_total':
+      return manifestation.cout?.total ?? 0;
 
     case 'materials_detail':
       // Une ligne par article, lisible sans décodeur : « 50 × Chaise ».
@@ -267,7 +298,8 @@ export async function genererClasseur(
   filtres: FiltresExport = {}
 ): Promise<ResultatExport> {
   const definitions = resoudreColonnes(colonnes);
-  const donnees = await lireDonnees(filtres);
+  const avecCout = definitions.some((d) => d.champ.startsWith('cost_'));
+  const donnees = await lireDonnees(filtres, avecCout);
 
   const classeur = new ExcelJS.Workbook();
   classeur.creator = 'Gestion Matériels';

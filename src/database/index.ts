@@ -300,6 +300,7 @@ class DatabaseManager {
         is_prestation ${boolType},
         material_type VARCHAR(20) DEFAULT 'unique',
         quantity_total INTEGER DEFAULT 0,
+        unit_cost REAL DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
