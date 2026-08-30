@@ -3,7 +3,6 @@ import {
   Settings, 
   Users, 
   Mail, 
-  FileText, 
   Puzzle, 
   Database,
   HardDrive,
@@ -12,7 +11,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, Inbox, Building2, FileSpreadsheet, Bell, PackageCheck
+  ShieldCheck, CalendarDays, Bell
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -42,15 +41,9 @@ const settingsNavItems = [
     adminOnly: true
   },
   { 
-    to: '/settings/smtp', 
+    to: '/settings/email', 
     icon: Mail, 
-    label: 'SMTP',
-    adminOnly: true
-  },
-  { 
-    to: '/settings/email-templates', 
-    icon: FileText, 
-    label: 'Templates Email',
+    label: 'Emails',
     adminOnly: true
   },
   { 
@@ -84,27 +77,9 @@ const settingsNavItems = [
     adminOnly: true
   },
   { 
-    to: '/settings/manifestations-reception', 
-    icon: Inbox, 
-    label: 'Réception manifestations',
-    adminOnly: true
-  },
-  { 
-    to: '/settings/services', 
-    icon: Building2, 
-    label: 'Services',
-    adminOnly: true
-  },
-  { 
-    to: '/settings/materiel-pretable', 
-    icon: PackageCheck, 
-    label: 'Matériel prêtable',
-    adminOnly: true
-  },
-  { 
-    to: '/settings/manifestations-export', 
-    icon: FileSpreadsheet, 
-    label: 'Export manifestations',
+    to: '/settings/manifestations', 
+    icon: CalendarDays, 
+    label: 'Manifestations',
     adminOnly: true
   },
   { 

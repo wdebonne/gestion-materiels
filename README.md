@@ -613,6 +613,8 @@ de matériel, qui est réécrite à chaque modification de la manifestation.
 ```
 GET /api/manifestations/availability/tree     # Catégories et sous-catégories, avec leur réglage
 GET /api/manifestations/availability/objects  # Matériels d'une catégorie (?category_id=)
+GET /api/manifestations/availability/search   # Matériels dont le nom, la référence ou le
+                                              # numéro de série contient ?q=, avec leur branche
 PUT /api/manifestations/availability/:niveau/:id  # niveau : category | subcategory | object
 ```
 

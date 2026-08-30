@@ -164,3 +164,39 @@ export async function objetsDeLaCategorie(
 
   return objets.sort(parNom);
 }
+
+/**
+ * Matériels dont le nom, la référence ou le numéro de série contient le terme.
+ *
+ * Sur un parc de cent matériels répartis en trente catégories et soixante
+ * sous-catégories, dérouler chaque branche pour retrouver un grill est
+ * intenable. La recherche traverse l'arbre d'un coup et rend le rattachement de
+ * chaque matériel, pour que l'écran sache quelles branches ouvrir.
+ */
+export async function rechercherObjetsPretables(
+  req: AuthRequest,
+  recherche: string
+): Promise<any[] | null> {
+  // Même portée qu'ailleurs : la recherche ne doit pas révéler les matériels
+  // des catégories fermées au compte.
+  const portee = await filtreObjets(req, 'o');
+  if (portee === null) return null;
+
+  const terme = recherche.trim();
+  if (!terme) return [];
+
+  const motif = `%${terme}%`;
+  const objets = await db.query(
+    `SELECT o.id, o.name, o.reference, o.serial_number, o.subcategory_id,
+            o.available_for_manifestations,
+            ${expressionDisponibilite()} as pretable,
+            psc.name as subcategory_name,
+            pc.id as category_id, pc.name as category_name
+     FROM objects o
+     ${jointuresDisponibilite()}
+     WHERE (o.name LIKE ? OR o.reference LIKE ? OR o.serial_number LIKE ?)${portee.sql}`,
+    [motif, motif, motif, ...portee.params]
+  );
+
+  return objets.sort(parNom);
+}

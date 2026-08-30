@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  FileSpreadsheet, Plus, Trash2, Download, UploadCloud, Cloud, CheckCircle, XCircle,
+  Plus, Trash2, Download, UploadCloud, Cloud, CheckCircle, XCircle,
   ArrowUp, ArrowDown, X
 } from 'lucide-react'
 import {
@@ -79,14 +79,9 @@ export default function ManifestationExportPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5" /> Export des manifestations
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Choisissez vos colonnes, et déposez le suivi sur Nextcloud automatiquement.
-          </p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Choisissez vos colonnes, et déposez le suivi sur Nextcloud automatiquement.
+        </p>
         <div className="flex gap-2">
           <Button variant="outline" icon={<Download className="w-4 h-4" />} onClick={() => telecharger()}>
             Tout exporter

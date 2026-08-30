@@ -1046,12 +1046,23 @@ export interface ObjetPretable {
   pretable: number
 }
 
+/** Un matériel trouvé par la recherche, avec la branche où le ranger. */
+export interface ObjetPretableTrouve extends ObjetPretable {
+  /** `null` pour un matériel qui n'est rattaché à aucune catégorie. */
+  category_id: number | null
+  category_name: string | null
+}
+
 export const materielPretableApi = {
   getTree: () =>
     api.get<{ success: boolean; data: CategoriePretable[] }>('/manifestations/availability/tree'),
   getObjects: (categoryId: number) =>
     api.get<{ success: boolean; data: ObjetPretable[] }>(
       `/manifestations/availability/objects?category_id=${categoryId}`
+    ),
+  rechercher: (terme: string) =>
+    api.get<{ success: boolean; data: ObjetPretableTrouve[] }>(
+      `/manifestations/availability/search?q=${encodeURIComponent(terme)}`
     ),
   regler: (niveau: 'category' | 'subcategory' | 'object', id: number, available: Disponibilite) =>
     api.put<{ success: boolean }>(`/manifestations/availability/${niveau}/${id}`, { available }),

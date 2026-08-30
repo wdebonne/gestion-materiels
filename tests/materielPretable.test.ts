@@ -39,6 +39,7 @@ import {
   estPretable,
   lireDisponibilite,
   objetsDeLaCategorie,
+  rechercherObjetsPretables,
   versColonne,
 } from '../src/services/materielPretable.service';
 import type { AuthRequest } from '../src/middleware/auth.middleware';
@@ -224,5 +225,56 @@ describe('Matériels d’une catégorie', () => {
 
   it('rend une liste vide pour un identifiant absurde', async () => {
     expect(await objetsDeLaCategorie(requete(1, 'admin'), 'abc')).toEqual([]);
+  });
+});
+
+describe('Recherche dans tout le parc', () => {
+  // Trente catégories et soixante sous-catégories rendent le déroulement branche
+  // par branche impraticable : la recherche doit traverser l'arbre d'un coup.
+
+  it('trouve un matériel par son nom, où qu’il soit rangé', async () => {
+    const trouves = await rechercherObjetsPretables(requete(1, 'admin'), 'grill');
+    expect(trouves!.map((o: any) => o.name)).toEqual(['Grill']);
+  });
+
+  it('trouve aussi par référence', async () => {
+    const trouves = await rechercherObjetsPretables(requete(1, 'admin'), 'VH-0');
+    expect(trouves!.map((o: any) => o.name)).toEqual(['Camion benne', 'Remorque plateau']);
+  });
+
+  it('rend la branche où ranger chaque résultat', async () => {
+    // Sans le rattachement, l'écran ne saurait pas quelle catégorie ouvrir.
+    const [table] = (await rechercherObjetsPretables(requete(1, 'admin'), 'Table pliante'))!;
+    expect(table.category_name).toBe('Mobilier');
+    expect(table.subcategory_name).toBe('Tables');
+  });
+
+  it('rend un matériel sans catégorie, faute de quoi il resterait introuvable', async () => {
+    // L'arbre ne le montre nulle part : la recherche est le seul endroit où on
+    // peut encore l'exclure, et il est prêtable tant qu'on ne le fait pas.
+    const [orphelin] = (await rechercherObjetsPretables(requete(1, 'admin'), 'non classé'))!;
+    expect(orphelin.category_id).toBeNull();
+    expect(orphelin.pretable).toBe(1);
+  });
+
+  it('rend le réglage propre et le résultat effectif, comme la liste', async () => {
+    const [grill] = (await rechercherObjetsPretables(requete(1, 'admin'), 'Grill'))!;
+    expect(grill.available_for_manifestations).toBe(0);
+    expect(grill.pretable).toBe(0);
+  });
+
+  it('applique la portée par catégorie', async () => {
+    // La recherche ne doit pas révéler ce que la liste cache.
+    const trouves = await rechercherObjetsPretables(requete(5, 'agent'), 'VH-0');
+    expect(trouves).toEqual([]);
+  });
+
+  it('refuse un compte sans aucune catégorie accessible', async () => {
+    expect(await rechercherObjetsPretables(requete(42, 'user'), 'grill')).toBeNull();
+  });
+
+  it('ne rend rien pour un terme vide', async () => {
+    // Sinon le premier caractère effacé ramènerait tout le parc d'un coup.
+    expect(await rechercherObjetsPretables(requete(1, 'admin'), '   ')).toEqual([]);
   });
 });

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Inbox, Plus, Trash2, Copy, KeyRound, CheckCircle, XCircle, Link2, RefreshCw
+  Plus, Trash2, Copy, KeyRound, CheckCircle, XCircle, Link2, RefreshCw
 } from 'lucide-react'
 import {
   Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert, Badge,
@@ -100,14 +100,9 @@ export default function ManifestationIntakePage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <Inbox className="w-5 h-5" /> Réception des demandes
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Les demandes déposées ici arrivent en « À confirmer » et réservent le matériel au prévisionnel.
-          </p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Les demandes déposées ici arrivent en « À confirmer » et réservent le matériel au prévisionnel.
+        </p>
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreationOuverte(true)}>
           Nouvelle source
         </Button>

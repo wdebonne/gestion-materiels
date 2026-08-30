@@ -91,12 +91,6 @@ export default function EmailTemplatesPage() {
 
   return (
     <div className="space-y-6">
-      {/* En-tête */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Templates d'emails</h1>
-        <p className="text-gray-500 mt-1">Personnalisez les emails envoyés par l'application</p>
-      </div>
-
       {/* Info sur les variables */}
       <Alert type="info" title="Variables disponibles">
         <p className="mb-2">

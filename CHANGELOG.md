@@ -322,6 +322,23 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Le serveur refusait les documents bureautiques** que l'interface proposait. L'écran des espaces verts offre `.doc,.docx,.xls,.xlsx,.odt,.ods` depuis toujours, et `POST /api/upload/file` n'acceptait qu'images et PDF : l'utilisateur voyait son fichier rejeté sans comprendre pourquoi. Un arrêté municipal arrive plus souvent en traitement de texte qu'en PDF
 - **`GET /doc-types` aurait été capté par `GET /:id`**, qui accepte n'importe quel segment — le même piège que la création des sources de réception. Les routes nommées sont déclarées avant
 
+### Réglages — regroupés en onglets, et de quoi chercher dans le parc
+
+> Le menu des paramètres comptait dix-huit entrées à plat, dont quatre traitaient de la même chose. Et l'écran du matériel prêtable ne se parcourait qu'en dépliant les catégories une à une : sur cent matériels rangés en trente catégories et soixante sous-catégories, retrouver un grill demandait d'ouvrir tout le parc.
+
+#### Modifié
+
+- **« SMTP » et « Templates Email » deviennent un seul écran « Emails »**, en deux onglets. On ne touche jamais à l'un sans vérifier l'autre : un template mis au point sans serveur configuré ne part nulle part
+- **« Réception manifestations », « Services », « Matériel prêtable » et « Export manifestations » deviennent un seul écran « Manifestations »**, en quatre onglets. Les quatre entrées racontaient mal qu'elles décrivent un seul trajet : une demande arrive, elle sollicite des services, elle ne peut porter que du matériel prêtable, elle finit dans un export. L'ordre des onglets est celui du trajet
+- **L'onglet actif vit dans l'URL** (`?onglet=`) : un lien vers les templates reste un lien, et le retour arrière du navigateur ramène là où on était. Les six anciennes adresses redirigent vers le bon onglet plutôt que de rendre caducs les liens et favoris déjà posés
+
+#### Ajouté
+
+- **Recherche dans le matériel prêtable**, sur le nom, la référence ou le numéro de série. Les branches concernées s'ouvrent seules et ne montrent que ce qui correspond ; quand c'est le nom de la catégorie qui correspond, elle est rendue entière — on a demandé cette catégorie, pas un extrait
+  - Elle passe par le serveur (`GET /availability/search`) et non par un filtre local : le matériel est chargé catégorie par catégorie au dépliage, et le navigateur n'a jamais le parc entier sous la main
+  - Elle applique la **même portée par catégorie** que la liste : chercher ne doit pas révéler les matériels d'une catégorie fermée au compte
+  - Elle rend enfin **les matériels rattachés à aucune catégorie**, sous une carte « Sans catégorie ». L'arbre ne les montrait nulle part faute de branche où les ranger, alors qu'ils sont prêtables par défaut : ils étaient impossibles à exclure
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

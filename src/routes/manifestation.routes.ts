@@ -21,6 +21,7 @@ import {
   estPretable,
   lireDisponibilite,
   objetsDeLaCategorie,
+  rechercherObjetsPretables,
   versColonne,
 } from '../services/materielPretable.service';
 import { logService } from '../services/log.service';
@@ -1305,6 +1306,25 @@ router.get('/availability/objects', authenticateToken, requireSupervisor, async 
       return res.status(400).json({ success: false, message: 'Catégorie requise' });
     }
     const objets = await objetsDeLaCategorie(req, String(category_id));
+    if (objets === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+    res.json({ success: true, data: objets });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /availability/search - Chercher un matériel dans tout le parc.
+ *
+ * Trente catégories et soixante sous-catégories rendent le déroulement branche
+ * par branche impraticable. La réponse porte le rattachement de chaque matériel
+ * pour que l'écran n'ouvre que les branches concernées.
+ */
+router.get('/availability/search', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const objets = await rechercherObjetsPretables(req, String(req.query.q || ''));
     if (objets === null) {
       return res.status(403).json({ success: false, message: REFUS_PORTEE });
     }

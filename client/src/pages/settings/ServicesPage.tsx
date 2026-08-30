@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Building2, Plus, Trash2, Eye, UserPlus, X, Crown, Star, UserCheck } from 'lucide-react'
+import { Plus, Trash2, Eye, UserPlus, X, Crown, Star, UserCheck } from 'lucide-react'
 import {
   Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert, Badge,
   Modal, ModalBody, ModalFooter, Spinner, TextArea
@@ -64,14 +64,9 @@ export default function ServicesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-            <Building2 className="w-5 h-5" /> Services
-          </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            Un service n'est sollicité que si une manifestation demande du matériel de son périmètre.
-          </p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Un service n'est sollicité que si une manifestation demande du matériel de son périmètre.
+        </p>
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreationOuverte(true)}>
           Nouveau service
         </Button>
