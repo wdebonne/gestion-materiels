@@ -53,6 +53,7 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name VARCHAR(255) NOT NULL,
       quantity_total INTEGER NOT NULL DEFAULT 0,
+      is_prestation INTEGER DEFAULT 0,
       updated_at DATETIME
     );
     CREATE TABLE manifestations (

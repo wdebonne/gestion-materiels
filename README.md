@@ -125,6 +125,8 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 👑 **Service coordinateur** : le service qui pilote toutes les manifestations — sollicité sur chacune, destinataire de tout, et son approbation **prononce la validation**
 - 💬 **Conversation** : les services échangent dans le fil de la manifestation ; tout est consigné dans l'historique et dans l'archive
 - 👀 **Mise en copie** : une direction générale, un maire ou un élu suit l'intégralité des échanges sans rien approuver
+- 🔌 **Prestations** : raccordement électrique, débit de boissons, personnel pour une cérémonie. Une case à cocher sur un article suffit ; sa catégorie décide du service qui l'approuve. Sans stock ni disponibilité — demandée, puis réalisée
+- 📎 **Pièces jointes** : arrêtés, plans, constats, photos. Glisser-déposer ou photo prise au téléphone, description facultative pour les retrouver, et lien vers le matériel concerné. Supprimer une pièce retire aussi le fichier
 - 🎯 **Matériel prêtable au choix** : par catégorie, par sous-catégorie, ou matériel par matériel — le réglage le plus précis l'emporte. Le réfrigérateur part pour la brocante, le grill de la même catégorie reste à la cuisine
 - 🚚 **Deux natures de matériel** : des **quantités** (50 tables d'un même modèle, sans les saisir une par une) et des **exemplaires uniques** choisis dans le parc (un véhicule, un vidéoprojecteur identifié). Deux manifestations peuvent se partager cent chaises ; elles ne peuvent pas se partager le camion, et le conflit est signalé avec qui le retient et quand
 - 🔔 **Notifications réglables à trois niveaux** : défaut de la collectivité par événement et par rôle, réglage de chaque service, puis choix de chaque compte. Une approbation attendue de vous part toujours — sans quoi vous bloqueriez une manifestation sans le savoir
@@ -589,6 +591,20 @@ GET    /api/users/:id/traces      # Ce qu'un compte laisserait derrière lui
 POST   /api/users/:id/anonymize   # Retire l'identité, conserve les liens (RGPD)
 DELETE /api/users/:id             # Supprime, ou désactive si le compte a des traces
 ```
+
+**Pièces jointes**
+
+```
+GET    /api/manifestations/:id/documents      # avec filtre ?q= sur libellé et description
+POST   /api/manifestations/:id/documents      # après POST /api/upload/file
+PUT    /api/manifestations/documents/:docId
+DELETE /api/manifestations/documents/:docId   # retire la ligne ET le fichier
+GET    /api/manifestations/doc-types          # référentiel (?tous=true inclut les désactivés)
+POST|PUT|DELETE /api/manifestations/doc-types/...
+```
+
+Le lien facultatif vers le matériel porte sur `stock_id` ou `object_id` — l'article, pas la ligne
+de matériel, qui est réécrite à chaque modification de la manifestation.
 
 **Matériel prêtable**
 

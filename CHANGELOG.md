@@ -262,6 +262,33 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
 - **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
 
+### Manifestations — prestations demandées, pièces jointes, et une fiche en onglets
+
+> Une demande ne porte pas que du matériel : elle demande aussi un raccordement au réseau électrique, un débit de boissons, du personnel pour une cérémonie. Ces prestations n'existaient nulle part et finissaient dans une note libre que rien ne route ni ne totalise. Et il manquait de quoi joindre un arrêté, un plan, ou la photo d'une chaise revenue cassée — ces pièces qui font la différence en cas de litige, des mois plus tard.
+
+#### Ajouté
+
+- **Prestations.** Une case à cocher transforme un article en prestation. Le choix est fait ainsi parce que **le routage d'approbation part déjà de la catégorie de l'article** : une prestation classée en « Technique » sollicite le service technique, une autre en « Urbanisme » le service d'urbanisme, sans une ligne de code de plus
+  - Le mot « prestation » et non « service » : dans cette application un *service* est une équipe. Les confondre rendrait chaque écran ambigu
+  - Elle **n'a pas de stock** — ni disponibilité, ni conflit, ni casse. Lui en calculer une la ferait paraître en rupture en permanence, son total valant zéro, et chaque manifestation afficherait un manque imaginaire
+  - Une quantité facultative : « 3 agents » pour une cérémonie, ou simplement demandée. Elle se lit ensuite « réalisée » plutôt que « livrée »
+  - Cocher la case masque quantité, prix, état et lieu, qui n'auraient rien à dire ; la fiche les liste à part, et l'écran Stock les filtre
+- **Pièces jointes.** Arrêté de circulation, arrêté de débit de boissons, plan d'implantation, constat matériel, constat du lieu, photo, attestation d'assurance, devis, convention — dix types semés, éditables ensuite : chaque collectivité nomme ses pièces à sa façon
+  - Dépôt par **glisser-déposer**, par le sélecteur, ou en **photographiant** depuis un téléphone. Les photos sont réduites avant l'envoi, comme partout ailleurs
+  - Un petit formulaire suit le dépôt : le libellé est pré-rempli avec le nom du fichier, le type et la description restent facultatifs — exiger une saisie complète ferait renoncer à joindre la photo, qui est justement ce qu'on veut conserver
+  - **Une pièce peut désigner le matériel concerné.** Le lien porte sur l'**article** et non sur la ligne de matériel : celle-ci est supprimée puis réinsérée à chaque modification d'une manifestation, si bien qu'un lien par identifiant de ligne serait rompu au premier changement de quantité, sans erreur
+  - Galerie de vignettes pour les photos, liste pour les documents, visionneuse avec téléchargement
+  - **Recherche** : la description entre dans la recherche entre manifestations — « buvette » ramène celle dont un document porte ce mot — et un filtre local sert à s'y retrouver dans une manifestation qui en compte beaucoup
+  - **Supprimer une pièce retire le fichier du disque.** Partout ailleurs dans l'application, supprimer un document ne supprime que la ligne et laisse le fichier orphelin pour toujours — seul l'avatar faisait exception. Un dossier de manifestation contient des photos de sinistre : le disque n'a pas à conserver ce qu'on a demandé de retirer
+  - Le chemin est vérifié avant suppression : un `file_path` fabriqué ne peut pas faire effacer un fichier hors du dossier des téléversements
+  - La fiche PDF gagne l'**inventaire des pièces** — nom, type, matériel concerné, description — sous une case à cocher. Les fichiers ne peuvent pas y entrer, mais savoir quelles pièces existaient est ce qui sert dans un dossier de litige
+- **Fiche en onglets** : Résumé · Matériel · Documents · Suivi · Historique, avec un compteur sur chacun. Elle portait tout à la suite et demandait trois écrans de défilement pour trouver une date de livraison. Rien n'a été retiré ; les compteurs partagent les clés de requête des composants qu'ils annoncent et n'ajoutent aucun appel au serveur
+
+#### Corrigé
+
+- **Le serveur refusait les documents bureautiques** que l'interface proposait. L'écran des espaces verts offre `.doc,.docx,.xls,.xlsx,.odt,.ods` depuis toujours, et `POST /api/upload/file` n'acceptait qu'images et PDF : l'utilisateur voyait son fichier rejeté sans comprendre pourquoi. Un arrêté municipal arrive plus souvent en traitement de texte qu'en PDF
+- **`GET /doc-types` aurait été capté par `GET /:id`**, qui accepte n'importe quel segment — le même piège que la création des sources de réception. Les routes nommées sont déclarées avant
+
 ### Import / Export
 
 - **Filtres d'export exposés** : catégorie, sous-catégorie et statut. Le serveur les acceptait depuis toujours, aucun écran ne les proposait, donc l'export sortait forcément le parc entier

@@ -54,6 +54,17 @@ const RESTE_DEHORS = `CASE
 
 const marqueursPour = (valeurs: readonly unknown[]): string => valeurs.map(() => '?').join(', ');
 
+/**
+ * Cet article est-il une prestation plutôt que du matériel ?
+ *
+ * Une prestation — raccordement au réseau, débit de boissons, personnel pour une
+ * cérémonie — se demande et se réalise, elle ne se stocke pas. Elle n'a donc ni
+ * disponibilité, ni conflit, ni casse. Le mot « prestation » et non « service » :
+ * dans cette application un *service* est une équipe.
+ */
+export const estPrestation = (article: { is_prestation?: unknown }): boolean =>
+  Boolean(article?.is_prestation);
+
 export interface EngagementArticle {
   /** Promis sur la période, demandes à confirmer comprises. */
   engage_previsionnel: number;
@@ -155,6 +166,13 @@ export async function enrichirStock(
   ]);
 
   return articles.map((article) => {
+    // Une prestation — raccordement électrique, débit de boissons, personnel —
+    // n'a pas de stock. Lui calculer une disponibilité la ferait paraître en
+    // rupture en permanence, son total valant zéro.
+    if (estPrestation(article)) {
+      return { ...article, quantity_lent: null, quantity_reserved_future: null, quantity_available: null };
+    }
+
     const dehors = maintenant.get(article.id)?.engage_reel ?? 0;
     const promis = aVenir.get(article.id)?.engage_previsionnel ?? 0;
     const sur = surPeriode?.get(article.id);
@@ -203,7 +221,7 @@ export async function detecterConflits(
 
   const ids = demandes.map((l) => l.stock_id);
   const articles = await db.query(
-    `SELECT id, name, quantity_total FROM manifestation_stock WHERE id IN (${marqueursPour(ids)})`,
+    `SELECT id, name, quantity_total, is_prestation FROM manifestation_stock WHERE id IN (${marqueursPour(ids)})`,
     ids
   );
   const parId = new Map<any, any>(articles.map((a: any) => [a.id, a]));
@@ -213,6 +231,9 @@ export async function detecterConflits(
   for (const ligne of demandes) {
     const article = parId.get(ligne.stock_id);
     if (!article) continue;
+    // Une prestation ne se compte pas en stock : elle est demandée, puis
+    // réalisée ou non. Elle ne peut donc jamais manquer.
+    if (estPrestation(article)) continue;
 
     const engage = engagements.get(ligne.stock_id);
     const disponible = Math.max(

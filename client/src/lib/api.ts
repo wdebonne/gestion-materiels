@@ -352,9 +352,12 @@ export interface ManifestationStockItem {
   price: number
   category_id: number | null
   subcategory_id: number | null
+  /** Une prestation se demande et se réalise ; elle ne se stocke pas. */
+  is_prestation?: number
   category_name?: string
   category_slug?: string
   subcategory_name?: string
+  /** Nul pour une prestation, qui n'a pas de disponibilité. */
   quantity_available: number
   quantity_lent: number
   quantity_reserved_future: number
@@ -391,6 +394,8 @@ export interface ManifestationMaterial {
   unit_value: number
   notes: string
   stock_total?: number
+  /** Vient de l'article : une prestation n'a ni disponibilité ni casse. */
+  is_prestation?: number
 }
 
 export interface Manifestation {
@@ -462,6 +467,8 @@ export interface ManifestationFormData {
 
 export interface StockFormData {
   name: string
+  /** Raccordement électrique, débit de boissons, personnel : pas de stock. */
+  is_prestation?: boolean
   description?: string
   category?: string
   quantity_total: number
@@ -1048,4 +1055,77 @@ export const materielPretableApi = {
     ),
   regler: (niveau: 'category' | 'subcategory' | 'object', id: number, available: Disponibilite) =>
     api.put<{ success: boolean }>(`/manifestations/availability/${niveau}/${id}`, { available }),
+}
+
+// ======================== PIÈCES JOINTES ========================
+
+export interface TypeDocument {
+  id: number
+  value: string
+  label: string
+  is_default: number
+  disabled: number
+}
+
+export interface DocumentManifestation {
+  id: number
+  manifestation_id: number
+  name: string
+  doc_type: string
+  doc_type_label: string | null
+  description: string | null
+  file_path: string
+  mime_type: string | null
+  size: number | null
+  /** Article concerné, facultatif. Porté par l'article et non par la ligne. */
+  stock_id: number | null
+  stock_name: string | null
+  object_id: number | null
+  object_name: string | null
+  uploaded_by_name: string | null
+  created_at: string
+}
+
+export interface DocumentAJoindre {
+  name: string
+  doc_type?: string
+  description?: string
+  file_path: string
+  mime_type?: string
+  size?: number
+  stock_id?: number | null
+  object_id?: number | null
+}
+
+export const documentManifestationApi = {
+  /** `q` filtre sur le libellé et la description. */
+  lister: (manifestationId: number, q?: string) =>
+    api.get<{ success: boolean; data: DocumentManifestation[] }>(
+      `/manifestations/${manifestationId}/documents${q ? `?q=${encodeURIComponent(q)}` : ''}`
+    ),
+  joindre: (manifestationId: number, data: DocumentAJoindre) =>
+    api.post<{ success: boolean; data: DocumentManifestation[] }>(
+      `/manifestations/${manifestationId}/documents`,
+      data
+    ),
+  modifier: (docId: number, data: Partial<DocumentAJoindre>) =>
+    api.put<{ success: boolean; data: DocumentManifestation[] }>(
+      `/manifestations/documents/${docId}`,
+      data
+    ),
+  retirer: (docId: number) =>
+    api.delete<{ success: boolean; data: DocumentManifestation[] }>(
+      `/manifestations/documents/${docId}`
+    ),
+
+  getTypes: (tous = false) =>
+    api.get<{ success: boolean; data: TypeDocument[] }>(
+      `/manifestations/doc-types${tous ? '?tous=true' : ''}`
+    ),
+  creerType: (label: string) =>
+    api.post<{ success: boolean; data: TypeDocument[] }>('/manifestations/doc-types', { label }),
+  modifierType: (id: number, data: { label: string; disabled?: boolean }) =>
+    api.put<{ success: boolean; data: TypeDocument[] }>(`/manifestations/doc-types/${id}`, data),
+  supprimerType: (id: number) =>
+    api.delete<{ success: boolean; data: TypeDocument[] }>(`/manifestations/doc-types/${id}`),
 }

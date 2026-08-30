@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireFieldWrite, requireSupervisor } from '../middleware/auth.middleware';
 import {
   filtreManifestations,
   filtreStock,
@@ -54,6 +54,15 @@ import {
 } from '../services/manifestationStock.service';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 import { normaliserLibelle } from '../utils/normaliserLibelle';
+import slugify from '../utils/slugify';
+import {
+  detacher,
+  documentPrecis,
+  documentsDe,
+  joindre,
+  typeValide,
+  typesDocuments,
+} from '../services/manifestationDocuments.service';
 
 const router = Router();
 
@@ -255,10 +264,10 @@ router.post('/stock', authenticateToken, requireSupervisor,
       return res.status(400).json({ success: false, errors: errors.array() });
     }
     try {
-      const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price } = req.body;
+      const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price, is_prestation } = req.body;
       const result = await db.execute(
-        'INSERT INTO manifestation_stock (name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, price || 0]
+        'INSERT INTO manifestation_stock (name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price, is_prestation) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, price || 0, is_prestation ? 1 : 0]
       );
       await logService.info('other', `Stock manifestation créé: ${name}`, { userId: req.user!.userId });
       const created = await db.queryOne('SELECT * FROM manifestation_stock WHERE id = ?', [result.lastInsertRowid]);
@@ -272,10 +281,10 @@ router.post('/stock', authenticateToken, requireSupervisor,
 // PUT /stock/:id - Modifier un article de stock
 router.put('/stock/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price } = req.body;
+    const { name, description, category, quantity_total, unit, etat, lieu, stock_type, category_id, subcategory_id, price, is_prestation } = req.body;
     await db.execute(
-      `UPDATE manifestation_stock SET name = ?, description = ?, category = ?, quantity_total = ?, unit = ?, etat = ?, lieu = ?, stock_type = ?, category_id = ?, subcategory_id = ?, price = ?, updated_at = datetime('now') WHERE id = ?`,
-      [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, price || 0, req.params.id]
+      `UPDATE manifestation_stock SET name = ?, description = ?, category = ?, quantity_total = ?, unit = ?, etat = ?, lieu = ?, stock_type = ?, category_id = ?, subcategory_id = ?, price = ?, is_prestation = ?, updated_at = ? WHERE id = ?`,
+      [name, description || '', category || '', quantity_total, unit || 'unité', etat || 'bon', lieu || '', stock_type || '', category_id || null, subcategory_id || null, price || 0, is_prestation ? 1 : 0, new Date().toISOString(), req.params.id]
     );
     const updated = await db.queryOne('SELECT * FROM manifestation_stock WHERE id = ?', [req.params.id]);
     res.json({ success: true, data: updated });
@@ -413,8 +422,19 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       params.push(status);
     }
     if (search) {
-      sql += ' AND (m.title LIKE ? OR m.contact_name LIKE ? OR m.delivery_address LIKE ?)';
-      params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      // Les pièces jointes entrent dans la recherche : « arrêté buvette » doit
+      // ramener la manifestation dont un document porte ces mots, sans qu'on ait
+      // à se souvenir de son titre.
+      sql += ` AND (
+        m.title LIKE ? OR m.contact_name LIKE ? OR m.delivery_address LIKE ?
+        OR EXISTS (
+          SELECT 1 FROM manifestation_documents md
+          WHERE md.manifestation_id = m.id
+            AND (md.name LIKE ? OR md.description LIKE ?)
+        )
+      )`;
+      const motif = `%${search}%`;
+      params.push(motif, motif, motif, motif, motif);
     }
     if (date_from) {
       sql += ' AND m.date_start >= ?';
@@ -434,7 +454,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     // Matériaux de toutes les manifestations en une requête
     const materiauxParManifestation = await grouperEnfants(
       (marqueurs) => `
-        SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category
+        SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category, ms.is_prestation
         FROM manifestation_materials mm
         JOIN manifestation_stock ms ON ms.id = mm.stock_id
         WHERE mm.manifestation_id IN (${marqueurs})
@@ -532,6 +552,96 @@ export async function lireHistorique(manifestationId: number | string): Promise<
   );
 }
 
+// ======================== TYPES DE PIÈCES JOINTES ========================
+//
+// Déclarées **avant** `GET /:id`, qui accepte n'importe quel segment : placées
+// après, « /doc-types » serait pris pour un identifiant de manifestation et
+// répondrait « non trouvée ». Le même piège avait déjà coûté la création des
+// sources de réception.
+
+/** GET /doc-types - Types proposés. `?tous=true` inclut les désactivés. */
+router.get('/doc-types', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, data: await typesDocuments(req.query.tous === 'true') });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.post('/doc-types', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const label = String(req.body.label ?? '').trim();
+    if (!label) return res.status(400).json({ success: false, message: 'Le libellé est requis' });
+
+    // La valeur technique est dérivée du libellé : personne n'a à la saisir.
+    const value = slugify(label);
+    await db.execute(
+      'INSERT INTO manifestation_doc_types (value, label, is_default, created_at) VALUES (?, ?, 0, ?)',
+      [value, label, new Date().toISOString()]
+    );
+
+    res.status(201).json({ success: true, data: await typesDocuments(true) });
+  } catch (error: any) {
+    const message = /UNIQUE|Duplicate/i.test(error.message)
+      ? 'Ce type de document existe déjà'
+      : error.message;
+    res.status(400).json({ success: false, message });
+  }
+});
+
+/**
+ * PUT /doc-types/:id - Renommer, activer ou désactiver.
+ *
+ * Désactiver plutôt que supprimer : les documents déjà classés sous ce type
+ * garderaient sinon une valeur que plus rien ne nomme.
+ */
+router.put('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { label, disabled } = req.body;
+    const resultat = await db.execute(
+      'UPDATE manifestation_doc_types SET label = ?, disabled = ? WHERE id = ?',
+      [String(label ?? '').trim(), disabled ? 1 : 0, req.params.id]
+    );
+    if (resultat.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Type non trouvé' });
+    }
+    res.json({ success: true, data: await typesDocuments(true) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const type = await db.queryOne('SELECT * FROM manifestation_doc_types WHERE id = ?', [req.params.id]);
+    if (!type) return res.status(404).json({ success: false, message: 'Type non trouvé' });
+
+    // Un type semé fait partie du référentiel de base : on le désactive.
+    if (type.is_default) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ce type fait partie du référentiel : désactivez-le plutôt que de le supprimer',
+      });
+    }
+
+    const utilise = await db.queryOne(
+      'SELECT COUNT(*) as cnt FROM manifestation_documents WHERE doc_type = ?',
+      [type.value]
+    );
+    if (utilise?.cnt > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `${utilise.cnt} document(s) portent ce type : désactivez-le plutôt que de le supprimer`,
+      });
+    }
+
+    await db.execute('DELETE FROM manifestation_doc_types WHERE id = ?', [req.params.id]);
+    res.json({ success: true, data: await typesDocuments(true) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // GET /:id - Détail d'une manifestation
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -550,7 +660,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     }
 
     const materials = await db.query(`
-      SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category, ms.quantity_total as stock_total
+      SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category,
+             ms.quantity_total as stock_total, ms.is_prestation
       FROM manifestation_materials mm
       JOIN manifestation_stock ms ON ms.id = mm.stock_id
       WHERE mm.manifestation_id = ?
@@ -560,8 +671,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     // Deux natures de matériel : des quantités (`materials`) et des exemplaires
     // identifiés du parc (`objects`).
     const objects = await objetsDe(m.id);
+    // Jointes au détail : la fiche PDF en fait l'inventaire, et l'onglet
+    // Documents les affiche sans second appel.
+    const documents = await documentsDe(m.id);
 
-    res.json({ success: true, data: { ...m, materials, objects, history } });
+    res.json({ success: true, data: { ...m, materials, objects, documents, history } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -974,6 +1088,118 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
     redeposerSuivi();
 
     res.json({ success: true, updated: modifiees });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== PIÈCES JOINTES ========================
+//
+// Un arrêté de circulation, un plan d'implantation, la photo d'une chaise
+// revenue cassée ou d'un trottoir abîmé sur le lieu. Ce sont ces pièces qui font
+// la différence en cas de litige, des mois plus tard.
+//
+// Le fichier est téléversé d'abord par `POST /api/upload/file`, puis enregistré
+// ici avec son libellé, son type et sa description — c'est la marche déjà
+// suivie par les documents des espaces verts.
+
+/** GET /:id/documents - Pièces d'une manifestation, filtrables par `?q=`. */
+router.get('/:id/documents', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+    const q = req.query.q ? String(req.query.q) : undefined;
+    res.json({ success: true, data: await documentsDe(req.params.id, q) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/documents - Joindre une pièce déjà téléversée.
+ *
+ * Ouvert à la saisie de terrain : un agent qui constate une casse au retour doit
+ * pouvoir photographier sans être superviseur.
+ */
+router.post('/:id/documents', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+  try {
+    const { name, doc_type, description, file_path, mime_type, size, stock_id, object_id } = req.body;
+
+    if (!file_path) {
+      return res.status(400).json({ success: false, message: 'Aucun fichier envoyé' });
+    }
+    if (!String(name ?? '').trim()) {
+      return res.status(400).json({ success: false, message: 'Le libellé est requis' });
+    }
+
+    const m = await db.queryOne('SELECT id, title FROM manifestations WHERE id = ?', [req.params.id]);
+    if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    await joindre(
+      req.params.id,
+      { name, doc_type, description, file_path, mime_type, size, stock_id, object_id },
+      req.user!.userId
+    );
+
+    await consignerHistorique(req.params.id, req.user!.userId, 'Pièce jointe ajoutée', {
+      comment: String(name).trim(),
+    });
+
+    res.status(201).json({ success: true, data: await documentsDe(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** PUT /documents/:docId - Corriger le libellé, le type, la description ou le lien. */
+router.put('/documents/:docId', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+  try {
+    const document = await documentPrecis(req.params.docId);
+    if (!document) return res.status(404).json({ success: false, message: 'Document non trouvé' });
+    if (!(await peutVoirManifestation(req, document.manifestation_id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    const { name, doc_type, description, stock_id, object_id } = req.body;
+    await db.execute(
+      `UPDATE manifestation_documents
+       SET name = ?, doc_type = ?, description = ?, stock_id = ?, object_id = ?
+       WHERE id = ?`,
+      [
+        String(name ?? document.name).trim(),
+        await typeValide(doc_type ?? document.doc_type),
+        description?.trim() || null,
+        stock_id || null,
+        object_id || null,
+        req.params.docId,
+      ]
+    );
+
+    res.json({ success: true, data: await documentsDe(document.manifestation_id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** DELETE /documents/:docId - Retire la ligne **et** le fichier. */
+router.delete('/documents/:docId', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+  try {
+    const document = await documentPrecis(req.params.docId);
+    if (!document) return res.status(404).json({ success: false, message: 'Document non trouvé' });
+    if (!(await peutVoirManifestation(req, document.manifestation_id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    await detacher(req.params.docId);
+    await consignerHistorique(document.manifestation_id, req.user!.userId, 'Pièce jointe retirée', {
+      comment: document.name,
+    });
+
+    res.json({ success: true, data: await documentsDe(document.manifestation_id) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

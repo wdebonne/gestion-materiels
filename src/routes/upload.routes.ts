@@ -39,17 +39,32 @@ const imageFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFil
   }
 };
 
-// Filtrer les types de fichiers (images et PDF)
+/**
+ * Types acceptés en pièce jointe.
+ *
+ * Les formats bureautiques ont été ajoutés : l'écran des espaces verts propose
+ * depuis toujours `.doc,.docx,.xls,.xlsx,.odt,.ods` que le serveur refusait,
+ * si bien qu'un utilisateur voyait son document rejeté sans comprendre pourquoi.
+ * Et un arrêté municipal arrive plus souvent en traitement de texte qu'en PDF.
+ */
+const TYPES_ACCEPTES = [
+  'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.oasis.opendocument.text',
+  'application/vnd.oasis.opendocument.spreadsheet',
+  'text/plain',
+  'text/csv',
+];
+
 const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = [
-    'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/svg+xml',
-    'application/pdf'
-  ];
-  
-  if (allowedTypes.includes(file.mimetype)) {
+  if (TYPES_ACCEPTES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Type de fichier non autorisé. Utilisez: JPG, PNG, GIF, WebP, SVG ou PDF'));
+    cb(new Error('Type de fichier non autorisé. Utilisez une image, un PDF, un document Word, Excel ou OpenDocument'));
   }
 };
 

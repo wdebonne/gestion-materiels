@@ -43,6 +43,8 @@ const EXEMPTIONS: Record<string, string> = {
     "Tâche planifiée, sans requête ni utilisateur : il n'y a pas de portée à appliquer.",
   'services/email.service.ts':
     "Composition d'e-mails côté serveur, sans requête ni utilisateur.",
+  'services/manifestationDocuments.service.ts':
+    "La jointure ne sert qu'à afficher le nom du matériel qu'une pièce jointe désigne, sur une manifestation que l'appelant a déjà le droit de voir (peutVoirManifestation en amont de chaque route). Filtrer ici masquerait le document entier au lieu de son libellé, et le rattachement a été contrôlé au moment où il a été posé.",
 };
 
 /** Marques d'une portée appliquée. */

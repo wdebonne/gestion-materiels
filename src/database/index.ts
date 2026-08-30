@@ -612,6 +612,7 @@ class DatabaseManager {
         price REAL DEFAULT 0,
         category_id INTEGER,
         subcategory_id INTEGER,
+        is_prestation ${boolType} DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
@@ -738,6 +739,37 @@ class DatabaseManager {
         FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE,
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE SET NULL,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Pièces jointes d'une manifestation : arrêté, plan, constat, photo. Voir
+      // la migration 009. Le lien vers le matériel porte sur l'article et non
+      // sur la ligne, qui est réécrite à chaque modification.
+      `CREATE TABLE IF NOT EXISTS manifestation_documents (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        doc_type VARCHAR(100) DEFAULT 'autre',
+        description ${textType},
+        file_path VARCHAR(500) NOT NULL,
+        mime_type VARCHAR(100),
+        size INTEGER,
+        stock_id INTEGER,
+        object_id INTEGER,
+        uploaded_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE SET NULL,
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE SET NULL,
+        FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_doc_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        is_default ${boolType} DEFAULT 0,
+        disabled ${boolType} DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
       )`,
 
       // Table historique des manifestations
@@ -1260,6 +1292,8 @@ class DatabaseManager {
       ['idx_manif_items_object', 'manifestation_items', 'object_id'],
       ['idx_notif_prefs_user', 'notification_preferences', 'user_id'],
       ['idx_service_delegations', 'service_delegations', 'service_id'],
+      ['idx_manif_documents', 'manifestation_documents', 'manifestation_id'],
+      ['idx_manif_documents_stock', 'manifestation_documents', 'stock_id'],
 
       // Droits — consultés à chaque requête filtrée par catégorie
       ['idx_user_permissions_user', 'user_permissions', 'user_id'],
@@ -1534,6 +1568,32 @@ class DatabaseManager {
       try {
         await this.execute(
           'INSERT OR IGNORE INTO green_space_doc_types (value, label, is_default) VALUES (?, ?, 1)',
+          [dt.value, dt.label]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    // Pièces qu'une manifestation municipale rassemble réellement. La liste est
+    // éditable ensuite : chaque collectivité nomme ses documents à sa façon, et
+    // une liste figée obligerait à un développeur pour ajouter « autorisation de
+    // buvette ».
+    const defaultManifestationDocTypes = [
+      { value: 'arrete_circulation', label: 'Arrêté de circulation' },
+      { value: 'arrete_boisson', label: 'Arrêté de débit de boissons' },
+      { value: 'plan', label: "Plan d'implantation" },
+      { value: 'constat_materiel', label: 'Constat matériel' },
+      { value: 'constat_lieu', label: 'Constat du lieu' },
+      { value: 'photo', label: 'Photo' },
+      { value: 'assurance', label: "Attestation d'assurance" },
+      { value: 'devis', label: 'Devis ou facture' },
+      { value: 'convention', label: 'Convention de prêt' },
+      { value: 'autre', label: 'Autre' },
+    ];
+
+    for (const dt of defaultManifestationDocTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO manifestation_doc_types (value, label, is_default) VALUES (?, ?, 1)',
           [dt.value, dt.label]
         );
       } catch { /* ignore duplicates */ }
