@@ -264,6 +264,12 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > ⚠️ **Le matériel du parc ne sollicitait aucun service :** `servicesConcernes` ne lisait que `manifestation_materials`. Une manifestation composée uniquement de matériel du parc ne sollicitait personne, et sa validation passait sans approbation — le tableau vide ressemblant à « rien à approuver ». `manifestation_items` était en service depuis le lot « matériel unique » sans que le routage ait jamais été réconcilié avec elle.
 >
+> ✅ **Matériel du parc en lot, août 2026 :** le parc ne comptait que des exemplaires, et les quantités vivaient dans un catalogue séparé — on tenait donc ses chaises à deux endroits. Un matériel se déclare désormais *exemplaire unique* ou *lot avec quantité*, et les manifestations s'imputent directement sur cette quantité : le stock réel et prévisionnel se lit sur la fiche de parc. L'arithmétique est celle du stock des manifestations, constantes importées et non recopiées.
+>
+> Un lot perd carburant et contrôle technique — ces suivis portent sur un exemplaire, pas sur un modèle — et garde ses entretiens. Le filtre est posé côté serveur, si bien que la donnée cesse d'être chargée en même temps que l'onglet disparaît. Un lot ne connaît pas le conflit mais le manque, chiffré et signalé comme un avertissement : deux manifestations se partagent cent chaises, elles ne se partagent pas le camion.
+>
+> 🟡 **Limite connue :** « dehors en ce moment » se calcule sur la journée courante. Une manifestation livrée dont la période est passée sans avoir été marquée récupérée n'apparaît pas comme sortie — comportement hérité du stock des manifestations, inchangé.
+>
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 
 ### 15. Espaces Verts (gestion espaces verts municipaux)

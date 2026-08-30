@@ -4,6 +4,7 @@ import type { AuthRequest } from '../middleware/auth.middleware';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 import { expressionDisponibilite, jointuresDisponibilite } from './materielPretable.service';
 import { expressionPrestation, prestationsParmi } from './prestationParc.service';
+import { enrichirLots, expressionNature, lotsParmi } from './lotParc.service';
 
 /**
  * Matériel **unique** rattaché à une manifestation.
@@ -70,13 +71,24 @@ export async function indisponibilites(
 ): Promise<IndisponibiliteObjet[]> {
   if (objectIds.length === 0) return [];
 
-  // Une prestation n'est jamais retenue ailleurs. Un raccordement électrique
-  // demandé le 21 juin ne rend pas le raccordement indisponible pour la
-  // manifestation d'à côté le même jour : ce n'est pas un exemplaire, c'est un
-  // acte. Sans cette exception, la première demande de l'année bloquerait
-  // toutes les suivantes, et personne ne comprendrait pourquoi.
-  const prestations = await prestationsParmi(objectIds);
-  const aVerifier = objectIds.filter((id) => !prestations.has(Number(id)));
+  // Seuls les **exemplaires** peuvent entrer en conflit. Deux manifestations se
+  // partagent cent chaises ; elles ne se partagent pas le camion.
+  //
+  // Une prestation n'est jamais retenue ailleurs : un raccordement électrique
+  // demandé le 21 juin ne le rend pas indisponible pour la manifestation d'à
+  // côté le même jour — ce n'est pas un exemplaire, c'est un acte.
+  //
+  // Un lot non plus : ce qui lui arrive est un **manque**, calculé en quantité
+  // par `manquesSurLots`, et signalé comme un avertissement. Le traiter en
+  // conflit rendrait cinquante chaises indisponibles dès qu'une seule est
+  // demandée ailleurs.
+  const [prestations, lots] = await Promise.all([
+    prestationsParmi(objectIds),
+    lotsParmi(objectIds),
+  ]);
+  const aVerifier = objectIds.filter(
+    (id) => !prestations.has(Number(id)) && !lots.has(Number(id))
+  );
   if (aVerifier.length === 0) return [];
 
   const exclusion = exclureManifestationId ? ' AND m.id != ?' : '';
@@ -134,7 +146,9 @@ export async function objetsDe(manifestationId: number | string): Promise<any[]>
     `SELECT mi.*, o.name as object_name, o.reference, o.serial_number,
             o.status as object_status, o.category_id, o.subcategory_id,
             c.name as category_name,
-            ${expressionPrestation()} as is_prestation
+            o.quantity_total,
+            ${expressionPrestation()} as is_prestation,
+            ${expressionNature()} as nature
      FROM manifestation_items mi
      JOIN objects o ON o.id = mi.object_id
      LEFT JOIN categories c ON c.id = o.category_id
@@ -162,10 +176,16 @@ export async function remplacerObjets(
   );
   const connus = new Map<any, any>(precedents.map((l: any) => [l.object_id, l]));
 
-  // Une prestation se demande en nombre — « 3 agents pour la cérémonie » — là
-  // où un exemplaire du parc vaut toujours 1 : le camion ne se demande pas en
-  // double. La quantité reçue n'est donc retenue que pour les prestations.
-  const prestations = await prestationsParmi(objets.map((o) => o.object_id));
+  // Une prestation se demande en nombre — « 3 agents pour la cérémonie » — et un
+  // lot aussi — « 50 chaises ». Un exemplaire, lui, vaut toujours 1 : le camion
+  // ne se demande pas en double, et « 3 camions bennes » désignerait trois
+  // matériels distincts. La quantité reçue n'est donc retenue que pour les deux
+  // premières natures.
+  const [prestations, lots] = await Promise.all([
+    prestationsParmi(objets.map((o) => o.object_id)),
+    lotsParmi(objets.map((o) => o.object_id)),
+  ]);
+  const enQuantite = (id: number) => prestations.has(id) || lots.has(id);
 
   await db.execute('DELETE FROM manifestation_items WHERE manifestation_id = ?', [manifestationId]);
 
@@ -188,7 +208,7 @@ export async function remplacerObjets(
       [
         manifestationId,
         objet.object_id,
-        prestations.has(objet.object_id)
+        enQuantite(objet.object_id)
           ? Math.max(1, Number(objet.quantity ?? avant?.quantity ?? 1) || 1)
           : 1,
         avant?.quantity_delivered ?? 0,
@@ -229,7 +249,9 @@ export async function parcAvecDisponibilite(
   let sql = `
     SELECT o.id, o.name, o.reference, o.serial_number, o.status,
            o.category_id, o.subcategory_id, COALESCE(c.name, pc.name) as category_name,
-           ${expressionPrestation()} as is_prestation
+           o.quantity_total,
+           ${expressionPrestation()} as is_prestation,
+           ${expressionNature()} as nature
     FROM objects o
     LEFT JOIN categories c ON c.id = o.category_id
     ${jointuresDisponibilite()}
@@ -256,7 +278,12 @@ export async function parcAvecDisponibilite(
     exclureManifestationId
   );
 
-  return objets.map((objet: any) => {
+  // Un lot ne se dit pas « pris » ou « libre » mais « il en reste tant » : le
+  // sélecteur doit pouvoir montrer 42 chaises disponibles sur 50, sinon on
+  // choisit à l'aveugle et le manque se découvre à la livraison.
+  const avecStock = await enrichirLots(objets, { debut: dateDebut, fin: dateFin });
+
+  return avecStock.map((objet: any) => {
     const retenues = conflits.filter((c) => c.object_id === objet.id);
     return {
       ...objet,

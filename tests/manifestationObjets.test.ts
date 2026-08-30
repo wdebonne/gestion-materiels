@@ -43,6 +43,10 @@ import {
   remplacerObjets,
   STATUTS_IMMOBILISANTS,
 } from '../src/services/manifestationObjets.service';
+import {
+  disponibiliteObjets,
+  manquesSurLots,
+} from '../src/services/lotParc.service';
 import type { AuthRequest } from '../src/middleware/auth.middleware';
 
 const base: BetterSqlite3.Database = (global as any).__baseObjets;
@@ -66,7 +70,8 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY, name VARCHAR(255), reference VARCHAR(100),
       serial_number VARCHAR(100), status VARCHAR(50),
       category_id INTEGER, subcategory_id INTEGER,
-      available_for_manifestations INTEGER, is_prestation INTEGER
+      available_for_manifestations INTEGER, is_prestation INTEGER,
+      material_type VARCHAR(20) DEFAULT 'unique', quantity_total INTEGER DEFAULT 0
     );
     CREATE TABLE manifestations (
       id INTEGER PRIMARY KEY, title VARCHAR(255), status VARCHAR(20),
@@ -98,6 +103,10 @@ beforeAll(() => {
       (3, 'Remorque', 'VH-02', 1);
     INSERT INTO objects (id, name, reference, category_id, subcategory_id) VALUES
       (4, 'Raccordement électrique', NULL, 1, 10);
+    -- Un lot : cinquante chaises identiques, que deux manifestations peuvent
+    -- se partager. Le camion, lui, ne se partage pas.
+    INSERT INTO objects (id, name, category_id, material_type, quantity_total) VALUES
+      (5, 'Chaise pliante', 1, 'lot', 50);
 
     INSERT INTO manifestations (id, title, status, date_start, date_end, delivery_date, recovery_date) VALUES
       (100, 'Brocante', 'validated', '2026-07-14', '2026-07-14', '2026-07-13', '2026-07-15'),
@@ -251,7 +260,7 @@ describe('Parc proposé au choix', () => {
     // `GET /green-spaces/search/objects`.
     const parc = await parcAvecDisponibilite(requete(5, 'agent'), undefined, '2026-07-14', '2026-07-14');
 
-    expect(parc!.map((o: any) => o.id).sort()).toEqual([1, 3, 4]);
+    expect(parc!.map((o: any) => o.id).sort()).toEqual([1, 3, 4, 5]);
     expect(parc!.map((o: any) => o.name)).not.toContain('Vidéoprojecteur');
   });
 
@@ -358,5 +367,121 @@ describe('Prestations du parc', () => {
     const lignes = await objetsDe(100);
     expect(Boolean(lignes.find((l: any) => l.object_id === 4).is_prestation)).toBe(true);
     expect(Boolean(lignes.find((l: any) => l.object_id === 1).is_prestation)).toBe(false);
+  });
+});
+
+/**
+ * Matériel du parc tenu en lot.
+ *
+ * Cinquante chaises identiques n'entrent pas dans le moule de l'exemplaire :
+ * les saisir une par une donnerait cinquante fiches et cinquante QR codes pour
+ * un même modèle. La différence de fond tient en une phrase — **deux
+ * manifestations se partagent cent chaises, elles ne se partagent pas le
+ * camion**.
+ *
+ * Le piège est symétrique de celui des prestations : traiter un lot en
+ * exemplaire rendrait les cinquante chaises indisponibles dès qu'une seule est
+ * demandée ailleurs.
+ */
+describe('Matériel en lot', () => {
+  const demander = (manifestationId: number, objectId: number, quantite: number) =>
+    base
+      .prepare(
+        'INSERT INTO manifestation_items (manifestation_id, object_id, quantity) VALUES (?, ?, ?)'
+      )
+      .run(manifestationId, objectId, quantite);
+
+  it('un lot déjà demandé ne bloque pas une autre manifestation', async () => {
+    demander(100, 5, 10);
+
+    expect(await indisponibilites([5], '2026-07-14', '2026-07-14')).toEqual([]);
+  });
+
+  it('retient la quantité demandée', async () => {
+    await remplacerObjets(100, [{ object_id: 5, quantity: 30 }]);
+
+    const lignes = await objetsDe(100);
+    expect(lignes[0].quantity).toBe(30);
+    expect(lignes[0].nature).toBe('lot');
+  });
+
+  it('distingue les trois natures sur une même demande', async () => {
+    await remplacerObjets(100, [
+      { object_id: 1 },
+      { object_id: 4, quantity: 3 },
+      { object_id: 5, quantity: 20 },
+    ]);
+
+    const parNom = Object.fromEntries((await objetsDe(100)).map((l: any) => [l.object_name, l.nature]));
+    expect(parNom['Camion benne']).toBe('unique');
+    expect(parNom['Raccordement électrique']).toBe('prestation');
+    expect(parNom['Chaise pliante']).toBe('lot');
+  });
+
+  it('compte ce qui est promis sur la période', async () => {
+    demander(100, 5, 30); // manifestation « validated »
+
+    const engagements = await disponibiliteObjets([5], '2026-07-14', '2026-07-14');
+    expect(engagements.get(5)?.engage_previsionnel).toBe(30);
+    expect(engagements.get(5)?.engage_reel).toBe(0);
+  });
+
+  it('ne compte pas une manifestation annulée', async () => {
+    demander(400, 5, 30); // statut « cancelled »
+
+    const engagements = await disponibiliteObjets([5], '2026-07-14', '2026-07-14');
+    expect(engagements.get(5)?.engage_previsionnel).toBe(0);
+  });
+
+  it('signale un manque, pas un conflit', async () => {
+    demander(100, 5, 45);
+
+    const manques = await manquesSurLots([{ object_id: 5, quantity: 10 }], '2026-07-14', '2026-07-14');
+    expect(manques).toHaveLength(1);
+    expect(manques[0]).toMatchObject({ object_name: 'Chaise pliante', demande: 10, disponible: 5, manque: 5 });
+  });
+
+  it('ne signale rien tant que le stock suffit', async () => {
+    demander(100, 5, 10);
+
+    expect(await manquesSurLots([{ object_id: 5, quantity: 40 }], '2026-07-14', '2026-07-14')).toEqual([]);
+  });
+
+  it('n’oppose pas une manifestation à elle-même', async () => {
+    demander(100, 5, 45);
+
+    const manques = await manquesSurLots(
+      [{ object_id: 5, quantity: 45 }],
+      '2026-07-14',
+      '2026-07-14',
+      100
+    );
+    expect(manques).toEqual([]);
+  });
+
+  it('ne calcule aucun manque sur un exemplaire ni sur une prestation', async () => {
+    // Ces deux natures ont leurs propres règles : le conflit pour l'un, rien
+    // pour l'autre. Leur inventer un stock les dirait en rupture perpétuelle.
+    const manques = await manquesSurLots(
+      [{ object_id: 1, quantity: 5 }, { object_id: 4, quantity: 5 }],
+      '2026-07-14',
+      '2026-07-14'
+    );
+    expect(manques).toEqual([]);
+  });
+
+  it('montre le stock restant dans le sélecteur', async () => {
+    demander(100, 5, 20);
+
+    const parc = await parcAvecDisponibilite(requete(1, 'admin'), undefined, '2026-07-14', '2026-07-14');
+    const lot = parc!.find((o: any) => o.id === 5);
+    expect(lot.nature).toBe('lot');
+    expect(lot.quantity_total).toBe(50);
+    expect(lot.disponible_previsionnel).toBe(30);
+  });
+
+  it('laisse un exemplaire sans calcul de stock', async () => {
+    const parc = await parcAvecDisponibilite(requete(1, 'admin'), undefined, '2026-07-14', '2026-07-14');
+    expect(parc!.find((o: any) => o.id === 1).disponible_previsionnel).toBeUndefined();
   });
 });

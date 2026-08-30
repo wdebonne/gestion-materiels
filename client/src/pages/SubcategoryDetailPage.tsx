@@ -12,6 +12,7 @@ import {
 import api, { Subcategory, GestionObject as EquipmentObject } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import ChoixPrestation, { BadgePrestation } from '@/components/ChoixPrestation'
+import ChoixTypeMateriel, { BadgeLot } from '@/components/ChoixTypeMateriel'
 import toast from 'react-hot-toast'
 import Can from '@/components/Can'
 import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
@@ -28,7 +29,9 @@ export default function SubcategoryDetailPage() {
     description: '',
     image: '',
     status: 'active',
-    isPrestation: null as boolean | null
+    isPrestation: null as boolean | null,
+    materialType: 'unique' as 'unique' | 'lot',
+    quantityTotal: 0
   })
   const [deleteConfirm, setDeleteConfirm] = useState<EquipmentObject | null>(null)
 
@@ -118,11 +121,13 @@ export default function SubcategoryDetailPage() {
         description: obj.description || '',
         image: obj.image || '',
         status: obj.status || 'active',
-        isPrestation: obj.isPrestation ?? null
+        isPrestation: obj.isPrestation ?? null,
+        materialType: obj.materialType ?? 'unique',
+        quantityTotal: obj.quantityTotal ?? 0
       })
     } else {
       setEditingObject(null)
-      setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null })
+      setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0 })
     }
     setIsModalOpen(true)
   }
@@ -130,7 +135,7 @@ export default function SubcategoryDetailPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingObject(null)
-    setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null })
+    setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0 })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -292,6 +297,8 @@ export default function SubcategoryDetailPage() {
 
               {(obj.prestation ?? estBranchePrestation) ? (
                 <BadgePrestation className="absolute bottom-2 left-2 shadow-sm" />
+              ) : obj.nature === 'lot' ? (
+                <BadgeLot quantite={obj.quantityTotal} className="absolute bottom-2 left-2 shadow-sm" />
               ) : null}
 
               {/* Actions au survol */}
@@ -378,6 +385,19 @@ export default function SubcategoryDetailPage() {
               value={formData.image}
               onChange={(url) => setFormData({ ...formData, image: url })}
             />
+
+            {/* Un lot n'a ni carburant ni contrôle technique — ces suivis
+                portent sur un exemplaire — mais garde ses entretiens. La
+                question ne se pose pas pour une prestation, qui n'a rien à
+                stocker. */}
+            {!(formData.isPrestation ?? estBranchePrestation) && (
+              <ChoixTypeMateriel
+                type={formData.materialType}
+                quantite={formData.quantityTotal}
+                onChangeType={(materialType) => setFormData({ ...formData, materialType })}
+                onChangeQuantite={(quantityTotal) => setFormData({ ...formData, quantityTotal })}
+              />
+            )}
 
             {/*
               L'exception au réglage de la branche. La sous-catégorie suffit dans

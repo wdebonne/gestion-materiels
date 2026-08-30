@@ -69,6 +69,7 @@ import {
   genererPourManifestation,
   produireEtNotifier,
 } from '../services/generationDocuments.service';
+import { manquesSurLots } from '../services/lotParc.service';
 
 const router = Router();
 
@@ -770,6 +771,14 @@ router.post('/', authenticateToken, requireSupervisor,
         periode.fin,
         manifestationId
       );
+      // Un lot ne connaît pas le conflit mais le manque : ce n'est pas « le
+      // camion est pris », c'est « il ne reste que 42 chaises sur 50 demandées ».
+      const manquesLots = await manquesSurLots(
+        Array.isArray(objects) ? objects : [],
+        periode.debut,
+        periode.fin,
+        manifestationId
+      );
 
       // Les services concernés sont sollicités dès la création : c'est ce qui
       // rend le tableau des approbations lisible avant même la validation.
@@ -777,7 +786,13 @@ router.post('/', authenticateToken, requireSupervisor,
       produireEtNotifier(manifestationId, title, sollicites, req.user!.userId);
 
       notifierWebhooks('manifestation.created', { id: manifestationId, title, status: 'draft' });
-      res.status(201).json({ success: true, data: created, conflits, conflits_objets: conflitsObjets });
+      res.status(201).json({
+        success: true,
+        data: created,
+        conflits,
+        conflits_objets: conflitsObjets,
+        manques_lots: manquesLots,
+      });
     } catch (error: any) {
       res.status(500).json({ success: false, message: error.message });
     }
@@ -882,9 +897,15 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       periode.fin,
       req.params.id
     );
+    const manquesLots = await manquesSurLots(
+      Array.isArray(objects) ? objects : [],
+      periode.debut,
+      periode.fin,
+      req.params.id
+    );
 
     notifierWebhooks('manifestation.updated', { id: Number(req.params.id), title });
-    res.json({ success: true, conflits, conflits_objets: conflitsObjets });
+    res.json({ success: true, conflits, conflits_objets: conflitsObjets, manques_lots: manquesLots });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1482,6 +1503,7 @@ router.put('/:id/objects', authenticateToken, requireSupervisor, async (req: Aut
       periode.fin,
       req.params.id
     );
+    const manquesLots = await manquesSurLots(objects, periode.debut, periode.fin, req.params.id);
 
     await consignerHistorique(req.params.id, req.user!.userId, 'Matériel unique mis à jour', {
       comment: `${objects.length} matériel(s) du parc`,
@@ -1489,22 +1511,34 @@ router.put('/:id/objects', authenticateToken, requireSupervisor, async (req: Aut
     notifierChangementMateriel(req.params.id, m.title, `${objects.length} matériel(s) du parc`);
     redeposerSuivi();
 
-    res.json({ success: true, data: await objetsDe(req.params.id), conflits });
+    res.json({
+      success: true,
+      data: await objetsDe(req.params.id),
+      conflits,
+      manques_lots: manquesLots,
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
 /**
- * PUT /:id/objects/:itemId - Sortie et retour d'un matériel unique.
+ * PUT /:id/objects/:itemId - Sortie et retour d'un matériel du parc.
  *
  * Un véhicule ne se compte pas : il est sorti ou non, revenu ou non, et son état
  * au retour se constate — intact, abîmé, perdu. C'est ce constat qui manquait
  * pour que le suivi d'un prêt de véhicule vaille celui d'un prêt de chaises.
+ *
+ * Un **lot** se compte, lui : quarante-huit chaises revenues sur cinquante
+ * livrées, et deux qui manquent. Les mêmes champs acceptent donc un nombre —
+ * `delivered_quantity` et `returned_quantity` — là où un exemplaire se contente
+ * d'un oui ou d'un non. Dire « revenu » d'un lot dont il manque deux chaises
+ * ferait rentrer au stock du matériel qui n'existe plus.
  */
 router.put('/:id/objects/:itemId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    const { delivered, returned, return_state, notes } = req.body;
+    const { delivered, returned, delivered_quantity, returned_quantity, return_state, notes } =
+      req.body;
 
     if (return_state && !ETATS_RETOUR.includes(return_state)) {
       return res.status(400).json({
@@ -1523,8 +1557,24 @@ router.put('/:id/objects/:itemId', authenticateToken, requireSupervisor, async (
       return res.status(404).json({ success: false, message: 'Matériel non trouvé sur cette manifestation' });
     }
 
-    const sorti = delivered === undefined ? ligne.quantity_delivered : delivered ? 1 : 0;
-    const revenu = returned === undefined ? ligne.quantity_returned : returned ? 1 : 0;
+    // Un nombre l'emporte sur un booléen : l'écran d'un lot envoie une quantité,
+    // celui d'un exemplaire une case cochée, et les deux passent par ici.
+    const nombreOuBooleen = (
+      nombre: unknown,
+      booleen: unknown,
+      actuel: number,
+      demande: number
+    ): number => {
+      if (nombre !== undefined && nombre !== null && nombre !== '') {
+        return Math.min(Math.max(0, Number(nombre) || 0), demande);
+      }
+      if (booleen === undefined) return actuel;
+      return booleen ? demande : 0;
+    };
+
+    const demande = Math.max(1, Number(ligne.quantity) || 1);
+    const sorti = nombreOuBooleen(delivered_quantity, delivered, ligne.quantity_delivered, demande);
+    const revenu = nombreOuBooleen(returned_quantity, returned, ligne.quantity_returned, demande);
 
     await db.execute(
       `UPDATE manifestation_items
@@ -1541,10 +1591,13 @@ router.put('/:id/objects/:itemId', authenticateToken, requireSupervisor, async (
     );
 
     const etat = return_state ?? ligne.return_state;
+    // Un lot se raconte en nombres — « 50 livrées, 48 revenues » — un exemplaire
+    // en états. Le même résumé pour les deux rendrait l'historique illisible.
+    const enLot = demande > 1;
     const resume = [
       ligne.object_name,
-      sorti ? 'sorti' : 'non sorti',
-      revenu ? 'revenu' : 'non revenu',
+      enLot ? `${sorti} livrée(s)` : sorti ? 'sorti' : 'non sorti',
+      enLot ? `${revenu} revenue(s)` : revenu ? 'revenu' : 'non revenu',
       etat ? `état : ${etat}` : null,
     ]
       .filter(Boolean)

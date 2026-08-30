@@ -9,6 +9,7 @@ import {
   lireChoixPrestation,
   versColonnePrestation,
 } from '../services/prestationParc.service';
+import { enrichirLots, expressionNature } from '../services/lotParc.service';
 
 const router = Router();
 
@@ -132,7 +133,8 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
               COALESCE(c.name, c2.name) as category_name, 
               COALESCE(c.id, c2.id) as resolved_category_id,
               s.name as subcategory_name,
-              ${expressionPrestation('o', 's', 'pc')} as prestation
+              ${expressionPrestation('o', 's', 'pc')} as prestation,
+              ${expressionNature('o', 's', 'pc')} as nature
        FROM objects o
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
        LEFT JOIN categories c ON c.id = o.category_id
@@ -173,6 +175,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
           ? null
           : Boolean(o.is_prestation),
         prestation: Boolean(o.prestation),
+        nature: o.nature,
+        materialType: o.material_type ?? 'unique',
+        quantityTotal: o.quantity_total ?? 0,
         createdAt: o.created_at,
         updatedAt: o.updated_at
       })),
@@ -209,7 +214,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
               COALESCE(c.slug, c2.slug) as category_slug,
               COALESCE(c.id, c2.id) as resolved_category_id,
               s.name as subcategory_name, s.slug as subcategory_slug,
-              ${expressionPrestation('o', 's', 'pc')} as prestation
+              ${expressionPrestation('o', 's', 'pc')} as prestation,
+              ${expressionNature('o', 's', 'pc')} as nature
        FROM objects o
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
        LEFT JOIN categories c ON c.id = o.category_id
@@ -231,6 +237,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         return res.status(403).json({ success: false, message: 'Accès refusé à cette catégorie' });
       }
     }
+
+    const nature: string = obj.nature ?? 'unique';
 
     // Récupérer les plugins actifs :
     // - soit sans aucune association (disponibles pour tous)
@@ -254,10 +262,23 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [obj.category_id, obj.subcategory_id, obj.subcategory_id, obj.category_id, obj.subcategory_id]
     );
 
+    // Un lot n'a ni plein d'essence ni contrôle technique : ces suivis portent
+    // sur un exemplaire, pas sur un modèle. On ne fait pas le plein « des
+    // chaises ». Le filtre est posé ici plutôt que dans l'écran : la donnée
+    // cesse d'être chargée en même temps que l'onglet disparaît, et tous les
+    // écrans en profitent d'un coup.
+    //
+    // L'**entretien** reste : un lot se répare et se nettoie, et c'est
+    // justement ce qu'on veut consigner.
+    const pluginsRetenus =
+      nature === 'lot'
+        ? plugins.filter((p: any) => p.slug !== 'fuel' && p.slug !== 'technical-control')
+        : plugins;
+
     // Récupérer les données des plugins
     const pluginData: any = {};
 
-    for (const plugin of plugins) {
+    for (const plugin of pluginsRetenus) {
       switch (plugin.slug) {
         case 'fuel':
           pluginData.fuel = await db.query(
@@ -311,6 +332,12 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           ? null
           : Boolean(obj.is_prestation),
         prestation: Boolean(obj.prestation),
+        nature: obj.nature,
+        materialType: obj.material_type ?? 'unique',
+        quantityTotal: obj.quantity_total ?? 0,
+        // Stock d'un lot, lu directement sur sa fiche de parc : ce qui est
+        // dehors aujourd'hui, ce qui est promis, ce qui reste.
+        ...(await stockDuLot(obj)),
         createdAt: obj.created_at,
         updatedAt: obj.updated_at,
         category: obj.category_name ? {
@@ -323,7 +350,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           name: obj.subcategory_name,
           slug: obj.subcategory_slug
         } : null,
-        activePlugins: plugins.map((p: any) => ({
+        activePlugins: pluginsRetenus.map((p: any) => ({
           id: p.id,
           name: p.name,
           slug: p.slug,
@@ -397,7 +424,8 @@ router.post('/', authenticateToken, requireSupervisor, [
     const {
       categoryId, subcategoryId, name, description, image,
       reference, serialNumber, purchaseDate, purchasePrice,
-      status = 'active', location, notes, customFields, isPrestation
+      status = 'active', location, notes, customFields, isPrestation,
+      materialType, quantityTotal
     } = req.body;
 
     // Vérifier la permission d'édition sur la catégorie cible
@@ -421,8 +449,8 @@ router.post('/', authenticateToken, requireSupervisor, [
     const result = await db.execute(
       `INSERT INTO objects (category_id, subcategory_id, name, description, image, 
        reference, serial_number, purchase_date, purchase_price, status, location, notes, custom_fields,
-       is_prestation)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       is_prestation, material_type, quantity_total)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         categoryId || null, subcategoryId || null, name, description || null, finalImage,
         reference || null, serialNumber || null, purchaseDate || null, purchasePrice || null,
@@ -430,7 +458,11 @@ router.post('/', authenticateToken, requireSupervisor, [
         // Laissé à `null` par défaut : le matériel hérite de sa sous-catégorie,
         // puis de sa catégorie. C'est ce qui permet de marquer une branche une
         // fois pour toutes plutôt qu'article par article.
-        versColonnePrestation(lireChoixPrestation(isPrestation))
+        versColonnePrestation(lireChoixPrestation(isPrestation)),
+        materialType === 'lot' ? 'lot' : 'unique',
+        // La quantité n'a de sens que pour un lot : un exemplaire vaut 1, et
+        // laisser saisir « 12 » sur un camion ferait croire qu'on en a douze.
+        materialType === 'lot' ? Math.max(0, Number(quantityTotal) || 0) : 0
       ]
     );
 
@@ -460,7 +492,7 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     const {
       categoryId, subcategoryId, name, description, image,
       reference, serialNumber, purchaseDate, purchasePrice,
-      status, location, notes, customFields, isPrestation
+      status, location, notes, customFields, isPrestation, materialType, quantityTotal
     } = req.body;
 
     const obj = await db.queryOne('SELECT id, category_id, subcategory_id FROM objects WHERE id = ?', [id]);
@@ -535,6 +567,20 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     if (isPrestation !== undefined) {
       updateFields.push('is_prestation = ?');
       values.push(versColonnePrestation(lireChoixPrestation(isPrestation)));
+    }
+    if (materialType !== undefined) {
+      updateFields.push('material_type = ?');
+      values.push(materialType === 'lot' ? 'lot' : 'unique');
+      // Repasser un lot en exemplaire remet sa quantité à zéro : la garder
+      // afficherait « 50 » sur une fiche qui n'en compte plus qu'un.
+      if (materialType !== 'lot') {
+        updateFields.push('quantity_total = ?');
+        values.push(0);
+      }
+    }
+    if (quantityTotal !== undefined && materialType !== 'unique') {
+      updateFields.push('quantity_total = ?');
+      values.push(Math.max(0, Number(quantityTotal) || 0));
     }
 
     updateFields.push('updated_at = ?');
@@ -1468,5 +1514,26 @@ router.put('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin, a
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
+
+/**
+ * Stock d'un lot, tel que sa fiche de parc l'affiche.
+ *
+ * Rend un objet vide pour un exemplaire ou une prestation : leur calculer un
+ * stock les ferait paraître en rupture en permanence, leur total valant zéro.
+ * C'est ce qui permet d'étaler le résultat dans la réponse sans condition.
+ */
+async function stockDuLot(obj: any): Promise<Record<string, unknown>> {
+  if (obj.nature !== 'lot') return {};
+
+  const [enrichi] = await enrichirLots([
+    { id: obj.id, nature: 'lot', quantity_total: obj.quantity_total ?? 0 },
+  ]);
+
+  return {
+    quantityLent: enrichi.quantity_lent ?? 0,
+    quantityReservedFuture: enrichi.quantity_reserved_future ?? 0,
+    quantityAvailable: enrichi.quantity_available ?? 0,
+  };
+}
 
 export default router;

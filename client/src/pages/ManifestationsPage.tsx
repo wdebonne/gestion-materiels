@@ -1620,8 +1620,9 @@ function SuiviObjetsParc({ manifestationId, modifiable }: {
   // Un service peut tenir ses prestations dans le parc, à côté de son matériel.
   // Les mêler ici ferait proposer « État au retour : abîmé » sur un débit de
   // boissons — les deux natures ne se suivent pas de la même façon.
-  const exemplaires = objets.filter(o => !o.is_prestation)
-  const prestations = objets.filter(o => o.is_prestation)
+  const exemplaires = objets.filter(o => o.nature === 'unique' || (!o.nature && !o.is_prestation))
+  const prestations = objets.filter(o => o.nature === 'prestation' || (!o.nature && o.is_prestation))
+  const lots = objets.filter(o => o.nature === 'lot')
 
   return (
     <>
@@ -1659,6 +1660,60 @@ function SuiviObjetsParc({ manifestationId, modifiable }: {
                 <span className="text-xs text-gray-600 dark:text-gray-300">
                   {prestation.quantity_delivered > 0 ? 'Réalisée' : 'À réaliser'}
                 </span>
+              )}
+            </div>
+          ))}
+        </CardBody>
+      </Card>
+    )}
+
+    {lots.length > 0 && (
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Lots du parc</CardTitle></CardHeader>
+        <CardBody className="space-y-2">
+          {lots.map(lot => (
+            <div key={lot.id} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                  {lot.object_name}
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                    {lot.quantity} demandée(s) sur {lot.quantity_total ?? 0} détenue(s)
+                  </span>
+                </span>
+                {/* Ce qui manque au retour est la casse ou le vol : le dire ici
+                    évite d'aller le chercher dans l'historique. */}
+                {lot.quantity_delivered > lot.quantity_returned && lot.quantity_returned > 0 && (
+                  <Badge variant="danger">
+                    {lot.quantity_delivered - lot.quantity_returned} non revenue(s)
+                  </Badge>
+                )}
+              </div>
+
+              {modifiable ? (
+                <div className="flex flex-wrap items-center gap-4 mt-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    Livrées
+                    <input type="number" min={0} max={lot.quantity}
+                      value={lot.quantity_delivered}
+                      onChange={e => suivi.mutate({ itemId: lot.id, delivered_quantity: e.target.value })}
+                      className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-900" />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    Revenues
+                    <input type="number" min={0} max={lot.quantity}
+                      value={lot.quantity_returned}
+                      onChange={e => suivi.mutate({ itemId: lot.id, returned_quantity: e.target.value })}
+                      className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-900" />
+                  </label>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                  {lot.quantity_delivered} livrée(s) · {lot.quantity_returned} revenue(s)
+                </p>
+              )}
+
+              {lot.notes && (
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 italic">{lot.notes}</p>
               )}
             </div>
           ))}

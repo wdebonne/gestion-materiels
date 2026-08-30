@@ -24,6 +24,8 @@ export interface ObjetChoisi {
   object_name?: string
   reference?: string | null
   notes?: string | null
+  /** Nombre demandé : utile pour un lot ou une prestation, toujours 1 pour un exemplaire. */
+  quantity?: number
 }
 
 const formatDate = (valeur: string): string =>
@@ -65,26 +67,42 @@ export default function ManifestationObjetsParc({
     if (retenus.has(objet.id)) return
     onChange([
       ...choisis,
-      { object_id: objet.id, object_name: objet.name, reference: objet.reference },
+      {
+        object_id: objet.id,
+        object_name: objet.name,
+        reference: objet.reference,
+        quantity: 1,
+      },
     ])
   }
+
+  /** Change le nombre demandé d'une ligne, sans jamais descendre sous 1. */
+  const changerQuantite = (objectId: number, quantite: number) =>
+    onChange(
+      choisis.map((o) =>
+        o.object_id === objectId ? { ...o, quantity: Math.max(1, quantite || 1) } : o
+      )
+    )
 
   const retirer = (objectId: number) => onChange(choisis.filter((o) => o.object_id !== objectId))
 
   /** Conflits des matériels déjà retenus : c'est là qu'ils comptent vraiment. */
-  const conflitsRetenus = parc.filter((o) => retenus.has(o.id) && !o.disponible)
+  const conflitsRetenus = parc.filter(
+    (o) => retenus.has(o.id) && !o.disponible && o.nature === 'unique'
+  )
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="text-sm flex items-center gap-2">
-          <Truck className="w-4 h-4" /> Matériel unique du parc
+          <Truck className="w-4 h-4" /> Matériel du parc
         </CardTitle>
       </CardHeader>
       <CardBody className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          Pour un véhicule ou un matériel identifié, qui ne peut pas être à deux endroits le même
-          jour. Les quantités — tables, chaises — se demandent dans la liste au-dessus.
+          Un <strong>exemplaire</strong> — un véhicule — ne peut pas être à deux endroits le même
+          jour. Un <strong>lot</strong> se demande en nombre et s’impute sur son stock. Une{' '}
+          <strong>prestation</strong> n’immobilise rien.
         </p>
 
         {choisis.length > 0 && (
@@ -102,7 +120,33 @@ export default function ManifestationObjetsParc({
                       </span>
                     )}
                   </span>
-                  {fiche && !fiche.disponible && (
+                  {/* Un lot se demande en nombre, et l'écran dit combien il en
+                      reste sur la période : choisir à l'aveugle ferait
+                      découvrir le manque le jour de la livraison. */}
+                  {fiche && (fiche.nature === 'lot' || fiche.nature === 'prestation') && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min={1}
+                        value={objet.quantity ?? 1}
+                        onChange={(e) => changerQuantite(objet.object_id, parseInt(e.target.value, 10))}
+                        aria-label={`Nombre pour ${objet.object_name ?? objet.object_id}`}
+                        className="w-20 px-2 py-1 text-sm rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-900 dark:text-gray-100"
+                      />
+                      {fiche.nature === 'lot' && (
+                        <span
+                          className={`text-xs ${
+                            (fiche.disponible_previsionnel ?? 0) < (objet.quantity ?? 1)
+                              ? 'text-red-600 dark:text-red-400'
+                              : 'text-gray-500 dark:text-gray-400'
+                          }`}
+                        >
+                          {fiche.disponible_previsionnel ?? 0} dispo. sur {fiche.quantity_total ?? 0}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {fiche && fiche.nature === 'unique' && !fiche.disponible && (
                     <Badge variant="warning">Déjà retenu</Badge>
                   )}
                   <button type="button" onClick={() => retirer(objet.object_id)}

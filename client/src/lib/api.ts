@@ -207,6 +207,21 @@ export interface GestionObject {
   isPrestation?: boolean | null
   /** Résultat effectif après héritage : ce qui s'applique vraiment. */
   prestation?: boolean
+  /**
+   * Les trois natures qu'un matériel du parc peut prendre.
+   *
+   * `unique` un exemplaire identifié — un véhicule, qui ne peut pas être à deux
+   * endroits. `lot` une quantité — cinquante chaises, que deux manifestations se
+   * partagent. `prestation` un acte, sans stock ni exemplaire.
+   */
+  nature?: 'unique' | 'lot' | 'prestation'
+  materialType?: 'unique' | 'lot'
+  /** Quantité détenue, pour un lot seulement. */
+  quantityTotal?: number
+  /** Stock d'un lot, sur sa fiche de parc. */
+  quantityLent?: number
+  quantityReservedFuture?: number
+  quantityAvailable?: number
   createdAt: string
   updatedAt: string
   plugins?: Plugin[]
@@ -882,6 +897,11 @@ export interface ObjetParc {
   indisponibilites: IndisponibiliteObjet[]
   /** Une prestation n'immobilise rien : elle est toujours disponible. */
   is_prestation?: number | boolean
+  /** Exemplaire identifié, lot avec quantité, ou prestation. */
+  nature?: 'unique' | 'lot' | 'prestation'
+  /** Renseignés pour un lot : ce qu'on détient, et ce qui reste sur la période. */
+  quantity_total?: number
+  disponible_previsionnel?: number
 }
 
 export type EtatRetour = 'intact' | 'abime' | 'perdu'
@@ -907,6 +927,10 @@ export interface ObjetManifestation {
    * puis réalisée.
    */
   is_prestation?: number | boolean
+  /** Exemplaire identifié, lot avec quantité, ou prestation. */
+  nature?: 'unique' | 'lot' | 'prestation'
+  /** Quantité détenue au parc, pour un lot. */
+  quantity_total?: number
 }
 
 export const objetManifestationApi = {

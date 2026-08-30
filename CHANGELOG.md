@@ -262,6 +262,28 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
 - **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
 
+### Parc — un matériel peut être un lot, avec sa quantité et son stock
+
+> Le parc ne savait compter que des **exemplaires** : ce camion-là, avec son numéro de série, ses pleins et ses contrôles techniques. Cinquante chaises identiques n'ont rien à faire dans ce moule — les saisir une par une donnerait cinquante fiches, cinquante QR codes et cinquante historiques d'entretien pour un même modèle. Les quantités existaient, mais dans un catalogue séparé, ce qui obligeait à tenir ses chaises à deux endroits selon qu'on les regardait comme du parc ou comme du prêt.
+
+#### Ajouté
+
+- **Type de matériel : exemplaire unique, ou lot avec quantité.** Le choix se fait sur la fiche, et il commande tout le reste
+  - Un **lot** porte une quantité détenue. Les manifestations s'y imputent directement : le **stock réel et prévisionnel se lit sur la fiche de parc**, sans le tenir ailleurs
+  - Quatre nombres, et le mot juste pour chacun : *détenu* ce qu'on possède, *dehors* ce qui est physiquement sorti en ce moment, *promis* ce qui est engagé pour plus tard — demandes reçues et pas encore confirmées comprises — et *disponible*. Les confondre ferait disparaître deux fois le matériel d'une manifestation livrée
+- **Ce qu'un lot perd : carburant et contrôle technique.** Ces suivis portent sur un exemplaire, pas sur un modèle — on ne fait pas le plein « des chaises ». Les onglets disparaissent et la donnée cesse d'être chargée, parce que le filtre est posé côté serveur : tous les écrans en profitent d'un coup
+- **Ce qu'un lot garde : l'entretien.** Un lot se répare et se nettoie, et c'est précisément ce qu'on veut consigner
+- **Deux manifestations se partagent cent chaises ; elles ne se partagent pas le camion.** Un lot ne connaît donc pas le conflit mais le **manque**, chiffré : « il ne reste que 20 chaises sur les 30 demandées ». C'est un **avertissement, jamais un refus** — la demande est enregistrée telle qu'elle a été faite, et le manque est signalé pour être arbitré, comme le fait déjà le stock des manifestations
+- **Le sélecteur de matériel demande un nombre** pour un lot, et montre ce qui reste sur la période — « 42 dispo. sur 50 ». Choisir à l'aveugle ferait découvrir le manque le jour de la livraison
+- **La livraison et le retour se comptent** : « 50 livrées, 48 revenues », et les deux qui manquent restent comptées dehors. Un exemplaire garde ses cases *sorti* / *revenu* et son constat d'état — dire « revenu » d'un lot dont il manque deux chaises ferait rentrer au stock du matériel qui n'existe plus
+- La fiche d'une manifestation sépare désormais trois natures : **Lots du parc**, **Matériel unique du parc**, **Prestations demandées**. Les mêler proposait de constater l'état au retour d'un débit de boissons
+
+#### Notes
+
+- L'arithmétique du stock est **exactement celle du catalogue des manifestations** — mêmes statuts, même fenêtre d'immobilisation, même séparation du promis et du sorti. Les constantes sont importées et non recopiées : deux définitions de « ce qui est dehors » finiraient par diverger, et les deux écrans donneraient des chiffres différents pour la même chaise
+- Le catalogue `manifestation_stock` reste en place : les articles qui y sont déjà, leurs alias et l'appariement des demandes reçues continuent de fonctionner à l'identique
+- « Dehors en ce moment » se calcule sur la journée courante. Une manifestation livrée dont la période est passée sans avoir été marquée récupérée n'apparaît donc pas comme sortie — comportement hérité du stock des manifestations, inchangé ici
+
 ### Manifestations — les prestations se tiennent dans le parc, avec le reste du service
 
 > Une prestation ne se créait que dans Manifestations › Stock matériel, un catalogue à part. Or l'arbre des catégories est **déjà partagé** entre le parc et le stock : rien n'empêchait de tenir ses prestations là où le service tient déjà son matériel, sauf de pouvoir dire « cette branche, ce sont des prestations ». L'organisation qui en découle est celle d'une collectivité, où la **catégorie est le service** — Technique porte Prestation et Mobilier, Urbanisme porte Prestation, Armoires et Bureau, Restauration porte Prestation et Verrerie.

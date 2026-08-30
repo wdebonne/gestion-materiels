@@ -10,6 +10,7 @@ import materielPretable from './008_materiel_pretable';
 import prestationsEtDocuments from './009_prestations_et_documents';
 import modelesDocumentsService from './010_modeles_documents_service';
 import prestationsDuParc from './011_prestations_du_parc';
+import materielEnLot from './012_materiel_en_lot';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -32,6 +33,7 @@ export const MIGRATIONS: readonly Migration[] = [
   prestationsEtDocuments,
   modelesDocumentsService,
   prestationsDuParc,
+  materielEnLot,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

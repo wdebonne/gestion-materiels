@@ -13,6 +13,7 @@ import api, { Category, Subcategory, GestionObject as ObjectType } from '@/lib/a
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import { useAuthStore } from '@/stores/auth.store'
 import ChoixPrestation, { BadgePrestation } from '@/components/ChoixPrestation'
+import ChoixTypeMateriel from '@/components/ChoixTypeMateriel'
 import toast from 'react-hot-toast'
 import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
 
@@ -39,7 +40,10 @@ export default function CategoryDetailPage() {
     reference: '',
     serialNumber: '',
     status: 'available',
-    location: ''
+    location: '',
+    isPrestation: null as boolean | null,
+    materialType: 'unique' as 'unique' | 'lot',
+    quantityTotal: 0
   })
   const [deleteConfirm, setDeleteConfirm] = useState<Subcategory | null>(null)
   const [deleteObjectConfirm, setDeleteObjectConfirm] = useState<ObjectType | null>(null)
@@ -215,7 +219,10 @@ export default function CategoryDetailPage() {
         reference: object.reference || '',
         serialNumber: object.serialNumber || '',
         status: object.status || 'available',
-        location: object.location || ''
+        location: object.location || '',
+        isPrestation: object.isPrestation ?? null,
+        materialType: object.materialType ?? 'unique',
+        quantityTotal: object.quantityTotal ?? 0
       })
     } else {
       setEditingObject(null)
@@ -226,7 +233,10 @@ export default function CategoryDetailPage() {
         reference: '',
         serialNumber: '',
         status: 'available',
-        location: ''
+        location: '',
+        isPrestation: null,
+        materialType: 'unique',
+        quantityTotal: 0
       })
     }
     setIsObjectModalOpen(true)
@@ -242,7 +252,10 @@ export default function CategoryDetailPage() {
       reference: '',
       serialNumber: '',
       status: 'available',
-      location: ''
+      location: '',
+      isPrestation: null,
+      materialType: 'unique',
+      quantityTotal: 0
     })
   }
 
@@ -723,6 +736,22 @@ export default function CategoryDetailPage() {
                 </select>
               </div>
             </div>
+
+            {!(objectFormData.isPrestation ?? category?.isPrestation) && (
+              <ChoixTypeMateriel
+                type={objectFormData.materialType}
+                quantite={objectFormData.quantityTotal}
+                onChangeType={(materialType) => setObjectFormData({ ...objectFormData, materialType })}
+                onChangeQuantite={(quantityTotal) => setObjectFormData({ ...objectFormData, quantityTotal })}
+              />
+            )}
+
+            <ChoixPrestation
+              valeur={objectFormData.isPrestation}
+              onChange={(isPrestation) => setObjectFormData({ ...objectFormData, isPrestation })}
+              heriteDe={{ prestation: Boolean(category?.isPrestation), source: 'sa catégorie' }}
+              aide="Une prestation ne se stocke pas et n’immobilise rien : elle est demandée, puis réalisée."
+            />
 
             <ImageUpload
               label="Image"
