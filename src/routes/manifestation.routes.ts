@@ -413,7 +413,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     }
 
     let sql = `
-      SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
+      SELECT m.*, (CONCAT_WS(' ', u.first_name, u.last_name)) as created_by_name
       FROM manifestations m
       LEFT JOIN users u ON u.id = m.created_by
       WHERE 1=1
@@ -654,7 +654,7 @@ router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const m = await db.queryOne(`
-      SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
+      SELECT m.*, (CONCAT_WS(' ', u.first_name, u.last_name)) as created_by_name
       FROM manifestations m
       LEFT JOIN users u ON u.id = m.created_by
       WHERE m.id = ?
@@ -997,9 +997,12 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
         }
       }
 
-      const archiveDate = status === 'archived' ? "datetime('now')" : 'NULL';
+      // CURRENT_TIMESTAMP plutôt que datetime('now') : les deux moteurs le
+      // comprennent et rendent le même format, alors que datetime() est propre à
+      // SQLite et faisait échouer tout changement de statut sur MySQL.
+      const archiveDate = status === 'archived' ? 'CURRENT_TIMESTAMP' : 'NULL';
       await db.execute(
-        `UPDATE manifestations SET status = ?, archived_at = ${archiveDate}, updated_at = datetime('now') WHERE id = ?`,
+        `UPDATE manifestations SET status = ?, archived_at = ${archiveDate}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
         [status, req.params.id]
       );
 
@@ -1815,7 +1818,7 @@ router.get('/:id/messages', authenticateToken, async (req: AuthRequest, res: Res
     }
 
     const messages = await db.query(
-      `SELECT msg.*, (u.first_name || ' ' || u.last_name) as author_name, u.email as author_email,
+      `SELECT msg.*, (CONCAT_WS(' ', u.first_name, u.last_name)) as author_name, u.email as author_email,
               s.name as service_name
        FROM manifestation_messages msg
        LEFT JOIN users u ON u.id = msg.user_id
@@ -1881,7 +1884,7 @@ router.get('/:id/watchers', authenticateToken, async (req: AuthRequest, res: Res
     }
 
     const suiveurs = await db.query(
-      `SELECT w.*, (u.first_name || ' ' || u.last_name) as user_name, u.email as user_email,
+      `SELECT w.*, (CONCAT_WS(' ', u.first_name, u.last_name)) as user_name, u.email as user_email,
               s.name as service_name
        FROM manifestation_watchers w
        LEFT JOIN users u ON u.id = w.user_id

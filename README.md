@@ -338,33 +338,48 @@ SMTP_FROM=noreply@example.com
 ```
 
 3. **Lancer avec Docker Compose**
-```bash
-# Avec SQLite (simple)
-docker-compose up -d app
 
-# Avec MySQL
-docker-compose up -d
+Deux piles au choix, indépendantes l'une de l'autre.
+
+```bash
+# SQLite — un fichier, rien à administrer
+docker compose up -d
+
+# MySQL — serveur dédié dans un conteneur
+docker compose -f docker-compose.mysql.yml up -d
 ```
+
+La pile MySQL exige trois secrets dans `.env`. Sans eux elle refuse de démarrer avec un message explicite, plutôt que de tourner avec un mot de passe lisible dans le dépôt :
+
+```env
+JWT_SECRET=…            # node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+MYSQL_ROOT_PASSWORD=…
+MYSQL_APP_PASSWORD=…
+```
+
+Le port du serveur MySQL n'est pas publié sur l'hôte : seul le conteneur applicatif y accède, par le réseau interne. Les deux piles ont leurs propres réseau, volumes et port, et peuvent donc tourner en même temps — mais elles ne partagent aucune donnée : passer de l'une à l'autre demande un export, pas un changement de fichier.
 
 4. **Accéder à l'application**
 ```
-http://localhost:3001
+http://localhost:3001   # pile SQLite
+http://localhost:3002   # pile MySQL
 ```
 
-> Le conteneur applique les migrations de schéma au démarrage, avec une sauvegarde préalable de la base SQLite. Aucune commande manuelle n'est nécessaire.
+> Le conteneur crée le schéma et applique les migrations au démarrage, sur les deux moteurs, avec une sauvegarde préalable de la base SQLite. Aucune commande manuelle n'est nécessaire.
 
-### Avec Nginx (production)
+### Derrière un reverse proxy (production)
+
+En production, l'application redirige toute requête HTTP vers HTTPS — seuls les contrôles de santé internes en sont exemptés. Elle attend donc une terminaison TLS devant elle, qui lui transmet `X-Forwarded-Proto`.
+
+Un exemple de configuration est fourni dans `nginx/nginx.conf`, à déposer sur le reverse proxy de la collectivité avec les certificats :
 
 ```bash
-# Créer le dossier SSL
 mkdir -p nginx/ssl
-# Copier vos certificats SSL
 cp fullchain.pem nginx/ssl/
 cp privkey.pem nginx/ssl/
-
-# Lancer avec le profil production
-docker-compose --profile production up -d
 ```
+
+> Aucun des deux fichiers `docker-compose` ne lance de service Nginx : la terminaison TLS est à monter séparément. Sans elle, un navigateur appelant `http://` reçoit une redirection 301 vers une adresse `https://` que personne n'écoute.
 
 ## 📁 Structure du projet
 
@@ -420,7 +435,8 @@ gestion-materiels/
 │   ├── JWT_ROTATION.md    # Rotation JWT
 │   └── DEPLOIEMENT_PORTAINER.md # Déploiement Portainer
 ├── nginx/                  # Configuration Nginx
-├── docker-compose.yml
+├── docker-compose.yml       # Pile de production, SQLite
+├── docker-compose.mysql.yml # Pile de production, MySQL
 ├── Dockerfile
 └── README.md
 ```
@@ -446,6 +462,10 @@ gestion-materiels/
 | `MYSQL_USER` | Utilisateur MySQL | - |
 | `MYSQL_PASSWORD` | Mot de passe MySQL | - |
 | `MYSQL_DATABASE` | Nom BDD MySQL | gestion_materiels |
+| `MYSQL_ROOT_PASSWORD` | Mot de passe root du conteneur MySQL (**obligatoire** pour `docker-compose.mysql.yml`) | - |
+| `MYSQL_APP_USER` | Compte applicatif créé dans le conteneur MySQL (l'image refuse `root`) | gestion |
+| `MYSQL_APP_PASSWORD` | Mot de passe de ce compte (**obligatoire** pour `docker-compose.mysql.yml`) | - |
+| `MYSQL_APP_PORT` | Port publié sur l'hôte par la pile MySQL | 3002 |
 | `SMTP_HOST` | Serveur SMTP | - |
 | `SMTP_PORT` | Port SMTP | 587 |
 | `SMTP_USER` | Utilisateur SMTP | - |
@@ -453,7 +473,9 @@ gestion-materiels/
 | `SMTP_FROM` | Email expéditeur | - |
 | `VITE_GOOGLE_MAPS_KEY` | Clé Google Maps côté client, optionnelle (sans elle, l'aperçu utilise OpenStreetMap) | - |
 
-> Au démarrage en production, l'application refuse de se lancer si `JWT_SECRET` ou `JWT_REFRESH_SECRET` est absent, trop court, ou reste sur une valeur d'exemple. Il n'y a plus de secret de repli.
+> Au démarrage en production, l'application refuse de se lancer si `JWT_SECRET` est absent, trop court, ou reste sur une valeur d'exemple. Il n'y a plus de secret de repli. `JWT_REFRESH_SECRET` n'est pas vérifié, puisque personne ne le lit.
+
+> `MYSQL_HOST` et `MYSQL_PORT` ne concernent qu'une connexion à un serveur MySQL existant. La pile `docker-compose.mysql.yml` vise son propre service `db` et ignore ces deux variables : le `.env` de développement les met à `localhost`, ce qui ferait chercher le serveur dans le conteneur applicatif lui-même.
 
 ### Templates d'emails
 
@@ -883,6 +905,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - `PUT /api/manifestations/:id` ne lit pas le champ `status` : le statut se change uniquement via `PUT /:id/status`
 - La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
 - Un service ne peut être mis en copie que globalement ; il n'existe pas encore de mise en copie d'une personne depuis l'écran (l'API l'accepte : `POST /:id/watchers` avec `user_id`)
+- Une image déposée est systématiquement ré-encodée en JPEG par `normalizeImage()`, mais conserve son extension et son `Content-Type` d'origine : un PNG à fond transparent ressort opaque, sous un nom en `.png` dont le contenu est du JPEG. Sans effet sur un cliché de terrain, visible sur un logo ou un favicon
 - Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`
 
 ## 🛠️ Développement

@@ -55,7 +55,7 @@ export async function documentsDe(
     SELECT d.*, t.label as doc_type_label,
            ms.name as stock_name, o.name as object_name,
            s.name as service_name,
-           (u.first_name || ' ' || u.last_name) as uploaded_by_name
+           (CONCAT_WS(' ', u.first_name, u.last_name)) as uploaded_by_name
     FROM manifestation_documents d
     LEFT JOIN manifestation_doc_types t ON t.value = d.doc_type
     LEFT JOIN manifestation_stock ms ON ms.id = d.stock_id

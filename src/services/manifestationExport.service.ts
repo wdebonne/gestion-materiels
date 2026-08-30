@@ -140,7 +140,7 @@ export function resoudreColonnes(colonnes?: ColonneProfil[] | null): DefinitionE
  */
 async function lireDonnees(filtres: FiltresExport, avecCout = false): Promise<any[]> {
   let sql = `
-    SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
+    SELECT m.*, (CONCAT_WS(' ', u.first_name, u.last_name)) as created_by_name
     FROM manifestations m
     LEFT JOIN users u ON u.id = m.created_by
     WHERE 1=1

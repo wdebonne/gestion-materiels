@@ -182,7 +182,7 @@ export async function donneesPourModele(
   serviceId: number | null
 ): Promise<Record<string, unknown>> {
   const m = await db.queryOne(
-    `SELECT m.*, (u.first_name || ' ' || u.last_name) as created_by_name
+    `SELECT m.*, (CONCAT_WS(' ', u.first_name, u.last_name)) as created_by_name
      FROM manifestations m
      LEFT JOIN users u ON u.id = m.created_by
      WHERE m.id = ?`,

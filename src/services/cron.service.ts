@@ -61,8 +61,8 @@ export async function checkAlerts(): Promise<void> {
       `SELECT tc.*, o.name as object_name FROM technical_controls tc
        INNER JOIN objects o ON o.id = tc.object_id
        WHERE (
-         (tc.reminder_sent = 0 AND date(tc.expiry_date) <= date('now', '+${alertSettings.technical_control.days} days') AND date(tc.expiry_date) >= date('now'))
-         OR date(tc.expiry_date) < date('now')
+         (tc.reminder_sent = 0 AND date(tc.expiry_date) <= ${db.dateDecalee(alertSettings.technical_control.days)} AND date(tc.expiry_date) >= CURRENT_DATE)
+         OR date(tc.expiry_date) < CURRENT_DATE
        )`
     );
 
@@ -130,8 +130,8 @@ export async function checkAlerts(): Promise<void> {
        INNER JOIN objects o ON o.id = m.object_id
        WHERE m.next_date IS NOT NULL
        AND (
-         (m.reminder_sent = 0 AND date(m.next_date) <= date('now', '+${alertSettings.maintenance.days} days') AND date(m.next_date) >= date('now'))
-         OR date(m.next_date) < date('now')
+         (m.reminder_sent = 0 AND date(m.next_date) <= ${db.dateDecalee(alertSettings.maintenance.days)} AND date(m.next_date) >= CURRENT_DATE)
+         OR date(m.next_date) < CURRENT_DATE
        )`
     );
 
@@ -200,8 +200,8 @@ export async function checkAlerts(): Promise<void> {
        INNER JOIN green_spaces gs ON gs.id = gsm.green_space_id
        WHERE gsm.next_maintenance_date IS NOT NULL
        AND (
-         (date(gsm.next_maintenance_date) <= date('now', '+${alertSettings.maintenance.days} days') AND date(gsm.next_maintenance_date) >= date('now'))
-         OR date(gsm.next_maintenance_date) < date('now')
+         (date(gsm.next_maintenance_date) <= ${db.dateDecalee(alertSettings.maintenance.days)} AND date(gsm.next_maintenance_date) >= CURRENT_DATE)
+         OR date(gsm.next_maintenance_date) < CURRENT_DATE
        )`
     );
 

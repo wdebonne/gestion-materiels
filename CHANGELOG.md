@@ -7,6 +7,30 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Déploiement — MySQL, et une installation neuve qui démarre
+
+> L'application annonce deux moteurs depuis toujours, mais n'avait jamais été déployée ni sur MySQL, ni sur une base vide. Le premier essai de déploiement a montré qu'aucune installation neuve ne pouvait démarrer — MySQL comme SQLite. Tout ce qui suit a été vérifié en rejouant le même parcours métier sur les deux moteurs, depuis une base vierge.
+
+#### Ajouté
+
+- **Pile Docker MySQL** (`docker-compose.mysql.yml`) : serveur MySQL 8.4 dédié, port du serveur non publié sur l'hôte, projet, réseau, volumes et port applicatif distincts de la pile SQLite — les deux tournent en même temps sans se gêner
+  - Trois secrets exigés (`JWT_SECRET`, `MYSQL_ROOT_PASSWORD`, `MYSQL_APP_PASSWORD`) : la pile refuse de démarrer avec un message clair au lieu de tourner avec un mot de passe présent dans le dépôt
+  - `MYSQL_HOST` et le compte applicatif sont fixés dans le fichier plutôt que substitués : le `.env` de développement pointe `localhost` et met `MYSQL_USER=root`, deux valeurs qui auraient respectivement fait chercher le serveur dans le conteneur applicatif et fait refuser le démarrage par l'image MySQL
+
+#### Corrigé
+
+- **Aucune installation neuve ne démarrait, sur les deux moteurs.** `query()` choisissait entre `all()` et `run()` selon que la requête commençait par `SELECT`. `PRAGMA table_info(...)` ne commence pas par `SELECT` : ses lignes partaient dans `run()`, qui renvoie `{ changes: 0 }` sans lever d'erreur. Les dix migrations qui lisent la liste des colonnes recevaient donc un ensemble vide et rejouaient leurs `ALTER TABLE` sur des colonnes déjà créées — « duplicate column name » dès la migration 003. Invisible sur une base existante, dont les migrations sont déjà inscrites. L'aiguillage se fait maintenant sur `stmt.reader`
+- **L'image Docker ne se construisait plus.** `@testing-library/react` v16 ne déclare `@testing-library/dom` qu'en `peerDependency` ; le Dockerfile installe avec `--legacy-peer-deps`, qui n'installe pas les pairs. `screen` et `fireEvent` disparaissaient et le contrôle de types du client arrêtait la construction. La dépendance est déclarée explicitement
+- **Ordre de création des tables.** `group_permissions` et `service_templates` référençaient des tables créées plus loin. SQLite l'accepte, InnoDB refuse
+- **`DEFAULT` sur colonnes TEXT** (11 colonnes) : interdit par MySQL sous forme littérale, écrit désormais sous forme d'expression — `DEFAULT ('[]')` — que les deux moteurs acceptent
+- **Dates ISO 8601 dans des colonnes `DATETIME`** : MySQL les refuse, SQLite les stocke comme du texte. Le code en écrit à une centaine d'endroits ; la conversion se fait au seul point de passage vers le serveur, et seulement pour les chaînes portant un fuseau explicite
+- **Aucun index n'était créé sur MySQL.** `CREATE INDEX IF NOT EXISTS` est propre à SQLite : les 45 index échouaient un par un, chacun réduit à un avertissement. La base tournait sans un seul index — sans effet visible sur un petit parc, ingérable ensuite
+- **`||` renvoyait `0` ou `1` au lieu d'un nom.** En MySQL, `||` est un OU logique et non une concaténation. Sans erreur, l'auteur d'une manifestation, l'auteur d'un message, les observateurs, le créateur d'un jeton API et les valeurs injectées dans les modèles `.docx` devenaient des booléens. Les 12 sites passent par `CONCAT_WS`
+- **Tout changement de statut échouait sur MySQL** : `datetime('now')` est propre à SQLite, remplacé par `CURRENT_TIMESTAMP`
+- **Le cron d'alertes était entièrement mort sur MySQL** : `date('now', '+30 days')` provoquait une erreur de syntaxe à chaque passage horaire, donc aucune alerte de contrôle technique, de maintenance ou d'espace vert. Même cause pour la fenêtre du calendrier. Une méthode `db.dateDecalee()` produit la forme propre à chaque moteur
+- **Liste des matériels et journaux en erreur 500 sur MySQL** : `execute()` de mysql2 rejette un nombre en paramètre de `LIMIT` ou `OFFSET`. Ces requêtes passent par `query()`, qui échappe ses paramètres de la même façon
+- **Injection SQL dans `GET /api/calendar/upcoming`** : le paramètre `days` de la requête HTTP était concaténé tel quel dans le SQL. Il est désormais tronqué à un entier
+
 ### Ergonomie terrain
 
 > L'application est utilisée par des agents de métier manuel — jardiniers, mécaniciens, chauffeurs — sur téléphone, dehors, parfois avec des gants et sans réseau. Cet ensemble de changements part de cet usage.

@@ -35,6 +35,8 @@ Ce guide explique comment déployer l'application **Gestion Matériels** sur Por
 | **Repository reference** | `refs/heads/main` |
 | **Compose path** | `docker-compose.yml` |
 
+> Pour un déploiement sur MySQL plutôt que SQLite, indiquez `docker-compose.mysql.yml` comme **Compose path**. Cette pile lance son propre serveur MySQL et exige trois variables supplémentaires : `MYSQL_ROOT_PASSWORD`, `MYSQL_APP_PASSWORD` et `JWT_SECRET`. Elle refuse de démarrer sans elles.
+
 3. Si le dépôt est privé, cochez **Authentication** et entrez vos identifiants GitHub
 
 ### Étape 4 : Variables d'environnement

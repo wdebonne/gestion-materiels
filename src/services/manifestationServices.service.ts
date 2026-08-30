@@ -177,8 +177,8 @@ export async function creerApprobationsManquantes(
 export async function approbationsDe(manifestationId: number | string): Promise<any[]> {
   return db.query(
     `SELECT a.*, s.name as service_name, s.slug as service_slug,
-            (d.first_name || ' ' || d.last_name) as decided_by_name,
-            (u.first_name || ' ' || u.last_name) as user_name
+            (CONCAT_WS(' ', d.first_name, d.last_name)) as decided_by_name,
+            (CONCAT_WS(' ', u.first_name, u.last_name)) as user_name
      FROM manifestation_approvals a
      LEFT JOIN services s ON s.id = a.service_id
      LEFT JOIN users d ON d.id = a.decided_by
@@ -326,8 +326,8 @@ export async function peutDeleguerPour(
 /** Délégations en cours et à venir d'un service, avec le nom du délégataire. */
 export async function delegationsDe(serviceId: number | string): Promise<any[]> {
   return db.query(
-    `SELECT d.*, (u.first_name || ' ' || u.last_name) as delegate_name, u.email as delegate_email,
-            (g.first_name || ' ' || g.last_name) as granted_by_name
+    `SELECT d.*, (CONCAT_WS(' ', u.first_name, u.last_name)) as delegate_name, u.email as delegate_email,
+            (CONCAT_WS(' ', g.first_name, g.last_name)) as granted_by_name
      FROM service_delegations d
      JOIN users u ON u.id = d.delegate_user_id
      LEFT JOIN users g ON g.id = d.granted_by

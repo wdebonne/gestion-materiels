@@ -1,0 +1,124 @@
+# Variante MySQL de la pile de production.
+#
+# `docker-compose.yml` déploie l'application sur SQLite, qui suffit à une
+# commune et ne demande aucun serveur à administrer. Ce fichier-ci la déploie
+# sur MySQL, utile quand la collectivité impose son propre SGBD ou qu'un autre
+# outil doit lire la base. Le code gère les deux moteurs : seul `DB_TYPE`
+# change côté application.
+#
+# Les deux piles sont indépendantes (projet, réseau, volumes et port distincts)
+# et peuvent tourner en même temps. Elles ne partagent aucune donnée : passer de
+# l'une à l'autre demande un export, pas un simple changement de fichier.
+#
+#   docker compose -f docker-compose.mysql.yml up -d
+#
+# Trois secrets sont exigés — sans eux la pile refuse de démarrer plutôt que de
+# tourner avec un mot de passe connu de quiconque lit le dépôt :
+#
+#   JWT_SECRET                        node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+#   MYSQL_ROOT_PASSWORD, MYSQL_APP_PASSWORD
+#
+# à placer dans `.env` (voir `.env.example`).
+
+name: gestion-materiels-mysql
+
+services:
+  # Serveur MySQL. Son port n'est volontairement pas publié sur l'hôte : seul
+  # le conteneur applicatif y accède, par le réseau interne. Décommenter le
+  # bloc `ports` ci-dessous pour y brancher un client graphique.
+  db:
+    image: mysql:8.4
+    container_name: gestion-materiels-mysql-db
+    restart: unless-stopped
+    command:
+      # Le schéma est créé en utf8mb4 par l'application ; on aligne le serveur
+      # pour que les accents et les emoji d'un intitulé de manifestation
+      # survivent aussi aux tables créées hors de son contrôle.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?renseignez MYSQL_ROOT_PASSWORD dans .env}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gestion_materiels}
+      # Compte dédié à l'application. L'image MySQL refuse `MYSQL_USER=root` ;
+      # d'où un nom de variable distinct de celui lu par l'application, que le
+      # `.env` de développement met justement à `root`.
+      MYSQL_USER: ${MYSQL_APP_USER:-gestion}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:?renseignez MYSQL_APP_PASSWORD dans .env}
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - gestion-network
+    healthcheck:
+      # L'application ne réessaie pas de se connecter : elle doit démarrer une
+      # fois le serveur réellement prêt, pas une fois le conteneur lancé.
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p\"$$MYSQL_ROOT_PASSWORD\" --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # Application, même image que la pile SQLite.
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gestion-materiels-app:latest
+    container_name: gestion-materiels-mysql-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${MYSQL_APP_PORT:-3002}:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - JWT_SECRET=${JWT_SECRET:?renseignez JWT_SECRET dans .env}
+      # Pas de JWT_REFRESH_SECRET : les autres fichiers compose en définissent
+      # un, mais le code signe le refresh token avec JWT_SECRET lui aussi
+      # (auth.routes.ts). Le transmettre laisserait croire à une rotation de
+      # secret qui n'existe pas.
+      - DB_TYPE=mysql
+      # Valeurs fixées et non substituées : le `.env` de développement pointe
+      # `MYSQL_HOST` sur `localhost`, ce qui ferait chercher le serveur dans le
+      # conteneur applicatif lui-même. Ici la cible est le service `db`.
+      - MYSQL_HOST=db
+      - MYSQL_PORT=3306
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-gestion_materiels}
+      - MYSQL_USER=${MYSQL_APP_USER:-gestion}
+      - MYSQL_PASSWORD=${MYSQL_APP_PASSWORD:?renseignez MYSQL_APP_PASSWORD dans .env}
+      # Configuration SMTP (optionnel)
+      - SMTP_HOST=${SMTP_HOST:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER:-}
+      - SMTP_PASS=${SMTP_PASS:-}
+      - SMTP_FROM=${SMTP_FROM:-}
+    volumes:
+      # Pas de volume `data` : la base vit dans MySQL. Les pièces jointes, les
+      # exports et les journaux restent des fichiers.
+      - app-uploads:/app/uploads
+      - app-backups:/app/backups
+      - app-logs:/app/logs
+    networks:
+      - gestion-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  db-data:
+    name: gestion-materiels-mysql-db-data
+  app-uploads:
+    name: gestion-materiels-mysql-uploads
+  app-backups:
+    name: gestion-materiels-mysql-backups
+  app-logs:
+    name: gestion-materiels-mysql-logs
+
+networks:
+  gestion-network:
+    name: gestion-materiels-mysql-network
+    driver: bridge

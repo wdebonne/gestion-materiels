@@ -12,7 +12,7 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
     const tokens = await db.query(`
       SELECT t.id, t.name, t.token_prefix, t.permissions, t.is_active, 
              t.expires_at, t.last_used_at, t.created_at, t.updated_at,
-             u.first_name || ' ' || u.last_name as created_by_name
+             CONCAT_WS(' ', u.first_name, u.last_name) as created_by_name
       FROM api_tokens t
       LEFT JOIN users u ON t.created_by = u.id
       ORDER BY t.created_at DESC

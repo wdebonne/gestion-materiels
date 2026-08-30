@@ -20,6 +20,33 @@ interface DatabaseConfig {
   };
 }
 
+/**
+ * Une date ISO 8601 (`2026-08-30T17:47:37.028Z`) est refusée par MySQL dans
+ * une colonne DATETIME, là où SQLite l'accepte comme du simple texte. Or le
+ * code écrit des `toISOString()` à une centaine d'endroits : les convertir un
+ * à un reviendrait à en oublier, et surtout à oublier le prochain écrit.
+ *
+ * La conversion se fait donc ici, au seul point de passage vers le serveur.
+ * Seules les chaînes portant un fuseau explicite (`Z` ou `+hh:mm`) sont
+ * touchées : l'instant est connu sans ambiguïté, et le résultat reste en UTC,
+ * comme ce que SQLite stocke de son côté. Une chaîne sans fuseau serait
+ * interprétée dans le fuseau du serveur et décalerait la valeur.
+ */
+const DATE_ISO_AVEC_FUSEAU =
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:[.][0-9]+)?(?:Z|[+-][0-9]{2}:?[0-9]{2})$/;
+
+/** Repère un LIMIT ou un OFFSET dont la valeur est passée en paramètre. */
+const LIMIT_PARAMETRE = /\b(?:LIMIT|OFFSET)\s+\?/i;
+
+function parametresMySQL(params: any[]): any[] {
+  return params.map((valeur) => {
+    if (typeof valeur !== 'string' || !DATE_ISO_AVEC_FUSEAU.test(valeur)) return valeur;
+    const date = new Date(valeur);
+    if (Number.isNaN(date.getTime())) return valeur;
+    return date.toISOString().slice(0, 19).replace('T', ' ');
+  });
+}
+
 class DatabaseManager {
   private static instance: DatabaseManager;
   private sqliteDb: Database.Database | null = null;
@@ -107,6 +134,44 @@ class DatabaseManager {
     return this.config.type;
   }
 
+  /**
+   * Crée un index s'il n'existe pas déjà.
+   *
+   * SQLite écrit `CREATE INDEX IF NOT EXISTS`, que MySQL ne connaît pas : la
+   * quarantaine de `CREATE INDEX` échouait donc une par une, chacune réduite à
+   * un simple avertissement dans les journaux. La base MySQL tournait sans un
+   * seul index — invisible tant que le parc est petit, fatal ensuite.
+   */
+  public async creerIndex(nom: string, table: string, colonnes: string): Promise<void> {
+    if (this.config.type === 'sqlite') {
+      await this.execute(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`);
+      return;
+    }
+
+    const dejaLa = await this.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+      [table, nom]
+    );
+    if (dejaLa.length === 0) {
+      await this.execute(`CREATE INDEX ${nom} ON ${table} (${colonnes})`);
+    }
+  }
+
+  /**
+   * Expression SQL désignant la date du jour décalée de `jours` jours.
+   *
+   * SQLite l'écrit `date('now', '+30 days')`, MySQL `DATE_ADD(...)` : il n'y a
+   * pas de forme commune. Le nombre est tronqué à un entier parce que certains
+   * appelants le tirent de la requête HTTP et qu'il finit concaténé au SQL.
+   */
+  public dateDecalee(jours: number): string {
+    const n = Math.trunc(Number(jours)) || 0;
+    return this.config.type === 'sqlite'
+      ? `date('now', '${n >= 0 ? '+' : ''}${n} days')`
+      : `DATE_ADD(CURRENT_DATE, INTERVAL ${n} DAY)`;
+  }
+
   /** Chemin du fichier SQLite, `null` sur MySQL. */
   public getSQLitePath(): string | null {
     return this.config.type === 'sqlite' ? this.config.sqlite!.path : null;
@@ -126,19 +191,38 @@ class DatabaseManager {
     return this.mysqlPool;
   }
 
+  /**
+   * `execute()` prépare la requête côté serveur — préférable — mais refuse un
+   * nombre en paramètre de LIMIT ou OFFSET : mysql2 le transmet dans un type
+   * que le protocole binaire rejette (`ER_WRONG_ARGUMENTS`), et la liste des
+   * matériels comme celle des journaux répondaient 500. `query()` accepte les
+   * deux et échappe ses paramètres de la même façon.
+   */
+  private async lancerMySQL(sql: string, params: any[]): Promise<any> {
+    const valeurs = parametresMySQL(params);
+    const [resultat] = LIMIT_PARAMETRE.test(sql)
+      ? await this.mysqlPool!.query(sql, valeurs)
+      : await this.mysqlPool!.execute(sql, valeurs);
+    return resultat;
+  }
+
   // Méthode unifiée pour exécuter des requêtes
   public async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     if (this.config.type === 'sqlite') {
       const stmt = this.sqliteDb!.prepare(sql);
-      if (sql.trim().toUpperCase().startsWith('SELECT')) {
+      // `reader` dit si la requête renvoie des lignes. Le test précédent — la
+      // requête commence-t-elle par SELECT — répondait « non » pour
+      // `PRAGMA table_info(...)`, dont les lignes partaient donc dans `run()`,
+      // qui renvoie `{ changes: 0 }` sans lever d'erreur. Les migrations y
+      // lisaient une liste de colonnes vide et rejouaient leurs `ALTER TABLE`
+      // sur une base neuve : plus aucune installation neuve ne démarrait.
+      if (stmt.reader) {
         return stmt.all(...params) as T[];
-      } else {
-        const result = stmt.run(...params);
-        return [{ lastInsertRowid: result.lastInsertRowid, changes: result.changes }] as any;
       }
+      const result = stmt.run(...params);
+      return [{ lastInsertRowid: result.lastInsertRowid, changes: result.changes }] as any;
     } else {
-      const [rows] = await this.mysqlPool!.execute(sql, params);
-      return rows as T[];
+      return (await this.lancerMySQL(sql, params)) as T[];
     }
   }
 
@@ -155,7 +239,7 @@ class DatabaseManager {
       const result = stmt.run(...params);
       return { lastInsertRowid: Number(result.lastInsertRowid), changes: result.changes };
     } else {
-      const [result]: any = await this.mysqlPool!.execute(sql, params);
+      const result: any = await this.lancerMySQL(sql, params);
       return { lastInsertRowid: result.insertId, changes: result.affectedRows };
     }
   }
@@ -167,6 +251,14 @@ class DatabaseManager {
     const boolType = isSQLite ? 'INTEGER' : 'TINYINT(1)';
     const timestampDefault = isSQLite ? "DEFAULT (datetime('now'))" : 'DEFAULT CURRENT_TIMESTAMP';
 
+    // L'ordre compte : InnoDB refuse de créer une table dont la table
+    // référencée n'existe pas encore, là où SQLite l'accepte. Une table
+    // doit donc toujours suivre celles que ses clés étrangères visent.
+    //
+    // Les valeurs par défaut des colonnes TEXT sont écrites entre
+    // parenthèses : MySQL refuse un DEFAULT littéral sur TEXT/BLOB, mais
+    // accepte la forme expression, que SQLite comprend aussi. Retirer les
+    // parenthèses casserait la création du schema sur MySQL.
     const tables = [
       // Table des utilisateurs
       `CREATE TABLE IF NOT EXISTS users (
@@ -198,18 +290,6 @@ class DatabaseManager {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )`,
 
-      // Table des permissions par groupe (supervisor, user)
-      `CREATE TABLE IF NOT EXISTS group_permissions (
-        id INTEGER PRIMARY KEY ${autoIncrement},
-        role VARCHAR(50) NOT NULL,
-        category_id INTEGER NOT NULL,
-        can_view ${boolType} DEFAULT 1,
-        can_edit ${boolType} DEFAULT 0,
-        can_delete ${boolType} DEFAULT 0,
-        created_at DATETIME ${timestampDefault},
-        updated_at DATETIME ${timestampDefault},
-        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-      )`,
 
       // Table des paramètres généraux
       `CREATE TABLE IF NOT EXISTS settings (
@@ -275,6 +355,19 @@ class DatabaseManager {
         sort_order INTEGER DEFAULT 0,
         available_for_manifestations ${boolType},
         is_prestation ${boolType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      )`,
+
+      // Table des permissions par groupe (supervisor, user)
+      `CREATE TABLE IF NOT EXISTS group_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        role VARCHAR(50) NOT NULL,
+        category_id INTEGER NOT NULL,
+        can_view ${boolType} DEFAULT 1,
+        can_edit ${boolType} DEFAULT 0,
+        can_delete ${boolType} DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
@@ -576,7 +669,7 @@ class DatabaseManager {
         name VARCHAR(255) NOT NULL,
         token_hash VARCHAR(64) NOT NULL UNIQUE,
         token_prefix VARCHAR(8) NOT NULL,
-        permissions ${textType} DEFAULT '["read"]',
+        permissions ${textType} DEFAULT ('["read"]'),
         is_active ${boolType} DEFAULT 1,
         expires_at DATETIME,
         last_used_at DATETIME,
@@ -771,23 +864,6 @@ class DatabaseManager {
         FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
-      // Modèle .docx rattaché à un service, avec ses champs détectés et leur
-      // correspondance. Voir la migration 010.
-      `CREATE TABLE IF NOT EXISTS service_templates (
-        id INTEGER PRIMARY KEY ${autoIncrement},
-        service_id INTEGER NOT NULL,
-        name VARCHAR(255) NOT NULL,
-        source VARCHAR(20) NOT NULL DEFAULT 'upload',
-        file_path VARCHAR(500),
-        remote_path VARCHAR(500),
-        detected_fields ${textType},
-        field_mapping ${textType},
-        is_active ${boolType} DEFAULT 1,
-        last_error ${textType},
-        created_at DATETIME ${timestampDefault},
-        updated_at DATETIME ${timestampDefault},
-        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
-      )`,
 
       `CREATE TABLE IF NOT EXISTS manifestation_doc_types (
         id INTEGER PRIMARY KEY ${autoIncrement},
@@ -830,6 +906,24 @@ class DatabaseManager {
         notify_message ${boolType} DEFAULT 1,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault}
+      )`,
+
+      // Modèle .docx rattaché à un service, avec ses champs détectés et leur
+      // correspondance. Voir la migration 010.
+      `CREATE TABLE IF NOT EXISTS service_templates (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        source VARCHAR(20) NOT NULL DEFAULT 'upload',
+        file_path VARCHAR(500),
+        remote_path VARCHAR(500),
+        detected_fields ${textType},
+        field_mapping ${textType},
+        is_active ${boolType} DEFAULT 1,
+        last_error ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
       )`,
 
       `CREATE TABLE IF NOT EXISTS service_categories (
@@ -997,7 +1091,7 @@ class DatabaseManager {
         status VARCHAR(50) DEFAULT 'actif',
         image VARCHAR(500),
         plan_image VARCHAR(500),
-        custom_fields ${textType} DEFAULT '{}',
+        custom_fields ${textType} DEFAULT ('{}'),
         cloned_from_id INTEGER,
         created_by INTEGER,
         created_at DATETIME ${timestampDefault},
@@ -1026,7 +1120,7 @@ class DatabaseManager {
         last_maintenance_date DATE,
         next_maintenance_date DATE,
         condition_state VARCHAR(50) DEFAULT 'bon',
-        custom_fields ${textType} DEFAULT '{}',
+        custom_fields ${textType} DEFAULT ('{}'),
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
@@ -1057,7 +1151,7 @@ class DatabaseManager {
         notes ${textType},
         actions_done ${textType},
         actions_planned ${textType},
-        photos ${textType} DEFAULT '[]',
+        photos ${textType} DEFAULT ('[]'),
         created_by INTEGER,
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
@@ -1147,9 +1241,9 @@ class DatabaseManager {
         label VARCHAR(255) NOT NULL,
         snapshot_date DATETIME NOT NULL,
         plan_image VARCHAR(500),
-        elements_data ${textType} DEFAULT '[]',
-        annotations_data ${textType} DEFAULT '[]',
-        groups_data ${textType} DEFAULT '[]',
+        elements_data ${textType} DEFAULT ('[]'),
+        annotations_data ${textType} DEFAULT ('[]'),
+        groups_data ${textType} DEFAULT ('[]'),
         notes ${textType},
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
@@ -1219,8 +1313,8 @@ class DatabaseManager {
         replaced_at DATETIME ${timestampDefault},
         season VARCHAR(50) DEFAULT '',
         year INTEGER,
-        reason TEXT DEFAULT '',
-        notes TEXT DEFAULT '',
+        reason TEXT DEFAULT (''),
+        notes TEXT DEFAULT (''),
         previous_label VARCHAR(255),
         previous_species VARCHAR(255),
         previous_element_type VARCHAR(100),
@@ -1230,8 +1324,8 @@ class DatabaseManager {
         previous_quantity INTEGER,
         previous_purchase_price DECIMAL(10,2),
         previous_planting_date DATE,
-        previous_custom_fields TEXT DEFAULT '{}',
-        previous_data TEXT DEFAULT '{}',
+        previous_custom_fields TEXT DEFAULT ('{}'),
+        previous_data TEXT DEFAULT ('{}'),
         created_at DATETIME ${timestampDefault}
       )`
     ];
@@ -1336,7 +1430,7 @@ class DatabaseManager {
 
     for (const [nom, table, colonnes] of indexes) {
       try {
-        await this.execute(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`);
+        await this.creerIndex(nom, table, colonnes);
       } catch (error: any) {
         // Une table absente (module non déployé) ne doit pas empêcher le
         // démarrage : on note et on continue.
