@@ -1,4 +1,5 @@
 import { db } from '../database';
+import { expressionPrestation, jointuresPrestation } from './prestationParc.service';
 
 /**
  * Ce qu'un modèle de document peut afficher, pour un service donné.
@@ -122,6 +123,55 @@ async function lignesDuService(
 }
 
 /**
+ * Lignes venues du parc qui relèvent d'un service.
+ *
+ * Une prestation peut être tenue dans le parc — le service la range sous sa
+ * propre catégorie, à côté de son matériel. Elle doit alors figurer dans le
+ * document qu'on lui envoie : lui demander d'approuver un débit de boissons que
+ * la pièce jointe ne mentionne nulle part serait pire que de ne rien envoyer.
+ *
+ * Seules les **prestations** du parc sont reprises ici. Un exemplaire identifié
+ * — un camion, un vidéoprojecteur — relève du suivi de matériel unique et non de
+ * l'acte qu'on demande à un service d'autoriser.
+ *
+ * Le rattachement suit la même règle que partout : la catégorie directe du
+ * matériel, ou celle de sa sous-catégorie.
+ */
+async function prestationsDuParcPourService(
+  manifestationId: number | string,
+  serviceId: number | null
+): Promise<any[]> {
+  const base = `
+    SELECT mi.quantity as quantity_requested, mi.quantity_delivered,
+           mi.quantity_returned as quantity_recovered, mi.notes,
+           o.name, '' as unit, 1 as is_prestation
+    FROM manifestation_items mi
+    JOIN objects o ON o.id = mi.object_id
+    ${jointuresPrestation()}
+    WHERE mi.manifestation_id = ? AND ${expressionPrestation()} = 1
+  `;
+
+  if (serviceId === null) return db.query(`${base} ORDER BY o.name`, [manifestationId]);
+
+  return db.query(
+    `${base}
+       AND EXISTS (
+         SELECT 1 FROM service_categories sc
+         WHERE sc.service_id = ?
+           AND (
+             sc.category_id = o.category_id
+             OR EXISTS (
+               SELECT 1 FROM subcategories sub
+               WHERE sub.id = o.subcategory_id AND sub.category_id = sc.category_id
+             )
+           )
+       )
+     ORDER BY o.name`,
+    [manifestationId, serviceId]
+  );
+}
+
+/**
  * Données prêtes pour un modèle.
  *
  * `serviceId` à `null` rend l'ensemble : c'est le cas du service coordinateur,
@@ -147,7 +197,15 @@ export async function donneesPourModele(
   // Le coordinateur pilote la manifestation : il lui faut tout, pas seulement
   // le matériel de son propre périmètre.
   const portee = service?.is_coordinator ? null : serviceId;
-  const lignes = await lignesDuService(manifestationId, portee);
+
+  // Les deux catalogues se rejoignent ici : le stock des manifestations et les
+  // prestations tenues dans le parc. Un service qui range ses prestations avec
+  // son matériel doit les retrouver dans son document, sans avoir à savoir
+  // laquelle des deux tables les porte.
+  const lignes = [
+    ...(await lignesDuService(manifestationId, portee)),
+    ...(await prestationsDuParcPourService(manifestationId, portee)),
+  ];
 
   const materiels = lignes.filter((l: any) => !l.is_prestation);
   const prestations = lignes.filter((l: any) => l.is_prestation);

@@ -12,6 +12,7 @@ import {
 import api, { Category, Subcategory, GestionObject as ObjectType } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import { useAuthStore } from '@/stores/auth.store'
+import ChoixPrestation, { BadgePrestation } from '@/components/ChoixPrestation'
 import toast from 'react-hot-toast'
 import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
 
@@ -28,7 +29,8 @@ export default function CategoryDetailPage() {
   const [editingObject, setEditingObject] = useState<ObjectType | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    image: ''
+    image: '',
+    isPrestation: null as boolean | null
   })
   const [objectFormData, setObjectFormData] = useState({
     name: '',
@@ -46,7 +48,8 @@ export default function CategoryDetailPage() {
   const [categoryFormData, setCategoryFormData] = useState({
     name: '',
     description: '',
-    image: ''
+    image: '',
+    isPrestation: false
   })
 
   // Récupérer la catégorie
@@ -180,11 +183,12 @@ export default function CategoryDetailPage() {
       setEditingSubcategory(subcategory)
       setFormData({
         name: subcategory.name,
-        image: subcategory.image || ''
+        image: subcategory.image || '',
+        isPrestation: subcategory.isPrestation ?? null
       })
     } else {
       setEditingSubcategory(null)
-      setFormData({ name: '', image: '' })
+      setFormData({ name: '', image: '', isPrestation: null })
     }
     setIsModalOpen(true)
   }
@@ -192,7 +196,7 @@ export default function CategoryDetailPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingSubcategory(null)
-    setFormData({ name: '', image: '' })
+    setFormData({ name: '', image: '', isPrestation: null })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -252,7 +256,8 @@ export default function CategoryDetailPage() {
       setCategoryFormData({
         name: category.name,
         description: category.description || '',
-        image: category.image || ''
+        image: category.image || '',
+        isPrestation: Boolean(category.isPrestation)
       })
       setEditCategory(true)
     }
@@ -413,6 +418,12 @@ export default function CategoryDetailPage() {
                 count={subcategory.objectCount}
                 onClick={() => navigate(`/categories/${slug}/${subcategory.slug}`)}
               />
+
+              {/* Une prestation ne se manipule pas comme du matériel : le dire
+                  dès la liste évite d'aller l'ouvrir pour le découvrir. */}
+              {(subcategory.isPrestation ?? category?.isPrestation) ? (
+                <BadgePrestation className="absolute top-2 left-2 shadow-sm" />
+              ) : null}
               
               {/* Actions au survol - superviseurs et admins uniquement */}
               {isSupervisor && (
@@ -544,6 +555,20 @@ export default function CategoryDetailPage() {
               value={formData.image}
               onChange={(url) => setFormData({ ...formData, image: url })}
             />
+
+            {/*
+              C'est ici que se règle l'organisation visée : « Technique ›
+              Prestation » à côté de « Technique › Mobilier ». Le service tient
+              ses prestations là où il tient déjà son matériel, et le routage
+              d'approbation suit la catégorie sans rien de plus.
+            */}
+            <ChoixPrestation
+              valeur={formData.isPrestation}
+              onChange={(isPrestation) => setFormData({ ...formData, isPrestation })}
+              heriteDe={{ prestation: Boolean(category?.isPrestation), source: 'la catégorie' }}
+              label="Que contient cette sous-catégorie ?"
+              aide="Une prestation — raccordement électrique, débit de boissons, personnel — n’a ni stock ni exemplaire : elle ne bloque jamais une autre manifestation."
+            />
           </ModalBody>
 
           <ModalFooter>
@@ -577,6 +602,16 @@ export default function CategoryDetailPage() {
               value={categoryFormData.description}
               onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
               rows={3}
+            />
+
+            <ChoixPrestation
+              valeur={categoryFormData.isPrestation}
+              onChange={(isPrestation) =>
+                setCategoryFormData({ ...categoryFormData, isPrestation: Boolean(isPrestation) })
+              }
+              sansHeritage
+              label="Que contient cette catégorie ?"
+              aide="Le ton donné à toute la catégorie. Chaque sous-catégorie peut ensuite l’affiner — une catégorie de service porte souvent les deux."
             />
 
             <ImageUpload

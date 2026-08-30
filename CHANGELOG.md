@@ -262,6 +262,28 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
 - **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
 
+### Manifestations — les prestations se tiennent dans le parc, avec le reste du service
+
+> Une prestation ne se créait que dans Manifestations › Stock matériel, un catalogue à part. Or l'arbre des catégories est **déjà partagé** entre le parc et le stock : rien n'empêchait de tenir ses prestations là où le service tient déjà son matériel, sauf de pouvoir dire « cette branche, ce sont des prestations ». L'organisation qui en découle est celle d'une collectivité, où la **catégorie est le service** — Technique porte Prestation et Mobilier, Urbanisme porte Prestation, Armoires et Bureau, Restauration porte Prestation et Verrerie.
+
+#### Ajouté
+
+- **Une branche du parc peut être déclarée « prestation ».** Le réglage existe aux trois niveaux et **le plus précis l'emporte** : la catégorie donne le ton, la sous-catégorie l'affine, un matériel fait exception. C'est le mécanisme du « matériel prêtable », repris tel quel pour n'avoir pas à l'apprendre deux fois
+  - « Hérité » est un choix explicite, pas une case décochée : sans ce troisième état, marquer une catégorie obligerait à recocher chacune de ses sous-catégories, et on ne saurait plus distinguer « non » de « je n'ai rien dit »
+  - Le réglage se fait **là où l'on est déjà** — sur la fiche d'une catégorie, d'une sous-catégorie ou d'un matériel — et non dans un écran de paramètres à part. C'était le sens de la demande : que le service gère ses prestations dans le même environnement que son parc
+  - L'écran dit ce qui s'appliquerait si l'on laissait « hérité », pour que le choix se fasse en connaissance de cause
+- **Le routage d'approbation en découle sans rien ajouter.** Une prestation classée sous « Urbanisme » sollicite l'urbanisme, parce que le périmètre d'un service est déjà un ensemble de catégories
+- **Une prestation du parc n'immobilise rien.** Un raccordement électrique demandé le 21 juin ne le rend pas indisponible pour la manifestation d'à côté le même jour : ce n'est pas un exemplaire, c'est un acte. Le sélecteur continue de le proposer, et aucun conflit n'est signalé — là où un camion, lui, reste bien un conflit
+- **Une prestation se demande en nombre** — « 3 agents pour la cérémonie ». La colonne existait sur `manifestation_items` mais était écrite en dur à 1 ; elle ne l'est plus que pour les exemplaires, où « 3 camions bennes » désignerait trois matériels distincts
+- **La fiche sépare les deux natures** : « Prestations demandées » se lit *réalisée*, « Matériel unique du parc » se lit *sorti · revenu · état au retour*. Les mêler proposait de constater l'état d'un débit de boissons au retour
+- **Le document de service reprend les prestations du parc.** Sans quoi on aurait demandé à l'urbanisme d'approuver un arrêté de circulation que sa pièce jointe passait sous silence. Le matériel du parc, lui, n'y entre pas : une armoire forte n'est pas un acte qu'on demande à un service d'autoriser
+- Repère visuel « Prestation » dans les listes du parc, dans le sélecteur de matériel et sur les sous-catégories ; le bouton **Étiquettes QR** disparaît sur une branche de prestations, faute d'objet où coller l'étiquette
+
+#### Corrigé
+
+- **Le matériel du parc ne sollicitait aucun service.** `servicesConcernes` ne lisait que `manifestation_materials` : une manifestation composée uniquement de matériel du parc — un camion, un vidéoprojecteur, et désormais les prestations qu'un service y tient — **ne sollicitait personne**, et sa validation passait sans que quiconque ait eu son mot à dire. Le défaut ne se voyait pas : le tableau des approbations était vide, ce qui ressemble à « rien à approuver ». `manifestation_items` est en service depuis le lot « matériel unique » sans que le routage ait jamais été réconcilié avec elle
+  - Les deux sources sont dédoublonnées : un service dont la demande touche à la fois son stock et son parc ne reçoit qu'une approbation
+
 ### Manifestations — un document pré-rempli par service, et de quoi essayer un webhook
 
 > Une demande reçue par formulaire concerne plusieurs services, mais chacun n'a besoin que de sa part : le service qui instruit un débit de boissons n'a que faire du raccordement électrique, du personnel demandé, ou du nombre de chaises. Lui envoyer tout l'oblige à trier, et c'est ainsi qu'on finit par ne plus rien lire. Seul le service qui pilote les manifestations a besoin de l'ensemble.

@@ -260,6 +260,10 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > ⚠️ **Fichiers orphelins :** supprimer une manifestation laissait ses pièces jointes sur le disque pour toujours, et supprimer un service laissait le fichier de son modèle. Les lignes partaient en cascade, pas les fichiers.
 >
+> ✅ **Prestations tenues dans le parc, août 2026 :** l'arbre des catégories était déjà partagé entre le parc et le stock des manifestations ; il ne manquait que de pouvoir dire « cette branche, ce sont des prestations ». Le réglage existe aux trois niveaux, le plus précis l'emportant, et se fait sur la fiche de la catégorie, de la sous-catégorie ou du matériel — là où le service travaille déjà. L'organisation visée est celle où la **catégorie est le service**, ce qui fait tomber le routage d'approbation sans une ligne de plus. Une prestation du parc n'immobilise rien, se demande en nombre, et entre dans le document envoyé à son service.
+>
+> ⚠️ **Le matériel du parc ne sollicitait aucun service :** `servicesConcernes` ne lisait que `manifestation_materials`. Une manifestation composée uniquement de matériel du parc ne sollicitait personne, et sa validation passait sans approbation — le tableau vide ressemblant à « rien à approuver ». `manifestation_items` était en service depuis le lot « matériel unique » sans que le routage ait jamais été réconcilié avec elle.
+>
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 
 ### 15. Espaces Verts (gestion espaces verts municipaux)

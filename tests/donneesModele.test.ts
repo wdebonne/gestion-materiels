@@ -61,8 +61,21 @@ const RESTAURATION = 4;
 beforeAll(() => {
   base.exec(`
     CREATE TABLE users (id INTEGER PRIMARY KEY, first_name VARCHAR(255), last_name VARCHAR(255));
-    CREATE TABLE categories (id INTEGER PRIMARY KEY, name VARCHAR(255));
-    CREATE TABLE subcategories (id INTEGER PRIMARY KEY, name VARCHAR(255), category_id INTEGER);
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY, name VARCHAR(255), is_prestation INTEGER DEFAULT 0
+    );
+    CREATE TABLE subcategories (
+      id INTEGER PRIMARY KEY, name VARCHAR(255), category_id INTEGER, is_prestation INTEGER
+    );
+    CREATE TABLE objects (
+      id INTEGER PRIMARY KEY, name VARCHAR(255),
+      category_id INTEGER, subcategory_id INTEGER, is_prestation INTEGER
+    );
+    CREATE TABLE manifestation_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, manifestation_id INTEGER, object_id INTEGER,
+      quantity INTEGER DEFAULT 1, quantity_delivered INTEGER DEFAULT 0,
+      quantity_returned INTEGER DEFAULT 0, notes TEXT
+    );
     CREATE TABLE services (
       id INTEGER PRIMARY KEY, name VARCHAR(255), is_coordinator INTEGER DEFAULT 0
     );
@@ -120,17 +133,31 @@ beforeAll(() => {
 
     INSERT INTO manifestation_materials (manifestation_id, stock_id, quantity_requested, quantity_delivered) VALUES
       (100, 1, 1, 0), (100, 2, 1, 0), (100, 3, 10, 8), (100, 4, 50, 48);
+
+    -- Le parc, où un service range ses prestations à côté de son matériel :
+    -- « Urbanisme > Prestation » porte l'arrêté, « Mobilier » porte l'armoire.
+    INSERT INTO subcategories (id, name, category_id, is_prestation) VALUES
+      (11, 'Prestation', 10, 1);
+    INSERT INTO objects (id, name, category_id, subcategory_id) VALUES
+      (1, 'Arrêté de circulation', 10, 11),
+      (2, 'Armoire forte', 10, NULL);
+    INSERT INTO manifestation_items (manifestation_id, object_id, quantity) VALUES
+      (100, 1, 2), (100, 2, 1);
   `);
 });
 
 describe('Chaque service ne reçoit que sa part', () => {
-  it("ne montre au service d'urbanisme que sa prestation", async () => {
+  it("ne montre au service d'urbanisme que ses prestations", async () => {
     const donnees: any = await donneesPourModele(100, URBANISME);
 
-    expect(donnees.prestations.map((p: any) => p.nom)).toEqual(['Débit de boissons']);
+    // Les deux catalogues se rejoignent : le débit de boissons vient du stock
+    // des manifestations, l'arrêté de circulation du parc du service.
+    expect(donnees.prestations.map((p: any) => p.nom)).toEqual([
+      'Débit de boissons',
+      'Arrêté de circulation',
+    ]);
     // Ni le raccordement électrique, ni les tables, ni les chaises.
     expect(donnees.materiels).toEqual([]);
-    expect(donnees.prestations_resume).toBe('Débit de boissons');
     expect(donnees.materiel_resume).toBe('');
   });
 
@@ -148,6 +175,7 @@ describe('Chaque service ne reçoit que sa part', () => {
     expect(donnees.prestations.map((p: any) => p.nom)).toEqual([
       'Débit de boissons',
       'Raccordement électrique',
+      'Arrêté de circulation',
     ]);
   });
 
@@ -236,5 +264,53 @@ describe('Jeu d’exemple', () => {
 
   it('nomme le service auquel l’aperçu est destiné', () => {
     expect(donneesExemple({ name: 'Service technique' }).service).toBe('Service technique');
+  });
+});
+
+/**
+ * Prestations tenues dans le parc.
+ *
+ * Un service peut ranger ses prestations sous sa propre catégorie, à côté de son
+ * matériel : Urbanisme porte une sous-catégorie Prestation et une armoire forte.
+ * Le document qu'on lui envoie doit alors mentionner ces prestations — lui
+ * demander d'approuver un arrêté de circulation que la pièce jointe passe sous
+ * silence serait pire que de ne rien envoyer.
+ *
+ * Le matériel du parc, lui, n'y entre pas : une armoire forte n'est pas un acte
+ * qu'on demande à un service d'autoriser, et le document est fait pour ça.
+ */
+describe('Prestations venues du parc', () => {
+  it('fait figurer la prestation du parc dans le document du service', async () => {
+    const donnees: any = await donneesPourModele(100, URBANISME);
+    expect(donnees.prestations.map((p: any) => p.nom)).toContain('Arrêté de circulation');
+  });
+
+  it('reprend la quantité demandée', async () => {
+    const donnees: any = await donneesPourModele(100, URBANISME);
+    const arrete = donnees.prestations.find((p: any) => p.nom === 'Arrêté de circulation');
+    expect(arrete.quantite).toBe(2);
+  });
+
+  it('n’y fait pas entrer le matériel du parc', async () => {
+    // L'armoire forte est bien dans la catégorie Urbanisme, mais ce n'est pas
+    // une prestation : elle relève du suivi de matériel unique.
+    const donnees: any = await donneesPourModele(100, URBANISME);
+    const noms = [...donnees.prestations, ...donnees.materiels].map((l: any) => l.nom);
+    expect(noms).not.toContain('Armoire forte');
+  });
+
+  it('ne montre pas la prestation d’un service à un autre', async () => {
+    const donnees: any = await donneesPourModele(100, TECHNIQUE);
+    expect(donnees.prestations.map((p: any) => p.nom)).not.toContain('Arrêté de circulation');
+  });
+
+  it('la donne au coordinateur, qui reçoit tout le dossier', async () => {
+    const donnees: any = await donneesPourModele(100, COORDINATEUR);
+    expect(donnees.prestations.map((p: any) => p.nom)).toContain('Arrêté de circulation');
+  });
+
+  it('la fait entrer dans le résumé en une ligne', async () => {
+    const donnees: any = await donneesPourModele(100, URBANISME);
+    expect(donnees.prestations_resume).toBe('Débit de boissons, Arrêté de circulation');
   });
 });

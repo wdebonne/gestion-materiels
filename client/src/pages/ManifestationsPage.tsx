@@ -1617,11 +1617,60 @@ function SuiviObjetsParc({ manifestationId, modifiable }: {
     perdu: 'Perdu'
   }
 
+  // Un service peut tenir ses prestations dans le parc, à côté de son matériel.
+  // Les mêler ici ferait proposer « État au retour : abîmé » sur un débit de
+  // boissons — les deux natures ne se suivent pas de la même façon.
+  const exemplaires = objets.filter(o => !o.is_prestation)
+  const prestations = objets.filter(o => o.is_prestation)
+
   return (
+    <>
+    {prestations.length > 0 && (
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Prestations demandées</CardTitle></CardHeader>
+        <CardBody className="space-y-2">
+          {prestations.map(prestation => (
+            <div key={prestation.id}
+              className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+              <div className="min-w-0">
+                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                  {prestation.object_name}
+                </span>
+                {prestation.quantity > 1 && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                    × {prestation.quantity}
+                  </span>
+                )}
+                {prestation.category_name && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                    {prestation.category_name}
+                  </span>
+                )}
+              </div>
+              {/* Une prestation se lit « réalisée », pas « livrée puis revenue » :
+                  il n'y a rien à rapporter ni à constater au retour. */}
+              {modifiable ? (
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={prestation.quantity_delivered > 0}
+                    onChange={e => suivi.mutate({ itemId: prestation.id, delivered: e.target.checked })} />
+                  Réalisée
+                </label>
+              ) : (
+                <span className="text-xs text-gray-600 dark:text-gray-300">
+                  {prestation.quantity_delivered > 0 ? 'Réalisée' : 'À réaliser'}
+                </span>
+              )}
+            </div>
+          ))}
+        </CardBody>
+      </Card>
+    )}
+
+    {exemplaires.length > 0 && (
     <Card>
       <CardHeader><CardTitle className="text-sm">Matériel unique du parc</CardTitle></CardHeader>
       <CardBody className="space-y-2">
-        {objets.map(objet => (
+        {exemplaires.map(objet => (
           <div key={objet.id} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0">
@@ -1680,6 +1729,8 @@ function SuiviObjetsParc({ manifestationId, modifiable }: {
         ))}
       </CardBody>
     </Card>
+    )}
+    </>
   )
 }
 

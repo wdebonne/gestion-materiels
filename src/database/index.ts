@@ -259,6 +259,7 @@ class DatabaseManager {
         image VARCHAR(500),
         has_subcategories ${boolType} DEFAULT 0,
         available_for_manifestations ${boolType} DEFAULT 1,
+        is_prestation ${boolType} DEFAULT 0,
         sort_order INTEGER DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault}
@@ -273,6 +274,7 @@ class DatabaseManager {
         image VARCHAR(500),
         sort_order INTEGER DEFAULT 0,
         available_for_manifestations ${boolType},
+        is_prestation ${boolType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
@@ -295,6 +297,7 @@ class DatabaseManager {
         notes ${textType},
         custom_fields ${textType},
         available_for_manifestations ${boolType},
+        is_prestation ${boolType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,

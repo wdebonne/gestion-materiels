@@ -51,7 +51,7 @@ const base: BetterSqlite3.Database = (global as any).__basePresta;
 beforeAll(() => {
   base.exec(`
     CREATE TABLE categories (id INTEGER PRIMARY KEY, name VARCHAR(255));
-    CREATE TABLE subcategories (id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255));
+    CREATE TABLE subcategories (id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255), is_prestation INTEGER);
     CREATE TABLE services (
       id INTEGER PRIMARY KEY, name VARCHAR(255), is_active INTEGER DEFAULT 1,
       is_observer INTEGER DEFAULT 0, is_coordinator INTEGER DEFAULT 0
@@ -61,6 +61,15 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY, name VARCHAR(255), quantity_total INTEGER DEFAULT 0,
       category_id INTEGER, subcategory_id INTEGER, is_prestation INTEGER DEFAULT 0,
       updated_at DATETIME
+    );
+    CREATE TABLE objects (
+      id INTEGER PRIMARY KEY, name VARCHAR(255),
+      category_id INTEGER, subcategory_id INTEGER, is_prestation INTEGER
+    );
+    CREATE TABLE manifestation_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, manifestation_id INTEGER, object_id INTEGER,
+      quantity INTEGER DEFAULT 1, quantity_delivered INTEGER DEFAULT 0,
+      quantity_returned INTEGER DEFAULT 0, return_state VARCHAR(20), notes TEXT
     );
     CREATE TABLE manifestations (
       id INTEGER PRIMARY KEY, title VARCHAR(255), status VARCHAR(20),

@@ -4,6 +4,11 @@ import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
 import { notifierWebhooks } from '../services/webhook.service';
 import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
+import {
+  expressionPrestation,
+  lireChoixPrestation,
+  versColonnePrestation,
+} from '../services/prestationParc.service';
 
 const router = Router();
 
@@ -126,11 +131,16 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       `SELECT o.*, 
               COALESCE(c.name, c2.name) as category_name, 
               COALESCE(c.id, c2.id) as resolved_category_id,
-              s.name as subcategory_name 
+              s.name as subcategory_name,
+              ${expressionPrestation('o', 's', 'pc')} as prestation
        FROM objects o
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
        LEFT JOIN categories c ON c.id = o.category_id
        LEFT JOIN categories c2 ON c2.id = s.category_id
+       -- La catégorie effective, directe ou via la sous-catégorie : sans elle,
+       -- le caractère de prestation retomberait sur le repli et le réglage
+       -- porté par la catégorie n'aurait aucun effet visible.
+       LEFT JOIN categories pc ON pc.id = COALESCE(o.category_id, s.category_id)
        WHERE ${whereClause}
        ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`,
@@ -156,6 +166,13 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         location: o.location,
         notes: o.notes,
         customFields: o.custom_fields ? JSON.parse(o.custom_fields) : {},
+        // Le choix propre au matériel (`null` = il hérite) et le résultat
+        // effectif : montrer les deux évite la question « pourquoi est-ce une
+        // prestation alors que je n'ai rien coché dessus ? ».
+        isPrestation: o.is_prestation === null || o.is_prestation === undefined
+          ? null
+          : Boolean(o.is_prestation),
+        prestation: Boolean(o.prestation),
         createdAt: o.created_at,
         updatedAt: o.updated_at
       })),
@@ -191,11 +208,13 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
               COALESCE(c.name, c2.name) as category_name, 
               COALESCE(c.slug, c2.slug) as category_slug,
               COALESCE(c.id, c2.id) as resolved_category_id,
-              s.name as subcategory_name, s.slug as subcategory_slug
+              s.name as subcategory_name, s.slug as subcategory_slug,
+              ${expressionPrestation('o', 's', 'pc')} as prestation
        FROM objects o
        LEFT JOIN subcategories s ON s.id = o.subcategory_id
        LEFT JOIN categories c ON c.id = o.category_id
        LEFT JOIN categories c2 ON c2.id = s.category_id
+       LEFT JOIN categories pc ON pc.id = COALESCE(o.category_id, s.category_id)
        WHERE o.id = ?${filtre.sql}`,
       [id, ...filtre.params]
     );
@@ -288,6 +307,10 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         location: obj.location,
         notes: obj.notes,
         customFields: obj.custom_fields ? JSON.parse(obj.custom_fields) : {},
+        isPrestation: obj.is_prestation === null || obj.is_prestation === undefined
+          ? null
+          : Boolean(obj.is_prestation),
+        prestation: Boolean(obj.prestation),
         createdAt: obj.created_at,
         updatedAt: obj.updated_at,
         category: obj.category_name ? {
@@ -374,7 +397,7 @@ router.post('/', authenticateToken, requireSupervisor, [
     const {
       categoryId, subcategoryId, name, description, image,
       reference, serialNumber, purchaseDate, purchasePrice,
-      status = 'active', location, notes, customFields
+      status = 'active', location, notes, customFields, isPrestation
     } = req.body;
 
     // Vérifier la permission d'édition sur la catégorie cible
@@ -397,12 +420,17 @@ router.post('/', authenticateToken, requireSupervisor, [
 
     const result = await db.execute(
       `INSERT INTO objects (category_id, subcategory_id, name, description, image, 
-       reference, serial_number, purchase_date, purchase_price, status, location, notes, custom_fields)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       reference, serial_number, purchase_date, purchase_price, status, location, notes, custom_fields,
+       is_prestation)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         categoryId || null, subcategoryId || null, name, description || null, finalImage,
         reference || null, serialNumber || null, purchaseDate || null, purchasePrice || null,
-        status, location || null, notes || null, customFields ? JSON.stringify(customFields) : null
+        status, location || null, notes || null, customFields ? JSON.stringify(customFields) : null,
+        // Laissé à `null` par défaut : le matériel hérite de sa sous-catégorie,
+        // puis de sa catégorie. C'est ce qui permet de marquer une branche une
+        // fois pour toutes plutôt qu'article par article.
+        versColonnePrestation(lireChoixPrestation(isPrestation))
       ]
     );
 
@@ -432,7 +460,7 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     const {
       categoryId, subcategoryId, name, description, image,
       reference, serialNumber, purchaseDate, purchasePrice,
-      status, location, notes, customFields
+      status, location, notes, customFields, isPrestation
     } = req.body;
 
     const obj = await db.queryOne('SELECT id, category_id, subcategory_id FROM objects WHERE id = ?', [id]);
@@ -503,6 +531,10 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     if (customFields !== undefined) {
       updateFields.push('custom_fields = ?');
       values.push(JSON.stringify(customFields));
+    }
+    if (isPrestation !== undefined) {
+      updateFields.push('is_prestation = ?');
+      values.push(versColonnePrestation(lireChoixPrestation(isPrestation)));
     }
 
     updateFields.push('updated_at = ?');

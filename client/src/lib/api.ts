@@ -158,6 +158,8 @@ export interface Category {
   image?: string
   hasSubcategories: boolean
   sortOrder: number
+  /** Cette catégorie ne contient que des prestations. Elle donne le ton à ses sous-catégories. */
+  isPrestation?: boolean
   objectCount?: number
   subcategoryCount?: number
   createdAt: string
@@ -171,6 +173,12 @@ export interface Subcategory {
   slug: string
   image?: string
   sortOrder: number
+  /**
+   * Trois états : `true` prestation, `false` matériel, `null` hérite de la
+   * catégorie. C'est ce qui permet de marquer « Technique › Prestation » sans
+   * toucher à « Technique › Mobilier ».
+   */
+  isPrestation?: boolean | null
   objectCount?: number
   createdAt: string
   updatedAt: string
@@ -195,6 +203,10 @@ export interface GestionObject {
   location?: string
   notes?: string
   customFields?: Record<string, any>
+  /** Choix propre au matériel ; `null` = il hérite de sa branche. */
+  isPrestation?: boolean | null
+  /** Résultat effectif après héritage : ce qui s'applique vraiment. */
+  prestation?: boolean
   createdAt: string
   updatedAt: string
   plugins?: Plugin[]
@@ -868,6 +880,8 @@ export interface ObjetParc {
   category_name: string | null
   disponible: boolean
   indisponibilites: IndisponibiliteObjet[]
+  /** Une prestation n'immobilise rien : elle est toujours disponible. */
+  is_prestation?: number | boolean
 }
 
 export type EtatRetour = 'intact' | 'abime' | 'perdu'
@@ -881,10 +895,18 @@ export interface ObjetManifestation {
   reference: string | null
   serial_number: string | null
   category_name: string | null
+  /** Toujours 1 pour un exemplaire ; le nombre demandé pour une prestation. */
+  quantity: number
   quantity_delivered: number
   quantity_returned: number
   return_state: EtatRetour | null
   notes: string | null
+  /**
+   * Une prestation tenue dans le parc — raccordement électrique, personnel.
+   * Elle n'immobilise rien et ne se constate pas au retour : elle est demandée,
+   * puis réalisée.
+   */
+  is_prestation?: number | boolean
 }
 
 export const objetManifestationApi = {

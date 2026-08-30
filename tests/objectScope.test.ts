@@ -45,6 +45,10 @@ const EXEMPTIONS: Record<string, string> = {
     "Composition d'e-mails côté serveur, sans requête ni utilisateur.",
   'services/manifestationDocuments.service.ts':
     "La jointure ne sert qu'à afficher le nom du matériel qu'une pièce jointe désigne, sur une manifestation que l'appelant a déjà le droit de voir (peutVoirManifestation en amont de chaque route). Filtrer ici masquerait le document entier au lieu de son libellé, et le rattachement a été contrôlé au moment où il a été posé.",
+  'services/manifestationServices.service.ts':
+    "Ne rend jamais de données de matériel : la jointure sert à savoir quels services ont ces matériels dans leur périmètre, et les identifiants viennent d'une manifestation que l'appelant voit déjà. Filtrer par les catégories du lecteur reviendrait à ne pas solliciter un service parce que celui qui a saisi la demande n'a pas accès à sa catégorie.",
+  'services/donneesModele.service.ts':
+    "Ne lit que les prestations déjà rattachées à une manifestation donnée, pour remplir le document destiné à un service — et les filtre par le périmètre de ce service, ce qui est une portée plus étroite que celle des catégories. Aucun appelant n'est piloté par un utilisateur qui naviguerait dans le parc : la génération tourne côté serveur sans requête, et l'aperçu est réservé à l'administrateur.",
 };
 
 /** Marques d'une portée appliquée. */

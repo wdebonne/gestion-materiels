@@ -53,11 +53,12 @@ const requete = (userId: number, role: string): AuthRequest =>
 beforeAll(() => {
   base.exec(`
     CREATE TABLE categories (
-      id INTEGER PRIMARY KEY, name VARCHAR(255), available_for_manifestations INTEGER DEFAULT 1
+      id INTEGER PRIMARY KEY, name VARCHAR(255), available_for_manifestations INTEGER DEFAULT 1,
+      is_prestation INTEGER DEFAULT 0
     );
     CREATE TABLE subcategories (
       id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255),
-      available_for_manifestations INTEGER
+      available_for_manifestations INTEGER, is_prestation INTEGER
     );
     CREATE TABLE group_permissions (role VARCHAR(50), category_id INTEGER, can_view INTEGER);
     CREATE TABLE user_permissions (user_id INTEGER, category_id INTEGER, can_view INTEGER);
@@ -65,7 +66,7 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY, name VARCHAR(255), reference VARCHAR(100),
       serial_number VARCHAR(100), status VARCHAR(50),
       category_id INTEGER, subcategory_id INTEGER,
-      available_for_manifestations INTEGER
+      available_for_manifestations INTEGER, is_prestation INTEGER
     );
     CREATE TABLE manifestations (
       id INTEGER PRIMARY KEY, title VARCHAR(255), status VARCHAR(20),
@@ -85,10 +86,18 @@ beforeAll(() => {
 
   base.exec(`
     INSERT INTO categories (id, name) VALUES (1, 'Véhicules'), (2, 'Informatique');
+    -- La catégorie « Véhicules » porte une sous-catégorie de prestations : c'est
+    -- l'organisation visée, où le service tient ses prestations à côté de son
+    -- matériel.
+    INSERT INTO subcategories (id, category_id, name, is_prestation) VALUES
+      (10, 1, 'Prestation', 1);
+
     INSERT INTO objects (id, name, reference, category_id) VALUES
       (1, 'Camion benne', 'VH-01', 1),
       (2, 'Vidéoprojecteur', 'IT-07', 2),
       (3, 'Remorque', 'VH-02', 1);
+    INSERT INTO objects (id, name, reference, category_id, subcategory_id) VALUES
+      (4, 'Raccordement électrique', NULL, 1, 10);
 
     INSERT INTO manifestations (id, title, status, date_start, date_end, delivery_date, recovery_date) VALUES
       (100, 'Brocante', 'validated', '2026-07-14', '2026-07-14', '2026-07-13', '2026-07-15'),
@@ -242,7 +251,7 @@ describe('Parc proposé au choix', () => {
     // `GET /green-spaces/search/objects`.
     const parc = await parcAvecDisponibilite(requete(5, 'agent'), undefined, '2026-07-14', '2026-07-14');
 
-    expect(parc!.map((o: any) => o.id).sort()).toEqual([1, 3]);
+    expect(parc!.map((o: any) => o.id).sort()).toEqual([1, 3, 4]);
     expect(parc!.map((o: any) => o.name)).not.toContain('Vidéoprojecteur');
   });
 
@@ -256,5 +265,98 @@ describe('Parc proposé au choix', () => {
 
     const parNom = await parcAvecDisponibilite(requete(1, 'admin'), 'projecteur', '2026-07-14', '2026-07-14');
     expect(parNom!.map((o: any) => o.name)).toEqual(['Vidéoprojecteur']);
+  });
+});
+
+/**
+ * Prestations tenues dans le parc.
+ *
+ * Un service range ses prestations sous sa propre catégorie, à côté de son
+ * matériel — Technique porte une sous-catégorie Prestation et une
+ * sous-catégorie Mobilier. Le piège est là : le parc traite un exemplaire comme
+ * unique, et le camion ne peut pas être à deux endroits. Une prestation, si.
+ *
+ * Sans cette exception, la première demande de raccordement électrique de
+ * l'année rendrait le raccordement « indisponible » pour toutes les
+ * manifestations suivantes du même jour, et personne ne comprendrait pourquoi.
+ */
+describe('Prestations du parc', () => {
+  const objetPris = (id: number, manifestationId: number) =>
+    base
+      .prepare(
+        'INSERT INTO manifestation_items (manifestation_id, object_id, quantity) VALUES (?, ?, 1)'
+      )
+      .run(manifestationId, id);
+
+  it('une prestation déjà demandée ne bloque jamais une autre manifestation', async () => {
+    objetPris(4, 100);
+
+    const conflits = await indisponibilites([4], '2026-07-14', '2026-07-14');
+    expect(conflits).toEqual([]);
+  });
+
+  it('un exemplaire du parc, lui, reste bien un conflit', async () => {
+    // Le contre-exemple : sans lui, on ne saurait pas si l'exception ci-dessus
+    // vient du caractère de prestation ou d'une détection cassée.
+    objetPris(1, 100);
+
+    const conflits = await indisponibilites([1], '2026-07-14', '2026-07-14');
+    expect(conflits).toHaveLength(1);
+    expect(conflits[0].object_name).toBe('Camion benne');
+  });
+
+  it('ne bloque que les exemplaires quand les deux natures sont demandées', async () => {
+    objetPris(1, 100);
+    objetPris(4, 100);
+
+    const conflits = await indisponibilites([1, 4], '2026-07-14', '2026-07-14');
+    expect(conflits.map((c) => c.object_id)).toEqual([1]);
+  });
+
+  it('propose toujours une prestation au sélecteur, même déjà demandée', async () => {
+    objetPris(4, 100);
+
+    const parc = await parcAvecDisponibilite(
+      requete(1, 'admin'),
+      undefined,
+      '2026-07-14',
+      '2026-07-14'
+    );
+    const prestation = parc!.find((o: any) => o.id === 4);
+    expect(prestation.disponible).toBe(true);
+    expect(Boolean(prestation.is_prestation)).toBe(true);
+  });
+
+  it('hérite le caractère de prestation de sa sous-catégorie', async () => {
+    const parc = await parcAvecDisponibilite(
+      requete(1, 'admin'),
+      undefined,
+      '2026-07-14',
+      '2026-07-14'
+    );
+    // Le matériel n'a rien de coché : c'est la sous-catégorie qui tranche.
+    expect(Boolean(parc!.find((o: any) => o.id === 4).is_prestation)).toBe(true);
+    expect(Boolean(parc!.find((o: any) => o.id === 1).is_prestation)).toBe(false);
+  });
+
+  it('retient une quantité pour une prestation, jamais pour un exemplaire', async () => {
+    // « 3 agents pour la cérémonie » a un sens ; « 3 camions bennes » désigne
+    // trois exemplaires distincts, qui se demandent un par un.
+    await remplacerObjets(100, [
+      { object_id: 4, quantity: 3 },
+      { object_id: 1, quantity: 3 },
+    ]);
+
+    const lignes = await objetsDe(100);
+    expect(lignes.find((l: any) => l.object_id === 4).quantity).toBe(3);
+    expect(lignes.find((l: any) => l.object_id === 1).quantity).toBe(1);
+  });
+
+  it('rend le caractère de prestation sur les lignes d’une manifestation', async () => {
+    await remplacerObjets(100, [{ object_id: 4 }, { object_id: 1 }]);
+
+    const lignes = await objetsDe(100);
+    expect(Boolean(lignes.find((l: any) => l.object_id === 4).is_prestation)).toBe(true);
+    expect(Boolean(lignes.find((l: any) => l.object_id === 1).is_prestation)).toBe(false);
   });
 });

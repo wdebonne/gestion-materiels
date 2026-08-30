@@ -3,6 +3,7 @@ import { filtreObjets } from '../middleware/objectScope';
 import type { AuthRequest } from '../middleware/auth.middleware';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 import { expressionDisponibilite, jointuresDisponibilite } from './materielPretable.service';
+import { expressionPrestation, prestationsParmi } from './prestationParc.service';
 
 /**
  * Matériel **unique** rattaché à une manifestation.
@@ -69,6 +70,15 @@ export async function indisponibilites(
 ): Promise<IndisponibiliteObjet[]> {
   if (objectIds.length === 0) return [];
 
+  // Une prestation n'est jamais retenue ailleurs. Un raccordement électrique
+  // demandé le 21 juin ne rend pas le raccordement indisponible pour la
+  // manifestation d'à côté le même jour : ce n'est pas un exemplaire, c'est un
+  // acte. Sans cette exception, la première demande de l'année bloquerait
+  // toutes les suivantes, et personne ne comprendrait pourquoi.
+  const prestations = await prestationsParmi(objectIds);
+  const aVerifier = objectIds.filter((id) => !prestations.has(Number(id)));
+  if (aVerifier.length === 0) return [];
+
   const exclusion = exclureManifestationId ? ' AND m.id != ?' : '';
   const finDeRequete = exclureManifestationId ? [exclureManifestationId] : [];
 
@@ -84,7 +94,7 @@ export async function indisponibilites(
           AND m.status IN (${marqueurs(STATUTS_IMMOBILISANTS)})
           AND ${DEBUT_PERIODE} <= ? AND ${FIN_PERIODE} >= ?${exclusion}
       `,
-      objectIds,
+      aVerifier,
       'object_id',
       (tranche) => [...tranche, ...STATUTS_IMMOBILISANTS, dateFin, dateDebut, ...finDeRequete]
     ),
@@ -99,14 +109,14 @@ export async function indisponibilites(
           AND r.status IN (${marqueurs(STATUTS_RESERVATION_BLOQUANTS)})
           AND r.start_date <= ? AND r.end_date >= ?
       `,
-      objectIds,
+      aVerifier,
       'object_id',
       (tranche) => [...tranche, ...STATUTS_RESERVATION_BLOQUANTS, dateFin, dateDebut]
     ),
   ]);
 
   const conflits: IndisponibiliteObjet[] = [];
-  for (const id of new Set(objectIds)) {
+  for (const id of new Set(aVerifier)) {
     for (const ligne of enfantsDe<any>(parManifestation, id)) {
       conflits.push({ ...ligne, origine: 'manifestation' });
     }
@@ -123,10 +133,12 @@ export async function objetsDe(manifestationId: number | string): Promise<any[]>
   return db.query(
     `SELECT mi.*, o.name as object_name, o.reference, o.serial_number,
             o.status as object_status, o.category_id, o.subcategory_id,
-            c.name as category_name
+            c.name as category_name,
+            ${expressionPrestation()} as is_prestation
      FROM manifestation_items mi
      JOIN objects o ON o.id = mi.object_id
      LEFT JOIN categories c ON c.id = o.category_id
+     ${jointuresDisponibilite()}
      WHERE mi.manifestation_id = ?
      ORDER BY o.name`,
     [manifestationId]
@@ -142,13 +154,18 @@ export async function objetsDe(manifestationId: number | string): Promise<any[]>
  */
 export async function remplacerObjets(
   manifestationId: number | string,
-  objets: Array<{ object_id: number; notes?: string | null }>
+  objets: Array<{ object_id: number; quantity?: number | null; notes?: string | null }>
 ): Promise<void> {
   const precedents = await db.query(
-    'SELECT object_id, quantity_delivered, quantity_returned, return_state, notes FROM manifestation_items WHERE manifestation_id = ?',
+    'SELECT object_id, quantity, quantity_delivered, quantity_returned, return_state, notes FROM manifestation_items WHERE manifestation_id = ?',
     [manifestationId]
   );
   const connus = new Map<any, any>(precedents.map((l: any) => [l.object_id, l]));
+
+  // Une prestation se demande en nombre — « 3 agents pour la cérémonie » — là
+  // où un exemplaire du parc vaut toujours 1 : le camion ne se demande pas en
+  // double. La quantité reçue n'est donc retenue que pour les prestations.
+  const prestations = await prestationsParmi(objets.map((o) => o.object_id));
 
   await db.execute('DELETE FROM manifestation_items WHERE manifestation_id = ?', [manifestationId]);
 
@@ -167,10 +184,13 @@ export async function remplacerObjets(
       `INSERT INTO manifestation_items
          (manifestation_id, object_id, quantity, quantity_delivered, quantity_returned,
           return_state, notes, created_at, updated_at)
-       VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         manifestationId,
         objet.object_id,
+        prestations.has(objet.object_id)
+          ? Math.max(1, Number(objet.quantity ?? avant?.quantity ?? 1) || 1)
+          : 1,
         avant?.quantity_delivered ?? 0,
         avant?.quantity_returned ?? 0,
         avant?.return_state ?? null,
@@ -208,7 +228,8 @@ export async function parcAvecDisponibilite(
   // pas d'un bloc — le réfrigérateur part pour la brocante, le grill non.
   let sql = `
     SELECT o.id, o.name, o.reference, o.serial_number, o.status,
-           o.category_id, o.subcategory_id, COALESCE(c.name, pc.name) as category_name
+           o.category_id, o.subcategory_id, COALESCE(c.name, pc.name) as category_name,
+           ${expressionPrestation()} as is_prestation
     FROM objects o
     LEFT JOIN categories c ON c.id = o.category_id
     ${jointuresDisponibilite()}

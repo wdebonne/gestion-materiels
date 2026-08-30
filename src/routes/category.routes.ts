@@ -3,6 +3,10 @@ import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, checkCategoryAccess } from '../middleware/auth.middleware';
 import { handleUpload } from '../services/upload.service';
+import {
+  lireChoixPrestation,
+  versColonnePrestation,
+} from '../services/prestationParc.service';
 import slugify from '../utils/slugify';
 import { notifierWebhooks } from '../services/webhook.service';
 
@@ -264,7 +268,7 @@ router.post('/', authenticateToken, requireSupervisor, [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { name, image, description, hasSubcategories } = req.body;
+    const { name, image, description, hasSubcategories, isPrestation } = req.body;
     const slug = slugify(name);
 
     // Vérifier l'unicité du slug
@@ -287,8 +291,8 @@ router.post('/', authenticateToken, requireSupervisor, [
     const sortOrder = (lastOrder?.maxOrder || 0) + 1;
 
     const result = await db.execute(
-      'INSERT INTO categories (name, slug, description, image, has_subcategories, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
-      [name, slug, description || null, finalImage, hasSubcategories ? 1 : 0, sortOrder]
+      'INSERT INTO categories (name, slug, description, image, has_subcategories, sort_order, is_prestation) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, slug, description || null, finalImage, hasSubcategories ? 1 : 0, sortOrder, isPrestation ? 1 : 0]
     );
 
     notifierWebhooks('category.created', { id: result.lastInsertRowid, name, slug });
@@ -316,7 +320,7 @@ router.post('/', authenticateToken, requireSupervisor, [
 router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, image, description, hasSubcategories, sortOrder } = req.body;
+    const { name, image, description, hasSubcategories, sortOrder, isPrestation } = req.body;
 
     // Vérifier que la catégorie existe
     const category = await db.queryOne('SELECT * FROM categories WHERE id = ?', [id]);
@@ -356,6 +360,13 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     if (sortOrder !== undefined) {
       updateFields.push('sort_order = ?');
       values.push(sortOrder);
+    }
+
+    // Une catégorie ne peut pas hériter : c'est elle la valeur de référence,
+    // et lui permettre `null` laisserait la résolution sans point de départ.
+    if (isPrestation !== undefined) {
+      updateFields.push('is_prestation = ?');
+      values.push(isPrestation ? 1 : 0);
     }
 
     updateFields.push('updated_at = ?');
@@ -466,7 +477,7 @@ router.post('/:categoryId/subcategories', authenticateToken, requireSupervisor, 
     }
 
     const { categoryId } = req.params;
-    const { name, image } = req.body;
+    const { name, image, isPrestation } = req.body;
     const slug = slugify(name);
 
     // Vérifier que la catégorie existe et a des sous-catégories
@@ -504,8 +515,8 @@ router.post('/:categoryId/subcategories', authenticateToken, requireSupervisor, 
     const sortOrder = (lastOrder?.maxOrder || 0) + 1;
 
     const result = await db.execute(
-      'INSERT INTO subcategories (category_id, name, slug, image, sort_order) VALUES (?, ?, ?, ?, ?)',
-      [categoryId, name, slug, finalImage, sortOrder]
+      'INSERT INTO subcategories (category_id, name, slug, image, sort_order, is_prestation) VALUES (?, ?, ?, ?, ?, ?)',
+      [categoryId, name, slug, finalImage, sortOrder, versColonnePrestation(lireChoixPrestation(isPrestation))]
     );
 
     res.status(201).json({
@@ -530,7 +541,7 @@ router.post('/:categoryId/subcategories', authenticateToken, requireSupervisor, 
 router.put('/:categoryId/subcategories/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { categoryId, id } = req.params;
-    const { name, image, sortOrder } = req.body;
+    const { name, image, sortOrder, isPrestation } = req.body;
 
     const subcategory = await db.queryOne(
       'SELECT * FROM subcategories WHERE id = ? AND category_id = ?',
@@ -564,6 +575,14 @@ router.put('/:categoryId/subcategories/:id', authenticateToken, requireSuperviso
     if (sortOrder !== undefined) {
       updateFields.push('sort_order = ?');
       values.push(sortOrder);
+    }
+
+    // Trois états : prestation, matériel, ou hérité de la catégorie. `null` veut
+    // dire quelque chose ici — sans quoi marquer une catégorie obligerait à
+    // recocher chacune de ses sous-catégories.
+    if (isPrestation !== undefined) {
+      updateFields.push('is_prestation = ?');
+      values.push(versColonnePrestation(lireChoixPrestation(isPrestation)));
     }
 
     updateFields.push('updated_at = ?');

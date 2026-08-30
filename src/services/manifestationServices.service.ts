@@ -36,7 +36,26 @@ export async function servicesConcernes(manifestationId: number | string): Promi
     'SELECT stock_id FROM manifestation_materials WHERE manifestation_id = ? AND quantity_requested > 0',
     [manifestationId]
   );
-  return servicesPourArticles(lignes.map((l: any) => l.stock_id));
+  // Une demande porte deux natures de matériel, et les deux relèvent d'un
+  // service. `manifestation_items` était ignorée ici : une manifestation qui ne
+  // demandait que du matériel du parc — ou les prestations qu'un service y tient
+  // — ne sollicitait personne, et sa validation passait sans que quiconque ait
+  // eu son mot à dire.
+  const duParc = await db.query(
+    'SELECT object_id FROM manifestation_items WHERE manifestation_id = ?',
+    [manifestationId]
+  );
+
+  const services = [
+    ...(await servicesPourArticles(lignes.map((l: any) => l.stock_id))),
+    ...(await servicesPourObjetsDuParc(duParc.map((l: any) => l.object_id))),
+  ];
+
+  // Les deux sources peuvent désigner le même service : le dédoublonner ici
+  // évite de lui créer deux approbations pour la même manifestation.
+  const parId = new Map<number, any>();
+  for (const service of services) parId.set(service.id, service);
+  return [...parId.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'));
 }
 
 /**
@@ -63,6 +82,37 @@ export async function servicesPourArticles(stockIds: Array<number | string>): Pr
      WHERE ms.id IN (${marqueurs(stockIds)}) AND s.is_active = 1
      ORDER BY s.name`,
     stockIds
+  );
+}
+
+/**
+ * Services dont le périmètre couvre au moins un de ces matériels du parc.
+ *
+ * La même règle que pour le stock, sur l'autre table : un service est concerné
+ * par ce qui relève de ses catégories, que ce soit une quantité prêtable, un
+ * exemplaire identifié, ou une prestation qu'il tient dans son propre parc.
+ *
+ * C'est ce qui fait tenir l'organisation où la **catégorie est le service** :
+ * « Urbanisme › Prestation » sollicite l'urbanisme sans une ligne de plus.
+ */
+export async function servicesPourObjetsDuParc(
+  objectIds: Array<number | string>
+): Promise<any[]> {
+  if (objectIds.length === 0) return [];
+
+  return db.query(
+    `SELECT DISTINCT s.*
+     FROM services s
+     JOIN service_categories sc ON sc.service_id = s.id
+     JOIN objects o
+       ON o.category_id = sc.category_id
+       OR EXISTS (
+         SELECT 1 FROM subcategories sub
+         WHERE sub.id = o.subcategory_id AND sub.category_id = sc.category_id
+       )
+     WHERE o.id IN (${marqueurs(objectIds)}) AND s.is_active = 1
+     ORDER BY s.name`,
+    objectIds
   );
 }
 

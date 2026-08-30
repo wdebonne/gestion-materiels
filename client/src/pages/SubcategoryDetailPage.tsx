@@ -11,6 +11,7 @@ import {
 } from '@/components/ui'
 import api, { Subcategory, GestionObject as EquipmentObject } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
+import ChoixPrestation, { BadgePrestation } from '@/components/ChoixPrestation'
 import toast from 'react-hot-toast'
 import Can from '@/components/Can'
 import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
@@ -26,7 +27,8 @@ export default function SubcategoryDetailPage() {
     name: '',
     description: '',
     image: '',
-    status: 'active'
+    status: 'active',
+    isPrestation: null as boolean | null
   })
   const [deleteConfirm, setDeleteConfirm] = useState<EquipmentObject | null>(null)
 
@@ -63,6 +65,15 @@ export default function SubcategoryDetailPage() {
     search,
     enabled: !!subcategory?.id,
   })
+
+  /**
+   * Cette branche du parc contient-elle des prestations ?
+   *
+   * Le plus précis l'emporte : la sous-catégorie si elle a tranché, sinon la
+   * catégorie. Sert de valeur héritée dans le formulaire et décide de ce que
+   * l'écran a encore du sens à proposer.
+   */
+  const estBranchePrestation = Boolean(subcategory?.isPrestation ?? category?.isPrestation)
 
   // Mutation pour créer/modifier un objet
   const saveObjectMutation = useMutation({
@@ -106,11 +117,12 @@ export default function SubcategoryDetailPage() {
         name: obj.name,
         description: obj.description || '',
         image: obj.image || '',
-        status: obj.status || 'active'
+        status: obj.status || 'active',
+        isPrestation: obj.isPrestation ?? null
       })
     } else {
       setEditingObject(null)
-      setFormData({ name: '', description: '', image: '', status: 'active' })
+      setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null })
     }
     setIsModalOpen(true)
   }
@@ -118,7 +130,7 @@ export default function SubcategoryDetailPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingObject(null)
-    setFormData({ name: '', description: '', image: '', status: 'active' })
+    setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -224,7 +236,12 @@ export default function SubcategoryDetailPage() {
         </div>
         {/* Étiquetage d'un lot de matériels : la génération existait côté
             serveur sans aucun écran pour l'appeler. */}
-        <BoutonEtiquettesQr materiels={objects} titre={subcategory?.name} />
+        {/* Une étiquette QR se colle sur un objet. Un raccordement électrique
+            n'a rien où la coller : le bouton disparaît plutôt que d'imprimer
+            une planche que personne ne saura quoi en faire. */}
+        {!estBranchePrestation && (
+          <BoutonEtiquettesQr materiels={objects} titre={subcategory?.name} />
+        )}
         <Can manage>
           <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
             Nouveau matériel
@@ -272,6 +289,10 @@ export default function SubcategoryDetailPage() {
               }`}>
                 {statusOptions.find(s => s.value === obj.status)?.label || 'Actif'}
               </div>
+
+              {(obj.prestation ?? estBranchePrestation) ? (
+                <BadgePrestation className="absolute bottom-2 left-2 shadow-sm" />
+              ) : null}
 
               {/* Actions au survol */}
               <Can manage>
@@ -356,6 +377,19 @@ export default function SubcategoryDetailPage() {
               label="Image"
               value={formData.image}
               onChange={(url) => setFormData({ ...formData, image: url })}
+            />
+
+            {/*
+              L'exception au réglage de la branche. La sous-catégorie suffit dans
+              la plupart des cas — « Urbanisme › Prestation » — mais un article
+              isolé doit pouvoir démentir sa branche sans qu'on ait à lui en
+              créer une pour lui seul.
+            */}
+            <ChoixPrestation
+              valeur={formData.isPrestation}
+              onChange={(isPrestation) => setFormData({ ...formData, isPrestation })}
+              heriteDe={{ prestation: estBranchePrestation, source: 'sa sous-catégorie' }}
+              aide="Une prestation ne se stocke pas et n’immobilise rien : elle est demandée, puis réalisée."
             />
           </ModalBody>
 

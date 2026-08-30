@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, X, AlertTriangle, Truck } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle, Input, Alert, Badge, Spinner } from '@/components/ui'
 import { objetManifestationApi, type ObjetParc } from '@/lib/api'
+import { BadgePrestation } from '@/components/ChoixPrestation'
 
 /**
  * Choix du matériel **unique** d'une manifestation.
@@ -165,6 +166,9 @@ export default function ManifestationObjetsParc({
                       <span className="text-xs text-gray-500 dark:text-gray-400">{objet.reference}</span>
                     )}
                     {objet.category_name && <Badge variant="default">{objet.category_name}</Badge>}
+                    {/* Une prestation ne se réserve pas : la reconnaître d'un
+                        coup d'œil évite de la chercher parmi les exemplaires. */}
+                    {objet.is_prestation ? <BadgePrestation /> : null}
                     {!objet.disponible && (
                       <span className="inline-flex items-center gap-1 text-xs text-yellow-700 dark:text-yellow-500">
                         <AlertTriangle className="w-3 h-3" /> déjà retenu

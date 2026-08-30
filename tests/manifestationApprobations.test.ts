@@ -58,7 +58,7 @@ const base: BetterSqlite3.Database = (global as any).__baseServices;
 beforeAll(() => {
   base.exec(`
     CREATE TABLE categories (id INTEGER PRIMARY KEY, name VARCHAR(255));
-    CREATE TABLE subcategories (id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255));
+    CREATE TABLE subcategories (id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255), is_prestation INTEGER);
     CREATE TABLE users (
       id INTEGER PRIMARY KEY, email VARCHAR(255), first_name VARCHAR(255),
       last_name VARCHAR(255), role VARCHAR(50), is_active INTEGER DEFAULT 1
@@ -77,6 +77,15 @@ beforeAll(() => {
     );
     CREATE TABLE manifestation_stock (
       id INTEGER PRIMARY KEY, name VARCHAR(255), category_id INTEGER, subcategory_id INTEGER
+    );
+    CREATE TABLE objects (
+      id INTEGER PRIMARY KEY, name VARCHAR(255),
+      category_id INTEGER, subcategory_id INTEGER, is_prestation INTEGER
+    );
+    CREATE TABLE manifestation_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, manifestation_id INTEGER, object_id INTEGER,
+      quantity INTEGER DEFAULT 1, quantity_delivered INTEGER DEFAULT 0,
+      quantity_returned INTEGER DEFAULT 0, return_state VARCHAR(20), notes TEXT
     );
     CREATE TABLE manifestations (id INTEGER PRIMARY KEY, title VARCHAR(255), status VARCHAR(20));
     CREATE TABLE manifestation_materials (
@@ -116,6 +125,13 @@ beforeAll(() => {
     -- responsable (2) ; la direction un membre observateur (4).
     INSERT INTO service_members (service_id, user_id, is_manager) VALUES
       (1, 3, 1), (1, 6, 0), (2, 2, 1), (4, 4, 0);
+
+    -- Le parc, où un service peut tenir ses prestations à côté de son matériel :
+    -- « Restauration › Prestation » porte le personnel de service.
+    INSERT INTO subcategories (id, category_id, name, is_prestation) VALUES (30, 3, 'Prestation', 1);
+    INSERT INTO objects (id, name, category_id, subcategory_id) VALUES
+      (1, 'Personnel de service', NULL, 30),
+      (2, 'Camion benne', 1, NULL);
 
     INSERT INTO manifestation_stock (id, name, category_id, subcategory_id) VALUES
       (1, 'Chaise', 1, NULL),
@@ -463,5 +479,70 @@ describe('Ce qu’un compte « service » voit', () => {
   it('rend les services d’un compte', async () => {
     expect(noms(await servicesDe(2))).toEqual(['Service informatique']);
     expect(await servicesDe(5)).toEqual([]);
+  });
+});
+
+/**
+ * Le matériel du parc sollicite aussi son service.
+ *
+ * `manifestation_items` était ignorée par le routage : une manifestation qui ne
+ * demandait que du matériel du parc — ou les prestations qu'un service y tient —
+ * ne sollicitait **personne**, et sa validation passait sans que quiconque ait
+ * eu son mot à dire. Le défaut ne se voyait pas : le tableau des approbations
+ * était simplement vide, ce qui ressemble à « rien à approuver ».
+ */
+describe('Services concernés par le matériel du parc', () => {
+  const demanderDuParc = (manifestationId: number, objectIds: number[]) => {
+    for (const objectId of objectIds) {
+      base
+        .prepare('INSERT INTO manifestation_items (manifestation_id, object_id, quantity) VALUES (?, ?, 1)')
+        .run(manifestationId, objectId);
+    }
+  };
+
+  afterEach(() => {
+    base.exec('DELETE FROM manifestation_items');
+  });
+
+  it('sollicite le service d’une prestation tenue dans le parc', async () => {
+    // Le personnel de service relève de « Restauration › Prestation ».
+    demanderDuParc(400, [1]);
+
+    const services = await servicesConcernes(400);
+    expect(services.map((s: any) => s.name)).toEqual(['Service restauration']);
+  });
+
+  it('sollicite aussi le service d’un exemplaire du parc', async () => {
+    demanderDuParc(400, [2]);
+
+    const services = await servicesConcernes(400);
+    expect(services.map((s: any) => s.name)).toEqual(['Service festif']);
+  });
+
+  it('cumule le stock et le parc', async () => {
+    // La manifestation 100 demande déjà une chaise (festif) par le stock.
+    demanderDuParc(100, [1]);
+
+    const services = await servicesConcernes(100);
+    expect(services.map((s: any) => s.name)).toEqual([
+      'Service festif',
+      'Service restauration',
+    ]);
+  });
+
+  it('ne sollicite pas deux fois le même service', async () => {
+    // Le camion benne est en « Festif », comme la chaise du stock : sans
+    // dédoublonnage, le service recevrait deux approbations pour une demande.
+    demanderDuParc(100, [2]);
+
+    const services = await servicesConcernes(100);
+    expect(services.map((s: any) => s.name)).toEqual(['Service festif']);
+  });
+
+  it('crée bien l’approbation qui manquait', async () => {
+    demanderDuParc(400, [1]);
+
+    const creees = await creerApprobationsManquantes(400, 1);
+    expect(creees.map((a: any) => a.service.name)).toEqual(['Service restauration']);
   });
 });
