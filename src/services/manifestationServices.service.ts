@@ -32,6 +32,24 @@ const marqueurs = (valeurs: readonly unknown[]): string => valeurs.map(() => '?'
  * relève d'aucun service, et l'inventer serait pire que de ne rien dire.
  */
 export async function servicesConcernes(manifestationId: number | string): Promise<any[]> {
+  const lignes = await db.query(
+    'SELECT stock_id FROM manifestation_materials WHERE manifestation_id = ? AND quantity_requested > 0',
+    [manifestationId]
+  );
+  return servicesPourArticles(lignes.map((l: any) => l.stock_id));
+}
+
+/**
+ * Services dont le périmètre couvre au moins un de ces articles.
+ *
+ * Extrait de `servicesConcernes` pour servir aussi à l'essai d'un webhook, qui
+ * doit dire qui serait sollicité **sans rien créer**. La règle de rattachement
+ * n'est écrite qu'ici : la recopier dans l'écran d'essai aurait fini par mentir
+ * le jour où l'une des deux copies aurait évolué.
+ */
+export async function servicesPourArticles(stockIds: Array<number | string>): Promise<any[]> {
+  if (stockIds.length === 0) return [];
+
   return db.query(
     `SELECT DISTINCT s.*
      FROM services s
@@ -42,10 +60,9 @@ export async function servicesConcernes(manifestationId: number | string): Promi
          SELECT 1 FROM subcategories sub
          WHERE sub.id = ms.subcategory_id AND sub.category_id = sc.category_id
        )
-     JOIN manifestation_materials mm ON mm.stock_id = ms.id
-     WHERE mm.manifestation_id = ? AND s.is_active = 1 AND mm.quantity_requested > 0
+     WHERE ms.id IN (${marqueurs(stockIds)}) AND s.is_active = 1
      ORDER BY s.name`,
-    [manifestationId]
+    stockIds
   );
 }
 

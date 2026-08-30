@@ -16,6 +16,14 @@ import {
   resoudreCorrespondance,
   signatureValide,
 } from '../services/manifestationIntake.service';
+import {
+  creerApprobationsManquantes,
+  serviceCoordinateur,
+  servicesPourArticles,
+} from '../services/manifestationServices.service';
+import { modeleDuService } from '../services/generationDocuments.service';
+import { VALEURS_MODELE } from '../services/donneesModele.service';
+import { produireEtNotifier } from '../services/generationDocuments.service';
 
 /**
  * Réception des demandes de manifestation, et configuration des sources.
@@ -131,6 +139,119 @@ router.get('/sources/:id/champs', authenticateToken, requireAdmin, async (req: A
         correspondance,
         origine,
         derniere_demande: payload,
+      },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /champs - Champs qu'une demande peut porter, indépendamment d'une source.
+ *
+ * Sert l'écran d'essai : on peut préparer son formulaire avant d'avoir créé la
+ * moindre source, ce qui est l'ordre dans lequel les choses se font en pratique.
+ */
+router.get('/champs', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: CHAMPS_INTAKE });
+});
+
+/**
+ * POST /sources/test - Essayer une charge utile **sans rien créer**.
+ *
+ * L'écran de réglage demande de deviner à l'avance quels chemins un formulaire
+ * enverra, et la seule façon de le vérifier était d'envoyer une vraie demande —
+ * qui créait une vraie manifestation, réservait du matériel, et écrivait aux
+ * services. On l'essaie donc à blanc : rien n'est enregistré, personne n'est
+ * prévenu, et le compte rendu dit ce qui *serait* arrivé.
+ *
+ * `créer: true` fait exception, pour qui veut aller jusqu'au bout : mais c'est
+ * un geste explicite, jamais le comportement par défaut.
+ */
+router.post('/sources/test', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { payload, source_id } = req.body ?? {};
+    if (!payload || typeof payload !== 'object') {
+      return res.status(400).json({
+        success: false,
+        message: 'Collez la charge utile JSON envoyée par votre formulaire',
+      });
+    }
+
+    const source = source_id
+      ? await db.queryOne('SELECT * FROM manifestation_intake_sources WHERE id = ?', [source_id])
+      : null;
+
+    const { correspondance, origine } = resoudreCorrespondance(
+      payload,
+      lireJson<CorrespondanceIntake | null>(source?.field_mapping, null)
+    );
+    const { champs, manquants } = extraireManifestation(payload, correspondance);
+
+    const materiels = extraireMateriels(
+      payload,
+      lireJson<CorrespondanceMateriel | null>(source?.material_mapping, null)
+    );
+
+    const apparies: any[] = [];
+    const nonApparies: any[] = [];
+    for (const ligne of materiels) {
+      const article = await apparierMateriel(ligne.libelle);
+      if (article) {
+        apparies.push({
+          libelle: ligne.libelle,
+          quantite: ligne.quantite,
+          stock_id: article.id,
+          stock_name: article.name,
+          is_prestation: !!article.is_prestation,
+        });
+      } else {
+        nonApparies.push(ligne);
+      }
+    }
+
+    // Qui serait sollicité, et ce que chacun recevrait. C'est la question qu'on
+    // se pose vraiment devant un formulaire : « le service d'urbanisme va-t-il
+    // être alerté, et avec quoi ? »
+    const concernes = await servicesPourArticles(apparies.map((a) => a.stock_id));
+    const coordinateur = await serviceCoordinateur();
+    if (coordinateur && !concernes.some((s: any) => s.id === coordinateur.id)) {
+      concernes.push(coordinateur);
+    }
+
+    const services = [];
+    for (const service of concernes) {
+      const modele = await modeleDuService(service.id);
+      services.push({
+        id: service.id,
+        name: service.name,
+        email: service.email,
+        is_coordinator: !!service.is_coordinator,
+        modele: modele
+          ? {
+              name: modele.name,
+              source: modele.source,
+              champs: lireJson<string[]>(modele.detected_fields, []).length,
+              last_error: modele.last_error,
+            }
+          : null,
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        source: source ? { id: source.id, name: source.name, slug: source.slug } : null,
+        origine_correspondance: origine,
+        correspondance,
+        chemins: cheminsDe(payload),
+        champs_disponibles: CHAMPS_INTAKE,
+        extrait: champs,
+        manquants,
+        recevable: manquants.length === 0,
+        materiels: { apparies, non_apparies: nonApparies },
+        services,
+        valeurs_modele: VALEURS_MODELE,
       },
     });
   } catch (error: any) {
@@ -449,6 +570,13 @@ router.post('/:slug', async (req: Request, res: Response) => {
       toStatus: 'pending',
       comment: resume,
     });
+
+    // Les services concernés sont sollicités dès la réception, et chacun reçoit
+    // sa part du dossier déjà remplie. Attendre qu'un agent ouvre la demande
+    // pour prévenir le service d'urbanisme lui ferait perdre les jours qui
+    // comptent : un arrêté de débit de boissons ne s'instruit pas la veille.
+    const sollicites = await creerApprobationsManquantes(manifestationId);
+    produireEtNotifier(manifestationId, String(champs.title), sollicites);
     await logService.info('api', `Demande de manifestation reçue : ${champs.title}`, {
       source: source.name,
       manifestationId,

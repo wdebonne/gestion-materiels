@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
@@ -7,6 +8,21 @@ import {
   peutDeleguerPour,
   servicesDe,
 } from '../services/manifestationServices.service';
+import {
+  appliquerCorrespondance,
+  donneesExemple,
+  donneesPourModele,
+  VALEURS_MODELE,
+} from '../services/donneesModele.service';
+import {
+  completerDonneesManquantes,
+  detecterChamps,
+  estDocxValide,
+  remplirModele,
+} from '../services/modeleDocx.service';
+import { contenuDuModele } from '../services/generationDocuments.service';
+import { cheminSurDisque, supprimerFichier } from '../services/manifestationDocuments.service';
+import { lireFichier, listerDossier } from '../services/webdav.service';
 import slugify from '../utils/slugify';
 
 /**
@@ -74,6 +90,47 @@ router.get('/', authenticateToken, async (_req: AuthRequest, res: Response) => {
 router.get('/mine', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     res.json({ success: true, data: await servicesDe(req.user!.userId) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /template-values - Valeurs qu'un modèle de document peut afficher.
+ *
+ * Déclarée **avant** `GET /:id`, qui accepte n'importe quel segment et
+ * capterait « template-values » comme un identifiant de service.
+ */
+router.get('/template-values', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: VALEURS_MODELE });
+});
+
+/**
+ * GET /nextcloud-templates - Modèles `.docx` présents dans un dossier Nextcloud.
+ *
+ * Tenir les modèles dans Nextcloud permet de les corriger à un seul endroit,
+ * sans repasser par l'application : le fichier est relu à chaque génération.
+ * Le dossier par défaut est celui du dépôt des exports, où l'on range déjà les
+ * pièces partagées.
+ */
+router.get('/nextcloud-templates', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const dossier = req.query.path ? String(req.query.path) : '/Modeles';
+    const resultat = await listerDossier(dossier);
+    if (!resultat.success) {
+      return res.status(400).json({ success: false, message: resultat.error });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        dossier,
+        fichiers: (resultat.fichiers ?? []).map((nom) => ({
+          nom,
+          chemin: `${dossier.replace(/\/+$/, '')}/${nom}`,
+        })),
+      },
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -189,6 +246,13 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
         message: `Ce service a rendu ${decisions.cnt} décision(s) : il a été désactivé plutôt que supprimé, pour ne pas effacer la traçabilité`,
       });
     }
+
+    // Le modèle part en cascade, mais pas son fichier : le supprimer ici évite
+    // qu'un `.docx` reste indéfiniment sur le disque au nom d'un service qui
+    // n'existe plus. Un modèle tenu dans Nextcloud n'appartient pas à
+    // l'application : il n'y est jamais touché.
+    const modele = await lireModele(req.params.id);
+    if (modele?.source === 'upload') supprimerFichier(modele.file_path);
 
     const resultat = await db.execute('DELETE FROM services WHERE id = ?', [req.params.id]);
     if (resultat.changes === 0) {
@@ -407,6 +471,287 @@ router.delete('/:id/delegations/:delegationId', authenticateToken, async (req: A
     );
 
     res.json({ success: true, data: await delegationsDe(serviceId) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== MODÈLES DE DOCUMENT ========================
+//
+// Une demande reçue par formulaire concerne plusieurs services, mais chacun n'a
+// besoin que de sa part : le service qui instruit un débit de boissons n'a que
+// faire du raccordement électrique, du personnel demandé, ou du nombre de
+// chaises. Seul le service qui pilote les manifestations a besoin de tout.
+//
+// Le modèle est un `.docx` ordinaire, écrit dans Word, où les valeurs à remplir
+// s'écrivent entre accolades. Ses champs sont relevés à l'import, et l'écran de
+// correspondance dit à quelle valeur de la demande chacun renvoie.
+
+/** Lit un JSON stocké en colonne texte sans jamais lever. */
+function lireJsonModele<T>(brut: unknown, defaut: T): T {
+  if (!brut) return defaut;
+  try {
+    return typeof brut === 'string' ? (JSON.parse(brut) as T) : (brut as T);
+  } catch {
+    return defaut;
+  }
+}
+
+/** Modèle d'un service, tel que l'écran l'attend. */
+async function lireModele(serviceId: number | string): Promise<any | null> {
+  const modele = await db.queryOne(
+    'SELECT * FROM service_templates WHERE service_id = ? ORDER BY id DESC LIMIT 1',
+    [serviceId]
+  );
+  if (!modele) return null;
+
+  return {
+    ...modele,
+    detected_fields: lireJsonModele<string[]>(modele.detected_fields, []),
+    field_mapping: lireJsonModele<Record<string, string>>(modele.field_mapping, {}),
+  };
+}
+
+/**
+ * Champs du modèle, quelle que soit sa provenance.
+ *
+ * Un modèle tenu dans Nextcloud est relu à chaque fois : c'est ce qui permet de
+ * le corriger à un seul endroit, sans redéposer un fichier à chaque virgule
+ * changée.
+ */
+async function champsDuFichier(
+  source: string,
+  filePath: string | null,
+  remotePath: string | null
+): Promise<{ champs?: string[]; error?: string }> {
+  let contenu: Buffer | undefined;
+
+  if (source === 'nextcloud') {
+    if (!remotePath) return { error: 'Indiquez le chemin du modèle dans Nextcloud' };
+    const lecture = await lireFichier(remotePath);
+    if (!lecture.success || !lecture.contenu) return { error: lecture.error };
+    contenu = lecture.contenu;
+  } else {
+    const complet = cheminSurDisque(filePath);
+    if (!complet) return { error: 'Le fichier envoyé est introuvable' };
+    contenu = fs.readFileSync(complet);
+  }
+
+  if (!(await estDocxValide(contenu))) {
+    return { error: "Ce fichier n'est pas un document Word (.docx). Enregistrez-le au format .docx depuis Word ou LibreOffice." };
+  }
+
+  return { champs: await detecterChamps(contenu) };
+}
+
+/**
+ * POST /:id/template - Rattacher un modèle à un service.
+ *
+ * Remplace celui qui existait : un service n'a qu'un modèle, sans quoi il
+ * faudrait dire lequel s'applique, et personne ne saurait le dire.
+ *
+ * La correspondance est reprise pour les champs qui portent le même nom : un
+ * modèle corrigé pour une faute de frappe ne fait pas recommencer tout le
+ * réglage.
+ */
+router.post('/:id/template', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const service = await db.queryOne('SELECT id, name FROM services WHERE id = ?', [req.params.id]);
+    if (!service) return res.status(404).json({ success: false, message: 'Service non trouvé' });
+
+    const { name, source, file_path, remote_path } = req.body;
+    const provenance = source === 'nextcloud' ? 'nextcloud' : 'upload';
+
+    const { champs, error } = await champsDuFichier(
+      provenance,
+      file_path ?? null,
+      remote_path ?? null
+    );
+    if (!champs) return res.status(400).json({ success: false, message: error });
+
+    const ancien = await lireModele(req.params.id);
+    const reprise: Record<string, string> = {};
+    for (const champ of champs) {
+      if (ancien?.field_mapping?.[champ]) reprise[champ] = ancien.field_mapping[champ];
+    }
+
+    // Le fichier remplacé n'a plus de raison d'occuper le disque.
+    if (ancien) {
+      await db.execute('DELETE FROM service_templates WHERE service_id = ?', [req.params.id]);
+      if (ancien.source === 'upload' && ancien.file_path !== file_path) {
+        supprimerFichier(ancien.file_path);
+      }
+    }
+
+    const maintenant = new Date().toISOString();
+    await db.execute(
+      `INSERT INTO service_templates
+         (service_id, name, source, file_path, remote_path, detected_fields, field_mapping,
+          is_active, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [
+        req.params.id,
+        String(name ?? '').trim() || `Modèle ${service.name}`,
+        provenance,
+        provenance === 'upload' ? file_path : null,
+        provenance === 'nextcloud' ? remote_path : null,
+        JSON.stringify(champs),
+        JSON.stringify(reprise),
+        maintenant,
+        maintenant,
+      ]
+    );
+
+    await logService.success(
+      'user',
+      `Modèle de document rattaché au service ${service.name}`,
+      { champs: champs.length },
+      { userId: req.user?.userId }
+    );
+
+    res.status(201).json({ success: true, data: await lireModele(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** GET /:id/template - Modèle du service, avec les valeurs offertes au réglage. */
+router.get('/:id/template', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      data: { modele: await lireModele(req.params.id), valeurs: VALEURS_MODELE },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /:id/template - Correspondance des champs, libellé, activation.
+ *
+ * Un champ laissé sans correspondance n'est pas une erreur : s'il porte le nom
+ * d'une valeur connue il sera rempli quand même, et sinon il ressortira vide
+ * plutôt qu'en accolades au milieu d'un arrêté.
+ */
+router.put('/:id/template', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const modele = await lireModele(req.params.id);
+    if (!modele) return res.status(404).json({ success: false, message: 'Aucun modèle sur ce service' });
+
+    const { name, field_mapping, is_active } = req.body;
+    await db.execute(
+      `UPDATE service_templates SET name = ?, field_mapping = ?, is_active = ?, updated_at = ?
+       WHERE id = ?`,
+      [
+        String(name ?? modele.name).trim(),
+        JSON.stringify(field_mapping ?? modele.field_mapping),
+        is_active === false ? 0 : 1,
+        new Date().toISOString(),
+        modele.id,
+      ]
+    );
+
+    res.json({ success: true, data: await lireModele(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/template/detect - Relire les champs du modèle.
+ *
+ * Utile après avoir corrigé le modèle dans Nextcloud : les champs ajoutés
+ * apparaissent dans l'écran de correspondance sans rien redéposer.
+ */
+router.post('/:id/template/detect', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const modele = await lireModele(req.params.id);
+    if (!modele) return res.status(404).json({ success: false, message: 'Aucun modèle sur ce service' });
+
+    const { champs, error } = await champsDuFichier(
+      modele.source,
+      modele.file_path,
+      modele.remote_path
+    );
+    if (!champs) {
+      await db.execute('UPDATE service_templates SET last_error = ? WHERE id = ?', [
+        error,
+        modele.id,
+      ]);
+      return res.status(400).json({ success: false, message: error });
+    }
+
+    // Le réglage déjà fait est conservé pour les champs qui subsistent ; ceux
+    // qui ont disparu du modèle sont oubliés plutôt que gardés en désordre.
+    const reprise: Record<string, string> = {};
+    for (const champ of champs) {
+      if (modele.field_mapping?.[champ]) reprise[champ] = modele.field_mapping[champ];
+    }
+
+    await db.execute(
+      `UPDATE service_templates SET detected_fields = ?, field_mapping = ?, last_error = NULL, updated_at = ?
+       WHERE id = ?`,
+      [JSON.stringify(champs), JSON.stringify(reprise), new Date().toISOString(), modele.id]
+    );
+
+    res.json({ success: true, data: await lireModele(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/template/preview - Voir ce que le modèle donnerait.
+ *
+ * Sans manifestation, un jeu d'exemple sert de démonstration : on peut vérifier
+ * son modèle avant qu'une vraie demande arrive, ce qui est le seul moment où la
+ * correction est encore sans conséquence.
+ */
+router.post('/:id/template/preview', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const modele = await lireModele(req.params.id);
+    if (!modele) return res.status(404).json({ success: false, message: 'Aucun modèle sur ce service' });
+
+    const { contenu, error } = await contenuDuModele(modele);
+    if (!contenu) return res.status(400).json({ success: false, message: error });
+
+    const donnees = req.body?.manifestation_id
+      ? await donneesPourModele(req.body.manifestation_id, Number(req.params.id))
+      : donneesExemple(await db.queryOne('SELECT name FROM services WHERE id = ?', [req.params.id]));
+
+    const rempli = await remplirModele(
+      contenu,
+      completerDonneesManquantes(
+        appliquerCorrespondance(donnees, modele.detected_fields, modele.field_mapping),
+        modele.detected_fields
+      )
+    );
+
+    const nom = String(modele.name).replace(/[^A-Za-z0-9 _.-]/g, '-').trim() || 'apercu';
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${nom}.docx"`);
+    res.send(rempli);
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** DELETE /:id/template - Retirer le modèle, et son fichier s'il était téléversé. */
+router.delete('/:id/template', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const modele = await lireModele(req.params.id);
+    if (!modele) return res.status(404).json({ success: false, message: 'Aucun modèle sur ce service' });
+
+    await db.execute('DELETE FROM service_templates WHERE id = ?', [modele.id]);
+    // Un modèle tenu dans Nextcloud n'appartient pas à l'application : le
+    // détacher ne doit surtout pas l'effacer là-bas.
+    if (modele.source === 'upload') supprimerFichier(modele.file_path);
+
+    res.json({ success: true });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

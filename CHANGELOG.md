@@ -262,6 +262,39 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
 - **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
 
+### Manifestations — un document pré-rempli par service, et de quoi essayer un webhook
+
+> Une demande reçue par formulaire concerne plusieurs services, mais chacun n'a besoin que de sa part : le service qui instruit un débit de boissons n'a que faire du raccordement électrique, du personnel demandé, ou du nombre de chaises. Lui envoyer tout l'oblige à trier, et c'est ainsi qu'on finit par ne plus rien lire. Seul le service qui pilote les manifestations a besoin de l'ensemble.
+
+#### Ajouté
+
+- **Modèle de document par service.** Un `.docx` écrit dans Word, rattaché depuis l'écran des services. Ses champs entre accolades sont **relevés à l'import**, et une liste déroulante relie chacun à une donnée de la demande
+  - **`easy-template-x` (MIT)** plutôt que Carbone, cité en exemple : Carbone n'est pas distribuable sous la licence de cette application et demande LibreOffice à côté. Cette bibliothèque fonctionne en JavaScript seul et, surtout, **n'exécute aucun code venu du modèle** — ce qui compte quand les modèles sont déposés dans un Nextcloud partagé : un fichier Word ne doit pas pouvoir faire tourner quoi que ce soit sur le serveur
+  - `{manifestation}` pour une valeur, `{#materiels}…{/materiels}` pour une liste — dans un tableau Word, le bloc peut tenir sur une ligne, qui sera répétée. C'est ce qu'une secrétaire de mairie peut écrire sans qu'on lui explique un langage
+  - **Les champs sont détectés en recollant les runs d'un paragraphe.** Word coupe volontiers `{date_livraison}` sur plusieurs `<w:t>` — il suffit d'une correction orthographique ou d'un mot mis en gras. Sans ce recollage, un modèle parfaitement valide paraîtrait ne contenir aucun champ. Le recollage se fait **paragraphe par paragraphe** : tout recoller ferait apparaître des champs fantômes, formés par la fin de l'un et le début du suivant
+  - **21 valeurs** offertes : dates, lieu, contact, statut, demandeur, notes, service destinataire — plus le matériel et les prestations, en liste répétable ou résumés en une ligne
+  - Un modèle écrit avec les noms proposés fonctionne **sans aucun réglage** ; un champ nommé autrement se relie en un clic ; un champ que rien ne renseigne ressort **vide**, jamais en accolades — un arrêté municipal portant `{montant}` en toutes lettres serait signé tel quel par quelqu'un qui ne l'a pas relu
+  - **Aperçu téléchargeable** rempli d'un jeu d'exemple, sans manifestation : on vérifie son modèle avant qu'une vraie demande arrive, seul moment où la correction est encore sans conséquence
+- **Le modèle peut être tenu dans Nextcloud** plutôt que déposé. Le fichier est **relu à chaque génération** : une correction faite le matin s'applique l'après-midi, sans repasser par l'application ni redéposer un fichier à chaque virgule changée. Le dossier se parcourt depuis l'écran, la liste ne montrant que les `.docx`
+- **Le document part avec la demande d'approbation**, en pièce jointe, et reste joint à la manifestation. Le service reçoit sa part déjà remplie plutôt qu'un lien qui l'obligerait à se connecter pour savoir de quoi il s'agit
+  - Produit **à la réception d'une demande**, à la création, à la reprise en brouillon, à la validation, et à chaque changement de matériel — un service qui a reçu « 10 tables » doit apprendre qu'on en demande désormais 40
+  - **Une regénération remplace, elle n'empile pas** : sans cela, une manifestation dont les dates changent trois fois finirait avec trois arrêtés et personne ne saurait lequel fait foi. Seules les pièces produites par l'application sont remplacées ; celles déposées à la main ne sont jamais touchées
+  - Bouton **« Refaire les documents des services »** sur l'onglet Documents, pour les deux cas que l'automatisme ne couvre pas : un modèle corrigé après coup, et un Nextcloud injoignable au moment où la demande est arrivée
+  - **Un modèle défaillant ne bloque jamais rien.** Un `.docx` mal formé, un Nextcloud muet : l'erreur est notée sur le modèle, affichée dans l'écran des services, et la manifestation suit son cours. Refuser une demande parce qu'un modèle Word a été mal enregistré serait hors de proportion
+- **Chaque service ne voit que le document produit pour lui** dans l'onglet Documents. Le lui masquer dans son courriel et le lui montrer ici reviendrait à ne rien avoir masqué. Le service coordinateur, l'administrateur et le superviseur voient tout ; les pièces déposées à la main ne sont jamais masquées — un arrêté de circulation concerne tout le monde
+- **Essai d'une réception de webhook, à blanc** (Paramètres › Réception des demandes). Régler une source demandait de deviner à l'avance quels chemins un formulaire enverrait, et la seule façon de le vérifier était d'envoyer une vraie demande — qui créait une vraie manifestation, réservait du matériel et écrivait aux services. On colle désormais la charge utile : **rien n'est créé, personne n'est prévenu**, et le compte rendu répond aux trois questions qu'on se pose réellement
+  - la demande passerait-elle, et sinon quels champs obligatoires manquent
+  - quel matériel serait reconnu, lequel resterait à rattacher à la main
+  - quels services seraient alertés, lequel est coordinateur, et lequel a un modèle de document
+  - la liste des chemins trouvés dans la charge utile, et celle des champs qu'une demande peut porter — accessible sans avoir créé la moindre source
+- **Les services sont sollicités dès la réception d'une demande.** Ils ne l'étaient qu'à partir du moment où quelqu'un ouvrait la manifestation pour la modifier : le service d'urbanisme perdait les jours qui comptent, et un arrêté de débit de boissons ne s'instruit pas la veille
+
+#### Corrigé
+
+- **Supprimer une manifestation laissait ses pièces jointes sur le disque pour toujours.** Les lignes partaient en cascade, pas les fichiers — un dossier de manifestation contient des photos de sinistre et des arrêtés. C'est la règle déjà appliquée au retrait d'une pièce isolée, désormais tenue aussi quand le dossier entier disparaît
+- **Supprimer un service laissait le fichier de son modèle** au nom d'un service qui n'existait plus. Un modèle tenu dans Nextcloud, lui, n'appartient pas à l'application : il n'y est jamais touché
+- **La règle de rattachement d'un article à un service n'est plus écrite qu'à un seul endroit** (`servicesPourArticles`). L'écran d'essai devait dire qui serait sollicité sans rien créer ; recopier la règle aurait fini par mentir le jour où l'une des deux copies aurait évolué
+
 ### Manifestations — prestations demandées, pièces jointes, et une fiche en onglets
 
 > Une demande ne porte pas que du matériel : elle demande aussi un raccordement au réseau électrique, un débit de boissons, du personnel pour une cérémonie. Ces prestations n'existaient nulle part et finissaient dans une note libre que rien ne route ni ne totalise. Et il manquait de quoi joindre un arrêté, un plan, ou la photo d'une chaise revenue cassée — ces pièces qui font la différence en cas de litige, des mois plus tard.

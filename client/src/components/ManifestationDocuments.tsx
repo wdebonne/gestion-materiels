@@ -1,7 +1,8 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Paperclip, Upload, Camera, Search, Trash2, Download, Eye, FileText, Image as ImageIcon, X
+  Paperclip, Upload, Camera, Search, Trash2, Download, Eye, FileText, Image as ImageIcon,
+  RefreshCw, Sparkles, X
 } from 'lucide-react'
 import {
   Card, CardBody, Input, Select, Button, Alert, Badge, Spinner, TextArea, Modal, ModalBody
@@ -65,6 +66,29 @@ export default function ManifestationDocuments({ manifestation }: { manifestatio
     queryClient.invalidateQueries({ queryKey: ['manifestation-documents', manifestation.id] })
     queryClient.invalidateQueries({ queryKey: ['manifestation-history', manifestation.id] })
   }
+
+  /**
+   * Refait les documents pré-remplis des services.
+   *
+   * Ils sont produits d'eux-mêmes à la réception et à chaque changement de
+   * matériel : ce bouton sert aux deux cas où l'automatisme ne suffit pas — un
+   * modèle corrigé après coup, un Nextcloud injoignable au mauvais moment.
+   */
+  const regeneration = useMutation({
+    mutationFn: () => documentManifestationApi.regenerer(manifestation.id),
+    onSuccess: (res) => {
+      rafraichir()
+      const rates = res.data.data.resultats.filter((r) => !r.success)
+      if (rates.length > 0) {
+        // Un modèle mal enregistré doit se voir : sinon on découvre le document
+        // manquant le jour où le service le réclame.
+        toast.error(rates.map((r) => `${r.service_name} : ${r.error}`).join(' — '), { duration: 8000 })
+      } else {
+        toast.success(res.data.message)
+      }
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur'),
+  })
 
   const retrait = useMutation({
     mutationFn: (docId: number) => documentManifestationApi.retirer(docId),
@@ -197,17 +221,24 @@ export default function ManifestationDocuments({ manifestation }: { manifestatio
         </CardBody>
       </Card>
 
-      {documents.length > 0 && (
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-          <Input
-            className="pl-9"
-            value={recherche}
-            placeholder="Rechercher une pièce (libellé, description, matériel)…"
-            onChange={(e) => setRecherche(e.target.value)}
-          />
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {documents.length > 0 && (
+          <div className="relative flex-1 min-w-[14rem]">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Input
+              className="pl-9"
+              value={recherche}
+              placeholder="Rechercher une pièce (libellé, description, matériel)…"
+              onChange={(e) => setRecherche(e.target.value)}
+            />
+          </div>
+        )}
+        <Button size="sm" variant="outline" icon={<RefreshCw className="w-4 h-4" />}
+          loading={regeneration.isPending} onClick={() => regeneration.mutate()}
+          title="Refaire les documents pré-remplis des services concernés">
+          Refaire les documents des services
+        </Button>
+      </div>
 
       {isLoading ? (
         <div className="flex justify-center py-8"><Spinner /></div>
@@ -287,6 +318,12 @@ function LigneDocument({ doc, onApercu, onRetirer }: {
         <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{doc.name}</p>
         <div className="flex flex-wrap items-center gap-2 mt-0.5">
           {doc.doc_type_label && <Badge variant="default">{doc.doc_type_label}</Badge>}
+          {doc.generated_from_template ? (
+            <Badge variant="success" title="Produit par l’application depuis le modèle du service">
+              <Sparkles className="w-3 h-3 inline mr-1" />
+              {doc.service_name ?? 'Document de service'}
+            </Badge>
+          ) : null}
           {(doc.stock_name || doc.object_name) && (
             <Badge variant="info">{doc.stock_name ?? doc.object_name}</Badge>
           )}

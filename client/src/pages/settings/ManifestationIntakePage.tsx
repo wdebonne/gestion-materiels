@@ -8,6 +8,7 @@ import {
   Modal, ModalBody, ModalFooter, Spinner
 } from '@/components/ui'
 import { intakeApi, type IntakeSource } from '@/lib/api'
+import EssaiWebhook from '@/components/EssaiWebhook'
 import toast from 'react-hot-toast'
 
 /**
@@ -180,6 +181,8 @@ export default function ManifestationIntakePage() {
           ))}
         </div>
       )}
+
+      <EssaiWebhook sources={sources} />
 
       <Card>
         <CardHeader className="flex items-center justify-between">

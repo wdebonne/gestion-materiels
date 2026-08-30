@@ -1082,6 +1082,11 @@ export interface DocumentManifestation {
   stock_name: string | null
   object_id: number | null
   object_name: string | null
+  /** Service auquel cette pièce est destinée, quand elle a été produite pour lui. */
+  service_id: number | null
+  service_name: string | null
+  /** Produite par l'application à partir du modèle du service. */
+  generated_from_template: number | boolean
   uploaded_by_name: string | null
   created_at: string
 }
@@ -1118,6 +1123,28 @@ export const documentManifestationApi = {
       `/manifestations/documents/${docId}`
     ),
 
+  /**
+   * Refait les documents pré-remplis des services concernés.
+   *
+   * La production est automatique à la réception et à chaque changement de
+   * matériel : ce geste sert au modèle corrigé après coup, et au Nextcloud qui
+   * était injoignable quand la demande est arrivée.
+   */
+  regenerer: (manifestationId: number) =>
+    api.post<{
+      success: boolean
+      message: string
+      data: {
+        resultats: Array<{
+          service_id: number
+          service_name: string
+          success: boolean
+          error?: string
+        }>
+        documents: DocumentManifestation[]
+      }
+    }>(`/manifestations/${manifestationId}/documents/generate`, {}),
+
   getTypes: (tous = false) =>
     api.get<{ success: boolean; data: TypeDocument[] }>(
       `/manifestations/doc-types${tous ? '?tous=true' : ''}`
@@ -1128,4 +1155,134 @@ export const documentManifestationApi = {
     api.put<{ success: boolean; data: TypeDocument[] }>(`/manifestations/doc-types/${id}`, data),
   supprimerType: (id: number) =>
     api.delete<{ success: boolean; data: TypeDocument[] }>(`/manifestations/doc-types/${id}`),
+}
+
+// ======================== MODÈLES DE DOCUMENT PAR SERVICE ========================
+//
+// Une demande reçue par formulaire concerne plusieurs services, mais chacun n'a
+// besoin que de sa part. Le modèle est un `.docx` ordinaire, écrit dans Word,
+// où les valeurs à remplir s'écrivent entre accolades.
+
+export interface ValeurModele {
+  cle: string
+  libelle: string
+  exemple: string
+  /** Une liste se répète dans le modèle : `{#materiels}…{/materiels}`. */
+  liste?: boolean
+}
+
+export interface ModeleService {
+  id: number
+  service_id: number
+  name: string
+  source: 'upload' | 'nextcloud'
+  file_path: string | null
+  remote_path: string | null
+  detected_fields: string[]
+  field_mapping: Record<string, string>
+  is_active: boolean
+  last_error: string | null
+  updated_at: string
+}
+
+export const modeleServiceApi = {
+  /** Valeurs offertes au réglage, catalogue tenu côté serveur. */
+  getValeurs: () =>
+    api.get<{ success: boolean; data: ValeurModele[] }>('/services/template-values'),
+
+  get: (serviceId: number) =>
+    api.get<{ success: boolean; data: { modele: ModeleService | null; valeurs: ValeurModele[] } }>(
+      `/services/${serviceId}/template`
+    ),
+
+  /** Rattache un modèle, téléversé ou tenu dans Nextcloud. */
+  rattacher: (
+    serviceId: number,
+    data: { name: string; source: 'upload' | 'nextcloud'; file_path?: string; remote_path?: string }
+  ) => api.post<{ success: boolean; data: ModeleService }>(`/services/${serviceId}/template`, data),
+
+  enregistrer: (
+    serviceId: number,
+    data: { name?: string; field_mapping?: Record<string, string>; is_active?: boolean }
+  ) => api.put<{ success: boolean; data: ModeleService }>(`/services/${serviceId}/template`, data),
+
+  /** Relit les champs : utile après avoir corrigé le modèle dans Nextcloud. */
+  redetecter: (serviceId: number) =>
+    api.post<{ success: boolean; data: ModeleService }>(`/services/${serviceId}/template/detect`, {}),
+
+  retirer: (serviceId: number) =>
+    api.delete<{ success: boolean }>(`/services/${serviceId}/template`),
+
+  /** Modèles `.docx` rangés dans un dossier Nextcloud. */
+  listerNextcloud: (chemin?: string) =>
+    api.get<{
+      success: boolean
+      data: { dossier: string; fichiers: Array<{ nom: string; chemin: string }> }
+    }>(`/services/nextcloud-templates${chemin ? `?path=${encodeURIComponent(chemin)}` : ''}`),
+
+  /**
+   * Télécharge un aperçu rempli.
+   *
+   * Sans manifestation, un jeu d'exemple sert de démonstration : on vérifie son
+   * modèle avant qu'une vraie demande arrive, seul moment où la correction est
+   * encore sans conséquence.
+   */
+  apercu: async (serviceId: number, nom: string, manifestationId?: number) => {
+    const reponse = await api.post(
+      `/services/${serviceId}/template/preview`,
+      manifestationId ? { manifestation_id: manifestationId } : {},
+      { responseType: 'blob' }
+    )
+    const url = window.URL.createObjectURL(new Blob([reponse.data]))
+    const lien = document.createElement('a')
+    lien.href = url
+    lien.setAttribute('download', `${nom || 'apercu'}.docx`)
+    document.body.appendChild(lien)
+    lien.click()
+    lien.remove()
+    window.URL.revokeObjectURL(url)
+  },
+}
+
+/** Compte rendu d'un essai de réception, qui ne crée jamais rien. */
+export interface EssaiIntake {
+  source: { id: number; name: string; slug: string } | null
+  origine_correspondance: 'imposee' | 'detectee'
+  correspondance: Record<string, string>
+  chemins: string[]
+  champs_disponibles: ChampIntake[]
+  extrait: Record<string, unknown>
+  manquants: Array<{ cle: string; libelle: string }>
+  recevable: boolean
+  materiels: {
+    apparies: Array<{
+      libelle: string
+      quantite: number
+      stock_id: number
+      stock_name: string
+      is_prestation: boolean
+    }>
+    non_apparies: Array<{ libelle: string; quantite: number }>
+  }
+  services: Array<{
+    id: number
+    name: string
+    email: string | null
+    is_coordinator: boolean
+    modele: { name: string; source: string; champs: number; last_error: string | null } | null
+  }>
+  valeurs_modele: ValeurModele[]
+}
+
+export const essaiIntakeApi = {
+  /** Champs qu'une demande peut porter, sans avoir créé la moindre source. */
+  getChamps: () =>
+    api.get<{ success: boolean; data: ChampIntake[] }>('/manifestations/intake/champs'),
+
+  /** Essaie une charge utile **à blanc** : rien n'est créé, personne n'est prévenu. */
+  essayer: (payload: unknown, sourceId?: number) =>
+    api.post<{ success: boolean; data: EssaiIntake }>('/manifestations/intake/sources/test', {
+      payload,
+      source_id: sourceId,
+    }),
 }

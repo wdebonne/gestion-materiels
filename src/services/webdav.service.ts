@@ -193,6 +193,93 @@ function messageLisible(erreur: any): string {
   return erreur?.message ?? 'Erreur inconnue';
 }
 
+export interface ResultatLecture {
+  success: boolean;
+  contenu?: Buffer;
+  error?: string;
+}
+
+/**
+ * Lit un fichier sur le serveur WebDAV.
+ *
+ * Sert aux modèles de document : les tenir dans Nextcloud permet de les corriger
+ * à un seul endroit, sans repasser par l'application ni redéposer un fichier à
+ * chaque virgule changée. Le modèle est relu à chaque génération, si bien qu'une
+ * correction faite le matin s'applique l'après-midi.
+ */
+export async function lireFichier(
+  chemin: string,
+  configuration?: ConfigurationNextcloud | null
+): Promise<ResultatLecture> {
+  const config = configuration ?? (await lireConfiguration());
+  if (!config) {
+    return { success: false, error: "Nextcloud n'est pas configuré (Paramètres › Nextcloud)" };
+  }
+
+  try {
+    const reponse = await fetch(construireUrl(config.url, chemin), {
+      method: 'GET',
+      headers: entetes(config),
+      signal: AbortSignal.timeout(DELAI_MAX_MS),
+    });
+
+    if (reponse.status === 404) {
+      return { success: false, error: `Fichier introuvable sur Nextcloud : ${chemin}` };
+    }
+    if (reponse.status === 401) return { success: false, error: IDENTIFIANTS_REFUSES };
+    if (!reponse.ok) return { success: false, error: `HTTP ${reponse.status}` };
+
+    return { success: true, contenu: Buffer.from(await reponse.arrayBuffer()) };
+  } catch (erreur: any) {
+    return { success: false, error: messageLisible(erreur) };
+  }
+}
+
+/**
+ * Liste les fichiers d'un dossier, par `PROPFIND`.
+ *
+ * Sert à proposer les modèles présents plutôt qu'à faire recopier un chemin à la
+ * main, où la moindre faute de frappe ne se verrait qu'à la première génération
+ * ratée. La réponse est du XML : on n'en extrait que les chemins, sans
+ * bibliothèque, car c'est tout ce dont l'écran a besoin.
+ */
+export async function listerDossier(
+  chemin: string,
+  configuration?: ConfigurationNextcloud | null
+): Promise<{ success: boolean; fichiers?: string[]; error?: string }> {
+  const config = configuration ?? (await lireConfiguration());
+  if (!config) {
+    return { success: false, error: "Nextcloud n'est pas configuré (Paramètres › Nextcloud)" };
+  }
+
+  try {
+    const reponse = await fetch(construireUrl(config.url, chemin), {
+      method: 'PROPFIND',
+      headers: { ...entetes(config), Depth: '1', 'Content-Type': 'application/xml' },
+      signal: AbortSignal.timeout(DELAI_MAX_MS),
+    });
+
+    if (reponse.status === 404) {
+      return { success: false, error: `Dossier introuvable sur Nextcloud : ${chemin}` };
+    }
+    if (reponse.status === 401) return { success: false, error: IDENTIFIANTS_REFUSES };
+    if (!reponse.ok) return { success: false, error: `HTTP ${reponse.status}` };
+
+    const xml = await reponse.text();
+    const fichiers = [...xml.matchAll(/<[^>]*href[^>]*>([^<]+)<\/[^>]*href>/gi)]
+      .map((m) => decodeURIComponent(m[1]))
+      // Le dossier lui-même figure dans sa propre réponse, et les
+      // sous-dossiers finissent par une barre.
+      .filter((h) => !h.endsWith('/'))
+      .map((h) => h.split('/').pop() ?? '')
+      .filter((nom) => nom.toLowerCase().endsWith('.docx'));
+
+    return { success: true, fichiers: [...new Set(fichiers)].sort((a, b) => a.localeCompare(b, 'fr')) };
+  } catch (erreur: any) {
+    return { success: false, error: messageLisible(erreur) };
+  }
+}
+
 /**
  * Vérifie qu'une configuration permet réellement de déposer.
  *

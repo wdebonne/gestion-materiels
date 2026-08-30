@@ -755,12 +755,32 @@ class DatabaseManager {
         size INTEGER,
         stock_id INTEGER,
         object_id INTEGER,
+        service_id INTEGER,
+        generated_from_template ${boolType} DEFAULT 0,
         uploaded_by INTEGER,
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
         FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE SET NULL,
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE SET NULL,
         FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Modèle .docx rattaché à un service, avec ses champs détectés et leur
+      // correspondance. Voir la migration 010.
+      `CREATE TABLE IF NOT EXISTS service_templates (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        source VARCHAR(20) NOT NULL DEFAULT 'upload',
+        file_path VARCHAR(500),
+        remote_path VARCHAR(500),
+        detected_fields ${textType},
+        field_mapping ${textType},
+        is_active ${boolType} DEFAULT 1,
+        last_error ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
       )`,
 
       `CREATE TABLE IF NOT EXISTS manifestation_doc_types (
@@ -1294,6 +1314,7 @@ class DatabaseManager {
       ['idx_service_delegations', 'service_delegations', 'service_id'],
       ['idx_manif_documents', 'manifestation_documents', 'manifestation_id'],
       ['idx_manif_documents_stock', 'manifestation_documents', 'stock_id'],
+      ['idx_service_templates', 'service_templates', 'service_id'],
 
       // Droits — consultés à chaque requête filtrée par catégorie
       ['idx_user_permissions_user', 'user_permissions', 'user_id'],

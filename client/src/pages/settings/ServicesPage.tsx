@@ -6,6 +6,7 @@ import {
   Modal, ModalBody, ModalFooter, Spinner, TextArea
 } from '@/components/ui'
 import api, { serviceApi, delegationApi, type Service } from '@/lib/api'
+import ModeleDocumentService from '@/components/ModeleDocumentService'
 import toast from 'react-hot-toast'
 
 /**
@@ -447,6 +448,8 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
             </Card>
 
             <Delegations serviceId={serviceId} membres={service.members ?? []} />
+
+            <ModeleDocumentService serviceId={serviceId} serviceName={service.name} />
 
             <Card>
               <CardHeader><CardTitle className="text-sm">Ce que ce service reçoit</CardTitle></CardHeader>

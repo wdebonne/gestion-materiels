@@ -54,11 +54,13 @@ export async function documentsDe(
   let sql = `
     SELECT d.*, t.label as doc_type_label,
            ms.name as stock_name, o.name as object_name,
+           s.name as service_name,
            (u.first_name || ' ' || u.last_name) as uploaded_by_name
     FROM manifestation_documents d
     LEFT JOIN manifestation_doc_types t ON t.value = d.doc_type
     LEFT JOIN manifestation_stock ms ON ms.id = d.stock_id
     LEFT JOIN objects o ON o.id = d.object_id
+    LEFT JOIN services s ON s.id = d.service_id
     LEFT JOIN users u ON u.id = d.uploaded_by
     WHERE d.manifestation_id = ?
   `;
@@ -124,27 +126,42 @@ export async function joindre(
 }
 
 /**
- * Retire le fichier du disque.
+ * Chemin sur le disque d'une pièce jointe, ou `null` si elle n'y est pas.
  *
  * `file_path` est une URL publique (`/uploads/…`) : elle est ramenée à un chemin
  * relatif au projet, et tout ce qui sortirait du dossier des téléversements est
- * refusé — un `file_path` fabriqué ne doit pas pouvoir faire supprimer un
- * fichier de l'application.
+ * refusé — un `file_path` fabriqué ne doit pouvoir ni faire supprimer ni faire
+ * envoyer un fichier de l'application.
  *
- * L'échec n'est jamais fatal : mieux vaut un fichier oublié qu'une suppression
- * qui refuse d'aboutir.
+ * Écrit une seule fois : supprimer une pièce et la joindre à un courriel font
+ * la même résolution, et deux copies de cette garde finiraient par diverger.
  */
-export function supprimerFichier(filePath: string | null | undefined): boolean {
-  if (!filePath) return false;
+export function cheminSurDisque(filePath: string | null | undefined): string | null {
+  if (!filePath) return null;
 
   try {
     const dossierUploads = path.resolve(process.cwd(), 'uploads');
     const relatif = filePath.replace(/^\/+/, '').replace(/^uploads[/\\]/, '');
     const complet = path.resolve(dossierUploads, relatif);
 
-    if (!complet.startsWith(dossierUploads + path.sep)) return false;
-    if (!fs.existsSync(complet)) return false;
+    if (!complet.startsWith(dossierUploads + path.sep)) return null;
+    return fs.existsSync(complet) ? complet : null;
+  } catch {
+    return null;
+  }
+}
 
+/**
+ * Retire le fichier du disque.
+ *
+ * L'échec n'est jamais fatal : mieux vaut un fichier oublié qu'une suppression
+ * qui refuse d'aboutir.
+ */
+export function supprimerFichier(filePath: string | null | undefined): boolean {
+  const complet = cheminSurDisque(filePath);
+  if (!complet) return false;
+
+  try {
     fs.unlinkSync(complet);
     return true;
   } catch (erreur: any) {
@@ -173,4 +190,44 @@ export async function typesDocuments(tous = false): Promise<any[]> {
   // `ORDER BY label` trie par octets en SQLite : « Élagage » passerait après
   // « Photo ». Le tri définitif se fait en français, à la lecture.
   return types.sort((a: any, b: any) => a.label.localeCompare(b.label, 'fr'));
+}
+
+/**
+ * Ne montre à un service que le document produit pour lui.
+ *
+ * Le document de service est la traduction du principe de ce lot : le service
+ * qui instruit un débit de boissons n'a que faire du raccordement électrique ni
+ * du nombre de chaises. Le lui laisser voir dans l'onglet Documents annulerait
+ * ce qu'on vient de faire en le lui épargnant dans son courriel.
+ *
+ * Trois exceptions, toutes nécessaires : l'administrateur et le superviseur
+ * gèrent l'application, et le **service coordinateur** pilote la manifestation —
+ * c'est lui qui rend l'approbation finale, il lui faut l'ensemble du dossier.
+ *
+ * Les pièces déposées à la main ne sont jamais masquées : un arrêté de
+ * circulation ou la photo d'un trottoir abîmé concernent tout le monde, et
+ * personne ne les a rangées par service.
+ */
+export async function documentsVisiblesPar(
+  documents: any[],
+  userId: number,
+  role: string
+): Promise<any[]> {
+  if (role === 'admin' || role === 'supervisor') return documents;
+
+  const produits = documents.filter((d) => d.generated_from_template && d.service_id);
+  if (produits.length === 0) return documents;
+
+  const services = await db.query(
+    `SELECT s.id, s.is_coordinator FROM service_members sm
+     JOIN services s ON s.id = sm.service_id
+     WHERE sm.user_id = ?`,
+    [userId]
+  );
+  if (services.some((s: any) => s.is_coordinator)) return documents;
+
+  const siens = new Set(services.map((s: any) => Number(s.id)));
+  return documents.filter(
+    (d) => !d.generated_from_template || !d.service_id || siens.has(Number(d.service_id))
+  );
 }

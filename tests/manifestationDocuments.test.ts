@@ -46,6 +46,7 @@ jest.mock('../src/database', () => {
 import {
   detacher,
   documentsDe,
+  documentsVisiblesPar,
   joindre,
   supprimerFichier,
   typeValide,
@@ -70,6 +71,12 @@ beforeAll(() => {
     CREATE TABLE objects (id INTEGER PRIMARY KEY, name VARCHAR(255));
     CREATE TABLE manifestations (id INTEGER PRIMARY KEY, title VARCHAR(255));
     CREATE TABLE manifestation_stock (id INTEGER PRIMARY KEY, name VARCHAR(255));
+    CREATE TABLE services (
+      id INTEGER PRIMARY KEY, name VARCHAR(255), is_coordinator INTEGER DEFAULT 0
+    );
+    CREATE TABLE service_members (
+      service_id INTEGER, user_id INTEGER, is_manager INTEGER DEFAULT 0
+    );
     CREATE TABLE manifestation_materials (
       id INTEGER PRIMARY KEY AUTOINCREMENT, manifestation_id INTEGER, stock_id INTEGER,
       quantity_requested INTEGER DEFAULT 0
@@ -82,6 +89,7 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, manifestation_id INTEGER, name VARCHAR(255),
       doc_type VARCHAR(100) DEFAULT 'autre', description TEXT, file_path VARCHAR(500),
       mime_type VARCHAR(100), size INTEGER, stock_id INTEGER, object_id INTEGER,
+      service_id INTEGER, generated_from_template INTEGER DEFAULT 0,
       uploaded_by INTEGER, created_at DATETIME
     );
   `);
@@ -91,6 +99,9 @@ beforeAll(() => {
     INSERT INTO objects (id, name) VALUES (1, 'Camion benne');
     INSERT INTO manifestations (id, title) VALUES (100, 'Brocante');
     INSERT INTO manifestation_stock (id, name) VALUES (1, 'Chaise'), (2, 'Table');
+    INSERT INTO services (id, name, is_coordinator) VALUES
+      (1, 'Service urbanisme', 0), (2, 'Service technique', 0), (3, 'Culture et Communication', 1);
+    INSERT INTO service_members (service_id, user_id) VALUES (1, 10), (2, 11), (3, 12);
     INSERT INTO manifestation_materials (manifestation_id, stock_id, quantity_requested) VALUES (100, 1, 12);
     INSERT INTO manifestation_doc_types (value, label, is_default) VALUES
       ('arrete_circulation', 'Arrêté de circulation', 1),
@@ -263,5 +274,68 @@ describe('Le chemin du fichier ne peut pas sortir du dossier des téléversement
   it('refuse un chemin vide', () => {
     expect(supprimerFichier(null)).toBe(false);
     expect(supprimerFichier('')).toBe(false);
+  });
+});
+
+/**
+ * Documents produits pour un service : chacun ne voit que le sien.
+ *
+ * Épargner au service d'urbanisme le nombre de chaises dans son courriel, puis
+ * le lui montrer dans l'onglet Documents, reviendrait à ne rien avoir masqué.
+ *
+ * Les pièces déposées à la main échappent à cette règle : un arrêté de
+ * circulation ou la photo d'un trottoir abîmé concernent tout le monde, et
+ * personne ne les a rangées par service.
+ */
+describe('Visibilité des documents de service', () => {
+  const dossier = [
+    { id: 1, name: 'Arrêté de circulation', service_id: null, generated_from_template: 0 },
+    { id: 2, name: 'Débit de boissons — urbanisme', service_id: 1, generated_from_template: 1 },
+    { id: 3, name: 'Raccordement — technique', service_id: 2, generated_from_template: 1 },
+    { id: 4, name: 'Dossier complet — coordination', service_id: 3, generated_from_template: 1 },
+  ];
+
+  const noms = (docs: any[]) => docs.map((d) => d.id).sort();
+
+  it("ne montre à un service que le document produit pour lui", async () => {
+    // 10 est membre du service urbanisme.
+    const vus = await documentsVisiblesPar(dossier, 10, 'agent');
+    expect(noms(vus)).toEqual([1, 2]);
+  });
+
+  it('montre tout au service coordinateur', async () => {
+    // 12 est membre de Culture et Communication, qui pilote les manifestations
+    // et rend l'approbation finale : il lui faut l'ensemble du dossier.
+    expect(noms(await documentsVisiblesPar(dossier, 12, 'agent'))).toEqual([1, 2, 3, 4]);
+  });
+
+  it("montre tout à l'administrateur et au superviseur", async () => {
+    expect(noms(await documentsVisiblesPar(dossier, 999, 'admin'))).toEqual([1, 2, 3, 4]);
+    expect(noms(await documentsVisiblesPar(dossier, 999, 'supervisor'))).toEqual([1, 2, 3, 4]);
+  });
+
+  it('ne masque jamais une pièce déposée à la main', async () => {
+    // 999 n'appartient à aucun service : il voit l'arrêté, et rien d'autre.
+    expect(noms(await documentsVisiblesPar(dossier, 999, 'agent'))).toEqual([1]);
+  });
+
+  it("n'interroge pas la base quand aucun document n'est produit", async () => {
+    const manuels = [{ id: 1, service_id: null, generated_from_template: 0 }];
+    expect(await documentsVisiblesPar(manuels, 999, 'agent')).toEqual(manuels);
+  });
+
+  it('rend le nom du service sur le document produit', async () => {
+    await joindre(100, {
+      name: 'Document urbanisme',
+      file_path: '/uploads/urbanisme.docx',
+    });
+    base
+      .prepare(
+        "UPDATE manifestation_documents SET service_id = 1, generated_from_template = 1 WHERE name = 'Document urbanisme'"
+      )
+      .run();
+
+    const document = (await documentsDe(100)).find((d: any) => d.name === 'Document urbanisme');
+    expect(document.service_name).toBe('Service urbanisme');
   });
 });

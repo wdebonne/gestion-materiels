@@ -3,6 +3,7 @@ import { sendEmail } from './email.service';
 import { logService } from './log.service';
 import { notifierWebhooks } from './webhook.service';
 import { destinatairesDuService, destinatairesManifestation } from './manifestationServices.service';
+import { cheminSurDisque } from './manifestationDocuments.service';
 import {
   destinatairesParRole,
   filtrerSelonPreferences,
@@ -42,7 +43,8 @@ async function urlDuSite(): Promise<string> {
 async function envoyer(
   gabarit: string,
   adresses: string[],
-  donnees: Record<string, any>
+  donnees: Record<string, any>,
+  pieces?: Array<{ filename: string; path: string }>
 ): Promise<void> {
   if (adresses.length === 0) return;
 
@@ -50,7 +52,7 @@ async function envoyer(
   let envoyes = 0;
   for (const adresse of adresses) {
     try {
-      await sendEmail(gabarit, adresse, donnees);
+      await sendEmail(gabarit, adresse, donnees, pieces);
       envoyes++;
     } catch (erreur: any) {
       if (/SMTP/i.test(erreur?.message ?? '')) {
@@ -94,6 +96,37 @@ export async function destinatairesPour(
   return filtrerSelonPreferences(destinataires, evenement);
 }
 
+/**
+ * Document pré-rempli produit pour ce service, s'il en existe un.
+ *
+ * Il part en pièce jointe de la demande d'approbation : le service reçoit sa
+ * part déjà remplie, plutôt qu'un lien qui l'obligerait à se connecter pour
+ * savoir de quoi il s'agit. Un service sans modèle n'a rien à joindre, ce qui
+ * est le cas de la plupart.
+ */
+async function documentDuService(
+  manifestationId: number | string,
+  serviceId: number
+): Promise<Array<{ filename: string; path: string }> | undefined> {
+  const document = await db.queryOne(
+    `SELECT name, file_path FROM manifestation_documents
+     WHERE manifestation_id = ? AND service_id = ? AND generated_from_template = 1
+     ORDER BY id DESC LIMIT 1`,
+    [manifestationId, serviceId]
+  );
+  if (!document) return undefined;
+
+  // Le fichier a pu être supprimé entre la production et l'envoi : joindre un
+  // chemin mort ferait échouer tout le message, donc toute la sollicitation.
+  const chemin = cheminSurDisque(document.file_path);
+  if (!chemin) return undefined;
+
+  // Le libellé sert de nom de fichier : les caractères interdits par Windows
+  // y sont remplacés, sinon la pièce jointe arrive sans nom lisible.
+  const nomFichier = document.name.replace(/[\\/:*?"<>|]/g, '-').trim();
+  return [{ filename: `${nomFichier}.docx`, path: chemin }];
+}
+
 /** Lance un envoi sans faire attendre l'appelant ni risquer de le faire échouer. */
 function sansAttendre(action: () => Promise<void>, quoi: string): void {
   void action().catch((erreur) => {
@@ -130,11 +163,16 @@ export function notifierServicesConcernes(
         'approval_requested'
       );
 
-      await envoyer('manifestation_approval_request', adresses, {
-        manifestation_title: titre,
-        service_name: service.name,
-        manifestation_url: lien,
-      });
+      await envoyer(
+        'manifestation_approval_request',
+        adresses,
+        {
+          manifestation_title: titre,
+          service_name: service.name,
+          manifestation_url: lien,
+        },
+        await documentDuService(manifestationId, service.id)
+      );
     }
 
     notifierWebhooks('manifestation.approval_requested', {

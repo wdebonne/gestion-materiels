@@ -2,10 +2,23 @@ import nodemailer from 'nodemailer';
 import Handlebars from 'handlebars';
 import { db } from '../database';
 
+/**
+ * Une pièce jointe se désigne par un chemin sur le disque.
+ *
+ * Sert aux documents de service produits pour une manifestation : le service
+ * qui doit approuver reçoit sa part remplie en pièce jointe, plutôt qu'un lien
+ * qui l'obligerait à se connecter pour savoir de quoi il s'agit.
+ */
+interface PieceJointe {
+  filename: string;
+  path: string;
+}
+
 interface EmailOptions {
   to: string;
   subject: string;
   html: string;
+  attachments?: PieceJointe[];
 }
 
 // Créer le transporteur SMTP
@@ -36,12 +49,20 @@ export async function sendEmailRaw(options: EmailOptions): Promise<void> {
     from: `"${smtp.from_name || 'Gestion Matériels'}" <${smtp.from_email}>`,
     to: options.to,
     subject: options.subject,
-    html: options.html
+    html: options.html,
+    // Omise quand il n'y en a pas : nodemailer accepte un tableau vide, mais
+    // certains serveurs alourdissent alors le message d'un corps multipart.
+    ...(options.attachments?.length ? { attachments: options.attachments } : {})
   });
 }
 
 // Envoyer un email avec un template
-export async function sendEmail(templateName: string, to: string, data: Record<string, any>): Promise<void> {
+export async function sendEmail(
+  templateName: string,
+  to: string,
+  data: Record<string, any>,
+  attachments?: PieceJointe[]
+): Promise<void> {
   // Récupérer le template
   const template = await db.queryOne(
     'SELECT * FROM email_templates WHERE name = ? AND is_active = 1',
@@ -72,7 +93,8 @@ export async function sendEmail(templateName: string, to: string, data: Record<s
   await sendEmailRaw({
     to,
     subject: compiledSubject,
-    html: compiledBody
+    html: compiledBody,
+    attachments
   });
 }
 

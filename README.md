@@ -126,6 +126,8 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 💬 **Conversation** : les services échangent dans le fil de la manifestation ; tout est consigné dans l'historique et dans l'archive
 - 👀 **Mise en copie** : une direction générale, un maire ou un élu suit l'intégralité des échanges sans rien approuver
 - 🔌 **Prestations** : raccordement électrique, débit de boissons, personnel pour une cérémonie. Une case à cocher sur un article suffit ; sa catégorie décide du service qui l'approuve. Sans stock ni disponibilité — demandée, puis réalisée
+- 📄 **Document pré-rempli par service** : un modèle `.docx` écrit dans Word est rattaché à un service, ses champs entre accolades sont détectés à l'import, et une liste déroulante relie chacun à une donnée de la demande. Chaque service reçoit **sa seule part** — celui qui instruit un débit de boissons n'a que faire du nombre de chaises — joint à la manifestation et à son courriel d'approbation. Le modèle peut être tenu dans **Nextcloud** et corrigé à un seul endroit : il est relu à chaque génération
+- 🧪 **Essai de webhook à blanc** : collez ce que votre formulaire envoie, l'application dit si la demande passerait, quel matériel serait reconnu et quels services seraient alertés — sans rien créer ni prévenir personne
 - 📎 **Pièces jointes** : arrêtés, plans, constats, photos. Glisser-déposer ou photo prise au téléphone, description facultative pour les retrouver, et lien vers le matériel concerné. Supprimer une pièce retire aussi le fichier
 - 🎯 **Matériel prêtable au choix** : par catégorie, par sous-catégorie, ou matériel par matériel — le réglage le plus précis l'emporte. Le réfrigérateur part pour la brocante, le grill de la même catégorie reste à la cuisine
 - 🚚 **Deux natures de matériel** : des **quantités** (50 tables d'un même modèle, sans les saisir une par une) et des **exemplaires uniques** choisis dans le parc (un véhicule, un vidéoprojecteur identifié). Deux manifestations peuvent se partager cent chaises ; elles ne peuvent pas se partager le camion, et le conflit est signalé avec qui le retient et quand
@@ -679,7 +681,29 @@ POST   /api/manifestations/intake/sources/:id/secret  # Régénérer le secret
 DELETE /api/manifestations/intake/sources/:id  # Supprimer une source
 GET    /api/manifestations/intake/sources/:id/champs  # Chemins reçus et correspondance déduite
 GET    /api/manifestations/intake/requests     # Journal des demandes reçues
+GET    /api/manifestations/intake/champs       # Champs qu'une demande peut porter
+POST   /api/manifestations/intake/sources/test # Essai à blanc : ne crée rien, ne prévient personne
 ```
+
+**Modèles de document par service**
+
+```
+GET    /api/services/template-values      # Valeurs qu'un modèle peut afficher
+GET    /api/services/nextcloud-templates  # Modèles .docx d'un dossier Nextcloud (?path=)
+GET    /api/services/:id/template         # Modèle du service, champs et correspondance
+POST   /api/services/:id/template         # Rattacher un .docx (téléversé ou Nextcloud)
+PUT    /api/services/:id/template         # Correspondance des champs, libellé, activation
+POST   /api/services/:id/template/detect  # Relire les champs (après correction dans Nextcloud)
+POST   /api/services/:id/template/preview # Télécharger un aperçu rempli
+DELETE /api/services/:id/template
+
+POST   /api/manifestations/:id/documents/generate  # Refaire les documents des services
+```
+
+Le modèle est un `.docx` ordinaire : `{manifestation}` pour une valeur, `{#materiels}…{/materiels}`
+pour une liste répétée. La bibliothèque retenue, `easy-template-x` (MIT), **n'exécute aucun code venu
+du modèle** — un fichier Word déposé dans un Nextcloud partagé ne doit rien pouvoir faire tourner
+sur le serveur.
 
 Le dépôt attend l'en-tête `X-Webhook-Signature: sha256=<HMAC-SHA256 du corps>`, calculé avec le secret
 de la source sur les **octets exacts** envoyés. Une demande acceptée rend `202` et l'identifiant créé ;

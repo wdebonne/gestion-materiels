@@ -38,7 +38,6 @@ import {
   notifierDecision,
   notifierMessage,
   notifierSollicitation,
-  notifierServicesConcernes,
   notifierChangementDates,
   notifierChangementMateriel,
   redeposerSuivi,
@@ -59,10 +58,16 @@ import {
   detacher,
   documentPrecis,
   documentsDe,
+  documentsVisiblesPar,
   joindre,
+  supprimerFichier,
   typeValide,
   typesDocuments,
 } from '../services/manifestationDocuments.service';
+import {
+  genererPourManifestation,
+  produireEtNotifier,
+} from '../services/generationDocuments.service';
 
 const router = Router();
 
@@ -673,7 +678,11 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     const objects = await objetsDe(m.id);
     // Jointes au détail : la fiche PDF en fait l'inventaire, et l'onglet
     // Documents les affiche sans second appel.
-    const documents = await documentsDe(m.id);
+    const documents = await documentsVisiblesPar(
+      await documentsDe(m.id),
+      req.user!.userId,
+      req.user!.role
+    );
 
     res.json({ success: true, data: { ...m, materials, objects, documents, history } });
   } catch (error: any) {
@@ -764,7 +773,7 @@ router.post('/', authenticateToken, requireSupervisor,
       // Les services concernés sont sollicités dès la création : c'est ce qui
       // rend le tableau des approbations lisible avant même la validation.
       const sollicites = await creerApprobationsManquantes(manifestationId, req.user!.userId);
-      notifierServicesConcernes(manifestationId, title, sollicites);
+      produireEtNotifier(manifestationId, title, sollicites, req.user!.userId);
 
       notifierWebhooks('manifestation.created', { id: manifestationId, title, status: 'draft' });
       res.status(201).json({ success: true, data: created, conflits, conflits_objets: conflitsObjets });
@@ -852,7 +861,11 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     // Le matériel a pu changer : de nouveaux services peuvent être concernés.
     if (Array.isArray(materials)) {
       const nouvelles = await creerApprobationsManquantes(req.params.id, req.user!.userId);
-      notifierServicesConcernes(req.params.id, apres.title, nouvelles);
+      // Le matériel a changé : les documents déjà produits ne disent plus la
+      // vérité. Ils sont refaits pour tous les services, pas seulement pour
+      // les nouveaux — un service qui a reçu « 10 tables » doit apprendre
+      // qu'on en demande désormais 40.
+      produireEtNotifier(req.params.id, apres.title, nouvelles, req.user!.userId);
       notifierChangementMateriel(req.params.id, apres.title, `${materials.length} ligne(s) de matériel`);
     }
     const periode = periodeDe(apres);
@@ -926,7 +939,7 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
       // d'abord et régulariser ensuite.
       if (status === 'validated') {
         const nouvelles = await creerApprobationsManquantes(req.params.id, req.user!.userId);
-        notifierServicesConcernes(req.params.id, m.title, nouvelles);
+        produireEtNotifier(req.params.id, m.title, nouvelles, req.user!.userId);
 
         if (await exigerToutesLesApprobations()) {
           const attendues = await approbationsEnAttente(req.params.id);
@@ -982,7 +995,7 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
       // c'est le moment où quelqu'un s'en saisit pour la compléter.
       if (status === 'draft') {
         const nouvelles = await creerApprobationsManquantes(req.params.id, req.user!.userId);
-        notifierServicesConcernes(req.params.id, m.title, nouvelles);
+        produireEtNotifier(req.params.id, m.title, nouvelles, req.user!.userId);
       }
 
       res.json({ success: true });
@@ -1110,7 +1123,17 @@ router.get('/:id/documents', authenticateToken, async (req: AuthRequest, res: Re
       return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
     }
     const q = req.query.q ? String(req.query.q) : undefined;
-    res.json({ success: true, data: await documentsDe(req.params.id, q) });
+    // Chaque service ne voit que le document produit pour lui : le lui masquer
+    // dans son courriel et le lui montrer ici reviendrait au même que ne rien
+    // masquer du tout.
+    res.json({
+      success: true,
+      data: await documentsVisiblesPar(
+        await documentsDe(req.params.id, q),
+        req.user!.userId,
+        req.user!.role
+      ),
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1200,6 +1223,54 @@ router.delete('/documents/:docId', authenticateToken, requireFieldWrite, async (
     });
 
     res.json({ success: true, data: await documentsDe(document.manifestation_id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/documents/generate - Refaire les documents des services.
+ *
+ * La production est automatique à la réception et à chaque changement de
+ * matériel. Ce geste manuel sert aux deux cas où l'automatisme ne suffit pas :
+ * un modèle corrigé après coup, et un Nextcloud qui était injoignable au
+ * moment où la demande est arrivée.
+ *
+ * Le compte rendu nomme les services servis **et** ceux qui ont échoué, avec la
+ * raison : un modèle mal enregistré doit se voir, sinon on découvre le document
+ * manquant le jour où le service le réclame.
+ */
+router.post('/:id/documents/generate', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const m = await db.queryOne('SELECT id, title FROM manifestations WHERE id = ?', [req.params.id]);
+    if (!m) return res.status(404).json({ success: false, message: 'Manifestation non trouvée' });
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    const resultats = await genererPourManifestation(req.params.id, req.user!.userId);
+    const produits = resultats.filter((r) => r.success);
+
+    if (produits.length > 0) {
+      await consignerHistorique(req.params.id, req.user!.userId, 'Documents de service produits', {
+        comment: produits.map((r) => r.service_name).join(', '),
+      });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        resultats,
+        documents: await documentsVisiblesPar(
+          await documentsDe(req.params.id),
+          req.user!.userId,
+          req.user!.role
+        ),
+      },
+      message: resultats.length === 0
+        ? "Aucun service sollicité n'a de modèle de document"
+        : `${produits.length} document(s) produit(s) sur ${resultats.length}`,
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1794,6 +1865,14 @@ router.delete('/:id', authenticateToken, requireSupervisor, async (req: AuthRequ
     if (m.status === 'delivered') {
       return res.status(400).json({ success: false, message: 'Impossible de supprimer une manifestation en cours de livraison' });
     }
+    // Les lignes des pièces jointes partent en cascade, mais pas les fichiers :
+    // un dossier de manifestation contient des photos de sinistre et des
+    // arrêtés, et le disque n'a pas à conserver ce qu'on a demandé de retirer.
+    // C'est la même règle que pour le retrait d'une pièce isolée.
+    for (const document of await documentsDe(req.params.id)) {
+      supprimerFichier(document.file_path);
+    }
+
     await db.execute('DELETE FROM manifestation_materials WHERE manifestation_id = ?', [req.params.id]);
     await db.execute('DELETE FROM manifestations WHERE id = ?', [req.params.id]);
     await logService.info('other', `Manifestation supprimée: ${m.title}`, { userId: req.user!.userId });
