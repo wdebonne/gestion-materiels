@@ -110,7 +110,7 @@ export default function DashboardPage() {
         />
         <StatCard
           title="Valeur du parc"
-          value={`${(stats?.totalValue || 0).toLocaleString('fr-FR')} €`}
+          value={`${Number(stats?.totalValue || 0).toLocaleString('fr-FR')} €`}
           icon={<Euro className="w-6 h-6" />}
           color="emerald"
         />
@@ -335,7 +335,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-sm text-green-700 dark:text-green-300">Carburant ce mois</p>
                 <p className="text-2xl font-bold text-green-900 dark:text-green-200">
-                  {stats?.fuelThisMonth?.toFixed(0) || 0} L
+                  {Number(stats?.fuelThisMonth || 0).toFixed(0)} L
                 </p>
               </div>
             </div>

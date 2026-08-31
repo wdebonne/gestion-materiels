@@ -117,6 +117,15 @@ class DatabaseManager {
     await tempPool.execute(`CREATE DATABASE IF NOT EXISTS \`${config.database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
     await tempPool.end();
 
+    /**
+     * `decimalNumbers` : sans cette option, mysql2 rend les colonnes DECIMAL
+     * sous forme de chaînes — `"0.00"` — là où SQLite rend des nombres. Le
+     * reste du code les traite partout comme des nombres : le tableau de bord
+     * appelait `fuelThisMonth.toFixed(0)` et l'écran d'erreur remplaçait
+     * l'accueil dès la connexion, sans la moindre trace côté serveur. Prix
+     * d'achat, quantités de carburant, coûts, surfaces et positions sur plan
+     * sont tous des DECIMAL : la conversion se fait une fois, ici.
+     */
     // Connexion à la base de données
     this.mysqlPool = mysql.createPool({
       host: config.host,
@@ -126,7 +135,8 @@ class DatabaseManager {
       database: config.database,
       waitForConnections: true,
       connectionLimit: 10,
-      queueLimit: 0
+      queueLimit: 0,
+      decimalNumbers: true
     });
   }
 
@@ -1780,7 +1790,9 @@ class DatabaseManager {
       const newPool = mysql.createPool({
         ...mysqlConfig,
         waitForConnections: true,
-        connectionLimit: 10
+        connectionLimit: 10,
+        // Mêmes nombres qu'en SQLite, voir initMySQL()
+        decimalNumbers: true
       });
 
       // Créer les tables dans MySQL
