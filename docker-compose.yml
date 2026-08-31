@@ -6,6 +6,12 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    # `build` sans `pull_policy` ne suffit pas : `docker compose pull` — que
+    # Portainer lance à chaque redéploiement, et le GitOps à chaque commit —
+    # cherche alors l'image sur Docker Hub, où elle n'existe pas, et la mise à
+    # jour s'arrête sur « pull access denied ». Cette image se construit ici,
+    # elle ne se télécharge de nulle part.
+    pull_policy: build
     container_name: gestion-materiels-app
     restart: unless-stopped
     ports:
