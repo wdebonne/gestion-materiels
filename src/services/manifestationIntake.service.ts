@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import { db } from '../database';
 import { normaliserLibelle } from '../utils/normaliserLibelle';
+import { expressionDisponibilite, jointuresDisponibilite } from './materielPretable.service';
+import { expressionPrestation } from './prestationParc.service';
 
 /**
  * Réception d'une demande de manifestation envoyée par une application tierce.
@@ -490,27 +492,71 @@ function decouperLibelle(brut: string): LigneMaterielRecue {
 const estUtile = (ligne: LigneMaterielRecue): boolean =>
   ligne.libelle.length > 0 && ligne.quantite > 0;
 
+/** Un libellé reçu, rapproché de ce qu'il désigne — et de la table qui le porte. */
+export interface ArticleApparie {
+  source: 'stock' | 'parc';
+  id: number;
+  name: string;
+  unit: string;
+  is_prestation: boolean;
+}
+
 /**
- * Rapproche un libellé reçu d'un article du stock.
+ * Rapproche un libellé reçu d'un article proposable.
  *
- * D'abord sur le nom normalisé, puis sur les alias enregistrés — « tables » doit
- * trouver « Table 180 cm » sans qu'on rebaptise le stock. Aucune correspondance
- * approximative : mieux vaut laisser une ligne à rattacher à la main que de
- * réserver le mauvais matériel.
+ * D'abord le stock des manifestations : sur le nom normalisé, puis sur les alias
+ * enregistrés — « tables » doit trouver « Table 180 cm » sans qu'on rebaptise le
+ * stock. Puis le parc prêtable, où vivent les exemplaires, les lots et les
+ * prestations déclarées par branche. Le catalogue propose les deux sources ; ne
+ * relire que la première laissait « Raccordement électrique » en ligne à
+ * rattacher, alors qu'il figurait au formulaire que la collectivité a publié.
+ *
+ * Le parc n'est consulté que sur ce qu'il accepte de prêter et ce qui est actif :
+ * la réception ne doit pas engager un matériel que le catalogue n'aurait jamais
+ * proposé.
+ *
+ * Aucune correspondance approximative : mieux vaut laisser une ligne à rattacher
+ * à la main que de réserver le mauvais matériel.
  */
-export async function apparierMateriel(libelle: string): Promise<any | null> {
+export async function apparierMateriel(libelle: string): Promise<ArticleApparie | null> {
   const recherche = normaliserLibelle(libelle);
   if (!recherche) return null;
 
-  const articles = await db.query('SELECT id, name, unit FROM manifestation_stock');
+  const duStock = (article: any): ArticleApparie => ({
+    source: 'stock',
+    id: Number(article.id),
+    name: String(article.name ?? ''),
+    unit: String(article.unit ?? ''),
+    is_prestation: Boolean(article.is_prestation),
+  });
+
+  const articles = await db.query('SELECT id, name, unit, is_prestation FROM manifestation_stock');
   const parNom = articles.find((a: any) => normaliserLibelle(a.name) === recherche);
-  if (parNom) return parNom;
+  if (parNom) return duStock(parNom);
 
   const alias = await db.query('SELECT stock_id, alias FROM manifestation_stock_aliases');
   const correspondant = alias.find((a: any) => normaliserLibelle(a.alias) === recherche);
-  if (!correspondant) return null;
+  if (correspondant) {
+    const article = articles.find((a: any) => a.id === correspondant.stock_id);
+    if (article) return duStock(article);
+  }
 
-  return articles.find((a: any) => a.id === correspondant.stock_id) ?? null;
+  const objets = await db.query(
+    `SELECT o.id, o.name, ${expressionPrestation()} as is_prestation
+     FROM objects o
+     ${jointuresDisponibilite()}
+     WHERE ${expressionDisponibilite()} = 1 AND o.status = 'active'`
+  );
+  const objet = objets.find((o: any) => normaliserLibelle(o.name) === recherche);
+  if (!objet) return null;
+
+  return {
+    source: 'parc',
+    id: Number(objet.id),
+    name: String(objet.name ?? ''),
+    unit: '',
+    is_prestation: Boolean(Number(objet.is_prestation)),
+  };
 }
 
 // ======================== SIGNATURE ========================

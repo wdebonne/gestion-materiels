@@ -20,6 +20,7 @@ import {
   creerApprobationsManquantes,
   serviceCoordinateur,
   servicesPourArticles,
+  servicesPourObjetsDuParc,
 } from '../services/manifestationServices.service';
 import { modeleDuService } from '../services/generationDocuments.service';
 import { VALEURS_MODELE } from '../services/donneesModele.service';
@@ -201,9 +202,12 @@ router.post('/sources/test', authenticateToken, requireAdmin, async (req: AuthRe
         apparies.push({
           libelle: ligne.libelle,
           quantite: ligne.quantite,
+          source: article.source,
+          // `stock_id` et `stock_name` gardent leur nom : l'écran d'essai les lit déjà. Ils
+          // portent l'identifiant dans la table que `source` désigne.
           stock_id: article.id,
           stock_name: article.name,
-          is_prestation: !!article.is_prestation,
+          is_prestation: article.is_prestation,
         });
       } else {
         nonApparies.push(ligne);
@@ -213,7 +217,17 @@ router.post('/sources/test', authenticateToken, requireAdmin, async (req: AuthRe
     // Qui serait sollicité, et ce que chacun recevrait. C'est la question qu'on
     // se pose vraiment devant un formulaire : « le service d'urbanisme va-t-il
     // être alerté, et avec quoi ? »
-    const concernes = await servicesPourArticles(apparies.map((a) => a.stock_id));
+    //
+    // Les deux sources sollicitent, chacune par sa règle : ne compter que le stock aurait dit
+    // « personne » sur une demande qui ne porte que des prestations du parc.
+    const parSource = (source: 'stock' | 'parc') =>
+      apparies.filter((a) => a.source === source).map((a) => a.stock_id);
+    const concernes = [
+      ...(await servicesPourArticles(parSource('stock'))),
+      ...(await servicesPourObjetsDuParc(parSource('parc'))),
+    ].filter(
+      (service, i, tous) => tous.findIndex((autre: any) => autre.id === service.id) === i
+    );
     const coordinateur = await serviceCoordinateur();
     if (coordinateur && !concernes.some((s: any) => s.id === coordinateur.id)) {
       concernes.push(coordinateur);
@@ -503,11 +517,11 @@ router.post('/:slug', async (req: Request, res: Response) => {
       lireJson<CorrespondanceMateriel | null>(source.material_mapping, null)
     );
 
-    const apparies: Array<{ stock_id: number; quantite: number }> = [];
+    const apparies: Array<{ source: 'stock' | 'parc'; id: number; quantite: number }> = [];
     const nonApparies: Array<{ libelle: string; quantite: number }> = [];
     for (const ligne of materiels) {
       const article = await apparierMateriel(ligne.libelle);
-      if (article) apparies.push({ stock_id: article.id, quantite: ligne.quantite });
+      if (article) apparies.push({ source: article.source, id: article.id, quantite: ligne.quantite });
       else nonApparies.push(ligne);
     }
 
@@ -542,12 +556,24 @@ router.post('/:slug', async (req: Request, res: Response) => {
 
     const manifestationId = creation.lastInsertRowid;
 
+    // Chaque ligne retourne dans la table dont elle vient : le stock compte des quantités
+    // anonymes, le parc engage des exemplaires, des lots et des prestations. Tout ranger dans
+    // `manifestation_materials` aurait fait porter à un identifiant de stock un numéro d'objet
+    // du parc — et réservé, au hasard des identifiants, un tout autre matériel.
     for (const ligne of apparies) {
-      await db.execute(
-        `INSERT INTO manifestation_materials (manifestation_id, stock_id, quantity_requested)
-         VALUES (?, ?, ?)`,
-        [manifestationId, ligne.stock_id, ligne.quantite]
-      );
+      if (ligne.source === 'parc') {
+        await db.execute(
+          `INSERT INTO manifestation_items (manifestation_id, object_id, quantity)
+           VALUES (?, ?, ?)`,
+          [manifestationId, ligne.id, ligne.quantite]
+        );
+      } else {
+        await db.execute(
+          `INSERT INTO manifestation_materials (manifestation_id, stock_id, quantity_requested)
+           VALUES (?, ?, ?)`,
+          [manifestationId, ligne.id, ligne.quantite]
+        );
+      }
     }
 
     const journalId = await journaliser({

@@ -71,6 +71,7 @@ import {
   produireEtNotifier,
 } from '../services/generationDocuments.service';
 import { manquesSurLots } from '../services/lotParc.service';
+import { catalogue } from '../services/catalogue.service';
 import { coutDe } from '../services/coutManifestation.service';
 
 const router = Router();
@@ -389,6 +390,36 @@ router.get('/stock/availability', authenticateToken, async (req: AuthRequest, re
     });
 
     res.json({ success: true, data: enriched, periode: { debut, fin } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== CATALOGUE ========================
+
+/**
+ * GET /catalogue - Ce qui peut être proposé pour une manifestation, stock et parc réunis.
+ *
+ * `/stock/availability` ne connaît que `manifestation_stock`. Une collectivité qui tient ses
+ * prestations et son matériel prêtable dans le parc — « Service Technique › Prestations ›
+ * Raccordement électrique » — voyait donc un catalogue vide, alors que tout était saisi. Le
+ * demandeur, lui, ne sait pas laquelle des deux tables porte ce qu'il demande, et n'a pas à le
+ * savoir : cette route rend les deux, chaque ligne disant d'où elle vient.
+ *
+ * Les mêmes filtres que le stock : `service`, `kind`, `category_id`.
+ */
+router.get('/catalogue', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { date, date_from, date_to, service, kind, category_id } = req.query;
+    const debut = String(date_from || date || aujourdHui());
+    const fin = String(date_to || date || debut);
+
+    const articles = await catalogue(req, debut, fin, { service, kind, categoryId: category_id });
+    if (articles === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    res.json({ success: true, data: articles, periode: { debut, fin } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

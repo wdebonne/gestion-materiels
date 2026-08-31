@@ -588,6 +588,9 @@ GET    /api/manifestations/:id/history # Historique des changements
 **Stock des manifestations**
 
 ```
+GET    /api/manifestations/catalogue   # Ce qui peut être proposé : stock **et** parc prêtable réunis,
+                                       # avec ce qu'il en reste (mêmes filtres service/kind/category_id).
+                                       # Une prestation y vaut « sans limite », jamais zéro.
 GET    /api/manifestations/stock       # Liste (date_from/date_to → prévisionnel et réel à cette période)
 GET    /api/manifestations/stock/availability  # Disponibilité à une date ou sur une période
                                                # (service, kind=prestation|materiel, category_id : périmètre proposé)
