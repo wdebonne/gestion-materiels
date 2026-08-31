@@ -590,6 +590,7 @@ GET    /api/manifestations/:id/history # Historique des changements
 ```
 GET    /api/manifestations/stock       # Liste (date_from/date_to → prévisionnel et réel à cette période)
 GET    /api/manifestations/stock/availability  # Disponibilité à une date ou sur une période
+                                               # (service, kind=prestation|materiel, category_id : périmètre proposé)
 POST   /api/manifestations/stock       # Créer un article
 PUT    /api/manifestations/stock/:id   # Modifier un article
 DELETE /api/manifestations/stock/:id   # Supprimer un article

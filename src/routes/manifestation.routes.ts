@@ -29,6 +29,7 @@ import {
   approbationsDe,
   approbationsEnAttente,
   approbationsEnAttenteHorsCoordinateur,
+  conditionPerimetreService,
   creerApprobationsManquantes,
   peutDeciderPour,
   serviceCoordinateur,
@@ -327,7 +328,10 @@ router.delete('/stock/:id', authenticateToken, requireSupervisor, async (req: Au
 // est la vraie question quand on reçoit une demande.
 router.get('/stock/availability', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { date, date_from, date_to } = req.query;
+    // `service` et `kind` répondent à « les prestations de l'urbanisme », question que se pose un
+    // formulaire de demande : proposer tout le stock à qui ne demande qu'une chose oblige le
+    // demandeur à faire le tri à la place du service.
+    const { date, date_from, date_to, service, kind, category_id } = req.query;
     const debut = String(date_from || date || aujourdHui());
     const fin = String(date_to || date || debut);
 
@@ -336,10 +340,34 @@ router.get('/stock/availability', authenticateToken, async (req: AuthRequest, re
       return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
     }
 
-    const stock = await db.query(
-      `SELECT ms.* FROM manifestation_stock ms WHERE 1=1${portee.sql} ORDER BY ms.category, ms.name`,
-      portee.params
-    );
+    let sql = `
+      SELECT ms.*, c.name as category_name, sc.name as subcategory_name
+      FROM manifestation_stock ms
+      LEFT JOIN categories c ON c.id = ms.category_id
+      LEFT JOIN subcategories sc ON sc.id = ms.subcategory_id
+      WHERE 1=1${portee.sql}
+    `;
+    const params: any[] = [...portee.params];
+
+    if (service) {
+      const perimetre = conditionPerimetreService(String(service), 'ms');
+      sql += perimetre.sql;
+      params.push(...perimetre.params);
+    }
+    if (category_id) {
+      sql += ' AND ms.category_id = ?';
+      params.push(category_id);
+    }
+    // Une prestation ne se prête pas, elle s'exécute : les mélanger dans une même liste déroulante
+    // fait cocher « montage de podium » à qui cherchait un podium.
+    if (kind === 'prestation') {
+      sql += ' AND ms.is_prestation = 1';
+    } else if (kind === 'materiel') {
+      sql += ' AND (ms.is_prestation IS NULL OR ms.is_prestation = 0)';
+    }
+    sql += ' ORDER BY ms.category, ms.name';
+
+    const stock = await db.query(sql, params);
     const engagements = await disponibiliteSur(stock.map((item: any) => item.id), debut, fin);
 
     const enriched = stock.map((item: any) => {
