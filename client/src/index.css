@@ -304,6 +304,84 @@ body {
   @apply text-sm;
 }
 
+/*
+ * FullCalendar en thème sombre.
+ *
+ * La grille ne tient sa couleur que de ses variables CSS, toutes calées sur une
+ * page blanche : traits #ddd, case du jour en jaune pâle, sélection bleu clair.
+ * Sur le gris-800 de l'application, les bordures ressortaient plus claires que
+ * les cellules et la case d'aujourd'hui virait au kaki. On redéfinit les
+ * variables : les surcharger sélecteur par sélecteur reviendrait à rater les
+ * vues qu'on n'a pas ouvertes en testant.
+ *
+ * La portée est `.dark .fc`, pas `.dark` seul : FullCalendar pose ses valeurs
+ * par défaut sur `:root`, à spécificité égale avec `.dark`, et insère sa feuille
+ * de style au montage du composant — l'ordre des règles n'est pas garanti. Deux
+ * classes tranchent quel que soit l'ordre.
+ */
+.dark .fc {
+  --fc-page-bg-color: #1e293b;                     /* gray-800, le fond du panneau */
+  --fc-neutral-bg-color: rgba(51, 65, 85, 0.6);    /* gray-700 */
+  --fc-neutral-text-color: #94a3b8;                /* gray-400 */
+  --fc-border-color: #334155;                      /* gray-700 */
+  --fc-today-bg-color: rgba(56, 189, 248, 0.1);    /* primary-400 : bleuté plutôt que jaune */
+  --fc-highlight-color: rgba(56, 189, 248, 0.18);
+  --fc-non-business-color: rgba(2, 6, 23, 0.4);    /* gray-950 : les heures fermées s'assombrissent */
+  --fc-more-link-bg-color: #334155;
+  --fc-more-link-text-color: #e2e8f0;              /* gray-200 */
+  --fc-list-event-hover-bg-color: rgba(51, 65, 85, 0.55);
+  --fc-event-selected-overlay-color: rgba(255, 255, 255, 0.18);
+  --fc-now-indicator-color: #f87171;               /* red-400 : le rouge pur brûle sur fond sombre */
+  --fc-button-bg-color: #334155;
+  --fc-button-border-color: #475569;
+  --fc-button-hover-bg-color: #475569;
+  --fc-button-hover-border-color: #64748b;
+  --fc-button-active-bg-color: #0284c7;
+  --fc-button-active-border-color: #0284c7;
+  @apply text-gray-200;
+}
+
+/* L'en-tête des jours se détache du corps de la grille, comme le blanc sur gris
+   du thème clair. */
+.dark .fc .fc-col-header-cell {
+  background-color: rgba(15, 23, 42, 0.4);
+}
+
+.dark .fc .fc-col-header-cell-cushion,
+.dark .fc .fc-daygrid-day-number,
+.dark .fc .fc-list-day-text,
+.dark .fc .fc-list-day-side-text {
+  @apply text-gray-200;
+}
+
+.dark .fc .fc-timegrid-axis-cushion,
+.dark .fc .fc-timegrid-slot-label-cushion {
+  @apply text-gray-400;
+}
+
+/*
+ * Les jours hors du mois affiché sont estompés à 30 % d'opacité, réglage pensé
+ * pour du texte noir sur blanc. Le même gris clair à 30 % sur fond sombre
+ * disparaît complètement.
+ */
+.dark .fc .fc-day-other .fc-daygrid-day-top {
+  opacity: 0.5;
+}
+
+/* Le fond bleuté d'aujourd'hui se remarque à peine : le numéro le confirme. */
+.dark .fc .fc-day-today .fc-daygrid-day-number {
+  @apply text-primary-300 font-semibold;
+}
+
+/* Survol noir translucide : invisible sur fond sombre. */
+.dark .fc .fc-daygrid-more-link:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .fc .fc-popover {
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+}
+
 /* FullCalendar responsive - Mobile */
 @media (max-width: 639px) {
   .fc {

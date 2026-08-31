@@ -51,6 +51,8 @@ const EXEMPTIONS: Record<string, string> = {
     "Arithmétique de stock sur des matériels déjà rattachés à une manifestation, ou dont l'appelant a obtenu les identifiants par une lecture qui, elle, applique la portée (parcAvecDisponibilite, objetsDe). Ne rend que des quantités et le nom d'un lot en rupture, jamais une fiche de matériel ni un prix d'achat.",
   'services/manifestationServices.service.ts':
     "Ne rend jamais de données de matériel : la jointure sert à savoir quels services ont ces matériels dans leur périmètre, et les identifiants viennent d'une manifestation que l'appelant voit déjà. Filtrer par les catégories du lecteur reviendrait à ne pas solliciter un service parce que celui qui a saisi la demande n'a pas accès à sa catégorie.",
+  'services/manifestationIntake.service.ts':
+    "Rapproche un libellé reçu d'un article proposable, sur une route de dépôt ouverte et signée : il n'y a ni utilisateur ni portée à appliquer. La lecture est bornée à ce que le parc accepte de prêter et à ce qui est actif — exactement ce que le catalogue propose déjà publiquement — et ne rend à l'appelant qu'un rattachement, jamais une fiche. Une source qui détient le secret peut au plus vérifier qu'un nom existe.",
   'services/donneesModele.service.ts':
     "Ne lit que les prestations déjà rattachées à une manifestation donnée, pour remplir le document destiné à un service — et les filtre par le périmètre de ce service, ce qui est une portée plus étroite que celle des catégories. Aucun appelant n'est piloté par un utilisateur qui naviguerait dans le parc : la génération tourne côté serveur sans requête, et l'aperçu est réservé à l'administrateur.",
 };

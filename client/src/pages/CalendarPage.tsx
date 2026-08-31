@@ -412,10 +412,10 @@ export default function CalendarPage() {
             >
               Aujourd'hui
             </Button>
-            <div className="flex items-center border rounded-lg overflow-hidden">
+            <div className="flex items-center border border-gray-300 dark:border-gray-600 rounded-lg overflow-hidden">
               <button aria-label="Année précédente"
                 onClick={goToPrevYear}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-r hidden sm:block touch-target"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-r border-gray-300 dark:border-gray-600 hidden sm:block touch-target"
                 title="Année précédente"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -423,7 +423,7 @@ export default function CalendarPage() {
               </button>
               <button aria-label="Mois précédent"
                 onClick={goToPrevMonth}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 sm:border-r touch-target"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 sm:border-r border-gray-300 dark:border-gray-600 touch-target"
                 title="Mois précédent"
               >
                 <ChevronLeft className="w-4 h-4" />
@@ -433,14 +433,14 @@ export default function CalendarPage() {
               </span>
               <button aria-label="Mois suivant"
                 onClick={goToNextMonth}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 sm:border-l touch-target"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300 sm:border-l border-gray-300 dark:border-gray-600 touch-target"
                 title="Mois suivant"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
               <button aria-label="Année suivante"
                 onClick={goToNextYear}
-                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-l hidden sm:block touch-target"
+                className="p-1.5 sm:p-2 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-500 dark:text-gray-400 border-l border-gray-300 dark:border-gray-600 hidden sm:block touch-target"
                 title="Année suivante"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -500,8 +500,8 @@ export default function CalendarPage() {
                   onClick={() => changeView(view.value as typeof currentView)}
                   className={`flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-md text-xs sm:text-sm font-medium transition-all whitespace-nowrap ${
                     currentView === view.value
-                      ? 'bg-white text-gray-900 shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm'
+                      : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
                   <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -520,7 +520,7 @@ export default function CalendarPage() {
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-3 py-1.5 border rounded-lg text-sm w-36 lg:w-48 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="pl-9 pr-3 py-1.5 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 rounded-lg text-sm w-36 lg:w-48 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
               {searchQuery && (
                 <button
@@ -537,7 +537,7 @@ export default function CalendarPage() {
               variant="secondary"
               size="sm"
               onClick={() => setShowFilters(!showFilters)}
-              className={showFilters || filterEventType ? 'bg-primary-50 text-primary-700' : ''}
+              className={showFilters || filterEventType ? 'bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300' : ''}
             >
               <Filter className="w-4 h-4" />
             </Button>
@@ -546,7 +546,7 @@ export default function CalendarPage() {
 
         {/* Barre de filtres */}
         {showFilters && (
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mt-3 pt-3 border-t">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
             {/* Recherche mobile (visible uniquement sur mobile) */}
             <div className="relative sm:hidden w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -555,7 +555,7 @@ export default function CalendarPage() {
                 placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9 pr-3 py-2 border rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+                className="pl-9 pr-3 py-2 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 rounded-lg text-sm w-full focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               />
               {searchQuery && (
                 <button
@@ -597,7 +597,7 @@ export default function CalendarPage() {
         )}
 
         {/* Panneau latéral */}
-        <div className={`bg-white border-r border-gray-200 transition-all duration-300 flex-shrink-0
+        <div className={`bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 transition-all duration-300 flex-shrink-0
           ${showMiniCalendar ? 'w-72' : 'w-0'}
           ${showMiniCalendar ? 'fixed inset-y-0 left-0 z-30 lg:relative lg:z-auto shadow-xl lg:shadow-none mt-[var(--toolbar-height,0px)] lg:mt-0' : ''}
           overflow-hidden`}>
@@ -655,10 +655,10 @@ export default function CalendarPage() {
                       }}
                       className={`
                         relative aspect-square flex items-center justify-center text-sm rounded-lg transition-all
-                        ${!isCurrentMonth ? 'text-gray-600' : 'text-gray-700'}
+                        ${!isCurrentMonth ? 'text-gray-600 dark:text-gray-500' : 'text-gray-700 dark:text-gray-200'}
                         ${isSelected ? 'bg-primary-600 text-white' : ''}
-                        ${isTodayDate && !isSelected ? 'bg-primary-100 text-primary-700 font-bold' : ''}
-                        ${!isSelected && isCurrentMonth ? 'hover:bg-gray-200' : ''}
+                        ${isTodayDate && !isSelected ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-200 font-bold' : ''}
+                        ${!isSelected && isCurrentMonth ? 'hover:bg-gray-200 dark:hover:bg-gray-700' : ''}
                       `}
                     >
                       {format(day, 'd')}
@@ -734,7 +734,7 @@ export default function CalendarPage() {
             )}
 
             {/* Statut de synchronisation */}
-            <div className="border-t pt-4">
+            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
               <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-2 text-sm">Synchronisation</h3>
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
@@ -770,7 +770,7 @@ export default function CalendarPage() {
         {/* Toggle panneau latéral */}
         <button
           onClick={() => setShowMiniCalendar(!showMiniCalendar)}
-          className={`absolute top-4 z-10 bg-white border rounded-r-lg p-1.5 shadow-sm hover:bg-gray-50 transition-all ${
+          className={`absolute top-4 z-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-r-lg p-1.5 shadow-sm hover:bg-gray-50 dark:hover:bg-gray-700 transition-all ${
             showMiniCalendar ? 'hidden lg:block' : ''
           }`}
           style={{ left: showMiniCalendar ? '288px' : '0' }}
@@ -916,7 +916,7 @@ export default function CalendarPage() {
                       onClick={() => setFormData({ ...formData, color: color.value })}
                       className={`w-8 h-8 rounded-full border-2 transition-all ${
                         formData.color === color.value 
-                          ? 'border-gray-900 scale-110 ring-2 ring-offset-2 ring-gray-400' 
+                          ? 'border-gray-900 dark:border-white scale-110 ring-2 ring-offset-2 ring-gray-400 dark:ring-gray-500 dark:ring-offset-gray-800' 
                           : 'border-transparent hover:scale-105'
                       }`}
                       style={{ backgroundColor: color.value }}
@@ -1099,13 +1099,13 @@ function CalendarSyncSettings({
     >
       <ModalBody className="space-y-4">
         {/* Tabs */}
-        <div className="flex border-b">
+        <div className="flex border-b border-gray-200 dark:border-gray-700">
           <button
             onClick={() => setActiveTab('outlook')}
             className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'outlook'
                 ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -1121,7 +1121,7 @@ function CalendarSyncSettings({
             className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
               activeTab === 'caldav'
                 ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
             }`}
           >
             <CalendarIcon className="w-5 h-5" />
@@ -1135,8 +1135,8 @@ function CalendarSyncSettings({
         {/* Outlook Configuration */}
         {activeTab === 'outlook' && (
           <div className="space-y-4">
-            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 rounded-lg p-4">
-              <h4 className="font-medium text-blue-800 mb-2">Configuration Microsoft Outlook</h4>
+            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Configuration Microsoft Outlook</h4>
               <p className="text-sm text-blue-700 dark:text-blue-300">
                 Pour synchroniser avec Outlook, vous devez créer une application dans le portail Azure AD.{' '}
                 <a 
@@ -1201,8 +1201,8 @@ function CalendarSyncSettings({
         {/* CalDAV Configuration */}
         {activeTab === 'caldav' && (
           <div className="space-y-4">
-            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 rounded-lg p-4">
-              <h4 className="font-medium text-green-800 mb-2">Configuration CalDAV</h4>
+            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
+              <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">Configuration CalDAV</h4>
               <p className="text-sm text-green-700 dark:text-green-300">
                 CalDAV est compatible avec de nombreux services : Nextcloud, Synology, iCloud, Google Calendar, etc.
               </p>

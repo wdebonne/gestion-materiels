@@ -227,7 +227,10 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
   })
 
   const { data: categories = [] } = useQuery({
-    queryKey: ['categories-simple'],
+    // Clé préfixée par ['categories'] : sans cela, la création d'une catégorie
+    // n'invalide pas cette liste et le nouveau périmètre n'apparaît qu'après
+    // rechargement complet de la page.
+    queryKey: ['categories', 'simple'],
     queryFn: async () => {
       const res = await api.get('/categories')
       return (res.data.categories || res.data.data || []) as Array<{ id: number; name: string }>

@@ -29,7 +29,7 @@ export default function CategoriesPage() {
 
   // Récupérer les catégories
   const { data, isLoading, error } = useQuery({
-    queryKey: ['categories', search],
+    queryKey: ['categories', 'list', search],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
