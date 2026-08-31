@@ -195,8 +195,9 @@ Pour mettre à jour l'application :
 
 1. Allez dans **Stacks** > `gestion-materiels`
 2. Cliquez sur **Pull and redeploy**
-3. Cochez **Re-pull image and redeploy**
-4. Cliquez sur **Update**
+3. Cliquez sur **Update**
+
+> Inutile de cocher **Re-pull image** : l'image de l'application n'est publiée sur aucun registre, elle se construit depuis le `Dockerfile` du dépôt. Les deux fichiers compose la déclarent `pull_policy: build` pour que Portainer ne parte pas la chercher sur Docker Hub — voir le dépannage ci-dessous.
 
 ### Via ligne de commande
 
@@ -210,6 +211,18 @@ docker-compose up -d --build
 ---
 
 ## Dépannage
+
+### « pull access denied for gestion-materiels-app »
+
+```
+failed to pull images of the stack: compose pull operation failed:
+Error response from daemon: pull access denied for gestion-materiels-app,
+repository does not exist or may require 'docker login'
+```
+
+Portainer lance `docker compose pull` avant de redéployer. L'image de l'application n'existe sur aucun registre : elle se construit depuis le `Dockerfile` du dépôt. Compose la cherche donc sur Docker Hub, ne l'y trouve pas, et la mise à jour s'arrête avant même de commencer.
+
+Les deux fichiers compose déclarent `pull_policy: build` : Compose saute cette image au lieu de tenter de la télécharger. Si la stack déployée est plus ancienne que ce correctif, la mise à jour qui l'apporte doit se faire **sans** cocher « Re-pull image » ; les suivantes n'en auront plus besoin.
 
 ### Les conteneurs ne démarrent pas
 
