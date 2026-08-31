@@ -36,7 +36,7 @@ export default function ImportExportPage() {
   const [status, setStatus] = useState('')
 
   const { data: categories = [] } = useQuery({
-    queryKey: ['categories'],
+    queryKey: ['categories', 'simple'],
     queryFn: async () => {
       const res = await api.get('/categories')
       return res.data.categories ?? res.data.data ?? []

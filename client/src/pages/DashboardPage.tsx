@@ -54,10 +54,13 @@ export default function DashboardPage() {
 
   // Récupérer les catégories
   const { data: categories, isLoading: categoriesLoading } = useQuery({
-    queryKey: ['categories'],
+    // Même clé que les autres listes complètes : découper ici, et non dans le
+    // cache, sinon les pages qui attendent toutes les catégories n'en reçoivent
+    // que quatre.
+    queryKey: ['categories', 'simple'],
     queryFn: async () => {
       const response = await api.get('/categories')
-      return response.data.categories?.slice(0, 4) || []
+      return response.data.categories || []
     }
   })
 
@@ -151,7 +154,7 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {categories?.map((category: any) => (
+                  {categories?.slice(0, 4).map((category: any) => (
                     <ImageCard
                       key={category.id}
                       title={category.name}

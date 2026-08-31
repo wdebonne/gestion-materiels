@@ -456,7 +456,9 @@ export default function DynamicPluginPage({ pluginSlug, pageName = 'index' }: Dy
 
   // Charger les catégories pour les selects
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories-simple'],
+    // Préfixe ['categories'] : l'invalidation après création d'une catégorie
+    // doit atteindre cette liste.
+    queryKey: ['categories', 'simple'],
     queryFn: async () => {
       const response = await api.get('/categories')
       return response.data.categories || []
