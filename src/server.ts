@@ -13,7 +13,7 @@ import { swaggerSpec } from './config/swagger';
 import { getJwtSecret, assertSecretsConfigured } from './config/secrets';
 
 // Import des middlewares de sécurité avancés
-import { globalLimiter, authLimiter, sensitiveOpsLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter.middleware';
+import { globalLimiter, authLimiter, sensitiveOpsLimiter, uploadLimiter, exportLimiter, intakeLimiter } from './middleware/rateLimiter.middleware';
 import { httpsRedirect, httpsStatus } from './middleware/https.middleware';
 
 // Charger les variables d'environnement
@@ -47,6 +47,10 @@ import importExportRoutes from './routes/importExport.routes';
 import reservationRoutes from './routes/reservation.routes';
 import authSettingsRoutes from './routes/authSettings.routes';
 import manifestationRoutes from './routes/manifestation.routes';
+import manifestationIntakeRoutes from './routes/manifestationIntake.routes';
+import serviceRoutes from './routes/service.routes';
+import notificationRoutes from './routes/notification.routes';
+import manifestationExportRoutes from './routes/manifestationExport.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
 
 // Import des services
@@ -126,7 +130,21 @@ app.use(cors({
 }));
 app.use(morgan('combined'));
 app.use(cookieParser());
-app.use(express.json({ limit: '10mb' }));
+/**
+ * Le corps brut n'est conservé que pour la réception des demandes de
+ * manifestation : la signature HMAC porte sur les octets exacts envoyés, que
+ * `JSON.parse` ne restitue pas — un objet reformaté produit une autre signature.
+ * Le limiter à ce chemin évite de garder jusqu'à 10 Mo en mémoire à chaque
+ * requête de l'application.
+ */
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, _res, buf) => {
+    if (req.url?.startsWith('/api/manifestations/intake/')) {
+      (req as any).rawBody = buf;
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Middleware de vérification de token pour les fichiers sensibles
@@ -251,7 +269,17 @@ app.use('/api/qrcode', qrcodeRoutes);
 app.use('/api/import-export', exportLimiter, importExportRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/settings/auth', authSettingsRoutes);
+// Monté avant `/api/manifestations` : le dépôt d'une demande est signé, pas
+// authentifié, et ne doit pas passer par les gardes du routeur principal.
+app.use('/api/manifestations/intake', intakeLimiter, manifestationIntakeRoutes);
+// Monté avant `/api/manifestations` pour que « export » ne soit pas pris pour un
+// identifiant de manifestation. Volontairement pas derrière `exportLimiter` :
+// celui-ci couvre déjà tout `/api/import-export` avec 10 requêtes par heure, et
+// un dépôt automatique le viderait pour les utilisateurs.
+app.use('/api/manifestations/export', manifestationExportRoutes);
 app.use('/api/manifestations', manifestationRoutes);
+app.use('/api/services', serviceRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
 
 // Servir le frontend en production

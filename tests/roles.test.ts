@@ -59,13 +59,16 @@ function allowedRolesFor(router: any, method: string, path: string): readonly st
 // ---------------------------------------------------------------- le référentiel
 
 describe('Référentiel des rôles', () => {
-  it('contient les quatre rôles, du plus large au plus restreint', () => {
-    expect(ROLES).toEqual(['admin', 'supervisor', 'agent', 'user']);
+  it('contient les cinq rôles', () => {
+    // Les quatre premiers vont du plus large au plus restreint. `service` est
+    // à part : un accès latéral au seul module Manifestations, qui y écrit sans
+    // rien voir du parc.
+    expect(ROLES).toEqual(['admin', 'supervisor', 'agent', 'user', 'service']);
   });
 
   it("exclut l'administrateur des rôles configurables (il a tout par construction)", () => {
     expect(CONFIGURABLE_ROLES).not.toContain('admin');
-    expect(CONFIGURABLE_ROLES).toEqual(['supervisor', 'agent', 'user']);
+    expect(CONFIGURABLE_ROLES).toEqual(['supervisor', 'agent', 'user', 'service']);
   });
 
   it('reconnaît les rôles valides et rejette le reste', () => {

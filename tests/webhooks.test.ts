@@ -35,15 +35,21 @@ function sourcesServeur(dossier = path.join(RACINE, 'src'), trouves: string[] = 
 
 const TOUT_LE_SERVEUR = sourcesServeur().join('\n');
 
-/** Événements proposés par l'écran des webhooks, hors joker. */
+/**
+ * Événements proposés par l'écran des webhooks, hors joker.
+ *
+ * Le tiret bas est accepté : sans lui, `manifestation.status_changed` échappait
+ * aux deux relevés à la fois et la parité qu'ils vérifient devenait muette
+ * précisément sur les événements qu'on venait d'ajouter.
+ */
 function evenementsDeLEcran(): string[] {
-  return [...ECRAN.matchAll(/\{ value: '([a-z]+\.[a-z]+)'/g)].map((m) => m[1]);
+  return [...ECRAN.matchAll(/\{ value: '([a-z]+\.[a-z_]+)'/g)].map((m) => m[1]);
 }
 
 describe('Événements annoncés et événements déclenchés', () => {
   it('l’écran et le service décrivent la même liste', () => {
     const ecran = evenementsDeLEcran().sort();
-    const service = [...SERVICE.matchAll(/'([a-z]+\.[a-z]+)',/g)].map((m) => m[1]).sort();
+    const service = [...SERVICE.matchAll(/'([a-z]+\.[a-z_]+)',/g)].map((m) => m[1]).sort();
     expect(service).toEqual(ecran);
   });
 

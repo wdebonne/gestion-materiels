@@ -12,6 +12,10 @@ import {
 import api, { Category, Subcategory, GestionObject as ObjectType } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
 import { useAuthStore } from '@/stores/auth.store'
+import ChoixPrestation, { BadgePrestation } from '@/components/ChoixPrestation'
+import ChoixTypeMateriel from '@/components/ChoixTypeMateriel'
+import ChoixPretable from '@/components/ChoixPretable'
+import CoutUnitaire from '@/components/CoutUnitaire'
 import toast from 'react-hot-toast'
 import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
 
@@ -28,7 +32,9 @@ export default function CategoryDetailPage() {
   const [editingObject, setEditingObject] = useState<ObjectType | null>(null)
   const [formData, setFormData] = useState({
     name: '',
-    image: ''
+    image: '',
+    isPrestation: null as boolean | null,
+    availableForManifestations: null as boolean | null
   })
   const [objectFormData, setObjectFormData] = useState({
     name: '',
@@ -37,7 +43,12 @@ export default function CategoryDetailPage() {
     reference: '',
     serialNumber: '',
     status: 'available',
-    location: ''
+    location: '',
+    isPrestation: null as boolean | null,
+    materialType: 'unique' as 'unique' | 'lot',
+    quantityTotal: 0,
+    unitCost: 0,
+    availableForManifestations: null as boolean | null
   })
   const [deleteConfirm, setDeleteConfirm] = useState<Subcategory | null>(null)
   const [deleteObjectConfirm, setDeleteObjectConfirm] = useState<ObjectType | null>(null)
@@ -46,7 +57,9 @@ export default function CategoryDetailPage() {
   const [categoryFormData, setCategoryFormData] = useState({
     name: '',
     description: '',
-    image: ''
+    image: '',
+    isPrestation: false,
+    availableForManifestations: true
   })
 
   // Récupérer la catégorie
@@ -180,11 +193,13 @@ export default function CategoryDetailPage() {
       setEditingSubcategory(subcategory)
       setFormData({
         name: subcategory.name,
-        image: subcategory.image || ''
+        image: subcategory.image || '',
+        isPrestation: subcategory.isPrestation ?? null,
+        availableForManifestations: subcategory.availableForManifestations ?? null
       })
     } else {
       setEditingSubcategory(null)
-      setFormData({ name: '', image: '' })
+      setFormData({ name: '', image: '', isPrestation: null, availableForManifestations: null })
     }
     setIsModalOpen(true)
   }
@@ -192,7 +207,7 @@ export default function CategoryDetailPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingSubcategory(null)
-    setFormData({ name: '', image: '' })
+    setFormData({ name: '', image: '', isPrestation: null, availableForManifestations: null })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -211,7 +226,12 @@ export default function CategoryDetailPage() {
         reference: object.reference || '',
         serialNumber: object.serialNumber || '',
         status: object.status || 'available',
-        location: object.location || ''
+        location: object.location || '',
+        isPrestation: object.isPrestation ?? null,
+        materialType: object.materialType ?? 'unique',
+        quantityTotal: object.quantityTotal ?? 0,
+        unitCost: object.unitCost ?? 0,
+        availableForManifestations: object.availableForManifestations ?? null
       })
     } else {
       setEditingObject(null)
@@ -222,7 +242,12 @@ export default function CategoryDetailPage() {
         reference: '',
         serialNumber: '',
         status: 'available',
-        location: ''
+        location: '',
+        isPrestation: null,
+        materialType: 'unique',
+        quantityTotal: 0,
+        unitCost: 0,
+        availableForManifestations: null
       })
     }
     setIsObjectModalOpen(true)
@@ -238,7 +263,12 @@ export default function CategoryDetailPage() {
       reference: '',
       serialNumber: '',
       status: 'available',
-      location: ''
+      location: '',
+      isPrestation: null,
+      materialType: 'unique',
+      quantityTotal: 0,
+      unitCost: 0,
+      availableForManifestations: null
     })
   }
 
@@ -252,7 +282,9 @@ export default function CategoryDetailPage() {
       setCategoryFormData({
         name: category.name,
         description: category.description || '',
-        image: category.image || ''
+        image: category.image || '',
+        isPrestation: Boolean(category.isPrestation),
+        availableForManifestations: category.availableForManifestations !== false
       })
       setEditCategory(true)
     }
@@ -413,6 +445,12 @@ export default function CategoryDetailPage() {
                 count={subcategory.objectCount}
                 onClick={() => navigate(`/categories/${slug}/${subcategory.slug}`)}
               />
+
+              {/* Une prestation ne se manipule pas comme du matériel : le dire
+                  dès la liste évite d'aller l'ouvrir pour le découvrir. */}
+              {(subcategory.isPrestation ?? category?.isPrestation) ? (
+                <BadgePrestation className="absolute top-2 left-2 shadow-sm" />
+              ) : null}
               
               {/* Actions au survol - superviseurs et admins uniquement */}
               {isSupervisor && (
@@ -544,6 +582,28 @@ export default function CategoryDetailPage() {
               value={formData.image}
               onChange={(url) => setFormData({ ...formData, image: url })}
             />
+
+            {/*
+              C'est ici que se règle l'organisation visée : « Technique ›
+              Prestation » à côté de « Technique › Mobilier ». Le service tient
+              ses prestations là où il tient déjà son matériel, et le routage
+              d'approbation suit la catégorie sans rien de plus.
+            */}
+            <ChoixPrestation
+              valeur={formData.isPrestation}
+              onChange={(isPrestation) => setFormData({ ...formData, isPrestation })}
+              heriteDe={{ prestation: Boolean(category?.isPrestation), source: 'la catégorie' }}
+              label="Que contient cette sous-catégorie ?"
+              aide="Une prestation — raccordement électrique, débit de boissons, personnel — n’a ni stock ni exemplaire : elle ne bloque jamais une autre manifestation."
+            />
+
+            <ChoixPretable
+              valeur={formData.availableForManifestations}
+              onChange={(availableForManifestations) =>
+                setFormData({ ...formData, availableForManifestations })
+              }
+              heriteDe={{ pretable: category?.availableForManifestations !== false, source: 'la catégorie' }}
+            />
           </ModalBody>
 
           <ModalFooter>
@@ -577,6 +637,28 @@ export default function CategoryDetailPage() {
               value={categoryFormData.description}
               onChange={(e) => setCategoryFormData({ ...categoryFormData, description: e.target.value })}
               rows={3}
+            />
+
+            <ChoixPrestation
+              valeur={categoryFormData.isPrestation}
+              onChange={(isPrestation) =>
+                setCategoryFormData({ ...categoryFormData, isPrestation: Boolean(isPrestation) })
+              }
+              sansHeritage
+              label="Que contient cette catégorie ?"
+              aide="Le ton donné à toute la catégorie. Chaque sous-catégorie peut ensuite l’affiner — une catégorie de service porte souvent les deux."
+            />
+
+            <ChoixPretable
+              valeur={categoryFormData.availableForManifestations}
+              onChange={(availableForManifestations) =>
+                setCategoryFormData({
+                  ...categoryFormData,
+                  availableForManifestations: availableForManifestations !== false,
+                })
+              }
+              sansHeritage
+              label="Catégorie disponible pour les manifestations"
             />
 
             <ImageUpload
@@ -688,6 +770,42 @@ export default function CategoryDetailPage() {
                 </select>
               </div>
             </div>
+
+            {!(objectFormData.isPrestation ?? category?.isPrestation) && (
+              <ChoixTypeMateriel
+                type={objectFormData.materialType}
+                quantite={objectFormData.quantityTotal}
+                onChangeType={(materialType) => setObjectFormData({ ...objectFormData, materialType })}
+                onChangeQuantite={(quantityTotal) => setObjectFormData({ ...objectFormData, quantityTotal })}
+              />
+            )}
+
+            <ChoixPrestation
+              valeur={objectFormData.isPrestation}
+              onChange={(isPrestation) => setObjectFormData({ ...objectFormData, isPrestation })}
+              heriteDe={{ prestation: Boolean(category?.isPrestation), source: 'sa catégorie' }}
+              aide="Une prestation ne se stocke pas et n’immobilise rien : elle est demandée, puis réalisée."
+            />
+
+            <ChoixPretable
+              valeur={objectFormData.availableForManifestations}
+              onChange={(availableForManifestations) =>
+                setObjectFormData({ ...objectFormData, availableForManifestations })
+              }
+              heriteDe={{ pretable: category?.availableForManifestations !== false, source: 'sa catégorie' }}
+            />
+
+            <CoutUnitaire
+              valeur={objectFormData.unitCost}
+              nature={
+                (objectFormData.isPrestation ?? category?.isPrestation)
+                  ? 'prestation'
+                  : objectFormData.materialType === 'lot'
+                    ? 'lot'
+                    : 'unique'
+              }
+              onChange={(unitCost) => setObjectFormData({ ...objectFormData, unitCost })}
+            />
 
             <ImageUpload
               label="Image"

@@ -30,13 +30,14 @@ const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
 const GeneralSettingsPage = lazy(() => import('@/pages/settings/GeneralSettingsPage'))
 const UsersPage = lazy(() => import('@/pages/settings/UsersPage'))
 const PermissionsPage = lazy(() => import('@/pages/settings/PermissionsPage'))
-const SmtpSettingsPage = lazy(() => import('@/pages/settings/SmtpSettingsPage'))
-const EmailTemplatesPage = lazy(() => import('@/pages/settings/EmailTemplatesPage'))
+const EmailSettingsPage = lazy(() => import('@/pages/settings/EmailSettingsPage'))
 const PluginsPage = lazy(() => import('@/pages/settings/PluginsPage'))
 const BackupPage = lazy(() => import('@/pages/settings/BackupPage'))
 const DatabasePage = lazy(() => import('@/pages/settings/DatabasePage'))
 const LogsPage = lazy(() => import('@/pages/settings/LogsPage'))
 const WebhooksPage = lazy(() => import('@/pages/settings/WebhooksPage'))
+const ManifestationsSettingsPage = lazy(() => import('@/pages/settings/ManifestationsSettingsPage'))
+const NotificationsPage = lazy(() => import('@/pages/settings/NotificationsPage'))
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
 const ApiTokensPage = lazy(() => import('@/pages/settings/ApiTokensPage'))
 const AuthSettingsPage = lazy(() => import('@/pages/settings/AuthSettingsPage'))
@@ -146,13 +147,23 @@ function App() {
             <Route path="users" element={<UsersPage />} />
             <Route path="permissions" element={<PermissionsPage />} />
             <Route path="auth" element={<AuthSettingsPage />} />
-            <Route path="smtp" element={<SmtpSettingsPage />} />
-            <Route path="email-templates" element={<EmailTemplatesPage />} />
+            <Route path="email" element={<EmailSettingsPage />} />
             <Route path="plugins" element={<PluginsPage />} />
             <Route path="backup" element={<BackupPage />} />
             <Route path="database" element={<DatabasePage />} />
             <Route path="logs" element={<LogsPage />} />
             <Route path="webhooks" element={<WebhooksPage />} />
+            <Route path="manifestations" element={<ManifestationsSettingsPage />} />
+            <Route path="notifications" element={<NotificationsPage />} />
+
+            {/* Anciennes adresses, regroupées en onglets : on redirige plutôt
+                que de rendre caducs les liens et favoris déjà posés. */}
+            <Route path="smtp" element={<Navigate to="/settings/email" replace />} />
+            <Route path="email-templates" element={<Navigate to="/settings/email?onglet=templates" replace />} />
+            <Route path="manifestations-reception" element={<Navigate to="/settings/manifestations" replace />} />
+            <Route path="services" element={<Navigate to="/settings/manifestations?onglet=services" replace />} />
+            <Route path="materiel-pretable" element={<Navigate to="/settings/manifestations?onglet=materiel-pretable" replace />} />
+            <Route path="manifestations-export" element={<Navigate to="/settings/manifestations?onglet=export" replace />} />
             <Route path="api" element={<ApiPage />} />
             <Route path="api-tokens" element={<ApiTokensPage />} />
           </Route>

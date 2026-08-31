@@ -1,7 +1,10 @@
 import cron from 'node-cron';
 import { db } from '../database';
-import { sendAlertEmail, sendEmailRaw } from './email.service';
+import { sendAlertEmail, sendEmail, sendEmailRaw } from './email.service';
 import { emitAlert } from './websocket.service';
+import { destinatairesPour } from './manifestationNotify.service';
+import { genererClasseur, TYPE_MIME_XLSX } from './manifestationExport.service';
+import { deposerFichier, lireConfiguration } from './webdav.service';
 
 // Récupérer les paramètres d'alertes
 async function getAlertSettings(): Promise<{
@@ -58,8 +61,8 @@ export async function checkAlerts(): Promise<void> {
       `SELECT tc.*, o.name as object_name FROM technical_controls tc
        INNER JOIN objects o ON o.id = tc.object_id
        WHERE (
-         (tc.reminder_sent = 0 AND date(tc.expiry_date) <= date('now', '+${alertSettings.technical_control.days} days') AND date(tc.expiry_date) >= date('now'))
-         OR date(tc.expiry_date) < date('now')
+         (tc.reminder_sent = 0 AND date(tc.expiry_date) <= ${db.dateDecalee(alertSettings.technical_control.days)} AND date(tc.expiry_date) >= CURRENT_DATE)
+         OR date(tc.expiry_date) < CURRENT_DATE
        )`
     );
 
@@ -127,8 +130,8 @@ export async function checkAlerts(): Promise<void> {
        INNER JOIN objects o ON o.id = m.object_id
        WHERE m.next_date IS NOT NULL
        AND (
-         (m.reminder_sent = 0 AND date(m.next_date) <= date('now', '+${alertSettings.maintenance.days} days') AND date(m.next_date) >= date('now'))
-         OR date(m.next_date) < date('now')
+         (m.reminder_sent = 0 AND date(m.next_date) <= ${db.dateDecalee(alertSettings.maintenance.days)} AND date(m.next_date) >= CURRENT_DATE)
+         OR date(m.next_date) < CURRENT_DATE
        )`
     );
 
@@ -197,8 +200,8 @@ export async function checkAlerts(): Promise<void> {
        INNER JOIN green_spaces gs ON gs.id = gsm.green_space_id
        WHERE gsm.next_maintenance_date IS NOT NULL
        AND (
-         (date(gsm.next_maintenance_date) <= date('now', '+${alertSettings.maintenance.days} days') AND date(gsm.next_maintenance_date) >= date('now'))
-         OR date(gsm.next_maintenance_date) < date('now')
+         (date(gsm.next_maintenance_date) <= ${db.dateDecalee(alertSettings.maintenance.days)} AND date(gsm.next_maintenance_date) >= CURRENT_DATE)
+         OR date(gsm.next_maintenance_date) < CURRENT_DATE
        )`
     );
 
@@ -385,6 +388,220 @@ async function autoBackup(): Promise<void> {
   }
 }
 
+
+/**
+ * Réglages des rappels de manifestation.
+ *
+ * Même mécanisme clé/valeur que `alert_settings`. Les valeurs sont bornées à la
+ * lecture : elles servent à construire une date, et une valeur absurde vaudrait
+ * un rappel qui ne part jamais ou qui part tous les jours.
+ */
+async function reglagesManifestations(): Promise<{
+  rappelLivraisonJours: number;
+  alerteRecuperation: boolean;
+}> {
+  const defauts = { rappelLivraisonJours: 3, alerteRecuperation: true };
+
+  try {
+    const reglage = await db.queryOne(
+      "SELECT setting_value FROM settings WHERE setting_key = 'manifestation_alert_settings'"
+    );
+    if (!reglage?.setting_value) return defauts;
+
+    const lu = JSON.parse(reglage.setting_value);
+    const jours = Number(lu.rappelLivraisonJours);
+
+    return {
+      rappelLivraisonJours:
+        Number.isFinite(jours) && jours >= 0 && jours <= 60 ? jours : defauts.rappelLivraisonJours,
+      alerteRecuperation: lu.alerteRecuperation !== false,
+    };
+  } catch (erreur) {
+    console.error('Réglages des rappels de manifestation illisibles :', erreur);
+    return defauts;
+  }
+}
+
+/** Date du jour décalée de `jours`, au format des colonnes DATE. */
+function jourDecale(jours: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + jours);
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Rappelle les livraisons qui approchent, et signale les récupérations en retard.
+ *
+ * Les deux manquaient : une manifestation validée n'avertissait personne avant
+ * le jour J, et un matériel jamais récupéré restait compté comme sorti
+ * indéfiniment — donc indisponible pour les autres manifestations, sans que
+ * quiconque sache pourquoi.
+ *
+ * Les destinataires sont ceux que la manifestation concerne, pas tous les
+ * responsables : c'est toute la raison d'être des services.
+ */
+export async function verifierManifestations(): Promise<void> {
+  try {
+    const { rappelLivraisonJours, alerteRecuperation } = await reglagesManifestations();
+    const cible = jourDecale(rappelLivraisonJours);
+    const aujourdHui = jourDecale(0);
+
+    // --- Livraisons à préparer
+    const livraisons = await db.query(
+      `SELECT id, title, delivery_date, delivery_address
+       FROM manifestations
+       WHERE status = 'validated' AND delivery_date = ?`,
+      [cible]
+    );
+
+    for (const manifestation of livraisons) {
+      const destinataires = await destinatairesPour(manifestation.id, 'delivery_reminder');
+      for (const adresse of destinataires) {
+        try {
+          await sendEmail('manifestation_delivery_reminder', adresse, {
+            manifestation_title: manifestation.title,
+            delivery_date: manifestation.delivery_date,
+            delivery_address: manifestation.delivery_address || 'Non précisé',
+            days: rappelLivraisonJours,
+            manifestation_url: `${process.env.SITE_URL || ''}/manifestations?id=${manifestation.id}`,
+          });
+        } catch (erreur: any) {
+          if (/SMTP/i.test(erreur?.message ?? '')) break;
+          console.error('Erreur rappel de livraison :', erreur?.message ?? erreur);
+        }
+      }
+    }
+
+    // --- Récupérations en retard
+    let retards: any[] = [];
+    if (alerteRecuperation) {
+      retards = await db.query(
+        `SELECT id, title, recovery_date
+         FROM manifestations
+         WHERE status = 'delivered' AND recovery_date IS NOT NULL AND recovery_date < ?`,
+        [aujourdHui]
+      );
+
+      for (const manifestation of retards) {
+        // Une alerte par manifestation, pas une par passage du cron : sans ce
+        // garde-fou, une récupération oubliée en produirait une par heure.
+        const deja = await db.queryOne(
+          "SELECT id FROM alerts WHERE plugin_reference = 'manifestation-recovery' AND plugin_reference_id = ? AND is_dismissed = 0",
+          [manifestation.id]
+        );
+        if (deja) continue;
+
+        const message = `Le matériel de « ${manifestation.title} » devait être récupéré le ${manifestation.recovery_date}. Tant que la récupération n'est pas saisie, le stock le compte comme sorti.`;
+        const alerte = await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, 'reservation_overdue', 'warning', 'manifestation-recovery', ?, ?)`,
+          [`Récupération en retard : ${manifestation.title}`, message, manifestation.id, manifestation.recovery_date]
+        );
+
+        emitAlert({
+          id: alerte.lastInsertRowid,
+          title: `Récupération en retard : ${manifestation.title}`,
+          message,
+          alertType: 'reservation_overdue',
+          severity: 'warning',
+        });
+
+        for (const adresse of await destinatairesPour(manifestation.id, 'recovery_overdue')) {
+          try {
+            await sendEmail('manifestation_recovery_overdue', adresse, {
+              manifestation_title: manifestation.title,
+              recovery_date: manifestation.recovery_date,
+              manifestation_url: `${process.env.SITE_URL || ''}/manifestations?id=${manifestation.id}`,
+            });
+          } catch (erreur: any) {
+            if (/SMTP/i.test(erreur?.message ?? '')) break;
+            console.error('Erreur alerte de récupération :', erreur?.message ?? erreur);
+          }
+        }
+      }
+    }
+
+    if (livraisons.length > 0 || retards.length > 0) {
+      console.log(
+        `📅 Manifestations : ${livraisons.length} livraison(s) à J-${rappelLivraisonJours}, ${retards.length} récupération(s) en retard`
+      );
+    }
+  } catch (erreur) {
+    console.error('❌ Vérification des manifestations interrompue :', erreur);
+  }
+}
+
+
+/**
+ * Dépose les profils réglés en automatique sur Nextcloud.
+ *
+ * Le fichier partagé était tenu à la main, donc périmé dès qu'un statut
+ * changeait — et c'est ce fichier périmé que les services continuaient de lire.
+ *
+ * Chaque profil est traité indépendamment : un chemin distant refusé ne doit pas
+ * empêcher les autres de partir. Le résultat est noté sur le profil, sinon un
+ * dépôt qui échoue reste invisible.
+ */
+export async function deposerExportsAutomatiques(): Promise<void> {
+  const config = await lireConfiguration();
+  if (!config) return;
+
+  let profils: any[] = [];
+  try {
+    profils = await db.query(
+      "SELECT * FROM manifestation_export_profiles WHERE is_active = 1 AND auto_export = 1 AND destination = 'webdav'"
+    );
+  } catch (erreur: any) {
+    // Table absente sur une base pas encore migrée : rien à déposer.
+    console.error('Profils d\'export illisibles :', erreur?.message ?? erreur);
+    return;
+  }
+
+  for (const profil of profils) {
+    try {
+      const { contenu, lignes, nomFichier } = await genererClasseur(
+        lireProfilJson<any[]>(profil.columns, []),
+        lireProfilJson<any>(profil.filters, {})
+      );
+
+      const dossier = (profil.remote_path || 'Manifestations').replace(/^\/+|\/+$/g, '');
+      const depot = await deposerFichier(`${dossier}/${nomFichier}`, contenu, TYPE_MIME_XLSX);
+
+      await db.execute(
+        `UPDATE manifestation_export_profiles
+         SET last_export_at = ?, last_status = ?, last_error = ?, updated_at = ?
+         WHERE id = ?`,
+        [
+          new Date().toISOString(),
+          depot.success ? 'ok' : 'echec',
+          depot.error ?? null,
+          new Date().toISOString(),
+          profil.id,
+        ]
+      );
+
+      if (depot.success) {
+        console.log(`📤 Export « ${profil.name} » déposé (${lignes} manifestation(s))`);
+      } else {
+        console.warn(`⚠️ Export « ${profil.name} » non déposé : ${depot.error}`);
+      }
+    } catch (erreur: any) {
+      console.error(`Export « ${profil.name} » interrompu :`, erreur?.message ?? erreur);
+    }
+  }
+}
+
+/** Lecture tolérante d'une colonne JSON : un profil corrompu ne bloque pas les autres. */
+function lireProfilJson<T>(brut: unknown, defaut: T): T {
+  if (!brut) return defaut;
+  try {
+    return typeof brut === 'string' ? (JSON.parse(brut) as T) : (brut as T);
+  } catch {
+    return defaut;
+  }
+}
+
+
 // Initialiser les tâches cron
 export function initCronJobs(): void {
   // Vérifier les alertes toutes les heures
@@ -398,6 +615,15 @@ export function initCronJobs(): void {
 
   // Rapport hebdomadaire le lundi à 7h
   cron.schedule('0 7 * * 1', generateWeeklyReport);
+
+  // Manifestations : rappel de livraison et récupérations en retard, chaque
+  // matin à 7h30 — avant que les équipes partent sur le terrain.
+  cron.schedule('30 7 * * *', verifierManifestations);
+
+  // Dépôt du suivi partagé, chaque nuit à 3h. Les changements de la journée sont
+  // déjà déposés au fil de l'eau ; ce passage rattrape ce qu'un Nextcloud
+  // injoignable aurait fait manquer.
+  cron.schedule('0 3 * * *', deposerExportsAutomatiques);
 
   // Exécuter une première vérification au démarrage
   setTimeout(checkAlerts, 10000);
@@ -537,4 +763,4 @@ async function generateWeeklyReport(): Promise<void> {
   }
 }
 
-export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport };
+export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport, verifierManifestations, deposerExportsAutomatiques };

@@ -7,6 +7,30 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Déploiement — MySQL, et une installation neuve qui démarre
+
+> L'application annonce deux moteurs depuis toujours, mais n'avait jamais été déployée ni sur MySQL, ni sur une base vide. Le premier essai de déploiement a montré qu'aucune installation neuve ne pouvait démarrer — MySQL comme SQLite. Tout ce qui suit a été vérifié en rejouant le même parcours métier sur les deux moteurs, depuis une base vierge.
+
+#### Ajouté
+
+- **Pile Docker MySQL** (`docker-compose.mysql.yml`) : serveur MySQL 8.4 dédié, port du serveur non publié sur l'hôte, projet, réseau, volumes et port applicatif distincts de la pile SQLite — les deux tournent en même temps sans se gêner
+  - Trois secrets exigés (`JWT_SECRET`, `MYSQL_ROOT_PASSWORD`, `MYSQL_APP_PASSWORD`) : la pile refuse de démarrer avec un message clair au lieu de tourner avec un mot de passe présent dans le dépôt
+  - `MYSQL_HOST` et le compte applicatif sont fixés dans le fichier plutôt que substitués : le `.env` de développement pointe `localhost` et met `MYSQL_USER=root`, deux valeurs qui auraient respectivement fait chercher le serveur dans le conteneur applicatif et fait refuser le démarrage par l'image MySQL
+
+#### Corrigé
+
+- **Aucune installation neuve ne démarrait, sur les deux moteurs.** `query()` choisissait entre `all()` et `run()` selon que la requête commençait par `SELECT`. `PRAGMA table_info(...)` ne commence pas par `SELECT` : ses lignes partaient dans `run()`, qui renvoie `{ changes: 0 }` sans lever d'erreur. Les dix migrations qui lisent la liste des colonnes recevaient donc un ensemble vide et rejouaient leurs `ALTER TABLE` sur des colonnes déjà créées — « duplicate column name » dès la migration 003. Invisible sur une base existante, dont les migrations sont déjà inscrites. L'aiguillage se fait maintenant sur `stmt.reader`
+- **L'image Docker ne se construisait plus.** `@testing-library/react` v16 ne déclare `@testing-library/dom` qu'en `peerDependency` ; le Dockerfile installe avec `--legacy-peer-deps`, qui n'installe pas les pairs. `screen` et `fireEvent` disparaissaient et le contrôle de types du client arrêtait la construction. La dépendance est déclarée explicitement
+- **Ordre de création des tables.** `group_permissions` et `service_templates` référençaient des tables créées plus loin. SQLite l'accepte, InnoDB refuse
+- **`DEFAULT` sur colonnes TEXT** (11 colonnes) : interdit par MySQL sous forme littérale, écrit désormais sous forme d'expression — `DEFAULT ('[]')` — que les deux moteurs acceptent
+- **Dates ISO 8601 dans des colonnes `DATETIME`** : MySQL les refuse, SQLite les stocke comme du texte. Le code en écrit à une centaine d'endroits ; la conversion se fait au seul point de passage vers le serveur, et seulement pour les chaînes portant un fuseau explicite
+- **Aucun index n'était créé sur MySQL.** `CREATE INDEX IF NOT EXISTS` est propre à SQLite : les 45 index échouaient un par un, chacun réduit à un avertissement. La base tournait sans un seul index — sans effet visible sur un petit parc, ingérable ensuite
+- **`||` renvoyait `0` ou `1` au lieu d'un nom.** En MySQL, `||` est un OU logique et non une concaténation. Sans erreur, l'auteur d'une manifestation, l'auteur d'un message, les observateurs, le créateur d'un jeton API et les valeurs injectées dans les modèles `.docx` devenaient des booléens. Les 12 sites passent par `CONCAT_WS`
+- **Tout changement de statut échouait sur MySQL** : `datetime('now')` est propre à SQLite, remplacé par `CURRENT_TIMESTAMP`
+- **Le cron d'alertes était entièrement mort sur MySQL** : `date('now', '+30 days')` provoquait une erreur de syntaxe à chaque passage horaire, donc aucune alerte de contrôle technique, de maintenance ou d'espace vert. Même cause pour la fenêtre du calendrier. Une méthode `db.dateDecalee()` produit la forme propre à chaque moteur
+- **Liste des matériels et journaux en erreur 500 sur MySQL** : `execute()` de mysql2 rejette un nombre en paramètre de `LIMIT` ou `OFFSET`. Ces requêtes passent par `query()`, qui échappe ses paramètres de la même façon
+- **Injection SQL dans `GET /api/calendar/upcoming`** : le paramètre `days` de la requête HTTP était concaténé tel quel dans le SQL. Il est désormais tronqué à un entier
+
 ### Ergonomie terrain
 
 > L'application est utilisée par des agents de métier manuel — jardiniers, mécaniciens, chauffeurs — sur téléphone, dehors, parfois avec des gants et sans réseau. Cet ensemble de changements part de cet usage.
@@ -94,6 +118,337 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   - L'écriture de l'historique ne peut pas faire échouer l'action qu'elle décrit : perdre une ligne d'historique est moins grave que perdre une livraison
 - **Fiche PDF branchée.** `ManifestationPDFExport.tsx` existait sans être importé nulle part, et il lisait des champs qui n'existent pas : `name` au lieu de `title`, `items` au lieu de `materials`, `object_name` au lieu de `stock_name`, `res.data` au lieu de `res.data.data`, et des statuts en français là où le serveur stocke `draft`, `validated`, `delivered`… Chaque champ serait ressorti vide, et la génération se serait arrêtée sur `detail.name.replace`. La fiche contient désormais les informations générales, le matériel avec ses totaux et l'historique
 - **`PUT /:id/materials` refuse une mise à jour qui ne touche aucune ligne** au lieu de répondre 200 : c'était le cas quand un identifiant de stock était envoyé à la place de l'identifiant de ligne
+
+### Manifestations — réception des demandes et stock réel
+
+> Les demandes de manifestation arrivaient par une application de formulaires externe et étaient **ressaisies à la main**. Une chaise cassée pendant un prêt ne diminuait rien : le stock affiché restait celui de l'achat et s'éloignait un peu plus du réel à chaque manifestation.
+
+#### Ajouté
+
+- **Réception signée des demandes** (`POST /api/manifestations/intake/:slug`). Une application tierce dépose sa demande ; elle arrive au statut « À confirmer » et réserve le matériel au prévisionnel sans rien engager de réel
+  - Signature HMAC-SHA256 sur les **octets exacts** du corps, même convention que les webhooks émis. `express.json()` ne conservait aucun corps brut : un `verify` le retient, uniquement pour ce chemin, pour ne pas garder 10 Mo en mémoire à chaque requête de l'application
+  - Comparaison par `timingSafeEqual` : comparer deux signatures avec `===` laisse fuir, par le temps de réponse, le nombre de caractères devinés
+  - **Idempotence** sur l'identifiant d'origine : un formulaire qui réessaie après un délai réseau ne crée pas deux manifestations et ne réserve pas deux fois le matériel
+  - **Journal de toutes les réceptions**, refus compris. Sans journal, une demande perdue est indiscernable d'une demande jamais envoyée — et le problème se découvre le jour de la manifestation
+- **Correspondance configurable, pas codée en dur.** Chaque formulaire nomme ses champs à sa façon et changera sans prévenir : l'écran Réglages › Réception manifestations dit quel chemin JSON alimente quel champ. Les chemins proposés sont ceux **réellement présents dans la dernière demande reçue**, et non un champ de saisie libre où une faute de frappe reste invisible jusqu'à la prochaine demande perdue
+  - Reconnaissance automatique par le nom des clés, accents, casse et ponctuation ignorés — la règle de `importMapping.service.ts`, désormais partagée dans `utils/normaliserLibelle`
+  - Dates acceptées en `14/07/2026` comme en `2026-07-14T09:00:00Z`. Une date non reconnue est laissée vide plutôt que devinée : une manifestation placée au mauvais jour bloquerait le mauvais matériel
+  - Matériel lu sous quatre formes : liste d'objets, objet clé/valeur, cases cochées sans quantité, ou saisie libre « 10 tables »
+- **Alias d'articles.** Le formulaire dit « tables », le stock dit « Table 180 cm ». Sans alias, chaque demande laisserait la ligne à rattacher à la main, demande après demande. Un alias déjà porté par un autre article est refusé : l'appariement resterait arbitraire
+- **Matériel non rattaché conservé et signalé** sur la manifestation. Le jeter reviendrait à recevoir une demande amputée sans que personne le sache
+- **Statut « À confirmer »** (`pending`), avec ses transitions : confirmer, reprendre en brouillon, refuser
+- **Date de récupération.** Sans elle, la fenêtre d'immobilisation n'avait pas de fin exploitable : une manifestation d'un jour libérait son matériel le matin même. Le matériel est désormais bloqué de la livraison à la reprise
+- **Quantités réellement perdues**, avec motif. Une casse ou un vol diminue le stock physique et laisse un **mouvement de stock** tracé, pour qu'un total puisse toujours s'expliquer — et se corriger si la saisie était fausse. L'écart seul est appliqué : réenregistrer la même casse ne retire pas une deuxième chaise
+- **La quantité demandée est modifiable à la livraison** : « ils n'avaient besoin que de 8 tables sur 10 » se saisit tel quel
+- **Cinq événements de webhook** : `manifestation.received`, `.created`, `.updated`, `.status_changed`, `.materials_updated`
+
+#### Modifié
+
+- **Prévisionnel et réel séparés une fois pour toutes** (`manifestationStock.service.ts`). Les deux notions étaient mélangées et réécrites à la main dans chaque route : `GET /stock` soustrayait le matériel dehors mais pas les réservations à venir, `/stock/availability` faisait l'inverse, et aucune des deux ne savait répondre sur une période — alors que c'est exactement la question qu'on se pose en recevant une demande pour le mois prochain
+  - Une manifestation ne compte que dans un seul des deux comptes selon son statut. Sans cette séparation, une manifestation livrée serait comptée deux fois : une fois pour ce qu'elle avait demandé, une fois pour ce qu'elle a emporté
+  - `date_from` / `date_to` sur `/stock` et `/stock/availability`
+  - Le manque est rendu comme un **avertissement, jamais comme un refus** : une commune substitue du matériel, décale une livraison ou emprunte ailleurs. Bloquer la saisie l'obligerait à mentir sur ce qu'elle a demandé pour pouvoir enregistrer
+  - `date('now')`, propre à SQLite, remplacé par une date passée en paramètre
+
+#### Corrigé
+
+- **Le module Manifestations était lisible par tout compte authentifié.** `GET /manifestations`, `GET /:id`, `/stock` et `/stock/availability` n'appliquaient aucun filtre : seules les écritures étaient gardées. `objectScope.ts` avait fermé la même fuite sur la table `objects`, mais sa règle ne dit rien de `manifestation_stock`, qui porte pourtant ses propres catégories — et le test de non-régression ne pouvait pas le voir, il ne cherche que la chaîne `objects`. Règle écrite une seule fois dans `manifestationScope.ts`
+  - Un article rattaché **uniquement par sa sous-catégorie** — un vidéoprojecteur du service informatique — restait visible de tous : la condition « article sans catégorie » avalait ce cas
+  - Une manifestation sans matériel reste visible : ce sont justement celles qu'on vient de recevoir et qu'il faut traiter
+- **`POST /intake/sources` était capté par la route de dépôt** `POST /:slug`, qui accepte n'importe quel segment : créer une source échouait en « source de réception inconnue ». Le dépôt est déclaré en dernier, après toutes les routes nommées, et les identifiants réservés sont refusés à la création
+- **La modification d'une manifestation effaçait les pertes déjà constatées** : les lignes de matériel sont supprimées puis réinsérées, et le formulaire ne renvoie pas les pertes. Le stock, lui, en gardait la marque
+- **Le commentaire de transition était jeté par le client** : le serveur l'accepte et le consigne depuis toujours, `updateStatus` ne le transmettait pas — aucune validation ni annulation ne pouvait être motivée
+- **Les regex de `tests/webhooks.test.ts` ignoraient tout événement comportant un tiret bas.** La parité entre l'écran et le service qu'elles vérifient serait devenue muette précisément sur les événements qu'on venait d'ajouter
+
+### Manifestations — services concernés, approbations et suivi partagé
+
+> Une manifestation municipale engage plusieurs services : le festif prête les tables, l'informatique le vidéoprojecteur, la restauration les boissons. Aucun modèle ne permettait de dire « ce service est concerné » — `group_permissions.role` désigne un rôle, pas un groupe de personnes, et il n'existait ni entité de service, ni destinataire collectif, ni approbation. Le choix se réduisait donc à « tout le monde reçoit tout » ou « personne ne reçoit rien ».
+
+#### Ajouté
+
+- **Services.** Un service est un groupe de personnes **et** un périmètre de catégories de matériel. C'est ce périmètre qui décide de tout : un service n'est sollicité, alerté et destinataire que si la manifestation demande du matériel de ses catégories. Le service informatique ne reçoit rien d'une brocante sans matériel informatique, la restauration rien d'une réunion sans repas — c'est exactement ce qui fait qu'on cesse de lire ses alertes et qu'on rate celle qui comptait
+  - Boîte partagée facultative : elle survit aux départs, contrairement à l'adresse d'un agent. Les membres reçoivent dans tous les cas
+  - Services **observateurs** — direction générale, maire, élus — sans périmètre : ils suivent tout, sans rien approuver
+  - Un service qui a rendu des décisions est **désactivé, jamais supprimé** : l'effacer réécrirait la traçabilité d'une manifestation
+- **Approbations par service concerné.** Créées automatiquement à la création d'une manifestation et à chaque modification du matériel. Chaque service porte ses propres dates de livraison et de récupération : l'informatique installe le vidéoprojecteur le matin, le festif livre les tables la veille
+  - Une manifestation ne peut pas être validée tant qu'un service concerné n'a pas répondu — réglable par `manifestation_require_all_approvals`. La valider avant reviendrait à promettre à sa place, et c'est le jour de la livraison qu'on découvrirait que le vidéoprojecteur n'était pas disponible
+  - Un service ne peut décider **que pour lui-même** ; l'administrateur peut toujours trancher, c'est lui qui débloque quand un service ne répond pas
+  - Sollicitation manuelle possible vers un service ou une personne, en **approbation** (bloquante) ou en **information** (non bloquante) : un avis laissé sans réponse ne doit pas retenir une manifestation
+- **Conversation par manifestation.** Les services s'y répondent — changement de date, matériel à ajouter ou à retirer. Chaque message est aussi consigné dans l'historique, pour que la chronologie reste l'unique source du suivi, et se retrouve dans l'archive
+- **Mise en copie.** Un DGS, un maire, un élu suivent l'intégralité des échanges sans rien avoir à approuver
+- **Rôle « service partenaire ».** Ce n'est pas un cran de plus sur l'échelle des pouvoirs mais un accès *latéral* : il écrit dans les manifestations qui le concernent et ne voit rien du parc, des entretiens ni de la configuration
+  - Cloisonnement **fermé par défaut** : tout `/api/*` lui est refusé sauf une liste blanche explicite. Une route ajoutée demain sera inaccessible tant que quelqu'un n'en aura pas décidé autrement — l'inverse d'une liste noire, qu'on oublie de compléter
+  - Appliqué au point unique où le rôle devient connu, la fin de `authenticateToken` — y compris pour les jetons API, sans quoi un token créé par un compte cloisonné contournerait tout
+  - La navigation se réduit à Manifestations : afficher les autres entrées promettrait des pages qui répondent 403
+- **Déclencheurs réglables par service** : sollicitation, statut et dates, matériel, messages. Un service coupe ce qui ne l'intéresse pas sans perdre les demandes qui le concernent
+- **Deux rappels planifiés** (7h30) : livraison à J-3 (réglable) et récupération en retard. Aucun des deux n'existait — une manifestation validée n'avertissait personne avant le jour J, et un matériel jamais récupéré restait compté comme sorti indéfiniment, donc indisponible pour les autres, sans que quiconque sache pourquoi
+- **Huit gabarits de courriel** semés : demande d'approbation, demande d'information, décision, message, changement de dates, changement de matériel, rappel de livraison, récupération en retard
+- **Trois événements de webhook** : `manifestation.approval_requested`, `.approval_decided`, `.dates_changed`
+
+#### Corrigé
+
+- **La validation n'était pas réellement bloquée.** Les approbations étaient créées *après* la transition, si bien que le contrôle ne trouvait rien à attendre et laissait passer — puis les créait, trop tard. Trouvé à l'essai sur l'application, pas au typecheck. Elles sont désormais créées à la création de la manifestation, et rafraîchies avant le contrôle
+- **Un compte « service » ne doit pas être filtré par catégorie de matériel** : il suit les manifestations où il est sollicité, observateur ou en copie. Lui appliquer la portée par catégorie lui aurait montré des manifestations qui ne le concernent pas tout en lui cachant les siennes
+
+### Manifestations — export configurable et dépôt sur Nextcloud
+
+> Le suivi des manifestations se partage par fichier : une feuille de calcul déposée sur un Nextcloud, que plusieurs services consultent et annotent. Elle était tenue à la main, donc périmée dès qu'un statut changeait — et c'est ce fichier périmé que tout le monde continuait de lire. Rien dans l'application n'écrivait vers un stockage distant : `upload.service` range sur le disque local, les sauvegardes restent dans `./backups`.
+
+#### Ajouté
+
+- **Export des manifestations en feuille de calcul**, 24 colonnes disponibles : identité et dates, contact et lieu, quantités demandées / livrées / récupérées / perdues, détail du matériel, état de chaque approbation et services encore attendus
+  - **Profils de colonnes** : quelles colonnes, dans quel ordre, sous quel intitulé. C'est une donnée, pas du code — chaque collectivité range son tableau à sa façon, et redemander un développeur à chaque changement de colonne serait absurde. Même choix que pour l'import
+  - Un profil qui référence un champ disparu perd cette colonne au lieu de faire échouer l'export entier
+  - Ligne d'entête figée et filtre automatique : un tableau de suivi se lit en faisant défiler, et sans le gel on perd les intitulés dès la vingtième ligne
+  - Le détail du matériel et les approbations tiennent dans une cellule à retours à la ligne plutôt qu'en lignes multiples : le fichier sert à filtrer et à trier, ce qu'un tableau à lignes fusionnées rend impraticable
+  - Les archivées sont exclues par défaut ; l'archive se demande explicitement
+- **Dépôt WebDAV sur Nextcloud** (`webdav.service.ts`), sens unique : l'application reste la source de vérité, le fichier déposé sert à consulter et à annoter à côté. Une synchronisation bidirectionnelle demanderait des verrous et une détection de conflits, et permettrait surtout à deux personnes de contredire la base
+  - Les dossiers manquants sont créés un niveau à la fois — WebDAV ne crée pas les parents
+  - Mot de passe d'application, jamais le mot de passe du compte : il se révoque sans changer les identifiants de la personne. Il n'est jamais renvoyé par l'API une fois enregistré
+  - **La vérification dépose réellement un fichier témoin** puis le retire. Se contenter de valider la forme des champs laisserait un administrateur croire que tout est branché — c'est précisément le défaut des écrans SSO de ce projet, qui « testent » sans rien prouver
+  - Délai maximal réel (`AbortSignal.timeout`) et échec isolé, comme pour les webhooks : un Nextcloud injoignable ne doit pas empêcher de valider une manifestation
+  - `last_status` et `last_error` sur chaque profil : sans eux, un dépôt qui échoue est invisible, et c'est le fichier périmé que tout le monde continue de lire
+- **Redépôt automatique** après chaque changement de statut ou de quantités, **regroupé sur une minute** — saisir les quantités livrées article par article produirait sinon dix envois pour un seul résultat — plus un passage nocturne à 3h qui rattrape ce qu'un serveur injoignable aurait fait manquer
+- **Écran Réglages › Export manifestations** : configuration Nextcloud, profils, réordonnancement et renommage des colonnes, téléchargement direct et dépôt manuel
+
+#### Corrigé
+
+- **`fetch` échoue avec un laconique « fetch failed »** et range la vraie cause dans `error.cause` : un administrateur qui lit cela ne sait pas s'il s'est trompé d'adresse, si le serveur est éteint ou si le certificat est refusé, et n'a aucune piste pour corriger. Les erreurs réseau sont désormais traduites — connexion refusée, domaine introuvable, certificat expiré ou auto-signé
+- **Un mot de passe erroné se manifestait en « Création du dossier refusée (HTTP 401) »**, puisque le premier appel au serveur est un `MKCOL`. Le refus dit maintenant ce qu'il faut vérifier
+
+### Manifestations — matériel unique, et notifications réglables par chacun
+
+> Une manifestation ne savait demander que des **quantités** : « 50 tables ». Un véhicule n'est pas une quantité — c'est un exemplaire identifié, qui ne peut pas être à deux endroits le même jour, et dont l'histoire (entretiens, pleins, contrôles) est déjà tenue dans le parc. Par ailleurs, les réglages de notification n'existaient qu'au niveau du service : un agent noyé sous les messages ne pouvait rien y faire sans couper aussi ses collègues.
+
+#### Ajouté
+
+- **Matériel unique du parc rattaché aux manifestations.** Une demande porte désormais deux natures de matériel : des quantités — 50 tables d'un même modèle, qu'il serait absurde de saisir une par une — et des exemplaires identifiés, choisis dans le parc où ils vivent déjà. Le véhicule garde son numéro de série, ses entretiens et ses pleins au même endroit ; le recopier dans le stock des manifestations aurait créé deux vérités
+  - La table `manifestation_items`, créée à l'origine du projet et **jamais ni lue ni écrite**, est enfin en service. Le README annonçait une « recherche d'objets du parc pour ajout aux manifestations » et l'API une route `GET /api/manifestations/search/objects` : ni l'une ni l'autre n'existaient
+  - **Un conflit est ici toujours réel** : deux manifestations peuvent se partager cent chaises sur cinquante chacune, elles ne peuvent pas se partager le camion. Le conflit est signalé avec *qui* retient le matériel et *sur quelles dates*
+  - Les **réservations** sont lues au passage : les deux circuits engagent le même parc sans se connaître, et se seraient promis le même véhicule chacun de son côté
+  - Le sélecteur montre les matériels déjà pris **sans les masquer** : savoir que le camion est sur la brocante permet de demander un décalage, ce qu'une liste amputée ne permettrait pas
+  - Suivi propre à l'unique : sorti / revenu / état constaté au retour — intact, abîmé, perdu — plutôt que des quantités, puisque « 0,5 camion livré » n'a aucun sens
+  - La portée par catégorie est appliquée **dans le service**, pas laissée à l'appelant : une recherche libre sur tout le parc est exactement la fuite fermée sur `GET /green-spaces/search/objects`
+- **Réglages de notification à trois niveaux**, du plus général au plus précis :
+  1. **le défaut de la collectivité** (Réglages › Notifications) — pour chacun des huit événements, quels rôles sont destinataires et si les services concernés le reçoivent ;
+  2. **le réglage de chaque service**, déjà en place ;
+  3. **le choix de chaque compte** (Mon profil), qui l'emporte sur tout
+  - Une seule exception, et elle est nécessaire : **ce qui engage son destinataire part toujours**. Une approbation qu'on attend de vous bloque la manifestation tant que vous n'avez pas répondu ; vous laisser la couper, c'est vous laisser bloquer une manifestation sans jamais le savoir. L'écran le dit et la case est verrouillée, plutôt que d'afficher un réglage qui ne ferait rien
+  - Le catalogue des événements est **servi par l'API** au lieu d'être recopié dans l'interface : une liste tenue des deux côtés finirait par diverger, et un événement à moitié déclaré serait proposé sans jamais partir
+  - Un événement absent du réglage enregistré prend ses valeurs du catalogue : ajouter un événement au code ne doit ni obliger à rouvrir l'écran, ni le laisser muet sans que personne le remarque
+  - Une boîte partagée de service n'a pas de compte, donc pas de préférence : elle suit le seul réglage du service, ce qui la rend insensible aux départs
+
+#### Corrigé
+
+- **`objectScope.test.ts` a rattrapé une fuite pendant l'écriture** : le nouveau service lisait `objects` sans porter la règle de portée. Plutôt que de l'exempter, la règle a été déplacée à l'intérieur — un appelant ne peut plus l'oublier
+
+### Manifestations — responsables, délégations, service coordinateur, comptes anonymisables
+
+> Trois manques, tous constatés à l'usage. `service_members.is_manager` était enregistré et relu, mais n'entrait dans aucune décision : n'importe quel membre approuvait au nom de son service. Rien ne permettait de désigner le service qui pilote *toutes* les manifestations et prononce la validation. Et `DELETE /users/:id` effaçait la ligne, vidant au passage l'auteur des décisions, des messages et de l'historique.
+
+#### Ajouté
+
+- **Responsable de service.** Approuver engage la collectivité : la décision revient au responsable, désigné dans l'écran des services. Un simple membre reçoit les avis du service mais n'engage pas sa signature — et le refus le dit précisément, plutôt que de laisser chercher. Un service sans responsable est signalé : il ne peut rien approuver, et une manifestation qui l'attend resterait bloquée
+- **Délégation d'approbation.** Le responsable — et lui seul — désigne qui décide à sa place. Une délégation ne se redélègue pas : la chaîne de responsabilité doit rester connaissable. Les dates sont facultatives, sans elles la délégation vaut jusqu'à révocation — le cas de l'adjoint permanent, aussi courant qu'un remplacement de congés
+- **Service coordinateur.** Le service qui pilote toutes les manifestations — Culture et Communication ici, un autre ailleurs. Il est sollicité sur **chaque** manifestation, même celle qui ne touche pas son périmètre, voit tout, reçoit tout, y compris les messages
+  - **Son approbation prononce la validation** : la manifestation bascule d'elle-même. Lui faire approuver puis exiger un second geste dédoublerait la décision, et laisserait une manifestation approuvée par tous rester en brouillon parce que personne n'a cliqué une seconde fois
+  - Il ne peut pas trancher avant que les services concernés aient répondu : valider à l'aveugle viderait sa signature de son sens. Le refus nomme qui manque
+  - Un seul service à la fois : le désigner retire le rôle au précédent, plutôt que de laisser deux services se disputer la validation sans qu'on sache lequel tranche
+  - « Non concerné » vaut accord : le service a répondu, il ne bloque rien
+- **Anonymisation d'un compte (RGPD).** L'identité est remplacée, tous les liens sont conservés : « qui a validé cette manifestation ? » garde une réponse — un compte, distinct des autres — sans que cette réponse nomme quelqu'un. Deux personnes anonymisées ne se confondent pas, ce qu'un simple « inconnu » ne permettrait pas
+  - Le mot de passe est remplacé par une valeur aléatoire jamais communiquée : laisser l'ancien permettrait de se reconnecter sous une identité effacée
+  - Appartenances aux services, délégations reçues, droits et préférences sont retirés — une délégation laissée derrière soi donnerait un pouvoir de décision à un compte fermé. L'historique, lui, n'est jamais touché
+  - Refusée sur soi-même, sur un compte déjà anonymisé, et sur le dernier administrateur actif
+
+#### Corrigé
+
+- **Supprimer un compte effaçait qui avait fait quoi.** Chaque clé étrangère en `ON DELETE SET NULL` vidait l'auteur des décisions, des messages et de l'historique : une manifestation perdait la trace de qui l'avait validée le jour où la personne quittait la collectivité — précisément ce qu'un litige exige de retrouver, des mois plus tard. Un compte qui a laissé des traces est désormais **désactivé, jamais effacé**, et l'écran énumère ce qui serait perdu avant de demander confirmation. La suppression réelle reste possible pour un compte qui n'a rien laissé
+- **`POST /services` ignorait le drapeau coordinateur** : créer le service pilote depuis l'écran ne le désignait pas, et il n'était sollicité sur aucune manifestation. Trouvé à l'essai sur l'application
+- **Le cloisonnement interdisait à un responsable de gérer ses délégations** : `/api/services` était ouvert en lecture seule, et déléguer est une écriture. Le seul geste qui lui revient en propre lui était refusé
+- **Le refus opposé à un membre non responsable était trompeur** — « vous ne pouvez répondre que pour votre service », alors qu'il en fait partie. Les deux cas sont distingués : ils n'appellent pas la même action
+
+### Manifestations — matériel prêtable, et comptes à deux casquettes
+
+> Le sélecteur de matériel unique proposait **tout le parc**. Or une catégorie ne se prête pas d'un bloc : un réfrigérateur de la catégorie Électroménager part volontiers pour une brocante, le grill de la même catégorie non. Par ailleurs, un agent du service technique membre du service communication ne voyait pas les manifestations dont son service était pourtant l'approbateur.
+
+#### Ajouté
+
+- **Réglage du matériel prêtable**, à trois niveaux, **le plus précis l'emporte** : la catégorie donne le ton, la sous-catégorie l'affine, un matériel fait exception. Écran Réglages › Matériel prêtable
+  - **Trois états** — prêtable, exclu, hérite — et non deux. Sans le troisième, ouvrir une catégorie obligerait à recocher chacun de ses matériels, et personne ne le ferait. Seule la catégorie n'hérite pas : c'est elle la valeur de référence
+  - Les catégories partent à « prêtable » : c'est le comportement actuel, et fermer le parc d'un coup ferait disparaître sans prévenir du matériel que quelqu'un était en train de demander. On retire ce qu'on ne prête pas
+  - L'écran affiche **le réglage propre et le résultat effectif** de chaque matériel : sans les deux, on ne saurait pas pourquoi un matériel est exclu alors qu'on n'a rien coché dessus
+  - Le refus vit aussi côté serveur : le sélecteur ne propose pas un matériel exclu, mais rien n'empêche d'envoyer un identifiant à la main
+  - Ne concerne pas le stock dédié aux manifestations — tables, chaises — qui est prêtable par définition
+
+#### Corrigé
+
+- **Un compte à deux casquettes ne voyait qu'une moitié de son travail.** Un agent du service technique peut aussi être membre du service communication : sa portée par catégorie décrit la première fonction, elle ne dit rien de la seconde. S'en tenir aux catégories lui cachait les manifestations dont son service est l'approbateur, dès lors qu'elles portaient du matériel hors de son périmètre technique. Les deux portées s'additionnent désormais — ce qu'il voit par ses catégories, **plus** ce que ses services suivent
+- **Les noms accentués finissaient en bas de liste.** `ORDER BY name` trie par octets en SQLite : « Électroménager » passait après « Véhicules », parce que le É encodé commence par `0xC3`. Sur un référentiel communal — Éclairage, Équipement, Espaces verts — cela rejetait en dernier précisément ce qu'on cherche. Le tri est fait en français, à la lecture
+- **Un identifiant venu d'une chaîne de requête ne trouvait rien.** `COALESCE(...)` est une expression, donc sans affinité de colonne : SQLite ne convertit pas `'39'` en `39`, et la liste des matériels d'une catégorie revenait vide **sans erreur**. Trouvé à l'essai sur l'application, pas au typecheck
+
+### Parc — deux catégories peuvent nommer pareillement une sous-catégorie
+
+> « Technique › Prestations » et « Urbanisme › Prestations » affichaient le même matériel, comme si les deux sous-catégories avaient fusionné. Elles étaient pourtant bien distinctes en base : c'est la lecture qui se trompait.
+
+#### Corrigé
+
+- **Le slug d'une sous-catégorie n'est unique que dans sa catégorie**, et une des deux routes de lecture l'ignorait. `GET /subcategories/by-slug/:slug` rendait la **première venue** : ouvrir « Technique › Prestations » affichait le contenu d'« Urbanisme › Prestations », sans le moindre signe que quelque chose clochait
+  - Le défaut ne demandait aucune erreur de saisie : seulement deux catégories nommant pareillement une de leurs branches — ce qui est précisément l'organisation recommandée, où la catégorie est le service
+  - La contrainte d'unicité posée à la création disait déjà la règle (`WHERE category_id = ? AND slug = ?`) ; la lecture ne la suivait pas
+  - L'écran passe désormais par la route cadrée `GET /categories/:categorySlug/:subcategorySlug`, qui existait et était juste. Sa **clé de cache** porte les deux slugs, sans quoi les deux écrans se seraient servi mutuellement leur contenu
+  - `by-slug` **refuse de trancher au hasard** : un slug porté par plusieurs catégories rend une erreur qui les nomme et demande `?category=`. Une erreur explicite vaut mieux qu'une réponse fausse qu'on croira juste
+- La route cadrée rend aussi ce que l'écran attendait de l'autre : nom et slug de la catégorie parente, nombre de matériels, et les réglages *prestation* et *disponible pour les manifestations*
+
+### Parc — le prêt se règle sur la fiche, et une manifestation se chiffre
+
+> La disponibilité pour les manifestations ne se réglait que dans un écran d'arbre, sous Réglages. Or la question se pose au moment où l'on crée le matériel : on sait alors très bien si le réfrigérateur part pour la brocante et si le grill reste à la cuisine. La régler ailleurs, plus tard, c'est ne jamais la régler.
+
+#### Ajouté
+
+- **« Disponible pour les manifestations » sur la fiche du matériel**, de la sous-catégorie et de la catégorie. Trois états — *prêtable*, *non prêtable*, *hérité* — et l'écran dit ce qui s'appliquerait si l'on laisse hériter
+  - L'écran d'arbre (Réglages › Matériel prêtable) reste : il sert à ouvrir ou fermer une branche entière, ce qu'on ne fait pas fiche par fiche. Les deux écrivent la même colonne
+- **Coût unitaire**, dont le sens suit la nature du matériel — et c'est ce qui permet de chiffrer une manifestation
+  - **lot** : le prix d'une unité, 50 € la chaise
+  - **prestation** : le coût d'une unité déployée, la vacation d'un agent
+  - **exemplaire** : la valeur de remplacement, retenue s'il revient perdu
+  - Laisser zéro n'est pas une erreur : le matériel n'entre alors dans aucun calcul. Mieux vaut cela qu'un tarif inventé, qui se retrouverait dans un décompte présenté à un organisateur
+- **Coût d'une manifestation**, sur sa fiche, en deux natures qu'il ne faut jamais confondre
+  - **ce qu'on déploie** : trois agents à 120 €, un raccordement. Connu dès la demande, c'est une dépense décidée
+  - **ce qui ne revient pas** : dix chaises prêtées, neuf rendues — la dixième coûte 50 €. C'est une perte subie
+  - Les additionner sans les distinguer donnerait un total juste et une lecture fausse : on ne négocie pas une casse comme on budgète une vacation
+  - Chaque ligne dit sur quoi elle repose — « 1 non revenue(s) sur 10 livrée(s), à 50 € ». Un montant ne doit jamais être opaque
+- **Une chaise sortie n'est pas une chaise perdue.** Tant que la manifestation n'est pas récupérée, ce qui est dehors est montré à part, sans entrer dans le total : compter la différence dès la livraison afficherait 1 500 € de casse le jour où l'on sort trente chaises. Le manque devient une perte quand l'application déclare le retour fait
+  - Exception : sur le catalogue des manifestations, `quantity_lost` est saisie **à la main**. C'est déjà un constat, pas une déduction — elle compte tout de suite
+  - Un exemplaire revenu **perdu** est chiffré à sa valeur ; **abîmé** ne l'est pas, faute d'un coût de réparation que personne n'a saisi. L'inventer serait pire que de se taire, et le constat reste visible sur la fiche
+  - Une manifestation annulée ne coûte rien
+- Le coût est **calculé à la lecture** plutôt que stocké : les prix bougent, les retours se saisissent après coup, et une valeur figée mentirait dès la première correction
+- **Trois colonnes d'export** : coût des prestations, coût des pertes, coût total. Elles ne sont calculées que si le profil les retient — un export de cent lignes n'a pas à faire cent requêtes pour des colonnes qu'il n'affiche pas
+
+#### Corrigé
+
+- **Les lectures de catégorie et de sous-catégorie ne rendaient ni `is_prestation` ni `available_for_manifestations`.** Le réglage était bien enregistré, mais le formulaire réaffichait « Hérité » à la réouverture : on ne pouvait pas vérifier ce qu'on avait coché, et on recochait
+- Les trois états sont rendus **tels quels** sur une sous-catégorie : les aplatir en booléen ferait disparaître la différence entre « non » et « je n'ai rien dit », et l'écran afficherait « Non prêtable » sur une branche que personne n'a réglée
+
+### Parc — un matériel peut être un lot, avec sa quantité et son stock
+
+> Le parc ne savait compter que des **exemplaires** : ce camion-là, avec son numéro de série, ses pleins et ses contrôles techniques. Cinquante chaises identiques n'ont rien à faire dans ce moule — les saisir une par une donnerait cinquante fiches, cinquante QR codes et cinquante historiques d'entretien pour un même modèle. Les quantités existaient, mais dans un catalogue séparé, ce qui obligeait à tenir ses chaises à deux endroits selon qu'on les regardait comme du parc ou comme du prêt.
+
+#### Ajouté
+
+- **Type de matériel : exemplaire unique, ou lot avec quantité.** Le choix se fait sur la fiche, et il commande tout le reste
+  - Un **lot** porte une quantité détenue. Les manifestations s'y imputent directement : le **stock réel et prévisionnel se lit sur la fiche de parc**, sans le tenir ailleurs
+  - Quatre nombres, et le mot juste pour chacun : *détenu* ce qu'on possède, *dehors* ce qui est physiquement sorti en ce moment, *promis* ce qui est engagé pour plus tard — demandes reçues et pas encore confirmées comprises — et *disponible*. Les confondre ferait disparaître deux fois le matériel d'une manifestation livrée
+- **Ce qu'un lot perd : carburant et contrôle technique.** Ces suivis portent sur un exemplaire, pas sur un modèle — on ne fait pas le plein « des chaises ». Les onglets disparaissent et la donnée cesse d'être chargée, parce que le filtre est posé côté serveur : tous les écrans en profitent d'un coup
+- **Ce qu'un lot garde : l'entretien.** Un lot se répare et se nettoie, et c'est précisément ce qu'on veut consigner
+- **Deux manifestations se partagent cent chaises ; elles ne se partagent pas le camion.** Un lot ne connaît donc pas le conflit mais le **manque**, chiffré : « il ne reste que 20 chaises sur les 30 demandées ». C'est un **avertissement, jamais un refus** — la demande est enregistrée telle qu'elle a été faite, et le manque est signalé pour être arbitré, comme le fait déjà le stock des manifestations
+- **Le sélecteur de matériel demande un nombre** pour un lot, et montre ce qui reste sur la période — « 42 dispo. sur 50 ». Choisir à l'aveugle ferait découvrir le manque le jour de la livraison
+- **La livraison et le retour se comptent** : « 50 livrées, 48 revenues », et les deux qui manquent restent comptées dehors. Un exemplaire garde ses cases *sorti* / *revenu* et son constat d'état — dire « revenu » d'un lot dont il manque deux chaises ferait rentrer au stock du matériel qui n'existe plus
+- La fiche d'une manifestation sépare désormais trois natures : **Lots du parc**, **Matériel unique du parc**, **Prestations demandées**. Les mêler proposait de constater l'état au retour d'un débit de boissons
+
+#### Notes
+
+- L'arithmétique du stock est **exactement celle du catalogue des manifestations** — mêmes statuts, même fenêtre d'immobilisation, même séparation du promis et du sorti. Les constantes sont importées et non recopiées : deux définitions de « ce qui est dehors » finiraient par diverger, et les deux écrans donneraient des chiffres différents pour la même chaise
+- Le catalogue `manifestation_stock` reste en place : les articles qui y sont déjà, leurs alias et l'appariement des demandes reçues continuent de fonctionner à l'identique
+- « Dehors en ce moment » se calcule sur la journée courante. Une manifestation livrée dont la période est passée sans avoir été marquée récupérée n'apparaît donc pas comme sortie — comportement hérité du stock des manifestations, inchangé ici
+
+### Manifestations — les prestations se tiennent dans le parc, avec le reste du service
+
+> Une prestation ne se créait que dans Manifestations › Stock matériel, un catalogue à part. Or l'arbre des catégories est **déjà partagé** entre le parc et le stock : rien n'empêchait de tenir ses prestations là où le service tient déjà son matériel, sauf de pouvoir dire « cette branche, ce sont des prestations ». L'organisation qui en découle est celle d'une collectivité, où la **catégorie est le service** — Technique porte Prestation et Mobilier, Urbanisme porte Prestation, Armoires et Bureau, Restauration porte Prestation et Verrerie.
+
+#### Ajouté
+
+- **Une branche du parc peut être déclarée « prestation ».** Le réglage existe aux trois niveaux et **le plus précis l'emporte** : la catégorie donne le ton, la sous-catégorie l'affine, un matériel fait exception. C'est le mécanisme du « matériel prêtable », repris tel quel pour n'avoir pas à l'apprendre deux fois
+  - « Hérité » est un choix explicite, pas une case décochée : sans ce troisième état, marquer une catégorie obligerait à recocher chacune de ses sous-catégories, et on ne saurait plus distinguer « non » de « je n'ai rien dit »
+  - Le réglage se fait **là où l'on est déjà** — sur la fiche d'une catégorie, d'une sous-catégorie ou d'un matériel — et non dans un écran de paramètres à part. C'était le sens de la demande : que le service gère ses prestations dans le même environnement que son parc
+  - L'écran dit ce qui s'appliquerait si l'on laissait « hérité », pour que le choix se fasse en connaissance de cause
+- **Le routage d'approbation en découle sans rien ajouter.** Une prestation classée sous « Urbanisme » sollicite l'urbanisme, parce que le périmètre d'un service est déjà un ensemble de catégories
+- **Une prestation du parc n'immobilise rien.** Un raccordement électrique demandé le 21 juin ne le rend pas indisponible pour la manifestation d'à côté le même jour : ce n'est pas un exemplaire, c'est un acte. Le sélecteur continue de le proposer, et aucun conflit n'est signalé — là où un camion, lui, reste bien un conflit
+- **Une prestation se demande en nombre** — « 3 agents pour la cérémonie ». La colonne existait sur `manifestation_items` mais était écrite en dur à 1 ; elle ne l'est plus que pour les exemplaires, où « 3 camions bennes » désignerait trois matériels distincts
+- **La fiche sépare les deux natures** : « Prestations demandées » se lit *réalisée*, « Matériel unique du parc » se lit *sorti · revenu · état au retour*. Les mêler proposait de constater l'état d'un débit de boissons au retour
+- **Le document de service reprend les prestations du parc.** Sans quoi on aurait demandé à l'urbanisme d'approuver un arrêté de circulation que sa pièce jointe passait sous silence. Le matériel du parc, lui, n'y entre pas : une armoire forte n'est pas un acte qu'on demande à un service d'autoriser
+- Repère visuel « Prestation » dans les listes du parc, dans le sélecteur de matériel et sur les sous-catégories ; le bouton **Étiquettes QR** disparaît sur une branche de prestations, faute d'objet où coller l'étiquette
+
+#### Corrigé
+
+- **Le matériel du parc ne sollicitait aucun service.** `servicesConcernes` ne lisait que `manifestation_materials` : une manifestation composée uniquement de matériel du parc — un camion, un vidéoprojecteur, et désormais les prestations qu'un service y tient — **ne sollicitait personne**, et sa validation passait sans que quiconque ait eu son mot à dire. Le défaut ne se voyait pas : le tableau des approbations était vide, ce qui ressemble à « rien à approuver ». `manifestation_items` est en service depuis le lot « matériel unique » sans que le routage ait jamais été réconcilié avec elle
+  - Les deux sources sont dédoublonnées : un service dont la demande touche à la fois son stock et son parc ne reçoit qu'une approbation
+
+### Manifestations — un document pré-rempli par service, et de quoi essayer un webhook
+
+> Une demande reçue par formulaire concerne plusieurs services, mais chacun n'a besoin que de sa part : le service qui instruit un débit de boissons n'a que faire du raccordement électrique, du personnel demandé, ou du nombre de chaises. Lui envoyer tout l'oblige à trier, et c'est ainsi qu'on finit par ne plus rien lire. Seul le service qui pilote les manifestations a besoin de l'ensemble.
+
+#### Ajouté
+
+- **Modèle de document par service.** Un `.docx` écrit dans Word, rattaché depuis l'écran des services. Ses champs entre accolades sont **relevés à l'import**, et une liste déroulante relie chacun à une donnée de la demande
+  - **`easy-template-x` (MIT)** plutôt que Carbone, cité en exemple : Carbone n'est pas distribuable sous la licence de cette application et demande LibreOffice à côté. Cette bibliothèque fonctionne en JavaScript seul et, surtout, **n'exécute aucun code venu du modèle** — ce qui compte quand les modèles sont déposés dans un Nextcloud partagé : un fichier Word ne doit pas pouvoir faire tourner quoi que ce soit sur le serveur
+  - `{manifestation}` pour une valeur, `{#materiels}…{/materiels}` pour une liste — dans un tableau Word, le bloc peut tenir sur une ligne, qui sera répétée. C'est ce qu'une secrétaire de mairie peut écrire sans qu'on lui explique un langage
+  - **Les champs sont détectés en recollant les runs d'un paragraphe.** Word coupe volontiers `{date_livraison}` sur plusieurs `<w:t>` — il suffit d'une correction orthographique ou d'un mot mis en gras. Sans ce recollage, un modèle parfaitement valide paraîtrait ne contenir aucun champ. Le recollage se fait **paragraphe par paragraphe** : tout recoller ferait apparaître des champs fantômes, formés par la fin de l'un et le début du suivant
+  - **21 valeurs** offertes : dates, lieu, contact, statut, demandeur, notes, service destinataire — plus le matériel et les prestations, en liste répétable ou résumés en une ligne
+  - Un modèle écrit avec les noms proposés fonctionne **sans aucun réglage** ; un champ nommé autrement se relie en un clic ; un champ que rien ne renseigne ressort **vide**, jamais en accolades — un arrêté municipal portant `{montant}` en toutes lettres serait signé tel quel par quelqu'un qui ne l'a pas relu
+  - **Aperçu téléchargeable** rempli d'un jeu d'exemple, sans manifestation : on vérifie son modèle avant qu'une vraie demande arrive, seul moment où la correction est encore sans conséquence
+- **Le modèle peut être tenu dans Nextcloud** plutôt que déposé. Le fichier est **relu à chaque génération** : une correction faite le matin s'applique l'après-midi, sans repasser par l'application ni redéposer un fichier à chaque virgule changée. Le dossier se parcourt depuis l'écran, la liste ne montrant que les `.docx`
+- **Le document part avec la demande d'approbation**, en pièce jointe, et reste joint à la manifestation. Le service reçoit sa part déjà remplie plutôt qu'un lien qui l'obligerait à se connecter pour savoir de quoi il s'agit
+  - Produit **à la réception d'une demande**, à la création, à la reprise en brouillon, à la validation, et à chaque changement de matériel — un service qui a reçu « 10 tables » doit apprendre qu'on en demande désormais 40
+  - **Une regénération remplace, elle n'empile pas** : sans cela, une manifestation dont les dates changent trois fois finirait avec trois arrêtés et personne ne saurait lequel fait foi. Seules les pièces produites par l'application sont remplacées ; celles déposées à la main ne sont jamais touchées
+  - Bouton **« Refaire les documents des services »** sur l'onglet Documents, pour les deux cas que l'automatisme ne couvre pas : un modèle corrigé après coup, et un Nextcloud injoignable au moment où la demande est arrivée
+  - **Un modèle défaillant ne bloque jamais rien.** Un `.docx` mal formé, un Nextcloud muet : l'erreur est notée sur le modèle, affichée dans l'écran des services, et la manifestation suit son cours. Refuser une demande parce qu'un modèle Word a été mal enregistré serait hors de proportion
+- **Chaque service ne voit que le document produit pour lui** dans l'onglet Documents. Le lui masquer dans son courriel et le lui montrer ici reviendrait à ne rien avoir masqué. Le service coordinateur, l'administrateur et le superviseur voient tout ; les pièces déposées à la main ne sont jamais masquées — un arrêté de circulation concerne tout le monde
+- **Essai d'une réception de webhook, à blanc** (Paramètres › Réception des demandes). Régler une source demandait de deviner à l'avance quels chemins un formulaire enverrait, et la seule façon de le vérifier était d'envoyer une vraie demande — qui créait une vraie manifestation, réservait du matériel et écrivait aux services. On colle désormais la charge utile : **rien n'est créé, personne n'est prévenu**, et le compte rendu répond aux trois questions qu'on se pose réellement
+  - la demande passerait-elle, et sinon quels champs obligatoires manquent
+  - quel matériel serait reconnu, lequel resterait à rattacher à la main
+  - quels services seraient alertés, lequel est coordinateur, et lequel a un modèle de document
+  - la liste des chemins trouvés dans la charge utile, et celle des champs qu'une demande peut porter — accessible sans avoir créé la moindre source
+- **Les services sont sollicités dès la réception d'une demande.** Ils ne l'étaient qu'à partir du moment où quelqu'un ouvrait la manifestation pour la modifier : le service d'urbanisme perdait les jours qui comptent, et un arrêté de débit de boissons ne s'instruit pas la veille
+
+#### Corrigé
+
+- **Supprimer une manifestation laissait ses pièces jointes sur le disque pour toujours.** Les lignes partaient en cascade, pas les fichiers — un dossier de manifestation contient des photos de sinistre et des arrêtés. C'est la règle déjà appliquée au retrait d'une pièce isolée, désormais tenue aussi quand le dossier entier disparaît
+- **Supprimer un service laissait le fichier de son modèle** au nom d'un service qui n'existait plus. Un modèle tenu dans Nextcloud, lui, n'appartient pas à l'application : il n'y est jamais touché
+- **La règle de rattachement d'un article à un service n'est plus écrite qu'à un seul endroit** (`servicesPourArticles`). L'écran d'essai devait dire qui serait sollicité sans rien créer ; recopier la règle aurait fini par mentir le jour où l'une des deux copies aurait évolué
+
+### Manifestations — prestations demandées, pièces jointes, et une fiche en onglets
+
+> Une demande ne porte pas que du matériel : elle demande aussi un raccordement au réseau électrique, un débit de boissons, du personnel pour une cérémonie. Ces prestations n'existaient nulle part et finissaient dans une note libre que rien ne route ni ne totalise. Et il manquait de quoi joindre un arrêté, un plan, ou la photo d'une chaise revenue cassée — ces pièces qui font la différence en cas de litige, des mois plus tard.
+
+#### Ajouté
+
+- **Prestations.** Une case à cocher transforme un article en prestation. Le choix est fait ainsi parce que **le routage d'approbation part déjà de la catégorie de l'article** : une prestation classée en « Technique » sollicite le service technique, une autre en « Urbanisme » le service d'urbanisme, sans une ligne de code de plus
+  - Le mot « prestation » et non « service » : dans cette application un *service* est une équipe. Les confondre rendrait chaque écran ambigu
+  - Elle **n'a pas de stock** — ni disponibilité, ni conflit, ni casse. Lui en calculer une la ferait paraître en rupture en permanence, son total valant zéro, et chaque manifestation afficherait un manque imaginaire
+  - Une quantité facultative : « 3 agents » pour une cérémonie, ou simplement demandée. Elle se lit ensuite « réalisée » plutôt que « livrée »
+  - Cocher la case masque quantité, prix, état et lieu, qui n'auraient rien à dire ; la fiche les liste à part, et l'écran Stock les filtre
+- **Pièces jointes.** Arrêté de circulation, arrêté de débit de boissons, plan d'implantation, constat matériel, constat du lieu, photo, attestation d'assurance, devis, convention — dix types semés, éditables ensuite : chaque collectivité nomme ses pièces à sa façon
+  - Dépôt par **glisser-déposer**, par le sélecteur, ou en **photographiant** depuis un téléphone. Les photos sont réduites avant l'envoi, comme partout ailleurs
+  - Un petit formulaire suit le dépôt : le libellé est pré-rempli avec le nom du fichier, le type et la description restent facultatifs — exiger une saisie complète ferait renoncer à joindre la photo, qui est justement ce qu'on veut conserver
+  - **Une pièce peut désigner le matériel concerné.** Le lien porte sur l'**article** et non sur la ligne de matériel : celle-ci est supprimée puis réinsérée à chaque modification d'une manifestation, si bien qu'un lien par identifiant de ligne serait rompu au premier changement de quantité, sans erreur
+  - Galerie de vignettes pour les photos, liste pour les documents, visionneuse avec téléchargement
+  - **Recherche** : la description entre dans la recherche entre manifestations — « buvette » ramène celle dont un document porte ce mot — et un filtre local sert à s'y retrouver dans une manifestation qui en compte beaucoup
+  - **Supprimer une pièce retire le fichier du disque.** Partout ailleurs dans l'application, supprimer un document ne supprime que la ligne et laisse le fichier orphelin pour toujours — seul l'avatar faisait exception. Un dossier de manifestation contient des photos de sinistre : le disque n'a pas à conserver ce qu'on a demandé de retirer
+  - Le chemin est vérifié avant suppression : un `file_path` fabriqué ne peut pas faire effacer un fichier hors du dossier des téléversements
+  - La fiche PDF gagne l'**inventaire des pièces** — nom, type, matériel concerné, description — sous une case à cocher. Les fichiers ne peuvent pas y entrer, mais savoir quelles pièces existaient est ce qui sert dans un dossier de litige
+- **Fiche en onglets** : Résumé · Matériel · Documents · Suivi · Historique, avec un compteur sur chacun. Elle portait tout à la suite et demandait trois écrans de défilement pour trouver une date de livraison. Rien n'a été retiré ; les compteurs partagent les clés de requête des composants qu'ils annoncent et n'ajoutent aucun appel au serveur
+
+#### Corrigé
+
+- **Le serveur refusait les documents bureautiques** que l'interface proposait. L'écran des espaces verts offre `.doc,.docx,.xls,.xlsx,.odt,.ods` depuis toujours, et `POST /api/upload/file` n'acceptait qu'images et PDF : l'utilisateur voyait son fichier rejeté sans comprendre pourquoi. Un arrêté municipal arrive plus souvent en traitement de texte qu'en PDF
+- **`GET /doc-types` aurait été capté par `GET /:id`**, qui accepte n'importe quel segment — le même piège que la création des sources de réception. Les routes nommées sont déclarées avant
+
+### Réglages — regroupés en onglets, et de quoi chercher dans le parc
+
+> Le menu des paramètres comptait dix-huit entrées à plat, dont quatre traitaient de la même chose. Et l'écran du matériel prêtable ne se parcourait qu'en dépliant les catégories une à une : sur cent matériels rangés en trente catégories et soixante sous-catégories, retrouver un grill demandait d'ouvrir tout le parc.
+
+#### Modifié
+
+- **« SMTP » et « Templates Email » deviennent un seul écran « Emails »**, en deux onglets. On ne touche jamais à l'un sans vérifier l'autre : un template mis au point sans serveur configuré ne part nulle part
+- **« Réception manifestations », « Services », « Matériel prêtable » et « Export manifestations » deviennent un seul écran « Manifestations »**, en quatre onglets. Les quatre entrées racontaient mal qu'elles décrivent un seul trajet : une demande arrive, elle sollicite des services, elle ne peut porter que du matériel prêtable, elle finit dans un export. L'ordre des onglets est celui du trajet
+- **L'onglet actif vit dans l'URL** (`?onglet=`) : un lien vers les templates reste un lien, et le retour arrière du navigateur ramène là où on était. Les six anciennes adresses redirigent vers le bon onglet plutôt que de rendre caducs les liens et favoris déjà posés
+
+#### Ajouté
+
+- **Recherche dans le matériel prêtable**, sur le nom, la référence ou le numéro de série. Les branches concernées s'ouvrent seules et ne montrent que ce qui correspond ; quand c'est le nom de la catégorie qui correspond, elle est rendue entière — on a demandé cette catégorie, pas un extrait
+  - Elle passe par le serveur (`GET /availability/search`) et non par un filtre local : le matériel est chargé catégorie par catégorie au dépliage, et le navigateur n'a jamais le parc entier sous la main
+  - Elle applique la **même portée par catégorie** que la liste : chercher ne doit pas révéler les matériels d'une catégorie fermée au compte
+  - Elle rend enfin **les matériels rattachés à aucune catégorie**, sous une carte « Sans catégorie ». L'arbre ne les montrait nulle part faute de branche où les ranger, alors qu'ils sont prêtables par défaut : ils étaient impossibles à exclure
 
 ### Import / Export
 

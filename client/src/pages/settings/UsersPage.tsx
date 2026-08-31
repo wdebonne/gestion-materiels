@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, User, Search } from 'lucide-react'
+import { Plus, Edit2, Trash2, User, Search, ShieldOff } from 'lucide-react'
 import { 
   Card, CardBody, Button, Input, Select,
-  Modal, ModalBody, ModalFooter, Badge, LoadingInline
+  Modal, ModalBody, ModalFooter, Badge, LoadingInline,
+  Alert
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
 import api, { User as UserType } from '@/lib/api'
+import { compteApi } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
 import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '@/lib/permissions'
@@ -59,19 +61,46 @@ export default function UsersPage() {
     }
   })
 
-  // Mutation pour supprimer
+  /**
+   * Supprimer, ou désactiver quand le compte a laissé des traces.
+   *
+   * Le serveur tranche : un compte qui a validé, livré ou échangé est désactivé,
+   * jamais effacé — l'effacer retirerait de l'historique le nom de qui a fait
+   * quoi, précisément ce qu'un litige exige de retrouver.
+   */
   const deleteMutation = useMutation({
     mutationFn: async (id: number) => {
-      return api.delete(`/users/${id}`)
+      return api.delete<{ success: boolean; desactive?: boolean; message?: string }>(`/users/${id}`)
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      toast.success('Utilisateur supprimé')
+      if (res.data.desactive) {
+        toast(res.data.message || 'Compte désactivé', { icon: 'i', duration: 9000 })
+      } else {
+        toast.success('Utilisateur supprimé')
+      }
       setDeleteConfirm(null)
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || 'Impossible de supprimer')
+      toast.error(err.response?.data?.message || err.response?.data?.error || 'Impossible de supprimer')
     }
+  })
+
+  /** Ce que le compte laisserait derrière lui, lu à l'ouverture de la fenêtre. */
+  const { data: traces } = useQuery({
+    queryKey: ['user-traces', deleteConfirm?.id],
+    queryFn: async () => (await compteApi.getTraces(deleteConfirm!.id)).data.data,
+    enabled: !!deleteConfirm,
+  })
+
+  const anonymizeMutation = useMutation({
+    mutationFn: (id: number) => compteApi.anonymiser(id),
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      toast.success(res.data.message, { duration: 9000 })
+      setDeleteConfirm(null)
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || "Impossible d'anonymiser")
   })
 
   const openModal = (user?: UserType) => {
@@ -319,27 +348,72 @@ export default function UsersPage() {
       <Modal
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
-        title="Supprimer l'utilisateur"
+        title="Retirer ce compte"
         size="sm"
       >
         <ModalBody>
-          <p className="text-gray-600">
-            Êtes-vous sûr de vouloir supprimer l'utilisateur <strong>{deleteConfirm?.firstName} {deleteConfirm?.lastName}</strong> ?
+          <p className="text-gray-600 dark:text-gray-300">
+            <strong>{deleteConfirm?.firstName} {deleteConfirm?.lastName}</strong>
           </p>
-          <p className="text-sm text-red-600 mt-2">
-            Cette action est irréversible.
-          </p>
+
+          {traces && traces.traces.total > 0 ? (
+            <div className="mt-3 space-y-3">
+              <Alert type="warning">
+                <div className="text-sm">
+                  Ce compte a participé à des manifestations. Il sera <strong>désactivé</strong>,
+                  pas supprimé : l'effacer retirerait de l'historique le nom de qui a validé, livré
+                  ou échangé — ce qu'un litige exige de retrouver, des mois plus tard.
+                  <ul className="mt-2 list-disc list-inside text-xs">
+                    {traces.traces.manifestations_creees > 0 && (
+                      <li>{traces.traces.manifestations_creees} manifestation(s) créée(s)</li>
+                    )}
+                    {traces.traces.decisions > 0 && <li>{traces.traces.decisions} décision(s)</li>}
+                    {traces.traces.historique > 0 && (
+                      <li>{traces.traces.historique} ligne(s) d'historique</li>
+                    )}
+                    {traces.traces.messages > 0 && <li>{traces.traces.messages} message(s)</li>}
+                    {traces.traces.services > 0 && <li>membre de {traces.traces.services} service(s)</li>}
+                  </ul>
+                </div>
+              </Alert>
+
+              {!traces.anonymized_at && (
+                <Alert type="info">
+                  <span className="text-sm">
+                    Si le RGPD l'exige, <strong>anonymiser</strong> retire le nom, l'adresse et
+                    l'avatar en conservant tous les liens : « qui a validé ? » garde une réponse,
+                    sans nommer personne. Irréversible.
+                  </span>
+                </Alert>
+              )}
+            </div>
+          ) : (
+            <p className="text-sm text-red-600 mt-2">
+              Ce compte n'a laissé aucune trace : il sera réellement supprimé. Cette action est
+              irréversible.
+            </p>
+          )}
         </ModalBody>
         <ModalFooter>
           <Button variant="secondary" onClick={() => setDeleteConfirm(null)}>
             Annuler
           </Button>
-          <Button 
-            variant="danger" 
+          {traces && traces.traces.total > 0 && !traces.anonymized_at && (
+            <Button
+              variant="outline"
+              icon={<ShieldOff className="w-4 h-4" />}
+              loading={anonymizeMutation.isPending}
+              onClick={() => deleteConfirm && anonymizeMutation.mutate(deleteConfirm.id)}
+            >
+              Anonymiser (RGPD)
+            </Button>
+          )}
+          <Button
+            variant="danger"
             loading={deleteMutation.isPending}
             onClick={() => deleteConfirm && deleteMutation.mutate(deleteConfirm.id)}
           >
-            Supprimer
+            {traces && traces.traces.total > 0 ? 'Désactiver' : 'Supprimer'}
           </Button>
         </ModalFooter>
       </Modal>

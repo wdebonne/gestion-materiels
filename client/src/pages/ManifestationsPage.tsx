@@ -10,6 +10,14 @@ import {
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
 import ManifestationPDFExport from '@/components/ManifestationPDFExport'
+import ManifestationSuivi from '@/components/ManifestationSuivi'
+import ManifestationDocuments from '@/components/ManifestationDocuments'
+import ManifestationObjetsParc, { type ObjetChoisi } from '@/components/ManifestationObjetsParc'
+import { objetManifestationApi, documentManifestationApi, suiviApi,
+  type CoutManifestation,
+  type LigneCout,
+} from '@/lib/api'
+import { usePermissions } from '@/lib/permissions'
 import api from '@/lib/api'
 import {
   manifestationApi,
@@ -22,6 +30,7 @@ import toast from 'react-hot-toast'
 // ==================== CONSTANTES ====================
 
 const statusLabels: Record<string, string> = {
+  pending: 'À confirmer',
   draft: 'Brouillon',
   validated: 'Validée',
   delivered: 'Livrée',
@@ -31,6 +40,10 @@ const statusLabels: Record<string, string> = {
 }
 
 const statusColors: Record<string, string> = {
+  // L'orange distingue au premier coup d'œil une demande reçue d'un formulaire,
+  // qui attend une décision, d'un brouillon que la collectivité a elle-même
+  // commencé.
+  pending: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400',
   draft: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300',
   validated: 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400',
   delivered: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -40,6 +53,11 @@ const statusColors: Record<string, string> = {
 }
 
 const statusActions: Record<string, { next: string; label: string; icon: any; color: string }[]> = {
+  pending: [
+    { next: 'validated', label: 'Confirmer', icon: Check, color: 'text-blue-600' },
+    { next: 'draft', label: 'Reprendre en brouillon', icon: Edit, color: 'text-gray-600' },
+    { next: 'cancelled', label: 'Refuser', icon: X, color: 'text-red-600' }
+  ],
   draft: [
     { next: 'validated', label: 'Valider', icon: Check, color: 'text-blue-600' },
     { next: 'cancelled', label: 'Annuler', icon: X, color: 'text-red-600' }
@@ -64,11 +82,13 @@ const emptyForm = {
   title: '', date_start: new Date().toISOString().split('T')[0], date_end: '',
   start_time: '', end_time: '', expected_people: 0,
   contact_name: '', contact_phone: '', contact_email: '',
-  delivery_address: '', delivery_date: '',
-  notes_interior: '', notes_exterior: '', materials: [] as ManifMaterial[]
+  delivery_address: '', delivery_date: '', recovery_date: '',
+  notes_interior: '', notes_exterior: '', materials: [] as ManifMaterial[],
+  objects: [] as ObjetChoisi[]
 }
 
-const emptyStockForm = { name: '', description: '', category: '', quantity_total: 0, unit: 'unité', etat: 'bon', lieu: '', stock_type: '', price: 0, category_id: null as number | null, subcategory_id: null as number | null }
+const emptyStockForm = { name: '', description: '', category: '', quantity_total: 0, unit: 'unité', etat: 'bon', lieu: '', stock_type: '', price: 0, category_id: null as number | null, subcategory_id: null as number | null, is_prestation: false
+}
 
 const etatOptions = [
   { value: 'neuf', label: 'Neuf' },
@@ -203,7 +223,7 @@ export default function ManifestationsPage() {
     mutationFn: (data: any) => editingManif
       ? manifestationApi.update(editingManif.id, data)
       : manifestationApi.create(data),
-    onSuccess: () => {
+    onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
@@ -211,6 +231,28 @@ export default function ManifestationsPage() {
       setEditingManif(null)
       setManifForm(emptyForm)
       toast.success(editingManif ? 'Manifestation modifiée' : 'Manifestation créée')
+
+      // Avertissement, jamais refus : la demande est enregistrée telle qu'elle a
+      // été formulée, et le manque est dit pour être arbitré.
+      const conflits = res.data.conflits ?? []
+      if (conflits.length > 0) {
+        toast(
+          `Stock insuffisant sur la période : ${conflits
+            .map(c => `${c.stock_name} (${c.manquant} manquant${c.manquant > 1 ? 's' : ''})`)
+            .join(', ')}`,
+          { icon: '⚠️', duration: 8000 }
+        )
+      }
+
+      // Un conflit sur du matériel unique est toujours réel : deux
+      // manifestations ne peuvent pas se partager le même camion.
+      const conflitsObjets = res.data.conflits_objets ?? []
+      if (conflitsObjets.length > 0) {
+        toast(
+          `Matériel déjà retenu : ${[...new Set(conflitsObjets.map(c => c.object_name))].join(', ')}`,
+          { icon: '⚠️', duration: 8000 }
+        )
+      }
     },
     onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
   })
@@ -289,12 +331,19 @@ export default function ManifestationsPage() {
       contact_name: m.contact_name || '', contact_phone: m.contact_phone || '',
       contact_email: m.contact_email || '', delivery_address: m.delivery_address || '',
       delivery_date: m.delivery_date?.split('T')[0] || '',
+      recovery_date: m.recovery_date?.split('T')[0] || '',
       notes_interior: m.notes_interior || '', notes_exterior: m.notes_exterior || '',
       materials: m.materials?.map(mat => ({
         stock_id: mat.stock_id, quantity_requested: mat.quantity_requested,
         quantity_delivered: mat.quantity_delivered, quantity_recovered: mat.quantity_recovered,
+        // Les pertes déjà constatées suivent la ligne : les réenvoyer à zéro
+        // effacerait la trace d'une casse dont le stock, lui, garde la marque.
+        quantity_lost: mat.quantity_lost ?? 0, loss_reason: mat.loss_reason ?? null,
         unit_value: mat.unit_value, notes: mat.notes || '',
         stock_name: mat.stock_name, unit: mat.unit
+      })) || [],
+      objects: m.objects?.map(o => ({
+        object_id: o.object_id, object_name: o.object_name, reference: o.reference, notes: o.notes
       })) || []
     })
     setShowManifModal(true)
@@ -306,6 +355,7 @@ export default function ManifestationsPage() {
       name: s.name, description: s.description || '', category: s.category || '',
       quantity_total: s.quantity_total, unit: s.unit || 'unité',
       etat: s.etat || 'bon', lieu: s.lieu || '', stock_type: s.stock_type || '',
+      is_prestation: Boolean(s.is_prestation),
       price: s.price || 0, category_id: s.category_id || null, subcategory_id: s.subcategory_id || null
     })
     if (s.category_id) setSelectedCatForSub(s.category_id)
@@ -385,11 +435,20 @@ export default function ManifestationsPage() {
 
       {/* Stats */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stats.total}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">En cours</div>
           </CardBody></Card>
+          <Card
+            className={stats.pending > 0 ? 'cursor-pointer ring-1 ring-orange-300 dark:ring-orange-700' : 'cursor-pointer'}
+            onClick={() => setStatusFilter('pending')}
+          >
+            <CardBody className="text-center py-3">
+              <div className="text-2xl font-bold text-orange-600">{stats.pending ?? 0}</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">À confirmer</div>
+            </CardBody>
+          </Card>
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-blue-600">{stats.upcoming}</div>
             <div className="text-xs text-gray-500 dark:text-gray-400">À venir</div>
@@ -482,6 +541,8 @@ export default function ManifestationsPage() {
                   onChange={e => setManifForm({ ...manifForm, delivery_address: e.target.value })} />
                 <Input label="Date de livraison" type="date" value={manifForm.delivery_date}
                   onChange={e => setManifForm({ ...manifForm, delivery_date: e.target.value })} />
+                <Input label="Date de récupération" type="date" value={manifForm.recovery_date}
+                  onChange={e => setManifForm({ ...manifForm, recovery_date: e.target.value })} />
               </CardBody>
             </Card>
 
@@ -549,6 +610,15 @@ export default function ManifestationsPage() {
                 )}
               </CardBody>
             </Card>
+
+            {/* Matériel unique : un véhicule ne se demande pas en quantité. */}
+            <ManifestationObjetsParc
+              choisis={manifForm.objects}
+              onChange={(objects) => setManifForm({ ...manifForm, objects })}
+              dateDebut={manifForm.delivery_date || manifForm.date_start}
+              dateFin={manifForm.recovery_date || manifForm.date_end || manifForm.date_start}
+              exclure={editingManif?.id}
+            />
           </div>
         </ModalBody>
         <ModalFooter>
@@ -565,8 +635,28 @@ export default function ManifestationsPage() {
         title={editingStock ? 'Modifier l\'article' : 'Nouvel article de stock'} size="xl">
         <ModalBody>
           <div className="space-y-4">
+            {/*
+              Une prestation — raccordement au réseau, débit de boissons,
+              personnel pour une cérémonie — se demande et se réalise, elle ne se
+              stocke pas. C'est le premier choix à faire : il commande la moitié
+              des champs qui suivent.
+            */}
+            <label className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800 cursor-pointer">
+              <input type="checkbox" className="mt-1" checked={Boolean(stockForm.is_prestation)}
+                onChange={e => setStockForm({ ...stockForm, is_prestation: e.target.checked })} />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                <strong>C'est une prestation, pas du matériel</strong>
+                <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                  Un raccordement électrique, un débit de boissons, du personnel pour une cérémonie.
+                  Elle n'a ni stock ni disponibilité : elle est demandée, puis réalisée. Sa catégorie
+                  décide du service qui devra l'approuver.
+                </span>
+              </span>
+            </label>
+
             <Input label="Nom *" value={stockForm.name}
-              onChange={e => setStockForm({ ...stockForm, name: e.target.value })} placeholder="Ex: Tables pliantes" />
+              onChange={e => setStockForm({ ...stockForm, name: e.target.value })}
+              placeholder={stockForm.is_prestation ? 'Ex: Raccordement électrique' : 'Ex: Tables pliantes'} />
             <Input label="Description" value={stockForm.description}
               onChange={e => setStockForm({ ...stockForm, description: e.target.value })} />
 
@@ -581,17 +671,21 @@ export default function ManifestationsPage() {
               {stockCategories.map((c: string) => <option key={c} value={c} />)}
             </datalist>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Quantité totale *" type="number"
-                inputMode="numeric" value={String(stockForm.quantity_total)}
-                onChange={e => setStockForm({ ...stockForm, quantity_total: parseInt(e.target.value) || 0 })} />
-              <Input label="Prix unitaire (€)" type="number"
-                inputMode="numeric" value={String(stockForm.price)}
-                onChange={e => setStockForm({ ...stockForm, price: parseFloat(e.target.value) || 0 })}
-                placeholder="0.00" />
-            </div>
+            {/* Une prestation n'a pas de stock : ces champs n'auraient rien à dire. */}
+            {!stockForm.is_prestation && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Input label="Quantité totale *" type="number"
+                  inputMode="numeric" value={String(stockForm.quantity_total)}
+                  onChange={e => setStockForm({ ...stockForm, quantity_total: parseInt(e.target.value) || 0 })} />
+                <Input label="Prix unitaire (€)" type="number"
+                  inputMode="numeric" value={String(stockForm.price)}
+                  onChange={e => setStockForm({ ...stockForm, price: parseFloat(e.target.value) || 0 })}
+                  placeholder="0.00" />
+              </div>
+            )}
 
-            {/* Champs personnalisés */}
+            {/* Champs personnalisés — état, lieu et type ne concernent que du matériel. */}
+            {!stockForm.is_prestation && (
             <Card>
               <CardHeader><CardTitle className="text-sm">Propriétés de l'article</CardTitle></CardHeader>
               <CardBody className="space-y-4">
@@ -616,13 +710,16 @@ export default function ManifestationsPage() {
                 </datalist>
               </CardBody>
             </Card>
+            )}
 
             {/* Filtrer par catégorie/sous-catégorie du matériel principal */}
             <Card>
               <CardHeader><CardTitle className="text-sm">Lier à une catégorie de matériel</CardTitle></CardHeader>
               <CardBody className="space-y-4">
                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                  Associer cet article à une catégorie ou sous-catégorie existante pour filtrer le matériel disponible.
+                  {stockForm.is_prestation
+                    ? "La catégorie décide du service qui approuvera cette prestation : « Technique » pour un raccordement, « Urbanisme » pour un débit de boissons."
+                    : 'Associer cet article à une catégorie ou sous-catégorie existante pour filtrer le matériel disponible.'}
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <Select label="Catégorie" value={String(stockForm.category_id || '')}
@@ -640,6 +737,8 @@ export default function ManifestationsPage() {
                 </div>
               </CardBody>
             </Card>
+
+            {editingStock && <AliasArticle stockId={editingStock.id} nom={editingStock.name} />}
           </div>
         </ModalBody>
         <ModalFooter>
@@ -907,6 +1006,7 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
   const [etatFilter, setEtatFilter] = useState('')
   const [lieuFilter, setLieuFilter] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [natureFilter, setNatureFilter] = useState('')
   const [searchStock, setSearchStock] = useState('')
 
   const filtered = stock.filter((s: StockItem) => {
@@ -914,6 +1014,10 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
     if (etatFilter && s.etat !== etatFilter) return false
     if (lieuFilter && s.lieu !== lieuFilter) return false
     if (typeFilter && s.stock_type !== typeFilter) return false
+    // Matériel et prestations cohabitent dans le même catalogue : les séparer
+    // évite de chercher un raccordement électrique parmi trois cents chaises.
+    if (natureFilter === 'materiel' && s.is_prestation) return false
+    if (natureFilter === 'prestation' && !s.is_prestation) return false
     if (searchStock && !s.name.toLowerCase().includes(searchStock.toLowerCase())) return false
     return true
   })
@@ -946,8 +1050,14 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
           <Select value={typeFilter} onChange={(e: any) => setTypeFilter(e.target.value)}
             options={[{ value: '', label: 'Tous types' }, ...types.map((t: string) => ({ value: t, label: t }))]} />
         )}
-        {(etatFilter || lieuFilter || typeFilter) && (
-          <Button size="sm" variant="ghost" onClick={() => { setEtatFilter(''); setLieuFilter(''); setTypeFilter('') }}>
+        <Select value={natureFilter} onChange={(e: any) => setNatureFilter(e.target.value)}
+          options={[
+            { value: '', label: 'Matériel et prestations' },
+            { value: 'materiel', label: 'Matériel seulement' },
+            { value: 'prestation', label: 'Prestations seulement' },
+          ]} />
+        {(etatFilter || lieuFilter || typeFilter || natureFilter) && (
+          <Button size="sm" variant="ghost" onClick={() => { setEtatFilter(''); setLieuFilter(''); setTypeFilter(''); setNatureFilter('') }}>
             <X className="w-3 h-3 mr-1" /> Réinitialiser
           </Button>
         )}
@@ -983,7 +1093,10 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
                 return (
                 <tr key={s.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
                   <td className="py-2">
-                    <div className="font-medium text-gray-900 dark:text-gray-100">{s.name}</div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{s.name}</span>
+                      {s.is_prestation ? <Badge variant="info">Prestation</Badge> : null}
+                    </div>
                     {s.description && <div className="text-xs text-gray-500 dark:text-gray-400">{s.description}</div>}
                     {s.category_name && <div className="text-xs text-gray-600 dark:text-gray-300">📁 {s.category_name}{s.subcategory_name ? ` / ${s.subcategory_name}` : ''}</div>}
                   </td>
@@ -1001,15 +1114,19 @@ function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, ty
                   <td className="py-2">
                     {s.stock_type && <Badge variant="default">{s.stock_type}</Badge>}
                   </td>
-                  <td className="py-2 text-center">{s.quantity_total} {s.unit}</td>
+                  <td className="py-2 text-center">{s.is_prestation ? '—' : `${s.quantity_total} ${s.unit}`}</td>
                   <td className="py-2 text-right text-gray-700 dark:text-gray-300">{s.price ? `${Number(s.price).toFixed(2)} €` : '—'}</td>
                   <td className="py-2 text-center">
-                    <span className={s.quantity_available <= 0 ? 'text-red-600 font-bold' : s.quantity_available < s.quantity_total * 0.2 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>
-                      {s.quantity_available}
-                    </span>
+                    {s.is_prestation ? (
+                      <span className="text-gray-400">—</span>
+                    ) : (
+                      <span className={s.quantity_available <= 0 ? 'text-red-600 font-bold' : s.quantity_available < s.quantity_total * 0.2 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>
+                        {s.quantity_available}
+                      </span>
+                    )}
                   </td>
-                  <td className="py-2 text-center text-yellow-600">{s.quantity_lent}</td>
-                  <td className="py-2 text-center text-blue-600">{s.quantity_reserved_future}</td>
+                  <td className="py-2 text-center text-yellow-600">{s.is_prestation ? '—' : s.quantity_lent}</td>
+                  <td className="py-2 text-center text-blue-600">{s.is_prestation ? '—' : s.quantity_reserved_future}</td>
                   {isSupervisor && (
                     <td className="py-2 text-center">
                       <div className="flex justify-center gap-1">
@@ -1151,101 +1268,93 @@ function HistoriqueManifestation({ manifestationId }: { manifestationId: number 
   )
 }
 
+/**
+ * Fiche d'une manifestation, en onglets.
+ *
+ * Elle portait infos, contact, notes, matériel, matériel unique, approbations,
+ * échanges, copies et historique à la suite — et devait encore recevoir les
+ * prestations et les pièces jointes. Trois écrans de défilement pour trouver la
+ * date de livraison.
+ *
+ * Cinq onglets avec un compteur : ce qu'on cherche est atteignable en un clic.
+ * Rien n'a été retiré. Les compteurs partagent les clés de requête des
+ * composants qu'ils annoncent, si bien qu'ils n'ajoutent aucun appel au serveur.
+ */
 function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose: () => void }) {
-  const formatD = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR') : '-'
-  const totalValue = m.materials?.reduce((s, mat) => s + (mat.unit_value * mat.quantity_requested), 0) || 0
+  // Le serveur refuse de toute façon ; masquer les cases évite de laisser croire
+  // qu'un simple lecteur peut constater un retour.
+  const { canManage } = usePermissions()
+  const [onglet, setOnglet] = useState('resume')
   const [exportPDF, setExportPDF] = useState(false)
+
+  // Mêmes clés que `ManifestationDocuments` et `ManifestationSuivi` : le cache
+  // est partagé, ces lectures ne déclenchent pas de second appel.
+  const { data: documents = [] } = useQuery({
+    queryKey: ['manifestation-documents', m.id],
+    queryFn: async () => (await documentManifestationApi.lister(m.id)).data.data,
+  })
+  const { data: approbations = [] } = useQuery({
+    queryKey: ['manifestation-approvals', m.id],
+    queryFn: async () => (await suiviApi.getApprovals(m.id)).data.data,
+  })
+
+  const materiels = (m.materials ?? []).filter(mat => !mat.is_prestation)
+  const prestations = (m.materials ?? []).filter(mat => mat.is_prestation)
+  const objets = m.objects ?? []
+  const enAttente = approbations.filter(a => a.kind === 'approbation' && a.status === 'pending').length
 
   return (
     <Modal isOpen onClose={onClose} title={m.title} size="xl">
       <ModalBody>
         <div className="space-y-4 text-sm">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[m.status]}`}>
               {statusLabels[m.status]}
             </span>
             <span className="text-gray-500 dark:text-gray-400">Créée par {m.created_by_name}</span>
+            {enAttente > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
+                {enAttente} approbation(s) en attente
+              </span>
+            )}
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div><span className="text-gray-500 dark:text-gray-400 block">Date début</span><strong>{formatD(m.date_start)}</strong></div>
-            <div><span className="text-gray-500 dark:text-gray-400 block">Date fin</span><strong>{formatD(m.date_end)}</strong></div>
-            <div><span className="text-gray-500 dark:text-gray-400 block">Horaires</span><strong>{m.start_time || '-'} → {m.end_time || '-'}</strong></div>
-            <div><span className="text-gray-500 dark:text-gray-400 block">Personnes</span><strong>{m.expected_people || '-'}</strong></div>
-          </div>
+          <Tabs value={onglet} onChange={setOnglet}>
+            <Tab value="resume" label="Résumé" />
+            <Tab value="materiel" label="Matériel" count={materiels.length + prestations.length + objets.length} />
+            <Tab value="documents" label="Documents" count={documents.length} />
+            <Tab value="suivi" label="Suivi" count={approbations.length} />
+            <Tab value="historique" label="Historique" />
+          </Tabs>
 
-          <Card>
-            <CardHeader><CardTitle className="text-sm">Contact livraison</CardTitle></CardHeader>
-            <CardBody>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div><span className="text-gray-500 dark:text-gray-400">Nom:</span> {m.contact_name || '-'}</div>
-                <div><span className="text-gray-500 dark:text-gray-400">Tél:</span> {m.contact_phone || '-'}</div>
-                <div><span className="text-gray-500 dark:text-gray-400">Email:</span> {m.contact_email || '-'}</div>
-                <div><span className="text-gray-500 dark:text-gray-400">Livraison:</span> {formatD(m.delivery_date)}</div>
-                <div className="col-span-2"><span className="text-gray-500 dark:text-gray-400">Adresse:</span> {m.delivery_address || '-'}</div>
-              </div>
-            </CardBody>
-          </Card>
+          {onglet === 'resume' && <OngletResume manif={m} />}
 
-          {(m.notes_interior || m.notes_exterior) && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {m.notes_interior && (
-                <Card><CardHeader><CardTitle className="text-sm">Intérieur</CardTitle></CardHeader>
-                  <CardBody><p className="whitespace-pre-wrap">{m.notes_interior}</p></CardBody>
-                </Card>
-              )}
-              {m.notes_exterior && (
-                <Card><CardHeader><CardTitle className="text-sm">Extérieur</CardTitle></CardHeader>
-                  <CardBody><p className="whitespace-pre-wrap">{m.notes_exterior}</p></CardBody>
-                </Card>
+          {onglet === 'materiel' && (
+            <div className="space-y-4">
+              <MaterielARattacher brut={m.intake_unmatched} />
+              <TableauMateriel lignes={materiels} />
+              <TableauPrestations lignes={prestations} />
+              <SuiviObjetsParc manifestationId={m.id} modifiable={canManage} />
+              {materiels.length === 0 && prestations.length === 0 && objets.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-6">
+                  Aucun matériel ni prestation demandé pour cette manifestation.
+                </p>
               )}
             </div>
           )}
 
-          {m.materials?.length > 0 && (
+          {onglet === 'documents' && <ManifestationDocuments manifestation={m} />}
+
+          {/* Approbations, échanges et copies : le suivi partagé entre services. */}
+          {onglet === 'suivi' && <ManifestationSuivi manifestationId={m.id} />}
+
+          {onglet === 'historique' && (
             <Card>
-              <CardHeader><CardTitle className="text-sm">Liste du matériel</CardTitle></CardHeader>
               <CardBody>
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b dark:border-gray-700 text-left text-gray-500 dark:text-gray-400 text-xs">
-                      <th className="pb-1">Matériel</th>
-                      <th className="pb-1 text-center">Demandé</th>
-                      <th className="pb-1 text-center">Livré</th>
-                      <th className="pb-1 text-center">Récupéré</th>
-                      <th className="pb-1 text-right">Val. TTC</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {m.materials.map((mat, i) => (
-                      <tr key={i} className="border-b dark:border-gray-700">
-                        <td className="py-1.5">{mat.stock_name} <span className="text-gray-600 dark:text-gray-300">({mat.stock_category})</span></td>
-                        <td className="py-1.5 text-center">{mat.quantity_requested} {mat.unit}</td>
-                        <td className="py-1.5 text-center">{mat.quantity_delivered}</td>
-                        <td className="py-1.5 text-center">{mat.quantity_recovered}</td>
-                        <td className="py-1.5 text-right">{(mat.unit_value * mat.quantity_requested).toFixed(2)} €</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="font-semibold border-t-2 dark:border-gray-600">
-                      <td className="pt-2">Total</td>
-                      <td className="pt-2 text-center">{m.materials.reduce((s, mat) => s + mat.quantity_requested, 0)}</td>
-                      <td className="pt-2 text-center">{m.materials.reduce((s, mat) => s + mat.quantity_delivered, 0)}</td>
-                      <td className="pt-2 text-center">{m.materials.reduce((s, mat) => s + mat.quantity_recovered, 0)}</td>
-                      <td className="pt-2 text-right">{totalValue.toFixed(2)} €</td>
-                    </tr>
-                  </tfoot>
-                </table>
+                <HistoriqueManifestation manifestationId={m.id} />
               </CardBody>
             </Card>
           )}
-          <Card>
-            <CardHeader><CardTitle className="text-sm">Historique</CardTitle></CardHeader>
-            <CardBody>
-              <HistoriqueManifestation manifestationId={m.id} />
-            </CardBody>
-          </Card>
         </div>
       </ModalBody>
       <ModalFooter>
@@ -1263,6 +1372,466 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
   )
 }
 
+/** Ce qu'on vient vérifier en premier : quand, où, avec qui. */
+function OngletResume({ manif: m }: { manif: Manifestation }) {
+  const formatD = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR') : '-'
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div><span className="text-gray-500 dark:text-gray-400 block">Date début</span><strong>{formatD(m.date_start)}</strong></div>
+        <div><span className="text-gray-500 dark:text-gray-400 block">Date fin</span><strong>{formatD(m.date_end)}</strong></div>
+        <div><span className="text-gray-500 dark:text-gray-400 block">Horaires</span><strong>{m.start_time || '-'} → {m.end_time || '-'}</strong></div>
+        <div><span className="text-gray-500 dark:text-gray-400 block">Personnes</span><strong>{m.expected_people || '-'}</strong></div>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Contact livraison</CardTitle></CardHeader>
+        <CardBody>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div><span className="text-gray-500 dark:text-gray-400">Nom:</span> {m.contact_name || '-'}</div>
+            <div><span className="text-gray-500 dark:text-gray-400">Tél:</span> {m.contact_phone || '-'}</div>
+            <div><span className="text-gray-500 dark:text-gray-400">Email:</span> {m.contact_email || '-'}</div>
+            <div><span className="text-gray-500 dark:text-gray-400">Livraison:</span> {formatD(m.delivery_date)}</div>
+            <div><span className="text-gray-500 dark:text-gray-400">Récupération:</span> {formatD(m.recovery_date)}</div>
+            <div className="col-span-2"><span className="text-gray-500 dark:text-gray-400">Adresse:</span> {m.delivery_address || '-'}</div>
+          </div>
+        </CardBody>
+      </Card>
+
+      <CoutManifestationCard cout={m.cout} />
+
+      {(m.notes_interior || m.notes_exterior) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {m.notes_interior && (
+            <Card><CardHeader><CardTitle className="text-sm">Intérieur</CardTitle></CardHeader>
+              <CardBody><p className="whitespace-pre-wrap">{m.notes_interior}</p></CardBody>
+            </Card>
+          )}
+          {m.notes_exterior && (
+            <Card><CardHeader><CardTitle className="text-sm">Extérieur</CardTitle></CardHeader>
+              <CardBody><p className="whitespace-pre-wrap">{m.notes_exterior}</p></CardBody>
+            </Card>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TableauMateriel({ lignes }: { lignes: ManifMaterial[] }) {
+  if (lignes.length === 0) return null
+
+  const total = (champ: keyof ManifMaterial) =>
+    lignes.reduce((s, mat) => s + (Number(mat[champ]) || 0), 0)
+  const valeur = lignes.reduce((s, mat) => s + (mat.unit_value * mat.quantity_requested), 0)
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Matériel demandé</CardTitle></CardHeader>
+      <CardBody>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b dark:border-gray-700 text-left text-gray-500 dark:text-gray-400 text-xs">
+                <th className="pb-1">Matériel</th>
+                <th className="pb-1 text-center">Demandé</th>
+                <th className="pb-1 text-center">Livré</th>
+                <th className="pb-1 text-center">Récupéré</th>
+                <th className="pb-1 text-center">Perdu</th>
+                <th className="pb-1 text-right">Val. TTC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lignes.map((mat, i) => (
+                <tr key={i} className="border-b dark:border-gray-700">
+                  <td className="py-1.5">{mat.stock_name} <span className="text-gray-600 dark:text-gray-300">({mat.stock_category})</span></td>
+                  <td className="py-1.5 text-center">{mat.quantity_requested} {mat.unit}</td>
+                  <td className="py-1.5 text-center">{mat.quantity_delivered}</td>
+                  <td className="py-1.5 text-center">{mat.quantity_recovered}</td>
+                  <td className={`py-1.5 text-center ${mat.quantity_lost ? 'text-red-600 font-semibold' : ''}`}
+                    title={mat.loss_reason || undefined}>
+                    {mat.quantity_lost || 0}
+                  </td>
+                  <td className="py-1.5 text-right">{(mat.unit_value * mat.quantity_requested).toFixed(2)} €</td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="font-semibold border-t-2 dark:border-gray-600">
+                <td className="pt-2">Total</td>
+                <td className="pt-2 text-center">{total('quantity_requested')}</td>
+                <td className="pt-2 text-center">{total('quantity_delivered')}</td>
+                <td className="pt-2 text-center">{total('quantity_recovered')}</td>
+                <td className="pt-2 text-center">{total('quantity_lost')}</td>
+                <td className="pt-2 text-right">{valeur.toFixed(2)} €</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+/**
+ * Prestations demandées.
+ *
+ * Ni disponibilité ni casse : une prestation est demandée, puis réalisée. Les
+ * colonnes du matériel n'auraient rien à y afficher.
+ */
+function TableauPrestations({ lignes }: { lignes: ManifMaterial[] }) {
+  if (lignes.length === 0) return null
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Prestations demandées</CardTitle></CardHeader>
+      <CardBody>
+        <div className="space-y-2">
+          {lignes.map((prestation, i) => (
+            <div key={i} className="flex flex-wrap items-center justify-between gap-2 p-2 rounded bg-gray-50 dark:bg-gray-800">
+              <span className="text-sm text-gray-900 dark:text-gray-100">
+                {prestation.stock_name}
+                {prestation.quantity_requested > 1 && (
+                  <span className="text-gray-600 dark:text-gray-300"> × {prestation.quantity_requested}</span>
+                )}
+                {prestation.stock_category && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">({prestation.stock_category})</span>
+                )}
+              </span>
+              <Badge variant={prestation.quantity_delivered > 0 ? 'success' : 'default'}>
+                {prestation.quantity_delivered > 0 ? 'Réalisée' : 'À réaliser'}
+              </Badge>
+            </div>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+/**
+ * Autres noms sous lesquels une demande peut désigner cet article.
+ *
+ * Le formulaire dit « tables », le stock dit « Table 180 cm ». Sans alias,
+ * chaque demande reçue laisserait la ligne à rattacher à la main, demande après
+ * demande — alors que le rapprochement est toujours le même.
+ *
+ * N'apparaît qu'à la modification : un alias a besoin d'un article existant.
+ */
+function AliasArticle({ stockId, nom }: { stockId: number; nom: string }) {
+  const queryClient = useQueryClient()
+  const [saisie, setSaisie] = useState('')
+
+  const { data: alias = [] } = useQuery({
+    queryKey: ['stock-aliases', stockId],
+    queryFn: async () => (await manifestationApi.getAliases(stockId)).data.data
+  })
+
+  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['stock-aliases', stockId] })
+
+  const ajout = useMutation({
+    mutationFn: (valeur: string) => manifestationApi.addAlias(stockId, valeur),
+    onSuccess: () => { rafraichir(); setSaisie('') },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
+  })
+
+  const retrait = useMutation({
+    mutationFn: (aliasId: number) => manifestationApi.deleteAlias(aliasId),
+    onSuccess: rafraichir,
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
+  })
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Autres noms reconnus</CardTitle></CardHeader>
+      <CardBody className="space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Une demande reçue par formulaire qui parle de l'un de ces noms sera rattachée
+          automatiquement à « {nom} ».
+        </p>
+
+        {alias.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {alias.map(a => (
+              <span key={a.id}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-200">
+                {a.alias}
+                <button type="button" onClick={() => retrait.mutate(a.id)}
+                  aria-label={`Retirer l'alias ${a.alias}`}
+                  className="hover:text-red-600">
+                  <X className="w-3 h-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <Input value={saisie} size="sm" placeholder="tables, table pliante…"
+            onChange={e => setSaisie(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter' && saisie.trim()) {
+                e.preventDefault()
+                ajout.mutate(saisie.trim())
+              }
+            }} />
+          <Button size="sm" variant="outline" loading={ajout.isPending}
+            disabled={!saisie.trim()} onClick={() => ajout.mutate(saisie.trim())}>
+            Ajouter
+          </Button>
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
+/**
+ * Suivi du matériel unique d'une manifestation.
+ *
+ * Un véhicule ne se compte pas : il est sorti ou non, revenu ou non, et son état
+ * au retour se constate — intact, abîmé, perdu. Trois cases plutôt que quatre
+ * champs de quantité, parce que « 0,5 camion livré » n'a aucun sens.
+ */
+function SuiviObjetsParc({ manifestationId, modifiable }: {
+  manifestationId: number
+  modifiable: boolean
+}) {
+  const queryClient = useQueryClient()
+
+  const { data: objets = [] } = useQuery({
+    queryKey: ['manifestation-objects', manifestationId],
+    queryFn: async () => (await objetManifestationApi.lister(manifestationId)).data.data
+  })
+
+  const suivi = useMutation({
+    mutationFn: ({ itemId, ...data }: { itemId: number } & Record<string, any>) =>
+      objetManifestationApi.suivre(manifestationId, itemId, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['manifestation-objects', manifestationId] })
+      queryClient.invalidateQueries({ queryKey: ['manifestation-history', manifestationId] })
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
+  })
+
+  if (objets.length === 0) return null
+
+  const LIBELLES_ETAT: Record<string, string> = {
+    intact: 'Intact',
+    abime: 'Abîmé',
+    perdu: 'Perdu'
+  }
+
+  // Un service peut tenir ses prestations dans le parc, à côté de son matériel.
+  // Les mêler ici ferait proposer « État au retour : abîmé » sur un débit de
+  // boissons — les deux natures ne se suivent pas de la même façon.
+  const exemplaires = objets.filter(o => o.nature === 'unique' || (!o.nature && !o.is_prestation))
+  const prestations = objets.filter(o => o.nature === 'prestation' || (!o.nature && o.is_prestation))
+  const lots = objets.filter(o => o.nature === 'lot')
+
+  return (
+    <>
+    {prestations.length > 0 && (
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Prestations demandées</CardTitle></CardHeader>
+        <CardBody className="space-y-2">
+          {prestations.map(prestation => (
+            <div key={prestation.id}
+              className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+              <div className="min-w-0">
+                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                  {prestation.object_name}
+                </span>
+                {prestation.quantity > 1 && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                    × {prestation.quantity}
+                  </span>
+                )}
+                {prestation.category_name && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                    {prestation.category_name}
+                  </span>
+                )}
+              </div>
+              {/* Une prestation se lit « réalisée », pas « livrée puis revenue » :
+                  il n'y a rien à rapporter ni à constater au retour. */}
+              {modifiable ? (
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={prestation.quantity_delivered > 0}
+                    onChange={e => suivi.mutate({ itemId: prestation.id, delivered: e.target.checked })} />
+                  Réalisée
+                </label>
+              ) : (
+                <span className="text-xs text-gray-600 dark:text-gray-300">
+                  {prestation.quantity_delivered > 0 ? 'Réalisée' : 'À réaliser'}
+                </span>
+              )}
+            </div>
+          ))}
+        </CardBody>
+      </Card>
+    )}
+
+    {lots.length > 0 && (
+      <Card>
+        <CardHeader><CardTitle className="text-sm">Lots du parc</CardTitle></CardHeader>
+        <CardBody className="space-y-2">
+          {lots.map(lot => (
+            <div key={lot.id} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+                  {lot.object_name}
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">
+                    {lot.quantity} demandée(s) sur {lot.quantity_total ?? 0} détenue(s)
+                  </span>
+                </span>
+                {/* Ce qui manque au retour est la casse ou le vol : le dire ici
+                    évite d'aller le chercher dans l'historique. */}
+                {lot.quantity_delivered > lot.quantity_returned && lot.quantity_returned > 0 && (
+                  <Badge variant="danger">
+                    {lot.quantity_delivered - lot.quantity_returned} non revenue(s)
+                  </Badge>
+                )}
+              </div>
+
+              {modifiable ? (
+                <div className="flex flex-wrap items-center gap-4 mt-2">
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    Livrées
+                    <input type="number" min={0} max={lot.quantity}
+                      value={lot.quantity_delivered}
+                      onChange={e => suivi.mutate({ itemId: lot.id, delivered_quantity: e.target.value })}
+                      className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-900" />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                    Revenues
+                    <input type="number" min={0} max={lot.quantity}
+                      value={lot.quantity_returned}
+                      onChange={e => suivi.mutate({ itemId: lot.id, returned_quantity: e.target.value })}
+                      className="w-20 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 dark:bg-gray-900" />
+                  </label>
+                </div>
+              ) : (
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                  {lot.quantity_delivered} livrée(s) · {lot.quantity_returned} revenue(s)
+                </p>
+              )}
+
+              {lot.notes && (
+                <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 italic">{lot.notes}</p>
+              )}
+            </div>
+          ))}
+        </CardBody>
+      </Card>
+    )}
+
+    {exemplaires.length > 0 && (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Matériel unique du parc</CardTitle></CardHeader>
+      <CardBody className="space-y-2">
+        {exemplaires.map(objet => (
+          <div key={objet.id} className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
+                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{objet.object_name}</span>
+                {objet.reference && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{objet.reference}</span>
+                )}
+                {objet.serial_number && (
+                  <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">n° {objet.serial_number}</span>
+                )}
+              </div>
+              {objet.return_state && (
+                <Badge variant={objet.return_state === 'intact' ? 'success' : 'danger'}>
+                  {LIBELLES_ETAT[objet.return_state]}
+                </Badge>
+              )}
+            </div>
+
+            {modifiable ? (
+              <div className="flex flex-wrap items-center gap-4 mt-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={objet.quantity_delivered > 0}
+                    onChange={e => suivi.mutate({ itemId: objet.id, delivered: e.target.checked })} />
+                  Sorti
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input type="checkbox" checked={objet.quantity_returned > 0}
+                    onChange={e => suivi.mutate({ itemId: objet.id, returned: e.target.checked })} />
+                  Revenu
+                </label>
+                {objet.quantity_returned > 0 && (
+                  <div className="w-40">
+                    <Select value={objet.return_state ?? ''}
+                      onChange={e => suivi.mutate({ itemId: objet.id, return_state: e.target.value })}
+                      options={[
+                        { value: '', label: '— État au retour —' },
+                        { value: 'intact', label: 'Intact' },
+                        { value: 'abime', label: 'Abîmé' },
+                        { value: 'perdu', label: 'Perdu' }
+                      ]} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
+                {objet.quantity_delivered > 0 ? 'Sorti' : 'Non sorti'}
+                {' · '}
+                {objet.quantity_returned > 0 ? 'revenu' : 'non revenu'}
+              </p>
+            )}
+
+            {objet.notes && (
+              <p className="text-xs text-gray-600 dark:text-gray-300 mt-1 italic">{objet.notes}</p>
+            )}
+          </div>
+        ))}
+      </CardBody>
+    </Card>
+    )}
+    </>
+  )
+}
+
+/**
+ * Matériel demandé par un formulaire qu'aucun article du stock n'a permis de
+ * rattacher.
+ *
+ * Ces lignes seraient invisibles autrement : la demande arriverait amputée sans
+ * que personne le sache, et le manque se découvrirait le jour de la livraison.
+ * Le rattachement se fait à la main, en modifiant la manifestation — ou une fois
+ * pour toutes en ajoutant un alias à l'article concerné.
+ */
+function MaterielARattacher({ brut }: { brut?: string | null }) {
+  if (!brut) return null
+
+  let lignes: Array<{ libelle: string; quantite: number }> = []
+  try {
+    lignes = JSON.parse(brut)
+  } catch {
+    return null
+  }
+  if (lignes.length === 0) return null
+
+  return (
+    <Alert type="warning">
+      <div className="text-sm">
+        <strong>Matériel demandé non rattaché au stock :</strong>
+        <ul className="mt-1 list-disc list-inside">
+          {lignes.map((l, i) => (
+            <li key={i}>{l.quantite} × {l.libelle}</li>
+          ))}
+        </ul>
+        <p className="mt-1 text-xs">
+          Ajoutez-le à la main, ou enregistrez un alias sur l'article correspondant
+          pour que les prochaines demandes le trouvent seules.
+        </p>
+      </div>
+    </Alert>
+  )
+}
+
 // ==================== MODALE LIVRAISON / RÉCUPÉRATION ====================
 
 function DeliveryModal({ manif, onClose, onSave, loading }: {
@@ -1274,15 +1843,29 @@ function DeliveryModal({ manif, onClose, onSave, loading }: {
       id: m.id, stock_name: m.stock_name, unit: m.unit,
       quantity_requested: m.quantity_requested,
       quantity_delivered: m.quantity_delivered,
-      quantity_recovered: m.quantity_recovered
+      quantity_recovered: m.quantity_recovered,
+      quantity_lost: m.quantity_lost ?? 0,
+      loss_reason: m.loss_reason ?? ''
     })) || []
   )
 
-  const update = (idx: number, field: string, value: number) => {
+  const update = (idx: number, field: string, value: number | string) => {
     const updated = [...materials]
     updated[idx] = { ...updated[idx], [field]: value }
     setMaterials(updated)
   }
+
+  /**
+   * Écart entre ce qui est sorti et ce qui est revenu ou déclaré perdu.
+   *
+   * C'est le chiffre qui trahit une saisie incomplète : 12 chaises livrées, 11
+   * récupérées et rien de déclaré perdu, c'est une chaise que personne ne
+   * cherche.
+   */
+  const manquant = (m: typeof materials[number]) =>
+    m.quantity_delivered - m.quantity_recovered - m.quantity_lost
+
+  const aDesEcarts = materials.some(m => manquant(m) > 0)
 
   return (
     <Modal isOpen onClose={onClose} title={`Matériel — ${manif.title}`} size="lg">
@@ -1290,35 +1873,165 @@ function DeliveryModal({ manif, onClose, onSave, loading }: {
         <Alert type="info">
           <span className="text-sm">
             {manif.status === 'validated'
-              ? 'Saisissez les quantités livrées pour chaque article.'
-              : 'Saisissez les quantités récupérées. Le stock sera mis à jour automatiquement.'}
+              ? "Saisissez ce qui part réellement. Si seules 8 tables sur 10 sont nécessaires, corrigez la quantité demandée."
+              : "Saisissez ce qui revient. Ce qui est déclaré cassé, perdu ou volé est retiré du stock physique et reste tracé."}
           </span>
         </Alert>
+
         <div className="mt-4 space-y-3">
           {materials.map((m, i) => (
-            <div key={i} className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div className="flex-1">
+            <div key={i} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
+              <div className="flex items-center justify-between mb-2">
                 <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{m.stock_name}</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400 ml-1">(demandé: {m.quantity_requested} {m.unit})</span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">{m.unit}</span>
               </div>
-              <div className="w-28">
-                <Input label="Livré" type="number"
-                inputMode="numeric" size="sm" value={String(m.quantity_delivered)}
-                  onChange={e => update(i, 'quantity_delivered', parseInt(e.target.value) || 0)} />
+
+              <div className="flex flex-wrap items-start gap-3">
+                <div className="w-28">
+                  <Input label="Demandé" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_requested)}
+                    onChange={e => update(i, 'quantity_requested', parseInt(e.target.value) || 0)} />
+                </div>
+                <div className="w-28">
+                  <Input label="Livré" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_delivered)}
+                    onChange={e => update(i, 'quantity_delivered', parseInt(e.target.value) || 0)} />
+                </div>
+                <div className="w-28">
+                  <Input label="Récupéré" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_recovered)}
+                    onChange={e => update(i, 'quantity_recovered', parseInt(e.target.value) || 0)} />
+                </div>
+                <div className="w-28">
+                  <Input label="Perdu / cassé" type="number" min="0"
+                    inputMode="numeric" size="sm" value={String(m.quantity_lost)}
+                    onChange={e => update(i, 'quantity_lost', parseInt(e.target.value) || 0)} />
+                </div>
+                {m.quantity_lost > 0 && (
+                  <div className="flex-1 min-w-[12rem]">
+                    <Input label="Motif" size="sm" value={m.loss_reason}
+                      placeholder="Cassée au transport, volée…"
+                      onChange={e => update(i, 'loss_reason', e.target.value)} />
+                  </div>
+                )}
               </div>
-              <div className="w-28">
-                <Input label="Récupéré" type="number"
-                inputMode="numeric" size="sm" value={String(m.quantity_recovered)}
-                  onChange={e => update(i, 'quantity_recovered', parseInt(e.target.value) || 0)} />
-              </div>
+
+              {manquant(m) > 0 && (
+                <p className="mt-2 text-xs text-yellow-700 dark:text-yellow-500">
+                  {manquant(m)} {m.unit} ni récupéré(s) ni déclaré(s) perdu(s).
+                </p>
+              )}
             </div>
           ))}
         </div>
+
+        {aDesEcarts && (
+          <Alert type="warning" className="mt-4">
+            <span className="text-sm">
+              Des articles sortis ne sont ni revenus ni déclarés perdus. Tant qu'ils
+              ne le sont pas, le stock les considère comme encore dehors.
+            </span>
+          </Alert>
+        )}
       </ModalBody>
       <ModalFooter>
         <Button variant="outline" onClick={onClose}>Annuler</Button>
         <Button loading={loading} onClick={() => onSave(materials)}>Enregistrer</Button>
       </ModalFooter>
     </Modal>
+  )
+}
+
+/** Montant en euros, à la française : « 1 250,50 € ». */
+const enEuros = (valeur: number): string =>
+  new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(valeur ?? 0)
+
+/**
+ * Ce que la manifestation coûte.
+ *
+ * Deux natures, séparées à dessein : ce qu'on **déploie** — trois agents, un
+ * raccordement — et ce qui ne **revient pas** — dix chaises prêtées, neuf
+ * rendues. Les additionner sans les distinguer donnerait un total juste et une
+ * lecture fausse : on ne négocie pas une casse comme on budgète une vacation.
+ *
+ * Tant que la manifestation n'est pas récupérée, ce qui est sorti n'est pas
+ * perdu : il est montré à part, sans entrer dans le total. Compter la
+ * différence dès la livraison afficherait 1 500 € de casse le jour où l'on sort
+ * trente chaises.
+ */
+function CoutManifestationCard({ cout }: { cout?: CoutManifestation }) {
+  if (!cout) return null
+
+  const rien =
+    cout.prestations.length === 0 &&
+    cout.pertes.length === 0 &&
+    cout.en_attente_de_retour.length === 0
+  if (rien) return null
+
+  const Section = ({ titre, lignes, ton }: { titre: string; lignes: LigneCout[]; ton: string }) =>
+    lignes.length === 0 ? null : (
+      <div>
+        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">{titre}</p>
+        <div className="space-y-1">
+          {lignes.map((ligne, i) => (
+            <div key={`${ligne.libelle}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+              <span className="text-gray-900 dark:text-gray-100">
+                {ligne.libelle}
+                <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{ligne.motif}</span>
+              </span>
+              <strong className={ton}>{enEuros(ligne.total)}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between">
+        <CardTitle className="text-sm">Coût de la manifestation</CardTitle>
+        <strong className="text-lg text-gray-900 dark:text-gray-100">{enEuros(cout.total)}</strong>
+      </CardHeader>
+      <CardBody className="space-y-3">
+        <Section titre="Prestations déployées" lignes={cout.prestations} ton="text-gray-900 dark:text-gray-100" />
+        <Section titre="Casse et matériel non revenu" lignes={cout.pertes} ton="text-red-600 dark:text-red-400" />
+
+        {cout.en_attente_de_retour.length > 0 && (
+          <div>
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+              Sorti, pas encore revenu — non compté
+            </p>
+            <div className="space-y-1">
+              {cout.en_attente_de_retour.map((ligne, i) => (
+                <div key={`${ligne.libelle}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
+                  <span className="text-gray-600 dark:text-gray-300">
+                    {ligne.libelle}
+                    <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{ligne.motif}</span>
+                  </span>
+                  <span className="text-gray-400 dark:text-gray-500">{enEuros(ligne.total)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {(cout.total_prestations > 0 || cout.total_pertes > 0) && (
+          <div className="pt-2 border-t border-gray-200 dark:border-gray-700 flex flex-wrap gap-x-6 gap-y-1 text-sm">
+            <span className="text-gray-600 dark:text-gray-300">
+              Prestations : <strong>{enEuros(cout.total_prestations)}</strong>
+            </span>
+            <span className="text-gray-600 dark:text-gray-300">
+              Pertes : <strong>{enEuros(cout.total_pertes)}</strong>
+            </span>
+          </div>
+        )}
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {cout.definitif
+            ? 'Décompte définitif : la manifestation est récupérée, ce qui n’est pas revenu ne reviendra plus.'
+            : 'Décompte provisoire : ce qui est sorti ne sera compté comme perdu qu’une fois la manifestation récupérée.'}
+        </p>
+      </CardBody>
+    </Card>
   )
 }

@@ -3,7 +3,6 @@ import {
   Settings, 
   Users, 
   Mail, 
-  FileText, 
   Puzzle, 
   Database,
   HardDrive,
@@ -12,7 +11,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck
+  ShieldCheck, CalendarDays, Bell
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -42,15 +41,9 @@ const settingsNavItems = [
     adminOnly: true
   },
   { 
-    to: '/settings/smtp', 
+    to: '/settings/email', 
     icon: Mail, 
-    label: 'SMTP',
-    adminOnly: true
-  },
-  { 
-    to: '/settings/email-templates', 
-    icon: FileText, 
-    label: 'Templates Email',
+    label: 'Emails',
     adminOnly: true
   },
   { 
@@ -81,6 +74,18 @@ const settingsNavItems = [
     to: '/settings/webhooks', 
     icon: Webhook, 
     label: 'Webhooks',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/manifestations', 
+    icon: CalendarDays, 
+    label: 'Manifestations',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/notifications', 
+    icon: Bell, 
+    label: 'Notifications',
     adminOnly: true
   },
   { 

@@ -11,6 +11,10 @@ import {
 } from '@/components/ui'
 import api, { Subcategory, GestionObject as EquipmentObject } from '@/lib/api'
 import { usePaginatedObjects } from '@/lib/usePaginatedObjects'
+import ChoixPrestation, { BadgePrestation } from '@/components/ChoixPrestation'
+import ChoixTypeMateriel, { BadgeLot } from '@/components/ChoixTypeMateriel'
+import ChoixPretable from '@/components/ChoixPretable'
+import CoutUnitaire from '@/components/CoutUnitaire'
 import toast from 'react-hot-toast'
 import Can from '@/components/Can'
 import { BoutonEtiquettesQr } from '@/components/QrLabelsModal'
@@ -26,7 +30,12 @@ export default function SubcategoryDetailPage() {
     name: '',
     description: '',
     image: '',
-    status: 'active'
+    status: 'active',
+    isPrestation: null as boolean | null,
+    materialType: 'unique' as 'unique' | 'lot',
+    quantityTotal: 0,
+    unitCost: 0,
+    availableForManifestations: null as boolean | null
   })
   const [deleteConfirm, setDeleteConfirm] = useState<EquipmentObject | null>(null)
 
@@ -40,14 +49,21 @@ export default function SubcategoryDetailPage() {
     enabled: !!categorySlug
   })
 
-  // Récupérer la sous-catégorie
+  /**
+   * Récupérer la sous-catégorie, **dans sa catégorie**.
+   *
+   * Le slug n'est unique que dans une catégorie : « Technique › Prestations » et
+   * « Urbanisme › Prestations » en portent le même. Chercher par le seul slug
+   * rendait la première venue, et les deux écrans montraient le même matériel.
+   * La clé de cache porte les deux slugs pour la même raison.
+   */
   const { data: subcategory, isLoading, error } = useQuery({
-    queryKey: ['subcategory', subcategorySlug],
+    queryKey: ['subcategory', categorySlug, subcategorySlug],
     queryFn: async () => {
-      const response = await api.get(`/subcategories/by-slug/${subcategorySlug}`)
-      return response.data as Subcategory
+      const response = await api.get(`/categories/${categorySlug}/${subcategorySlug}`)
+      return response.data.subcategory as Subcategory
     },
-    enabled: !!subcategorySlug
+    enabled: !!categorySlug && !!subcategorySlug
   })
 
   // Récupérer les objets de la sous-catégorie, page par page
@@ -64,6 +80,15 @@ export default function SubcategoryDetailPage() {
     enabled: !!subcategory?.id,
   })
 
+  /**
+   * Cette branche du parc contient-elle des prestations ?
+   *
+   * Le plus précis l'emporte : la sous-catégorie si elle a tranché, sinon la
+   * catégorie. Sert de valeur héritée dans le formulaire et décide de ce que
+   * l'écran a encore du sens à proposer.
+   */
+  const estBranchePrestation = Boolean(subcategory?.isPrestation ?? category?.isPrestation)
+
   // Mutation pour créer/modifier un objet
   const saveObjectMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -74,7 +99,7 @@ export default function SubcategoryDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['objects', subcategory?.id] })
-      queryClient.invalidateQueries({ queryKey: ['subcategory', subcategorySlug] })
+      queryClient.invalidateQueries({ queryKey: ['subcategory', categorySlug, subcategorySlug] })
       toast.success(editingObject ? 'Matériel modifié' : 'Matériel créé')
       closeModal()
     },
@@ -90,7 +115,7 @@ export default function SubcategoryDetailPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['objects', subcategory?.id] })
-      queryClient.invalidateQueries({ queryKey: ['subcategory', subcategorySlug] })
+      queryClient.invalidateQueries({ queryKey: ['subcategory', categorySlug, subcategorySlug] })
       toast.success('Matériel supprimé')
       setDeleteConfirm(null)
     },
@@ -106,11 +131,16 @@ export default function SubcategoryDetailPage() {
         name: obj.name,
         description: obj.description || '',
         image: obj.image || '',
-        status: obj.status || 'active'
+        status: obj.status || 'active',
+        isPrestation: obj.isPrestation ?? null,
+        materialType: obj.materialType ?? 'unique',
+        quantityTotal: obj.quantityTotal ?? 0,
+        unitCost: obj.unitCost ?? 0,
+        availableForManifestations: obj.availableForManifestations ?? null
       })
     } else {
       setEditingObject(null)
-      setFormData({ name: '', description: '', image: '', status: 'active' })
+      setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0, unitCost: 0, availableForManifestations: null })
     }
     setIsModalOpen(true)
   }
@@ -118,7 +148,7 @@ export default function SubcategoryDetailPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingObject(null)
-    setFormData({ name: '', description: '', image: '', status: 'active' })
+    setFormData({ name: '', description: '', image: '', status: 'active', isPrestation: null, materialType: 'unique', quantityTotal: 0, unitCost: 0, availableForManifestations: null })
   }
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -224,7 +254,12 @@ export default function SubcategoryDetailPage() {
         </div>
         {/* Étiquetage d'un lot de matériels : la génération existait côté
             serveur sans aucun écran pour l'appeler. */}
-        <BoutonEtiquettesQr materiels={objects} titre={subcategory?.name} />
+        {/* Une étiquette QR se colle sur un objet. Un raccordement électrique
+            n'a rien où la coller : le bouton disparaît plutôt que d'imprimer
+            une planche que personne ne saura quoi en faire. */}
+        {!estBranchePrestation && (
+          <BoutonEtiquettesQr materiels={objects} titre={subcategory?.name} />
+        )}
         <Can manage>
           <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
             Nouveau matériel
@@ -272,6 +307,12 @@ export default function SubcategoryDetailPage() {
               }`}>
                 {statusOptions.find(s => s.value === obj.status)?.label || 'Actif'}
               </div>
+
+              {(obj.prestation ?? estBranchePrestation) ? (
+                <BadgePrestation className="absolute bottom-2 left-2 shadow-sm" />
+              ) : obj.nature === 'lot' ? (
+                <BadgeLot quantite={obj.quantityTotal} className="absolute bottom-2 left-2 shadow-sm" />
+              ) : null}
 
               {/* Actions au survol */}
               <Can manage>
@@ -356,6 +397,56 @@ export default function SubcategoryDetailPage() {
               label="Image"
               value={formData.image}
               onChange={(url) => setFormData({ ...formData, image: url })}
+            />
+
+            {/* Un lot n'a ni carburant ni contrôle technique — ces suivis
+                portent sur un exemplaire — mais garde ses entretiens. La
+                question ne se pose pas pour une prestation, qui n'a rien à
+                stocker. */}
+            {!(formData.isPrestation ?? estBranchePrestation) && (
+              <ChoixTypeMateriel
+                type={formData.materialType}
+                quantite={formData.quantityTotal}
+                onChangeType={(materialType) => setFormData({ ...formData, materialType })}
+                onChangeQuantite={(quantityTotal) => setFormData({ ...formData, quantityTotal })}
+              />
+            )}
+
+            {/*
+              L'exception au réglage de la branche. La sous-catégorie suffit dans
+              la plupart des cas — « Urbanisme › Prestation » — mais un article
+              isolé doit pouvoir démentir sa branche sans qu'on ait à lui en
+              créer une pour lui seul.
+            */}
+            <ChoixPrestation
+              valeur={formData.isPrestation}
+              onChange={(isPrestation) => setFormData({ ...formData, isPrestation })}
+              heriteDe={{ prestation: estBranchePrestation, source: 'sa sous-catégorie' }}
+              aide="Une prestation ne se stocke pas et n’immobilise rien : elle est demandée, puis réalisée."
+            />
+
+            {/* La question se pose ici, au moment où l'on crée le matériel :
+                on sait alors si le réfrigérateur part pour la brocante et si le
+                grill reste à la cuisine. La régler ailleurs, plus tard, c'est ne
+                jamais la régler. */}
+            <ChoixPretable
+              valeur={formData.availableForManifestations}
+              onChange={(availableForManifestations) =>
+                setFormData({ ...formData, availableForManifestations })
+              }
+              heriteDe={{ pretable: true, source: 'sa sous-catégorie' }}
+            />
+
+            <CoutUnitaire
+              valeur={formData.unitCost}
+              nature={
+                (formData.isPrestation ?? estBranchePrestation)
+                  ? 'prestation'
+                  : formData.materialType === 'lot'
+                    ? 'lot'
+                    : 'unique'
+              }
+              onChange={(unitCost) => setFormData({ ...formData, unitCost })}
             />
           </ModalBody>
 

@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
-| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique horodaté et fiche PDF branchés en août 2026 |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -202,16 +202,18 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Fonctionnalités :**
   - **Gestion de stock dédié** : Catalogue matériel avec quantités totales, disponibles (temps réel), prêtées et réservées (prévisionnel)
   - **Manifestations** : CRUD complet avec dates, horaires, nombre de personnes attendues, notes intérieures/extérieures
-  - **Workflow de statut** : Brouillon → Validé → Livré → Récupéré → Archivé (+ Annulé), transitions contrôlées serveur
-  - **Contact livraison** : Nom, téléphone, email, adresse de livraison, date de livraison
-  - **Matériel par manifestation** : Quantités demandées, livrées, récupérées avec suivi unitaire
-  - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue
+  - **Workflow de statut** : À confirmer → Brouillon → Validé → Livré → Récupéré → Archivé (+ Annulé), transitions contrôlées serveur
+  - **Contact livraison** : Nom, téléphone, email, adresse de livraison, dates de livraison et de récupération
+  - **Matériel par manifestation** : Quantités demandées, livrées, récupérées et perdues, avec suivi unitaire
+  - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue, une perte le diminue
+  - **Réception de demandes** : dépôt signé depuis une application de formulaires, correspondance des champs configurable
+  - **Matériel unique** : un véhicule ou un matériel identifié du parc se rattache à une manifestation, sans passer par une quantité
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
   - **Filtres** : Par statut, dates, recherche textuelle
   - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
-- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`
+- **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`, `manifestation_export_profiles`, `manifestation_items`, `notification_preferences`, `service_delegations`, `manifestation_documents`, `manifestation_doc_types`, `service_templates`
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
-- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison
+- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
 
 > ✅ **Complété en août 2026 :** chaque action est consignée dans `manifestation_history` — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et un commentaire facultatif. La timeline s'affiche dans le détail, et `GET /:id/history` la sert seule.
@@ -219,6 +221,64 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 > La fiche PDF est branchée. Le composant existait sans être importé nulle part, et il était écrit contre une forme de données qui n'a jamais existé : `name` au lieu de `title`, `items` au lieu de `materials`, `res.data` au lieu de `res.data.data`, des statuts en français là où le serveur en stocke d'autres. Chaque champ serait ressorti vide et la génération se serait arrêtée sur `detail.name.replace`.
 >
 > `PUT /:id/materials` refuse désormais une mise à jour qui ne touche aucune ligne, au lieu de répondre 200.
+>
+> ✅ **Réception et stock réel, août 2026 :** les demandes arrivent d'une application de formulaires par `POST /api/manifestations/intake/:slug`, signées HMAC sur les octets exacts du corps, idempotentes, journalisées. La correspondance entre le JSON reçu et les champs d'une manifestation est une donnée réglée dans l'interface, pas du code — chaque formulaire nomme ses champs à sa façon et changera.
+>
+> Le prévisionnel et le réel sont désormais deux comptes distincts, écrits une seule fois dans `manifestationStock.service.ts`. Ils étaient mélangés et réécrits à la main dans chaque route, et aucune ne savait répondre sur une période. Une manifestation ne compte que dans un seul des deux selon son statut : sans cette séparation, une manifestation livrée était comptée deux fois.
+>
+> La casse et le vol diminuent le stock physique et laissent un mouvement tracé. Seul l'écart est appliqué : réenregistrer la même perte ne retire pas une deuxième fois.
+>
+> ⚠️ **Fuite fermée :** `GET /manifestations`, `GET /:id`, `/stock` et `/stock/availability` étaient lisibles par tout compte authentifié — seules les écritures étaient gardées. `objectScope.ts` ne couvrait que la table `objects`, et son test de non-régression ne cherche que cette chaîne. Règle écrite dans `manifestationScope.ts`.
+>
+> ✅ **Services et suivi partagé, août 2026 :** un service est un groupe de personnes *et* un périmètre de catégories. C'est ce périmètre qui décide de tout — un service n'est sollicité, alerté et destinataire que si la manifestation demande du matériel de ses catégories. Avant, le choix se réduisait à « tout le monde reçoit tout » ou « personne ne reçoit rien » : `group_permissions.role` désigne un rôle, pas un groupe de personnes.
+>
+> Chaque service concerné approuve sa part, avec ses propres dates de livraison et de récupération, et la validation reste bloquée tant qu'il n'a pas répondu. Les services échangent dans un fil consigné à l'historique ; une direction générale ou des élus peuvent être mis en copie sans rien approuver.
+>
+> Le rôle `service` ouvre le seul module Manifestations. Le cloisonnement est **fermé par défaut** — tout `/api/*` est refusé sauf une liste blanche — et appliqué au point unique où le rôle devient connu, jetons API compris.
+>
+> ✅ **Export et dépôt Nextcloud, août 2026 :** 24 colonnes disponibles, dont l'état de chaque approbation et les services encore attendus. Les profils disent quelles colonnes, dans quel ordre et sous quel intitulé — une donnée, pas du code. Le dépôt WebDAV est à sens unique : l'application reste la source de vérité. La vérification de configuration dépose réellement un fichier témoin plutôt que de valider la forme des champs, et le redépôt automatique est regroupé sur une minute.
+>
+> ✅ **Matériel unique et notifications réglables, août 2026 :** une demande porte désormais deux natures de matériel — des quantités et des exemplaires identifiés choisis dans le parc. `manifestation_items`, créée à l'origine et jamais utilisée, est en service : un conflit y est toujours réel, et les réservations sont lues au passage puisque les deux circuits engagent le même parc.
+>
+> Les notifications se règlent à trois niveaux : défaut de la collectivité par événement et par rôle, réglage de chaque service, choix de chaque compte. Ce qui engage son destinataire — une approbation attendue — part toujours.
+>
+> ✅ **Responsables, délégations et coordination, août 2026 :** `is_manager` était enregistré sans entrer dans aucune décision ; seul le responsable d'un service approuve désormais en son nom, et lui seul délègue. Un **service coordinateur** pilote toutes les manifestations : sollicité sur chacune, destinataire de tout, son approbation prononce la validation — mais seulement une fois les services concernés ont répondu.
+>
+> ✅ **Matériel prêtable, août 2026 :** le sélecteur proposait tout le parc. Le réglage existe désormais à trois niveaux — catégorie, sous-catégorie, matériel — avec trois états, le plus précis l'emportant. Un compte à deux casquettes (service technique et service communication) voit enfin les manifestations dont son service est l'approbateur : les deux portées s'additionnent au lieu de s'ignorer.
+>
+> ✅ **Prestations et pièces jointes, août 2026 :** une case à cocher transforme un article en prestation — raccordement, débit de boissons, personnel. Le routage d'approbation partant déjà de la catégorie de l'article, une prestation classée « Urbanisme » sollicite l'urbanisme sans code supplémentaire. Les pièces jointes conservent arrêtés, plans, constats et photos, avec une description qui entre dans la recherche ; supprimer une pièce retire aussi le fichier, ce que l'application ne faisait nulle part ailleurs. La fiche est passée en cinq onglets.
+>
+> ⚠️ **Traçabilité préservée :** supprimer un compte effaçait la ligne, et chaque `ON DELETE SET NULL` vidait l'auteur des décisions, des messages et de l'historique. Un compte qui a laissé des traces est désormais désactivé, jamais effacé ; l'anonymisation retire l'identité en conservant les liens, ce que le RGPD demande sans détruire la traçabilité.
+>
+> ✅ **Document pré-rempli par service, août 2026 :** un modèle `.docx` écrit dans Word est rattaché à un service depuis l'écran des services ; ses champs entre accolades sont relevés à l'import et reliés en un clic à une donnée de la demande. Chaque service ne reçoit que **sa part** — celui qui instruit un débit de boissons n'a que faire du raccordement électrique ni du nombre de chaises — et seul le coordinateur reçoit l'ensemble. Le document est joint à la manifestation et part en pièce jointe de la demande d'approbation.
+>
+> `easy-template-x` (MIT) a été retenue plutôt que Carbone, cité en exemple : Carbone n'est pas distribuable sous la licence de cette application et demande LibreOffice à côté. Surtout, cette bibliothèque **n'exécute aucun code venu du modèle**, ce qui compte quand les modèles sont déposés dans un Nextcloud partagé. Les champs sont détectés en recollant les runs d'un paragraphe : Word coupe volontiers `{date_livraison}` sur plusieurs `<w:t>`, et sans ce recollage un modèle valide paraîtrait vide de champs.
+>
+> Le modèle peut être tenu dans Nextcloud et **relu à chaque génération** : on le corrige à un seul endroit. Un modèle défaillant ne bloque jamais une manifestation — l'erreur est notée et affichée, la demande suit son cours.
+>
+> ✅ **Essai de webhook à blanc, août 2026 :** régler une source demandait de deviner les chemins qu'un formulaire enverrait, et la seule vérification possible était une vraie demande — qui créait une manifestation, réservait du matériel et écrivait aux services. L'écran d'essai dit ce qui *serait* arrivé sans rien créer : recevabilité, matériel reconnu, services alertés, modèles en place. Les services sont par ailleurs sollicités **dès la réception**, et non plus au moment où quelqu'un ouvre la demande.
+>
+> ⚠️ **Fichiers orphelins :** supprimer une manifestation laissait ses pièces jointes sur le disque pour toujours, et supprimer un service laissait le fichier de son modèle. Les lignes partaient en cascade, pas les fichiers.
+>
+> ✅ **Prestations tenues dans le parc, août 2026 :** l'arbre des catégories était déjà partagé entre le parc et le stock des manifestations ; il ne manquait que de pouvoir dire « cette branche, ce sont des prestations ». Le réglage existe aux trois niveaux, le plus précis l'emportant, et se fait sur la fiche de la catégorie, de la sous-catégorie ou du matériel — là où le service travaille déjà. L'organisation visée est celle où la **catégorie est le service**, ce qui fait tomber le routage d'approbation sans une ligne de plus. Une prestation du parc n'immobilise rien, se demande en nombre, et entre dans le document envoyé à son service.
+>
+> ⚠️ **Le matériel du parc ne sollicitait aucun service :** `servicesConcernes` ne lisait que `manifestation_materials`. Une manifestation composée uniquement de matériel du parc ne sollicitait personne, et sa validation passait sans approbation — le tableau vide ressemblant à « rien à approuver ». `manifestation_items` était en service depuis le lot « matériel unique » sans que le routage ait jamais été réconcilié avec elle.
+>
+> ✅ **Matériel du parc en lot, août 2026 :** le parc ne comptait que des exemplaires, et les quantités vivaient dans un catalogue séparé — on tenait donc ses chaises à deux endroits. Un matériel se déclare désormais *exemplaire unique* ou *lot avec quantité*, et les manifestations s'imputent directement sur cette quantité : le stock réel et prévisionnel se lit sur la fiche de parc. L'arithmétique est celle du stock des manifestations, constantes importées et non recopiées.
+>
+> Un lot perd carburant et contrôle technique — ces suivis portent sur un exemplaire, pas sur un modèle — et garde ses entretiens. Le filtre est posé côté serveur, si bien que la donnée cesse d'être chargée en même temps que l'onglet disparaît. Un lot ne connaît pas le conflit mais le manque, chiffré et signalé comme un avertissement : deux manifestations se partagent cent chaises, elles ne se partagent pas le camion.
+>
+> 🟡 **Limite connue :** « dehors en ce moment » se calcule sur la journée courante. Une manifestation livrée dont la période est passée sans avoir été marquée récupérée n'apparaît pas comme sortie — comportement hérité du stock des manifestations, inchangé.
+>
+> ✅ **Coût réel d'une manifestation, août 2026 :** un coût unitaire sur la fiche du matériel — prix d'une unité pour un lot, vacation pour une prestation, valeur de remplacement pour un exemplaire — et un décompte sur la manifestation, en deux natures jamais confondues : ce qu'on déploie et ce qui ne revient pas. Chaque ligne dit sur quoi elle repose. Le calcul se fait à la lecture, jamais stocké : les prix bougent et les retours se saisissent après coup.
+>
+> Le point qui compte : une chaise sortie n'est pas une chaise perdue. Le manque n'entre au total qu'une fois la manifestation récupérée — sauf `quantity_lost`, saisie à la main, qui est déjà un constat. Trois colonnes d'export s'ajoutent, calculées seulement si le profil les retient.
+>
+> ✅ **Disponibilité en prêt sur la fiche, août 2026 :** le réglage ne vivait que dans l'écran d'arbre des réglages, alors que la question se pose au moment où l'on crée le matériel. Il est désormais sur la fiche du matériel, de la sous-catégorie et de la catégorie, avec le même héritage à trois niveaux ; l'écran d'arbre reste pour trancher en masse.
+>
+> ⚠️ **Réglage invisible à la relecture :** les lectures de catégorie et de sous-catégorie ne rendaient ni `is_prestation` ni `available_for_manifestations`. La valeur était enregistrée, mais le formulaire réaffichait « Hérité » à la réouverture — on ne pouvait pas vérifier ce qu'on avait coché.
+>
+> ⚠️ **Sous-catégories homonymes confondues :** le slug d'une sous-catégorie n'est unique que dans sa catégorie — « Technique › Prestations » et « Urbanisme › Prestations » doivent coexister — mais `GET /subcategories/by-slug/:slug` rendait la première venue. Les deux écrans montraient le même matériel. La route cadrée existait et était juste ; l'écran y passe désormais, sa clé de cache porte les deux slugs, et `by-slug` refuse un slug ambigu au lieu de le trancher.
 >
 > 🟡 **Reste :** `PUT /:id` ignore le champ `status` — le statut se change uniquement via `PUT /:id/status`.
 

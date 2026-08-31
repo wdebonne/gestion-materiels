@@ -31,6 +31,77 @@ function baseEnMemoire(): BaseMigration & { fermer(): void; sql: Database.Databa
   };
 }
 
+/**
+ * Tables du module Manifestations, telles que `createTables()` les pose.
+ *
+ * Les migrations ne tournent jamais sur une base vide : `init()` appelle
+ * `createTables()` d'abord. Une migration qui ajoute une colonne à
+ * `manifestations` a donc le droit de supposer que la table existe — encore
+ * faut-il que le fixture le reproduise, sinon le test échoue sur une situation
+ * qui ne se présente jamais en exécution réelle.
+ */
+async function schemaManifestations(cible: BaseMigration): Promise<void> {
+  await cible.execute(`
+    CREATE TABLE categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name VARCHAR(255) NOT NULL,
+      slug VARCHAR(255)
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE subcategories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      category_id INTEGER NOT NULL,
+      name VARCHAR(255) NOT NULL
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE objects (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name VARCHAR(255) NOT NULL,
+      category_id INTEGER,
+      subcategory_id INTEGER
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE manifestations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title VARCHAR(255) NOT NULL,
+      date_start DATE NOT NULL,
+      date_end DATE,
+      delivery_date DATE,
+      status VARCHAR(20) DEFAULT 'draft'
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE manifestation_stock (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name VARCHAR(255) NOT NULL,
+      quantity_total INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE manifestation_items (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manifestation_id INTEGER NOT NULL,
+      object_id INTEGER NOT NULL,
+      quantity INTEGER DEFAULT 1,
+      quantity_delivered INTEGER DEFAULT 0,
+      quantity_returned INTEGER DEFAULT 0
+    )
+  `);
+  await cible.execute(`
+    CREATE TABLE manifestation_materials (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      manifestation_id INTEGER NOT NULL,
+      stock_id INTEGER NOT NULL,
+      quantity_requested INTEGER NOT NULL DEFAULT 0,
+      quantity_delivered INTEGER NOT NULL DEFAULT 0,
+      quantity_recovered INTEGER NOT NULL DEFAULT 0
+    )
+  `);
+}
+
 const migrationTest = (id: string, up: Migration['up']): Migration => ({
   id,
   description: `migration ${id}`,
@@ -150,6 +221,7 @@ describe('Migrations livrées', () => {
         role VARCHAR(50) DEFAULT 'user'
       )
     `);
+    await schemaManifestations(base);
 
     const resultat = await appliquerMigrations(base);
     expect(resultat.appliquees).toEqual(MIGRATIONS.map((m) => m.id));
@@ -169,6 +241,7 @@ describe('Migrations livrées', () => {
         password_changed_at DATETIME
       )
     `);
+    await schemaManifestations(base);
 
     const resultat = await appliquerMigrations(base);
     expect(resultat.appliquees).toEqual(MIGRATIONS.map((m) => m.id));

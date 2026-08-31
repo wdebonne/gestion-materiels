@@ -110,10 +110,10 @@ class LogService {
 
     // Créer les index pour de meilleures performances
     try {
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_logs_category ON logs(category)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_logs_created_at ON logs(created_at)');
-      await db.execute('CREATE INDEX IF NOT EXISTS idx_logs_user_id ON logs(user_id)');
+      await db.creerIndex('idx_logs_level', 'logs', 'level');
+      await db.creerIndex('idx_logs_category', 'logs', 'category');
+      await db.creerIndex('idx_logs_created_at', 'logs', 'created_at');
+      await db.creerIndex('idx_logs_user_id', 'logs', 'user_id');
     } catch (e) {
       // Les index existent peut-être déjà
     }

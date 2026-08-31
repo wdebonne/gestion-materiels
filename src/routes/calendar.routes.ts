@@ -429,7 +429,7 @@ router.get('/upcoming', authenticateToken, async (req: AuthRequest, res: Respons
       `SELECT ce.*, o.name as object_name 
        FROM calendar_events ce
        LEFT JOIN objects o ON o.id = ce.object_id
-       WHERE date(start_date) >= date('now') AND date(start_date) <= date('now', '+${days} days')${filtre?.sql ?? ''}
+       WHERE date(start_date) >= CURRENT_DATE AND date(start_date) <= ${db.dateDecalee(Number(days))}${filtre?.sql ?? ''}
        ORDER BY start_date
        LIMIT 50`,
       filtre?.params ?? []

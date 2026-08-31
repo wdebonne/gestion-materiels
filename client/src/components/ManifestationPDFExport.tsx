@@ -25,6 +25,7 @@ interface ManifestationPDFExportProps {
 
 /** Statuts tels que le serveur les stocke. */
 const LIBELLES_STATUT: Record<string, string> = {
+  pending: 'À confirmer',
   draft: 'Brouillon',
   validated: 'Validée',
   delivered: 'Livrée',
@@ -42,6 +43,7 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
   const [isGenerating, setIsGenerating] = useState(false)
   const [includeHistory, setIncludeHistory] = useState(true)
   const [includeItems, setIncludeItems] = useState(true)
+  const [includeDocuments, setIncludeDocuments] = useState(true)
 
   const generatePDF = async () => {
     setIsGenerating(true)
@@ -131,9 +133,12 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
         doc.setFont('helvetica', 'bold')
         doc.setTextColor(75, 85, 99)
         doc.text('Article', 17, y)
-        doc.text('Demandé', 115, y, { align: 'center' })
-        doc.text('Livré', 145, y, { align: 'center' })
-        doc.text('Récupéré', 175, y, { align: 'center' })
+        doc.text('Demandé', 108, y, { align: 'center' })
+        doc.text('Livré', 133, y, { align: 'center' })
+        doc.text('Récupéré', 158, y, { align: 'center' })
+        // La casse et le vol ont diminué le stock : la fiche sert d'archive en
+        // cas de litige, elle doit les porter.
+        doc.text('Perdu', 185, y, { align: 'center' })
         y += 8
 
         doc.setFont('helvetica', 'normal')
@@ -143,10 +148,11 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
           if (y > 275) { doc.addPage(); y = 20 }
 
           const nom = mat.stock_name || `Article #${mat.stock_id}`
-          doc.text(String(nom).substring(0, 45), 17, y)
-          doc.text(String(mat.quantity_requested ?? 0), 115, y, { align: 'center' })
-          doc.text(String(mat.quantity_delivered ?? 0), 145, y, { align: 'center' })
-          doc.text(String(mat.quantity_recovered ?? 0), 175, y, { align: 'center' })
+          doc.text(String(nom).substring(0, 42), 17, y)
+          doc.text(String(mat.quantity_requested ?? 0), 108, y, { align: 'center' })
+          doc.text(String(mat.quantity_delivered ?? 0), 133, y, { align: 'center' })
+          doc.text(String(mat.quantity_recovered ?? 0), 158, y, { align: 'center' })
+          doc.text(String(mat.quantity_lost ?? 0), 185, y, { align: 'center' })
 
           doc.setDrawColor(...GRIS_CLAIR)
           doc.line(15, y + 3, 195, y + 3)
@@ -158,14 +164,65 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
         if (y > 275) { doc.addPage(); y = 20 }
         doc.setFont('helvetica', 'bold')
         doc.text('Total', 17, y)
-        doc.text(String(total('quantity_requested')), 115, y, { align: 'center' })
-        doc.text(String(total('quantity_delivered')), 145, y, { align: 'center' })
-        doc.text(String(total('quantity_recovered')), 175, y, { align: 'center' })
+        doc.text(String(total('quantity_requested')), 108, y, { align: 'center' })
+        doc.text(String(total('quantity_delivered')), 133, y, { align: 'center' })
+        doc.text(String(total('quantity_recovered')), 158, y, { align: 'center' })
+        doc.text(String(total('quantity_lost')), 185, y, { align: 'center' })
         doc.setFont('helvetica', 'normal')
         y += 12
       }
 
       // === HISTORIQUE ===
+      // === PIÈCES JOINTES ===
+      //
+      // Les fichiers eux-mêmes ne peuvent pas entrer dans la fiche, mais leur
+      // inventaire, si : c'est lui qui permet de dire quelles pièces existaient
+      // et ce qu'elles montraient, des mois plus tard, dans un dossier de litige.
+      const documents: any[] = detail.documents ?? []
+      if (includeDocuments && documents.length > 0) {
+        if (y > 240) { doc.addPage(); y = 20 }
+
+        doc.setFontSize(14)
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(...ARDOISE)
+        doc.text(`Pièces jointes (${documents.length})`, 15, y)
+        y += 8
+
+        doc.setFontSize(9)
+
+        for (const piece of documents) {
+          if (y > 270) { doc.addPage(); y = 20 }
+
+          const date = piece.created_at ? new Date(piece.created_at).toLocaleDateString('fr-FR') : ''
+          const concerne = piece.stock_name || piece.object_name
+
+          doc.setFont('helvetica', 'bold')
+          doc.setTextColor(...ARDOISE)
+          doc.text(String(piece.name).substring(0, 60), 17, y)
+          doc.setFont('helvetica', 'normal')
+          doc.setTextColor(...GRIS)
+          doc.text(`${piece.doc_type_label ?? ''} — ${date}`, 120, y)
+          y += 5
+
+          if (concerne) {
+            doc.setTextColor(75, 85, 99)
+            doc.text(`Concerne : ${concerne}`, 17, y)
+            y += 5
+          }
+
+          if (piece.description) {
+            doc.setTextColor(...GRIS)
+            const lignes = doc.splitTextToSize(piece.description, 170)
+            doc.text(lignes, 17, y)
+            y += lignes.length * 5
+          }
+
+          doc.setDrawColor(...GRIS_CLAIR)
+          doc.line(15, y + 2, 195, y + 2)
+          y += 6
+        }
+      }
+
       const history: any[] = detail.history ?? []
       if (includeHistory && history.length > 0) {
         if (y > 230) { doc.addPage(); y = 20 }
@@ -253,6 +310,15 @@ export default function ManifestationPDFExport({ manifestation, onClose }: Manif
               className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
             />
             <span className="text-sm text-gray-700 dark:text-gray-200">Liste du matériel</span>
+          </label>
+          <label className="touch-target flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={includeDocuments}
+              onChange={(e) => setIncludeDocuments(e.target.checked)}
+              className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-200">Inventaire des pièces jointes</span>
           </label>
           <label className="touch-target flex items-center gap-2 cursor-pointer">
             <input

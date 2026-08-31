@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../database';
 import { getJwtSecret } from '../config/secrets';
+import { refuserSiCloisonne } from './cloisonnementService';
 
 export interface JwtPayload {
   userId: number;
@@ -45,6 +46,10 @@ export const authenticateToken = async (
       res.status(401).json({ success: false, message: 'Utilisateur non trouvé ou désactivé' });
       return;
     }
+
+    // Le rôle vient d'être établi : c'est ici, et nulle part ailleurs, qu'un
+    // compte cloisonné doit être arrêté sur un chemin hors de son périmètre.
+    if (refuserSiCloisonne(req, res, user.role)) return;
 
     req.user = decoded;
     next();
@@ -154,6 +159,8 @@ async function authenticateApiToken(
     // « lecture seule » pouvait supprimer autant que son créateur.
     const permissions = lirePermissions(apiToken.permissions);
     (req as any).apiTokenPermissions = permissions;
+
+    if (refuserSiCloisonne(req, res, apiToken.role)) return;
 
     const requise = permissionRequise(req.method);
     if (!permissions.includes(requise)) {

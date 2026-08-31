@@ -20,6 +20,33 @@ interface DatabaseConfig {
   };
 }
 
+/**
+ * Une date ISO 8601 (`2026-08-30T17:47:37.028Z`) est refusée par MySQL dans
+ * une colonne DATETIME, là où SQLite l'accepte comme du simple texte. Or le
+ * code écrit des `toISOString()` à une centaine d'endroits : les convertir un
+ * à un reviendrait à en oublier, et surtout à oublier le prochain écrit.
+ *
+ * La conversion se fait donc ici, au seul point de passage vers le serveur.
+ * Seules les chaînes portant un fuseau explicite (`Z` ou `+hh:mm`) sont
+ * touchées : l'instant est connu sans ambiguïté, et le résultat reste en UTC,
+ * comme ce que SQLite stocke de son côté. Une chaîne sans fuseau serait
+ * interprétée dans le fuseau du serveur et décalerait la valeur.
+ */
+const DATE_ISO_AVEC_FUSEAU =
+  /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:[.][0-9]+)?(?:Z|[+-][0-9]{2}:?[0-9]{2})$/;
+
+/** Repère un LIMIT ou un OFFSET dont la valeur est passée en paramètre. */
+const LIMIT_PARAMETRE = /\b(?:LIMIT|OFFSET)\s+\?/i;
+
+function parametresMySQL(params: any[]): any[] {
+  return params.map((valeur) => {
+    if (typeof valeur !== 'string' || !DATE_ISO_AVEC_FUSEAU.test(valeur)) return valeur;
+    const date = new Date(valeur);
+    if (Number.isNaN(date.getTime())) return valeur;
+    return date.toISOString().slice(0, 19).replace('T', ' ');
+  });
+}
+
 class DatabaseManager {
   private static instance: DatabaseManager;
   private sqliteDb: Database.Database | null = null;
@@ -107,6 +134,44 @@ class DatabaseManager {
     return this.config.type;
   }
 
+  /**
+   * Crée un index s'il n'existe pas déjà.
+   *
+   * SQLite écrit `CREATE INDEX IF NOT EXISTS`, que MySQL ne connaît pas : la
+   * quarantaine de `CREATE INDEX` échouait donc une par une, chacune réduite à
+   * un simple avertissement dans les journaux. La base MySQL tournait sans un
+   * seul index — invisible tant que le parc est petit, fatal ensuite.
+   */
+  public async creerIndex(nom: string, table: string, colonnes: string): Promise<void> {
+    if (this.config.type === 'sqlite') {
+      await this.execute(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`);
+      return;
+    }
+
+    const dejaLa = await this.query(
+      `SELECT 1 FROM information_schema.STATISTICS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+      [table, nom]
+    );
+    if (dejaLa.length === 0) {
+      await this.execute(`CREATE INDEX ${nom} ON ${table} (${colonnes})`);
+    }
+  }
+
+  /**
+   * Expression SQL désignant la date du jour décalée de `jours` jours.
+   *
+   * SQLite l'écrit `date('now', '+30 days')`, MySQL `DATE_ADD(...)` : il n'y a
+   * pas de forme commune. Le nombre est tronqué à un entier parce que certains
+   * appelants le tirent de la requête HTTP et qu'il finit concaténé au SQL.
+   */
+  public dateDecalee(jours: number): string {
+    const n = Math.trunc(Number(jours)) || 0;
+    return this.config.type === 'sqlite'
+      ? `date('now', '${n >= 0 ? '+' : ''}${n} days')`
+      : `DATE_ADD(CURRENT_DATE, INTERVAL ${n} DAY)`;
+  }
+
   /** Chemin du fichier SQLite, `null` sur MySQL. */
   public getSQLitePath(): string | null {
     return this.config.type === 'sqlite' ? this.config.sqlite!.path : null;
@@ -126,19 +191,38 @@ class DatabaseManager {
     return this.mysqlPool;
   }
 
+  /**
+   * `execute()` prépare la requête côté serveur — préférable — mais refuse un
+   * nombre en paramètre de LIMIT ou OFFSET : mysql2 le transmet dans un type
+   * que le protocole binaire rejette (`ER_WRONG_ARGUMENTS`), et la liste des
+   * matériels comme celle des journaux répondaient 500. `query()` accepte les
+   * deux et échappe ses paramètres de la même façon.
+   */
+  private async lancerMySQL(sql: string, params: any[]): Promise<any> {
+    const valeurs = parametresMySQL(params);
+    const [resultat] = LIMIT_PARAMETRE.test(sql)
+      ? await this.mysqlPool!.query(sql, valeurs)
+      : await this.mysqlPool!.execute(sql, valeurs);
+    return resultat;
+  }
+
   // Méthode unifiée pour exécuter des requêtes
   public async query<T = any>(sql: string, params: any[] = []): Promise<T[]> {
     if (this.config.type === 'sqlite') {
       const stmt = this.sqliteDb!.prepare(sql);
-      if (sql.trim().toUpperCase().startsWith('SELECT')) {
+      // `reader` dit si la requête renvoie des lignes. Le test précédent — la
+      // requête commence-t-elle par SELECT — répondait « non » pour
+      // `PRAGMA table_info(...)`, dont les lignes partaient donc dans `run()`,
+      // qui renvoie `{ changes: 0 }` sans lever d'erreur. Les migrations y
+      // lisaient une liste de colonnes vide et rejouaient leurs `ALTER TABLE`
+      // sur une base neuve : plus aucune installation neuve ne démarrait.
+      if (stmt.reader) {
         return stmt.all(...params) as T[];
-      } else {
-        const result = stmt.run(...params);
-        return [{ lastInsertRowid: result.lastInsertRowid, changes: result.changes }] as any;
       }
+      const result = stmt.run(...params);
+      return [{ lastInsertRowid: result.lastInsertRowid, changes: result.changes }] as any;
     } else {
-      const [rows] = await this.mysqlPool!.execute(sql, params);
-      return rows as T[];
+      return (await this.lancerMySQL(sql, params)) as T[];
     }
   }
 
@@ -155,7 +239,7 @@ class DatabaseManager {
       const result = stmt.run(...params);
       return { lastInsertRowid: Number(result.lastInsertRowid), changes: result.changes };
     } else {
-      const [result]: any = await this.mysqlPool!.execute(sql, params);
+      const result: any = await this.lancerMySQL(sql, params);
       return { lastInsertRowid: result.insertId, changes: result.affectedRows };
     }
   }
@@ -167,6 +251,14 @@ class DatabaseManager {
     const boolType = isSQLite ? 'INTEGER' : 'TINYINT(1)';
     const timestampDefault = isSQLite ? "DEFAULT (datetime('now'))" : 'DEFAULT CURRENT_TIMESTAMP';
 
+    // L'ordre compte : InnoDB refuse de créer une table dont la table
+    // référencée n'existe pas encore, là où SQLite l'accepte. Une table
+    // doit donc toujours suivre celles que ses clés étrangères visent.
+    //
+    // Les valeurs par défaut des colonnes TEXT sont écrites entre
+    // parenthèses : MySQL refuse un DEFAULT littéral sur TEXT/BLOB, mais
+    // accepte la forme expression, que SQLite comprend aussi. Retirer les
+    // parenthèses casserait la création du schema sur MySQL.
     const tables = [
       // Table des utilisateurs
       `CREATE TABLE IF NOT EXISTS users (
@@ -178,6 +270,7 @@ class DatabaseManager {
         role VARCHAR(50) DEFAULT 'user',
         avatar VARCHAR(500),
         is_active ${boolType} DEFAULT 1,
+        anonymized_at DATETIME,
         reset_token VARCHAR(255),
         reset_token_expires DATETIME,
         last_login DATETIME,
@@ -197,18 +290,6 @@ class DatabaseManager {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       )`,
 
-      // Table des permissions par groupe (supervisor, user)
-      `CREATE TABLE IF NOT EXISTS group_permissions (
-        id INTEGER PRIMARY KEY ${autoIncrement},
-        role VARCHAR(50) NOT NULL,
-        category_id INTEGER NOT NULL,
-        can_view ${boolType} DEFAULT 1,
-        can_edit ${boolType} DEFAULT 0,
-        can_delete ${boolType} DEFAULT 0,
-        created_at DATETIME ${timestampDefault},
-        updated_at DATETIME ${timestampDefault},
-        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
-      )`,
 
       // Table des paramètres généraux
       `CREATE TABLE IF NOT EXISTS settings (
@@ -257,6 +338,8 @@ class DatabaseManager {
         description TEXT,
         image VARCHAR(500),
         has_subcategories ${boolType} DEFAULT 0,
+        available_for_manifestations ${boolType} DEFAULT 1,
+        is_prestation ${boolType} DEFAULT 0,
         sort_order INTEGER DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault}
@@ -270,6 +353,21 @@ class DatabaseManager {
         slug VARCHAR(255) NOT NULL,
         image VARCHAR(500),
         sort_order INTEGER DEFAULT 0,
+        available_for_manifestations ${boolType},
+        is_prestation ${boolType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      )`,
+
+      // Table des permissions par groupe (supervisor, user)
+      `CREATE TABLE IF NOT EXISTS group_permissions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        role VARCHAR(50) NOT NULL,
+        category_id INTEGER NOT NULL,
+        can_view ${boolType} DEFAULT 1,
+        can_edit ${boolType} DEFAULT 0,
+        can_delete ${boolType} DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
@@ -291,6 +389,11 @@ class DatabaseManager {
         location VARCHAR(255),
         notes ${textType},
         custom_fields ${textType},
+        available_for_manifestations ${boolType},
+        is_prestation ${boolType},
+        material_type VARCHAR(20) DEFAULT 'unique',
+        quantity_total INTEGER DEFAULT 0,
+        unit_cost REAL DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
@@ -566,7 +669,7 @@ class DatabaseManager {
         name VARCHAR(255) NOT NULL,
         token_hash VARCHAR(64) NOT NULL UNIQUE,
         token_prefix VARCHAR(8) NOT NULL,
-        permissions ${textType} DEFAULT '["read"]',
+        permissions ${textType} DEFAULT ('["read"]'),
         is_active ${boolType} DEFAULT 1,
         expires_at DATETIME,
         last_used_at DATETIME,
@@ -608,6 +711,7 @@ class DatabaseManager {
         price REAL DEFAULT 0,
         category_id INTEGER,
         subcategory_id INTEGER,
+        is_prestation ${boolType} DEFAULT 0,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL,
@@ -639,6 +743,9 @@ class DatabaseManager {
         status VARCHAR(20) DEFAULT 'draft',
         created_by INTEGER,
         archived_at DATETIME,
+        recovery_date DATE,
+        intake_request_id INTEGER,
+        intake_unmatched ${textType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
@@ -652,6 +759,8 @@ class DatabaseManager {
         quantity_requested INTEGER NOT NULL DEFAULT 0,
         quantity_delivered INTEGER NOT NULL DEFAULT 0,
         quantity_recovered INTEGER NOT NULL DEFAULT 0,
+        quantity_lost INTEGER NOT NULL DEFAULT 0,
+        loss_reason ${textType},
         unit_value REAL DEFAULT 0,
         notes ${textType},
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
@@ -666,9 +775,103 @@ class DatabaseManager {
         quantity INTEGER DEFAULT 1,
         quantity_delivered INTEGER DEFAULT 0,
         quantity_returned INTEGER DEFAULT 0,
+        return_state VARCHAR(20),
+        notes ${textType},
         created_at DATETIME ${timestampDefault},
+        updated_at DATETIME,
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE
+      )`,
+
+      // Sources autorisées à déposer une demande de manifestation, et journal
+      // de ce qu'elles ont envoyé. Voir la migration 003 : ces tables y sont
+      // aussi créées, pour les bases déjà déployées.
+      `CREATE TABLE IF NOT EXISTS manifestation_intake_sources (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        slug VARCHAR(100) NOT NULL UNIQUE,
+        secret VARCHAR(255) NOT NULL,
+        is_active ${boolType} DEFAULT 1,
+        field_mapping ${textType},
+        material_mapping ${textType},
+        last_payload ${textType},
+        last_received_at DATETIME,
+        last_status VARCHAR(20),
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_intake_requests (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        source_id INTEGER,
+        external_id VARCHAR(255),
+        payload ${textType},
+        signature_ok ${boolType} DEFAULT 0,
+        status VARCHAR(20) NOT NULL,
+        manifestation_id INTEGER,
+        error ${textType},
+        received_at DATETIME ${timestampDefault},
+        FOREIGN KEY (source_id) REFERENCES manifestation_intake_sources(id) ON DELETE SET NULL,
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE SET NULL
+      )`,
+
+      // « tables » dans le formulaire, « Table 180 cm » dans le stock.
+      `CREATE TABLE IF NOT EXISTS manifestation_stock_aliases (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        stock_id INTEGER NOT NULL,
+        alias VARCHAR(255) NOT NULL,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE
+      )`,
+
+      // Journal des mouvements de stock : un total doit toujours pouvoir
+      // s'expliquer, en particulier quand une perte l'a diminué.
+      `CREATE TABLE IF NOT EXISTS manifestation_stock_movements (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        stock_id INTEGER NOT NULL,
+        manifestation_id INTEGER,
+        type VARCHAR(20) NOT NULL,
+        quantity INTEGER NOT NULL,
+        reason ${textType},
+        user_id INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE CASCADE,
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE SET NULL,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Pièces jointes d'une manifestation : arrêté, plan, constat, photo. Voir
+      // la migration 009. Le lien vers le matériel porte sur l'article et non
+      // sur la ligne, qui est réécrite à chaque modification.
+      `CREATE TABLE IF NOT EXISTS manifestation_documents (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        doc_type VARCHAR(100) DEFAULT 'autre',
+        description ${textType},
+        file_path VARCHAR(500) NOT NULL,
+        mime_type VARCHAR(100),
+        size INTEGER,
+        stock_id INTEGER,
+        object_id INTEGER,
+        service_id INTEGER,
+        generated_from_template ${boolType} DEFAULT 0,
+        uploaded_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (stock_id) REFERENCES manifestation_stock(id) ON DELETE SET NULL,
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE SET NULL,
+        FOREIGN KEY (uploaded_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+
+      `CREATE TABLE IF NOT EXISTS manifestation_doc_types (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        value VARCHAR(100) NOT NULL UNIQUE,
+        label VARCHAR(255) NOT NULL,
+        is_default ${boolType} DEFAULT 0,
+        disabled ${boolType} DEFAULT 0,
+        created_at DATETIME ${timestampDefault}
       )`,
 
       // Table historique des manifestations
@@ -683,6 +886,158 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Services concernés par une manifestation. Voir la migration 004 :
+      // un service est un groupe de personnes ET un périmètre de catégories,
+      // et c'est ce périmètre qui décide qui est sollicité.
+      `CREATE TABLE IF NOT EXISTS services (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        slug VARCHAR(100) NOT NULL UNIQUE,
+        email VARCHAR(255),
+        description ${textType},
+        is_observer ${boolType} DEFAULT 0,
+        is_coordinator ${boolType} DEFAULT 0,
+        is_active ${boolType} DEFAULT 1,
+        notify_new_request ${boolType} DEFAULT 1,
+        notify_status_change ${boolType} DEFAULT 1,
+        notify_material_change ${boolType} DEFAULT 1,
+        notify_message ${boolType} DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
+      // Modèle .docx rattaché à un service, avec ses champs détectés et leur
+      // correspondance. Voir la migration 010.
+      `CREATE TABLE IF NOT EXISTS service_templates (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        source VARCHAR(20) NOT NULL DEFAULT 'upload',
+        file_path VARCHAR(500),
+        remote_path VARCHAR(500),
+        detected_fields ${textType},
+        field_mapping ${textType},
+        is_active ${boolType} DEFAULT 1,
+        last_error ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS service_categories (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        category_id INTEGER NOT NULL,
+        UNIQUE(service_id, category_id),
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS service_members (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        is_manager ${boolType} DEFAULT 0,
+        created_at DATETIME ${timestampDefault},
+        UNIQUE(service_id, user_id),
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_approvals (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        service_id INTEGER,
+        user_id INTEGER,
+        kind VARCHAR(20) NOT NULL DEFAULT 'approbation',
+        status VARCHAR(20) NOT NULL DEFAULT 'pending',
+        requested_by INTEGER,
+        requested_at DATETIME ${timestampDefault},
+        decided_by INTEGER,
+        decided_at DATETIME,
+        comment ${textType},
+        delivery_date DATE,
+        recovery_date DATE,
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (requested_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (decided_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_messages (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        user_id INTEGER,
+        service_id INTEGER,
+        body ${textType} NOT NULL,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE SET NULL
+      )`,
+
+      `CREATE TABLE IF NOT EXISTS manifestation_watchers (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        manifestation_id INTEGER NOT NULL,
+        user_id INTEGER,
+        service_id INTEGER,
+        added_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (manifestation_id) REFERENCES manifestations(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (added_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Délégation d'approbation, accordée par un responsable de service.
+      // Voir la migration 007 : seul un responsable décide, et lui seul délègue.
+      `CREATE TABLE IF NOT EXISTS service_delegations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        service_id INTEGER NOT NULL,
+        delegate_user_id INTEGER NOT NULL,
+        granted_by INTEGER,
+        start_date DATE,
+        end_date DATE,
+        created_at DATETIME ${timestampDefault},
+        UNIQUE(service_id, delegate_user_id),
+        FOREIGN KEY (service_id) REFERENCES services(id) ON DELETE CASCADE,
+        FOREIGN KEY (delegate_user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (granted_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Préférences de notification, une ligne par compte et par événement.
+      // L'absence de ligne vaut « suivre le réglage par défaut ». Voir la
+      // migration 006.
+      `CREATE TABLE IF NOT EXISTS notification_preferences (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        user_id INTEGER NOT NULL,
+        event VARCHAR(50) NOT NULL,
+        enabled ${boolType} NOT NULL DEFAULT 1,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        UNIQUE(user_id, event),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      )`,
+
+      // Profils d'export des manifestations. Voir la migration 005 : quelles
+      // colonnes, dans quel ordre, sous quel intitulé, et vers où.
+      `CREATE TABLE IF NOT EXISTS manifestation_export_profiles (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        columns ${textType},
+        filters ${textType},
+        destination VARCHAR(20) NOT NULL DEFAULT 'download',
+        remote_path VARCHAR(500),
+        is_active ${boolType} DEFAULT 1,
+        auto_export ${boolType} DEFAULT 0,
+        last_export_at DATETIME,
+        last_status VARCHAR(20),
+        last_error ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
       )`,
 
       // Table de configuration de l'authentification (SSO, LDAP, Passkey)
@@ -736,7 +1091,7 @@ class DatabaseManager {
         status VARCHAR(50) DEFAULT 'actif',
         image VARCHAR(500),
         plan_image VARCHAR(500),
-        custom_fields ${textType} DEFAULT '{}',
+        custom_fields ${textType} DEFAULT ('{}'),
         cloned_from_id INTEGER,
         created_by INTEGER,
         created_at DATETIME ${timestampDefault},
@@ -765,7 +1120,7 @@ class DatabaseManager {
         last_maintenance_date DATE,
         next_maintenance_date DATE,
         condition_state VARCHAR(50) DEFAULT 'bon',
-        custom_fields ${textType} DEFAULT '{}',
+        custom_fields ${textType} DEFAULT ('{}'),
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
@@ -796,7 +1151,7 @@ class DatabaseManager {
         notes ${textType},
         actions_done ${textType},
         actions_planned ${textType},
-        photos ${textType} DEFAULT '[]',
+        photos ${textType} DEFAULT ('[]'),
         created_by INTEGER,
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE,
@@ -886,9 +1241,9 @@ class DatabaseManager {
         label VARCHAR(255) NOT NULL,
         snapshot_date DATETIME NOT NULL,
         plan_image VARCHAR(500),
-        elements_data ${textType} DEFAULT '[]',
-        annotations_data ${textType} DEFAULT '[]',
-        groups_data ${textType} DEFAULT '[]',
+        elements_data ${textType} DEFAULT ('[]'),
+        annotations_data ${textType} DEFAULT ('[]'),
+        groups_data ${textType} DEFAULT ('[]'),
         notes ${textType},
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (green_space_id) REFERENCES green_spaces(id) ON DELETE CASCADE
@@ -958,8 +1313,8 @@ class DatabaseManager {
         replaced_at DATETIME ${timestampDefault},
         season VARCHAR(50) DEFAULT '',
         year INTEGER,
-        reason TEXT DEFAULT '',
-        notes TEXT DEFAULT '',
+        reason TEXT DEFAULT (''),
+        notes TEXT DEFAULT (''),
         previous_label VARCHAR(255),
         previous_species VARCHAR(255),
         previous_element_type VARCHAR(100),
@@ -969,8 +1324,8 @@ class DatabaseManager {
         previous_quantity INTEGER,
         previous_purchase_price DECIMAL(10,2),
         previous_planting_date DATE,
-        previous_custom_fields TEXT DEFAULT '{}',
-        previous_data TEXT DEFAULT '{}',
+        previous_custom_fields TEXT DEFAULT ('{}'),
+        previous_data TEXT DEFAULT ('{}'),
         created_at DATETIME ${timestampDefault}
       )`
     ];
@@ -1044,6 +1399,22 @@ class DatabaseManager {
 
       // Manifestations
       ['idx_manif_materials', 'manifestation_materials', 'manifestation_id'],
+      ['idx_manif_intake_external', 'manifestation_intake_requests', 'external_id'],
+      ['idx_manif_movements_stock', 'manifestation_stock_movements', 'stock_id'],
+      ['idx_manif_alias_stock', 'manifestation_stock_aliases', 'stock_id'],
+      ['idx_manif_approvals', 'manifestation_approvals', 'manifestation_id'],
+      ['idx_manif_approvals_service', 'manifestation_approvals', 'service_id, status'],
+      ['idx_manif_messages', 'manifestation_messages', 'manifestation_id'],
+      ['idx_manif_watchers', 'manifestation_watchers', 'manifestation_id'],
+      ['idx_service_categories', 'service_categories', 'category_id'],
+      ['idx_service_members_user', 'service_members', 'user_id'],
+      ['idx_manif_items', 'manifestation_items', 'manifestation_id'],
+      ['idx_manif_items_object', 'manifestation_items', 'object_id'],
+      ['idx_notif_prefs_user', 'notification_preferences', 'user_id'],
+      ['idx_service_delegations', 'service_delegations', 'service_id'],
+      ['idx_manif_documents', 'manifestation_documents', 'manifestation_id'],
+      ['idx_manif_documents_stock', 'manifestation_documents', 'stock_id'],
+      ['idx_service_templates', 'service_templates', 'service_id'],
 
       // Droits — consultés à chaque requête filtrée par catégorie
       ['idx_user_permissions_user', 'user_permissions', 'user_id'],
@@ -1059,7 +1430,7 @@ class DatabaseManager {
 
     for (const [nom, table, colonnes] of indexes) {
       try {
-        await this.execute(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`);
+        await this.creerIndex(nom, table, colonnes);
       } catch (error: any) {
         // Une table absente (module non déployé) ne doit pas empêcher le
         // démarrage : on note et on continue.
@@ -1318,6 +1689,32 @@ class DatabaseManager {
       try {
         await this.execute(
           'INSERT OR IGNORE INTO green_space_doc_types (value, label, is_default) VALUES (?, ?, 1)',
+          [dt.value, dt.label]
+        );
+      } catch { /* ignore duplicates */ }
+    }
+
+    // Pièces qu'une manifestation municipale rassemble réellement. La liste est
+    // éditable ensuite : chaque collectivité nomme ses documents à sa façon, et
+    // une liste figée obligerait à un développeur pour ajouter « autorisation de
+    // buvette ».
+    const defaultManifestationDocTypes = [
+      { value: 'arrete_circulation', label: 'Arrêté de circulation' },
+      { value: 'arrete_boisson', label: 'Arrêté de débit de boissons' },
+      { value: 'plan', label: "Plan d'implantation" },
+      { value: 'constat_materiel', label: 'Constat matériel' },
+      { value: 'constat_lieu', label: 'Constat du lieu' },
+      { value: 'photo', label: 'Photo' },
+      { value: 'assurance', label: "Attestation d'assurance" },
+      { value: 'devis', label: 'Devis ou facture' },
+      { value: 'convention', label: 'Convention de prêt' },
+      { value: 'autre', label: 'Autre' },
+    ];
+
+    for (const dt of defaultManifestationDocTypes) {
+      try {
+        await this.execute(
+          'INSERT OR IGNORE INTO manifestation_doc_types (value, label, is_default) VALUES (?, ?, 1)',
           [dt.value, dt.label]
         );
       } catch { /* ignore duplicates */ }
