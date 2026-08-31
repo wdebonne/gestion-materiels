@@ -30,6 +30,7 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 - **Le cron d'alertes était entièrement mort sur MySQL** : `date('now', '+30 days')` provoquait une erreur de syntaxe à chaque passage horaire, donc aucune alerte de contrôle technique, de maintenance ou d'espace vert. Même cause pour la fenêtre du calendrier. Une méthode `db.dateDecalee()` produit la forme propre à chaque moteur
 - **Liste des matériels et journaux en erreur 500 sur MySQL** : `execute()` de mysql2 rejette un nombre en paramètre de `LIMIT` ou `OFFSET`. Ces requêtes passent par `query()`, qui échappe ses paramètres de la même façon
 - **Injection SQL dans `GET /api/calendar/upcoming`** : le paramètre `days` de la requête HTTP était concaténé tel quel dans le SQL. Il est désormais tronqué à un entier
+- **L'écran d'erreur remplaçait l'accueil dès la connexion, sur MySQL.** mysql2 rend les colonnes `DECIMAL` sous forme de chaînes — `"0.00"` — là où SQLite rend des nombres. Le tableau de bord appelait `fuelThisMonth.toFixed(0)` sur cette chaîne : rendu interrompu, « Un problème est survenu », et pas une ligne dans les journaux du serveur, qui avait répondu 200 à tout. Toutes les valeurs monétaires, quantités, surfaces et positions sur plan sont des `DECIMAL` — les mêmes appels se trouvent sur les espaces verts et les manifestations. La conversion se fait une fois, à l'ouverture de la connexion (`decimalNumbers`), et le tableau de bord met en forme ses deux nombres sans supposer leur type
 
 ### Ergonomie terrain
 
