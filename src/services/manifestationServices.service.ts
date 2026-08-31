@@ -86,6 +86,46 @@ export async function servicesPourArticles(stockIds: Array<number | string>): Pr
 }
 
 /**
+ * Restreint des articles de stock au périmètre d'un service.
+ *
+ * La même règle de rattachement que `servicesPourArticles`, prise dans l'autre sens : là on
+ * partait des articles pour trouver les services concernés, ici on part du service pour ne garder
+ * que ses articles. Elle reste écrite une seule fois — un formulaire qui ne proposerait pas
+ * exactement le matériel dont le service a la charge poserait des questions auxquelles personne
+ * n'aurait à répondre.
+ *
+ * Un service se désigne par son identifiant, son slug ou son nom : ce qui interroge le catalogue
+ * enregistre la désignation qui lui parle, et un identifiant numérique ne survit pas au passage
+ * d'une instance à une autre.
+ */
+export function conditionPerimetreService(
+  service: string | number,
+  alias = 'ms'
+): { sql: string; params: any[] } {
+  const reference = String(service ?? '').trim();
+  if (!reference) return { sql: '', params: [] };
+
+  const numerique = /^\d+$/.test(reference);
+  const designation = numerique ? 's.id = ?' : '(s.slug = ? OR s.name = ?)';
+  const params = numerique ? [Number(reference)] : [reference, reference];
+
+  return {
+    sql: ` AND EXISTS (
+        SELECT 1 FROM service_categories sc_perim
+        JOIN services s ON s.id = sc_perim.service_id
+        WHERE s.is_active = 1 AND ${designation}
+          AND (sc_perim.category_id = ${alias}.category_id
+               OR EXISTS (
+                 SELECT 1 FROM subcategories sub_perim
+                 WHERE sub_perim.id = ${alias}.subcategory_id
+                   AND sub_perim.category_id = sc_perim.category_id
+               ))
+      )`,
+    params,
+  };
+}
+
+/**
  * Services dont le périmètre couvre au moins un de ces matériels du parc.
  *
  * La même règle que pour le stock, sur l'autre table : un service est concerné
