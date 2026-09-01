@@ -103,12 +103,14 @@ router.get('/all-with-subcategories', authenticateToken, requireAdmin, async (re
 // GET /api/categories - Liste des catégories
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
+    const { search } = req.query;
     let categories;
-    
+
     if (req.user?.role === 'admin') {
       // Admin voit tout
       categories = await db.query(
-        'SELECT * FROM categories ORDER BY sort_order, name'
+        `SELECT * FROM categories${search ? ' WHERE name LIKE ?' : ''} ORDER BY sort_order, name`,
+        search ? [`%${search}%`] : []
       );
     } else {
       // Autres utilisateurs: combiner permissions de groupe + individuelles
@@ -116,9 +118,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         `SELECT DISTINCT c.* FROM categories c
          LEFT JOIN group_permissions gp ON gp.category_id = c.id AND gp.role = ?
          LEFT JOIN user_permissions up ON up.category_id = c.id AND up.user_id = ?
-         WHERE (gp.can_view = 1 OR up.can_view = 1)
+         WHERE (gp.can_view = 1 OR up.can_view = 1)${search ? ' AND c.name LIKE ?' : ''}
          ORDER BY c.sort_order, c.name`,
-        [req.user?.role, req.user?.userId]
+        search ? [req.user?.role, req.user?.userId, `%${search}%`] : [req.user?.role, req.user?.userId]
       );
     }
 
