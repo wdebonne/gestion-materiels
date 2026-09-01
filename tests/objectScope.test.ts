@@ -45,6 +45,8 @@ const EXEMPTIONS: Record<string, string> = {
     "Composition d'e-mails côté serveur, sans requête ni utilisateur.",
   'services/manifestationDocuments.service.ts':
     "La jointure ne sert qu'à afficher le nom du matériel qu'une pièce jointe désigne, sur une manifestation que l'appelant a déjà le droit de voir (peutVoirManifestation en amont de chaque route). Filtrer ici masquerait le document entier au lieu de son libellé, et le rattachement a été contrôlé au moment où il a été posé.",
+  'services/compteurs.service.ts':
+    "Ne lit que la branche et les champs personnalisés d'un matériel dont l'appelant fournit déjà l'identifiant, pour savoir quels compteurs s'y appliquent. Ne rend jamais de fiche : au plus le libellé et la valeur des compteurs de ce matériel-là. Les deux entrées qui l'exposent au public contrôlent la portée en amont — `GET /objects/:id` par filtreObjets, `PATCH /objects/:id/compteurs` par peutVoirObjet.",
   'services/coutManifestation.service.ts':
     "Ne lit que les matériels déjà rattachés à une manifestation, pour en chiffrer le coût, et n'est appelé que par des routes qui ont déjà vérifié que l'appelant voit cette manifestation. Ne rend que des montants et des libellés, jamais une fiche de matériel.",
   'services/lotParc.service.ts':

@@ -15,7 +15,7 @@
 export interface QueuedMutation {
   id: string
   url: string
-  method: 'POST' | 'PUT'
+  method: 'POST' | 'PUT' | 'PATCH'
   body: unknown
   /** Ce que l'agent reconnaîtra : « Plein — Tracteur Kubota ». */
   label: string
@@ -36,11 +36,14 @@ const URLS_AUTORISEES: RegExp[] = [
   /^\/objects\/\d+\/fuel$/,
   /^\/objects\/\d+\/maintenance$/,
   /^\/objects\/\d+\/technical-control$/,
+  // Relevé de compteur depuis la fiche : le geste du chauffeur qui rentre au
+  // dépôt, au même titre qu'un plein, et dans les mêmes conditions de réseau.
+  /^\/objects\/\d+\/compteurs$/,
   /^\/green-spaces\/\d+\/maintenances$/,
 ]
 
 export function estDifferable(url: string, method: string): boolean {
-  if (!['post', 'put'].includes(method.toLowerCase())) return false
+  if (!['post', 'put', 'patch'].includes(method.toLowerCase())) return false
   const chemin = url.split('?')[0].replace(/\/+$/, '')
   return URLS_AUTORISEES.some((motif) => motif.test(chemin))
 }

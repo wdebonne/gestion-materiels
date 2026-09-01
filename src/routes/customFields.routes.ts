@@ -59,6 +59,8 @@ router.get('/config/category/:categoryId', authenticateToken, async (req: AuthRe
         isRequired: !!c.is_required,
         isVisible: !!c.is_visible,
         isSystem: !!c.is_system,
+        isCounter: !!c.is_counter,
+        counterUnit: c.counter_unit || '',
         sortOrder: c.sort_order,
         applicableSubcategories: c.applicable_subcategories ? JSON.parse(c.applicable_subcategories) : null
       }))
@@ -133,6 +135,8 @@ router.get('/config/subcategory/:subcategoryId', authenticateToken, async (req: 
         isRequired: !!c.is_required,
         isVisible: !!c.is_visible,
         isSystem: !!c.is_system,
+        isCounter: !!c.is_counter,
+        counterUnit: c.counter_unit || '',
         sortOrder: c.sort_order,
         applicableSubcategories: c.applicable_subcategories ? JSON.parse(c.applicable_subcategories) : null
       })),
@@ -226,6 +230,8 @@ router.get('/for-object/:objectId', authenticateToken, async (req: AuthRequest, 
           isRequired: !!c.is_required,
           isVisible: !!c.is_visible,
           isSystem: !!c.is_system,
+          isCounter: !!c.is_counter,
+          counterUnit: c.counter_unit || '',
           sortOrder: c.sort_order,
           applicableSubcategories: c.applicable_subcategories ? JSON.parse(c.applicable_subcategories) : null
         }))
@@ -264,10 +270,14 @@ router.post('/config', authenticateToken, requireAdmin, [
     // Insérer les nouvelles configurations
     for (let i = 0; i < fields.length; i++) {
       const field = fields[i];
+      // Seul un champ Nombre peut être un compteur : un relevé se compare, et
+      // comparer deux textes ne dirait pas lequel est le plus élevé.
+      const estCompteur = field.isCounter && (field.fieldType || 'text') === 'number';
+
       await db.execute(
-        `INSERT INTO custom_fields_config 
-         (category_id, subcategory_id, field_name, field_label, field_type, field_options, is_required, is_visible, is_system, sort_order, applicable_subcategories)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO custom_fields_config
+         (category_id, subcategory_id, field_name, field_label, field_type, field_options, is_required, is_visible, is_system, sort_order, applicable_subcategories, is_counter, counter_unit)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           subcategoryId ? null : categoryId,
           subcategoryId || null,
@@ -279,9 +289,11 @@ router.post('/config', authenticateToken, requireAdmin, [
           field.isVisible !== false ? 1 : 0,
           field.isSystem ? 1 : 0,
           field.sortOrder ?? i,
-          field.applicableSubcategories && field.applicableSubcategories.length > 0 
-            ? JSON.stringify(field.applicableSubcategories) 
-            : null
+          field.applicableSubcategories && field.applicableSubcategories.length > 0
+            ? JSON.stringify(field.applicableSubcategories)
+            : null,
+          estCompteur ? 1 : 0,
+          estCompteur ? (field.counterUnit || '').trim().slice(0, 20) || null : null
         ]
       );
     }
@@ -315,7 +327,9 @@ router.post('/add', authenticateToken, requireAdmin, [
       return res.status(400).json({ success: false, errors: errors.array() });
     }
 
-    const { categoryId, subcategoryId, fieldName, fieldLabel, fieldType, fieldOptions, isRequired } = req.body;
+    const { categoryId, subcategoryId, fieldName, fieldLabel, fieldType, fieldOptions, isRequired, isCounter, counterUnit } = req.body;
+    const estCompteur = !!isCounter && fieldType === 'number';
+    const uniteCompteur = estCompteur ? (counterUnit || '').trim().slice(0, 20) || null : null;
 
     if (!categoryId && !subcategoryId) {
       return res.status(400).json({ success: false, message: 'categoryId ou subcategoryId requis' });
@@ -342,9 +356,9 @@ router.post('/add', authenticateToken, requireAdmin, [
     const sortOrder = (maxOrder?.max_order || 0) + 1;
 
     const result = await db.execute(
-      `INSERT INTO custom_fields_config 
-       (category_id, subcategory_id, field_name, field_label, field_type, field_options, is_required, is_visible, is_system, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?)`,
+      `INSERT INTO custom_fields_config
+       (category_id, subcategory_id, field_name, field_label, field_type, field_options, is_required, is_visible, is_system, sort_order, is_counter, counter_unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0, ?, ?, ?)`,
       [
         subcategoryId ? null : categoryId,
         subcategoryId || null,
@@ -353,7 +367,9 @@ router.post('/add', authenticateToken, requireAdmin, [
         fieldType,
         fieldOptions ? JSON.stringify(fieldOptions) : null,
         isRequired ? 1 : 0,
-        sortOrder
+        sortOrder,
+        estCompteur ? 1 : 0,
+        uniteCompteur
       ]
     );
 
@@ -370,6 +386,8 @@ router.post('/add', authenticateToken, requireAdmin, [
         isRequired,
         isVisible: true,
         isSystem: false,
+        isCounter: estCompteur,
+        counterUnit: uniteCompteur || '',
         sortOrder
       }
     });

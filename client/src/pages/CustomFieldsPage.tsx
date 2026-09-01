@@ -23,7 +23,22 @@ interface CustomField {
   isSystem: boolean
   sortOrder: number
   applicableSubcategories?: number[] | null
+  /** Champ Nombre suivi comme un compteur : sa valeur ne recule pas. */
+  isCounter?: boolean
+  /** Unité affichée à côté du relevé — « km », « h », « kWh ». */
+  counterUnit?: string
 }
+
+/**
+ * Unités proposées pour un compteur.
+ *
+ * Une liste courte plutôt qu'un champ libre : ces trois-là couvrent le parc
+ * d'une commune — les véhicules en kilomètres, les tondeuses, tronçonneuses et
+ * groupes électrogènes en heures moteur, les bornes en kilowattheures — et
+ * laisser saisir « Km », « KM » et « kms » produirait trois unités pour un
+ * même compteur. Le champ reste éditable pour un cas non prévu.
+ */
+const UNITES_COMPTEUR = ['km', 'h', 'kWh']
 
 const FIELD_TYPES = [
   { value: 'text', label: 'Texte' },
@@ -57,6 +72,8 @@ export default function CustomFieldsPage() {
     fieldType: 'text',
     fieldOptions: '',
     isRequired: false,
+    isCounter: false,
+    counterUnit: 'km',
     applicableSubcategories: [] as number[]
   })
   const [hasChanges, setHasChanges] = useState(false)
@@ -255,11 +272,14 @@ export default function CustomFieldsPage() {
       isVisible: true,
       isSystem: false,
       sortOrder: fields.length,
-      applicableSubcategories: newField.applicableSubcategories.length > 0 ? newField.applicableSubcategories : null
+      applicableSubcategories: newField.applicableSubcategories.length > 0 ? newField.applicableSubcategories : null,
+      // Un compteur se compare : seul un champ Nombre peut en être un.
+      isCounter: newField.fieldType === 'number' && newField.isCounter,
+      counterUnit: newField.fieldType === 'number' && newField.isCounter ? newField.counterUnit.trim() : ''
     }
 
     setFields([...fields, field])
-    setNewField({ fieldName: '', fieldLabel: '', fieldType: 'text', fieldOptions: '', isRequired: false, applicableSubcategories: [] })
+    setNewField({ fieldName: '', fieldLabel: '', fieldType: 'text', fieldOptions: '', isRequired: false, isCounter: false, counterUnit: 'km', applicableSubcategories: [] })
     setShowAddModal(false)
     setHasChanges(true)
   }
@@ -422,6 +442,11 @@ export default function CustomFieldsPage() {
                     {!field.isSystem && (
                       <Badge variant="info" size="sm">Personnalisé</Badge>
                     )}
+                    {field.isCounter && (
+                      <Badge variant="success" size="sm" title="Relevé à chaque plein, entretien ou contrôle — la valeur ne recule jamais">
+                        Compteur{field.counterUnit ? ` · ${field.counterUnit}` : ''}
+                      </Badge>
+                    )}
                     {/* Afficher les sous-catégories applicables */}
                     {!field.isSystem && field.applicableSubcategories && field.applicableSubcategories.length > 0 && subcategoriesData && (
                       <Badge variant="warning" size="sm" title="Ce champ s'applique uniquement à certaines sous-catégories">
@@ -556,6 +581,15 @@ export default function CustomFieldsPage() {
               />
               <span className="text-sm text-gray-700 dark:text-gray-200">Champ obligatoire</span>
             </label>
+
+            {newField.fieldType === 'number' && (
+              <ReglagesCompteur
+                actif={newField.isCounter}
+                unite={newField.counterUnit}
+                onActifChange={(actif) => setNewField({ ...newField, isCounter: actif })}
+                onUniteChange={(unite) => setNewField({ ...newField, counterUnit: unite })}
+              />
+            )}
             
             {/* Sélecteur de sous-catégories applicables */}
             {subcategoriesData && subcategoriesData.length > 0 && (
@@ -678,14 +712,27 @@ export default function CustomFieldsPage() {
                 <input
                   type="checkbox"
                   checked={editField.field.isRequired}
-                  onChange={(e) => setEditField({ 
-                    ...editField, 
+                  onChange={(e) => setEditField({
+                    ...editField,
                     field: { ...editField.field, isRequired: e.target.checked }
                   })}
                   className="rounded border-gray-300 dark:border-gray-600"
                 />
                 <span className="text-sm text-gray-700 dark:text-gray-200">Champ obligatoire</span>
               </label>
+
+              {editField.field.fieldType === 'number' && (
+                <ReglagesCompteur
+                  actif={!!editField.field.isCounter}
+                  unite={editField.field.counterUnit || 'km'}
+                  onActifChange={(actif) =>
+                    setEditField({ ...editField, field: { ...editField.field, isCounter: actif } })
+                  }
+                  onUniteChange={(unite) =>
+                    setEditField({ ...editField, field: { ...editField.field, counterUnit: unite } })
+                  }
+                />
+              )}
               
               {/* Sélecteur de sous-catégories applicables */}
               {subcategoriesData && subcategoriesData.length > 0 && (
@@ -742,6 +789,79 @@ export default function CustomFieldsPage() {
           </Button>
         </ModalFooter>
       </Modal>
+    </div>
+  )
+}
+
+/**
+ * Réglages d'un compteur, partagés par l'ajout et la modification d'un champ.
+ *
+ * Le texte explique ce que cocher déclenche ailleurs : sans lui, « Compteur »
+ * ressemble à une étiquette décorative alors qu'il fait apparaître un champ de
+ * relevé dans trois modales de saisie et interdit à la valeur de reculer.
+ */
+function ReglagesCompteur({
+  actif,
+  unite,
+  onActifChange,
+  onUniteChange,
+}: {
+  actif: boolean
+  unite: string
+  onActifChange: (actif: boolean) => void
+  onUniteChange: (unite: string) => void
+}) {
+  return (
+    <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-3">
+      <label className="flex items-start gap-2 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={actif}
+          onChange={(e) => onActifChange(e.target.checked)}
+          className="mt-1 rounded border-gray-300 dark:border-gray-600"
+        />
+        <span>
+          <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+            Suivre ce champ comme un compteur
+          </span>
+          <span className="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+            Un relevé sera demandé à chaque plein, entretien et contrôle technique, et
+            reporté ici s'il est plus élevé. La valeur ne redescend jamais.
+          </span>
+        </span>
+      </label>
+
+      {actif && (
+        <div className="pl-6">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-1">
+            Unité
+          </label>
+          <div className="flex items-center gap-2 flex-wrap">
+            {UNITES_COMPTEUR.map((u) => (
+              <button
+                key={u}
+                type="button"
+                onClick={() => onUniteChange(u)}
+                className={`px-3 py-1.5 text-sm rounded-lg border transition-colors touch-target ${
+                  unite === u
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300'
+                    : 'border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                }`}
+              >
+                {u}
+              </button>
+            ))}
+            <input
+              type="text"
+              value={unite}
+              onChange={(e) => onUniteChange(e.target.value)}
+              maxLength={20}
+              aria-label="Unité du compteur"
+              className="w-24 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800"
+            />
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
 import { notifierWebhooks } from '../services/webhook.service';
-import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
+import { filtreObjets, peutVoirObjet, REFUS_PORTEE } from '../middleware/objectScope';
 import {
   expressionPrestation,
   lireChoixPrestation,
@@ -11,6 +11,17 @@ import {
 } from '../services/prestationParc.service';
 import { enrichirLots, expressionNature } from '../services/lotParc.service';
 import { expressionDisponibilite } from '../services/materielPretable.service';
+import {
+  appliquerReleves,
+  compteursAvecValeurs,
+  compteursDuMateriel,
+  lireChampsPersonnalises,
+  natureEcriture,
+  natureEnergie,
+  relevesDUneEcriture,
+  relevesPourEcriture,
+  valeurEnergie,
+} from '../services/compteurs.service';
 
 const router = Router();
 
@@ -314,6 +325,13 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [id]
     );
 
+    // Compteurs déclarés sur la branche du matériel, et énergie qu'il consomme.
+    // Les deux commandent ce que la page a le droit d'afficher : sans compteur
+    // aucun champ de relevé, et une voiture électrique ne se voit pas demander
+    // des litres.
+    const compteurs = await compteursAvecValeurs(id);
+    const champsPersonnalises = lireChampsPersonnalises(obj.custom_fields);
+
     res.json({
       success: true,
       object: {
@@ -334,7 +352,13 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         status: obj.status,
         location: obj.location,
         notes: obj.notes,
-        customFields: obj.custom_fields ? JSON.parse(obj.custom_fields) : {},
+        customFields: champsPersonnalises,
+        // Compteurs relevables et leur valeur du moment.
+        counters: compteurs,
+        energy: {
+          kind: natureEnergie(champsPersonnalises),
+          label: valeurEnergie(champsPersonnalises),
+        },
         isPrestation: obj.is_prestation === null || obj.is_prestation === undefined
           ? null
           : Boolean(obj.is_prestation),
@@ -381,6 +405,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           totalPrice: f.total_price,
           cost: f.total_price, // Alias pour le frontend
           mileage: f.mileage,
+          readings: relevesDUneEcriture(f, compteurs),
+          energyKind: f.energy_kind === 'electric' ? 'electric' : 'fuel',
           station: f.station,
           notes: f.notes,
           attachments: f.attachments ? JSON.parse(f.attachments) : []
@@ -392,6 +418,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           description: m.description,
           cost: m.cost,
           mileage: m.mileage,
+          readings: relevesDUneEcriture(m, compteurs),
           nextDate: m.next_date,
           provider: m.provider,
           notes: m.notes,
@@ -402,6 +429,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
           date: t.control_date,
           expiryDate: t.expiry_date,
           mileage: t.mileage,
+          readings: relevesDUneEcriture(t, compteurs),
           result: t.result,
           centerName: t.center_name,
           cost: t.cost,
@@ -666,54 +694,56 @@ router.post('/:id/fuel', authenticateToken, requireFieldWrite, [
 
     const { id } = req.params;
     // Support des noms de champs du frontend (date, cost) et backend (entryDate, unitPrice)
-    const { fuelType, quantity, cost, mileage, station, entryDate, date, notes, attachments } = req.body;
+    const { fuelType, quantity, cost, mileage, station, entryDate, date, notes, attachments, readings, energyKind } = req.body;
 
     // Utiliser les valeurs du frontend si disponibles
     const finalEntryDate = date || entryDate;
     const totalPrice = cost ? parseFloat(cost) : null;
     const qty = quantity ? parseFloat(quantity) : null;
-    
-    // Calculer le prix unitaire (€/L) = coût total / quantité
+
+    // Prix unitaire = coût total / quantité. L'unité suit la nature de
+    // l'écriture : €/L pour un plein, €/kWh pour une recharge.
     const unitPriceCalculated = (totalPrice && qty && qty > 0) ? (totalPrice / qty) : null;
 
-    // Récupérer le type de carburant depuis les customFields de l'objet si non fourni
-    let finalFuelType = fuelType;
-    if (!finalFuelType) {
-      const objectData = await db.query(
-        'SELECT custom_fields FROM objects WHERE id = ?',
-        [id]
-      );
-      if (objectData && objectData.length > 0 && objectData[0].custom_fields) {
-        try {
-          const customFields = JSON.parse(objectData[0].custom_fields);
-          // Chercher le type de carburant dans différents noms possibles
-          finalFuelType = customFields.fuelType || customFields.typeCarburant || 
-                         customFields['Type de carburant'] || customFields.carburant ||
-                         customFields.fuel_type;
-        } catch (e) {
-          // Ignorer les erreurs de parsing JSON
-        }
-      }
-      // Valeur par défaut si toujours non défini
-      finalFuelType = finalFuelType || 'Carburant';
+    const objectData = await db.queryOne('SELECT custom_fields FROM objects WHERE id = ?', [id]);
+    if (!objectData) {
+      return res.status(404).json({ success: false, message: 'Objet non trouvé' });
     }
+    const champsPersonnalises = lireChampsPersonnalises(objectData.custom_fields);
+
+    // Carburant ou électricité : ce que le client précise, sinon ce que le
+    // champ d'énergie du matériel indique.
+    const nature = natureEcriture(energyKind, champsPersonnalises);
+
+    // À défaut de type précisé, celui de la fiche — et un repli qui dit au
+    // moins de quoi il s'agit plutôt que « Carburant » sur une recharge.
+    const finalFuelType =
+      fuelType || valeurEnergie(champsPersonnalises) || (nature === 'electric' ? 'Électrique' : 'Carburant');
 
     // Sérialiser les pièces jointes en JSON
     const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
+    // Relevés de compteurs : rangés sur l'écriture, puis reportés sur la fiche
+    // sans jamais la faire reculer.
+    const releves = await relevesPourEcriture(id, readings, mileage);
+
     const result = await db.execute(
-      `INSERT INTO fuel_entries (object_id, fuel_type, quantity, unit_price, total_price, mileage, station, entry_date, notes, attachments)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, finalFuelType, qty, unitPriceCalculated, totalPrice, mileage || null, station || null, finalEntryDate, notes || null, attachmentsJson]
+      `INSERT INTO fuel_entries (object_id, fuel_type, energy_kind, quantity, unit_price, total_price, mileage, readings, station, entry_date, notes, attachments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, finalFuelType, nature, qty, unitPriceCalculated, totalPrice, releves.mileage, releves.readings, station || null, finalEntryDate, notes || null, attachmentsJson]
     );
 
-    notifierWebhooks('fuel.created', { objectId: Number(id), quantity, cost });
+    const compteurs = await appliquerReleves(id, releves.valeurs);
+
+    notifierWebhooks('fuel.created', { objectId: Number(id), quantity, cost, energyKind: nature });
 
     res.status(201).json({
       success: true,
-      message: 'Entrée carburant ajoutée',
+      message: nature === 'electric' ? 'Recharge ajoutée' : 'Entrée carburant ajoutée',
       entryId: result.lastInsertRowid,
-      unitPrice: unitPriceCalculated ? unitPriceCalculated.toFixed(3) : null
+      energyKind: nature,
+      unitPrice: unitPriceCalculated ? unitPriceCalculated.toFixed(3) : null,
+      compteurs
     });
   } catch (error: any) {
     console.error('Erreur add fuel entry:', error);
@@ -725,28 +755,44 @@ router.post('/:id/fuel', authenticateToken, requireFieldWrite, [
 router.put('/:id/fuel/:entryId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id, entryId } = req.params;
-    const { fuelType, quantity, cost, mileage, station, date, notes, attachments } = req.body;
+    const { fuelType, quantity, cost, mileage, station, date, notes, attachments, readings, energyKind } = req.body;
 
     const totalPrice = cost ? parseFloat(cost) : null;
     const qty = quantity ? parseFloat(quantity) : null;
     const unitPriceCalculated = (totalPrice && qty && qty > 0) ? (totalPrice / qty) : null;
-    
+
+    const objectData = await db.queryOne('SELECT custom_fields FROM objects WHERE id = ?', [id]);
+    if (!objectData) {
+      return res.status(404).json({ success: false, message: 'Objet non trouvé' });
+    }
+    const nature = natureEcriture(energyKind, lireChampsPersonnalises(objectData.custom_fields));
+
     // Sérialiser les pièces jointes en JSON
     const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
+    const releves = await relevesPourEcriture(id, readings, mileage);
+
     const result = await db.execute(
-      `UPDATE fuel_entries SET 
-        fuel_type = ?, quantity = ?, unit_price = ?, total_price = ?, 
-        mileage = ?, station = ?, entry_date = ?, notes = ?, attachments = ?
+      `UPDATE fuel_entries SET
+        fuel_type = ?, energy_kind = ?, quantity = ?, unit_price = ?, total_price = ?,
+        mileage = ?, readings = ?, station = ?, entry_date = ?, notes = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [fuelType || 'Carburant', qty, unitPriceCalculated, totalPrice, mileage || null, station || null, date, notes || null, attachmentsJson, entryId, id]
+      [fuelType || (nature === 'electric' ? 'Électrique' : 'Carburant'), nature, qty, unitPriceCalculated, totalPrice, releves.mileage, releves.readings, station || null, date, notes || null, attachmentsJson, entryId, id]
     );
 
     if (result.changes === 0) {
       return res.status(404).json({ success: false, message: 'Entrée non trouvée' });
     }
 
-    res.json({ success: true, message: 'Entrée carburant modifiée', unitPrice: unitPriceCalculated });
+    const compteurs = await appliquerReleves(id, releves.valeurs);
+
+    res.json({
+      success: true,
+      message: nature === 'electric' ? 'Recharge modifiée' : 'Entrée carburant modifiée',
+      energyKind: nature,
+      unitPrice: unitPriceCalculated,
+      compteurs
+    });
   } catch (error: any) {
     console.error('Erreur update fuel entry:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
@@ -776,10 +822,72 @@ router.delete('/:id/fuel/:entryId', authenticateToken, requireAdmin, async (req:
 
 // === STATIONS DE CARBURANT ===
 
-// GET /api/objects/fuel-stations - Liste des stations
+// === COMPTEURS ===
+
+/**
+ * PATCH /api/objects/:id/compteurs — relever un compteur depuis la fiche.
+ *
+ * Ouvert à l'agent de terrain, contrairement à la modification de la fiche
+ * réservée au superviseur : relever un compteur est le geste quotidien du
+ * chauffeur qui rentre au dépôt, et l'obliger à passer par « Modifier » lui
+ * donnerait au passage le droit de changer le nom et la catégorie du véhicule.
+ */
+router.patch('/:id/compteurs', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { readings } = req.body;
+
+    const objet = await db.queryOne('SELECT id FROM objects WHERE id = ?', [id]);
+    if (!objet) {
+      return res.status(404).json({ success: false, message: 'Objet non trouvé' });
+    }
+
+    // Relever le compteur d'un matériel suppose de pouvoir le consulter : sans
+    // ce contrôle, un compte cantonné aux espaces verts pourrait faire avancer
+    // le kilométrage d'un camion qu'il n'a pas le droit de voir.
+    if (!(await peutVoirObjet(req, id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    const compteurs = await appliquerReleves(id, readings);
+    if (compteurs.retenus.length === 0 && compteurs.ignores.length === 0) {
+      return res.status(400).json({ success: false, message: 'Aucun relevé exploitable' });
+    }
+
+    res.json({
+      success: true,
+      message: compteurs.retenus.length > 0 ? 'Compteur mis à jour' : 'Relevé non retenu',
+      compteurs,
+      valeurs: await compteursAvecValeurs(id),
+    });
+  } catch (error: any) {
+    console.error('Erreur relevé compteur:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// === STATIONS ET BORNES ===
+
+/**
+ * GET /api/objects/fuel-stations - Liste des points de ravitaillement.
+ *
+ * `?kind=electric` ne rend que les bornes de recharge. Sans filtre, tout est
+ * rendu : les écrans d'administration du référentiel les gèrent ensemble.
+ */
 router.get('/fuel-stations/list', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const stations = await db.query('SELECT * FROM fuel_stations ORDER BY name ASC');
+    const nature = req.query.kind === 'electric' ? 'electric' : req.query.kind === 'fuel' ? 'fuel' : null;
+
+    // `kind IS NULL` couvre les lignes créées avant la migration 014 : elles
+    // sont des stations-service, et les exclure viderait la liste existante.
+    const stations = nature
+      ? await db.query(
+          nature === 'fuel'
+            ? "SELECT * FROM fuel_stations WHERE kind = 'fuel' OR kind IS NULL ORDER BY name ASC"
+            : "SELECT * FROM fuel_stations WHERE kind = 'electric' ORDER BY name ASC"
+        )
+      : await db.query('SELECT * FROM fuel_stations ORDER BY name ASC');
+
     res.json({ success: true, stations });
   } catch (error: any) {
     console.error('Erreur get fuel stations:', error);
@@ -804,29 +912,31 @@ async function trouverEntreeExistante(table: string, nom: string): Promise<{ id:
 
 router.post('/fuel-stations', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const { name, address } = req.body;
-    
+    const { name, address, kind } = req.body;
+
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
     }
+
+    const nature = kind === 'electric' ? 'electric' : 'fuel';
 
     const existante = await trouverEntreeExistante('fuel_stations', name);
     if (existante) {
       return res.status(400).json({
         success: false,
-        message: `Cette station existe déjà sous le nom « ${existante.name} ».`
+        message: `Ce point de ravitaillement existe déjà sous le nom « ${existante.name} ».`
       });
     }
 
     const result = await db.execute(
-      'INSERT INTO fuel_stations (name, address) VALUES (?, ?)',
-      [name.trim(), address?.trim() || null]
+      'INSERT INTO fuel_stations (name, address, kind) VALUES (?, ?, ?)',
+      [name.trim(), address?.trim() || null, nature]
     );
 
-    res.status(201).json({ 
-      success: true, 
-      message: 'Station ajoutée',
-      station: { id: result.lastInsertRowid, name: name.trim(), address: address?.trim() || null }
+    res.status(201).json({
+      success: true,
+      message: nature === 'electric' ? 'Borne ajoutée' : 'Station ajoutée',
+      station: { id: result.lastInsertRowid, name: name.trim(), address: address?.trim() || null, kind: nature }
     });
   } catch (error: any) {
     if (error.message?.includes('UNIQUE constraint') || error.code === 'ER_DUP_ENTRY') {
@@ -841,15 +951,17 @@ router.post('/fuel-stations', authenticateToken, requireAdmin, async (req: AuthR
 router.put('/fuel-stations/:stationId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { stationId } = req.params;
-    const { name, address } = req.body;
+    const { name, address, kind } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Le nom est requis' });
     }
 
+    // La nature se corrige : une borne créée avant la distinction se retrouve
+    // sinon coincée dans la liste des stations-service, sans moyen d'en sortir.
     const result = await db.execute(
-      'UPDATE fuel_stations SET name = ?, address = ? WHERE id = ?',
-      [name.trim(), address?.trim() || null, stationId]
+      'UPDATE fuel_stations SET name = ?, address = ?, kind = ? WHERE id = ?',
+      [name.trim(), address?.trim() || null, kind === 'electric' ? 'electric' : 'fuel', stationId]
     );
 
     if (result.changes === 0) {
@@ -1202,16 +1314,20 @@ router.post('/:id/technical-control', authenticateToken, requireFieldWrite, [
     }
 
     const { id } = req.params;
-    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments } = req.body;
+    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments, readings } = req.body;
 
     // Sérialiser les pièces jointes en JSON
     const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
+    const releves = await relevesPourEcriture(id, readings, mileage);
+
     const insertResult = await db.execute(
-      `INSERT INTO technical_controls (object_id, control_date, expiry_date, mileage, result, center_name, cost, document, notes, attachments)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes, attachmentsJson]
+      `INSERT INTO technical_controls (object_id, control_date, expiry_date, mileage, readings, result, center_name, cost, document, notes, attachments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, controlDate, expiryDate, releves.mileage, releves.readings, controlResult, centerName, cost, document, notes, attachmentsJson]
     );
+
+    const compteurs = await appliquerReleves(id, releves.valeurs);
 
     // Créer une alerte pour le prochain contrôle (seulement si dans la période configurée)
     if (expiryDate) {
@@ -1260,7 +1376,8 @@ router.post('/:id/technical-control', authenticateToken, requireFieldWrite, [
     res.status(201).json({
       success: true,
       message: 'Contrôle technique ajouté',
-      controlId: insertResult.lastInsertRowid
+      controlId: insertResult.lastInsertRowid,
+      compteurs
     });
   } catch (error: any) {
     console.error('Erreur add technical control:', error);
@@ -1303,17 +1420,19 @@ router.delete('/:id/technical-control/:controlId', authenticateToken, requireAdm
 router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id, controlId } = req.params;
-    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments } = req.body;
+    const { controlDate, expiryDate, mileage, result: controlResult, centerName, cost, document, notes, attachments, readings } = req.body;
 
     // Sérialiser les pièces jointes en JSON
     const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
+    const releves = await relevesPourEcriture(id, readings, mileage);
+
     const result = await db.execute(
-      `UPDATE technical_controls SET 
-        control_date = ?, expiry_date = ?, mileage = ?, result = ?, 
+      `UPDATE technical_controls SET
+        control_date = ?, expiry_date = ?, mileage = ?, readings = ?, result = ?,
         center_name = ?, cost = ?, document = ?, notes = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [controlDate, expiryDate, mileage, controlResult, centerName, cost, document, notes, attachmentsJson, controlId, id]
+      [controlDate, expiryDate, releves.mileage, releves.readings, controlResult, centerName, cost, document, notes, attachmentsJson, controlId, id]
     );
 
     if (result.changes === 0) {
@@ -1375,19 +1494,25 @@ router.post('/:id/maintenance', authenticateToken, requireFieldWrite, [
     }
 
     const { id } = req.params;
-    const { 
+    const {
       maintenanceType, maintenanceDate, nextDate, mileage, nextMileage,
-      cost, provider, document, notes, addToCalendar, attachments 
+      cost, provider, document, notes, addToCalendar, attachments, readings
     } = req.body;
 
     // Sérialiser les pièces jointes en JSON
     const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
+    // Relevés de compteurs. Une catégorie qui n'en déclare aucun — mobilier,
+    // outillage — n'en reçoit pas et n'en enregistre pas.
+    const releves = await relevesPourEcriture(id, readings, mileage);
+
     const insertResult = await db.execute(
-      `INSERT INTO maintenances (object_id, maintenance_type, maintenance_date, next_date, mileage, next_mileage, cost, provider, document, notes, add_to_calendar, attachments)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson]
+      `INSERT INTO maintenances (object_id, maintenance_type, maintenance_date, next_date, mileage, readings, next_mileage, cost, provider, document, notes, add_to_calendar, attachments)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, maintenanceType, maintenanceDate, nextDate, releves.mileage, releves.readings, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson]
     );
+
+    const compteurs = await appliquerReleves(id, releves.valeurs);
 
     // Créer une alerte pour la prochaine maintenance (seulement si dans la période configurée)
     if (nextDate) {
@@ -1440,7 +1565,8 @@ router.post('/:id/maintenance', authenticateToken, requireFieldWrite, [
     res.status(201).json({
       success: true,
       message: 'Maintenance ajoutée',
-      maintenanceId: insertResult.lastInsertRowid
+      maintenanceId: insertResult.lastInsertRowid,
+      compteurs
     });
   } catch (error: any) {
     console.error('Erreur add maintenance:', error);
@@ -1483,21 +1609,23 @@ router.delete('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin
 router.put('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id, maintenanceId } = req.params;
-    const { 
+    const {
       maintenanceType, maintenanceDate, nextDate, mileage, nextMileage,
-      cost, provider, document, notes, addToCalendar, attachments 
+      cost, provider, document, notes, addToCalendar, attachments, readings
     } = req.body;
 
     // Sérialiser les pièces jointes en JSON
     const attachmentsJson = attachments ? JSON.stringify(attachments) : null;
 
+    const releves = await relevesPourEcriture(id, readings, mileage);
+
     const result = await db.execute(
-      `UPDATE maintenances SET 
-        maintenance_type = ?, maintenance_date = ?, next_date = ?, 
-        mileage = ?, next_mileage = ?, cost = ?, provider = ?, 
+      `UPDATE maintenances SET
+        maintenance_type = ?, maintenance_date = ?, next_date = ?,
+        mileage = ?, readings = ?, next_mileage = ?, cost = ?, provider = ?,
         document = ?, notes = ?, add_to_calendar = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [maintenanceType, maintenanceDate, nextDate, mileage, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson, maintenanceId, id]
+      [maintenanceType, maintenanceDate, nextDate, releves.mileage, releves.readings, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson, maintenanceId, id]
     );
 
     if (result.changes === 0) {

@@ -493,9 +493,11 @@ const DEFAULT_PLUGINS = [
     author: 'Système',
     icon: 'fuel',
     is_system: 1,
+    // `track_mileage` a disparu : le relevé dépend maintenant des compteurs
+    // déclarés par la catégorie du matériel, et non d'un drapeau valable pour
+    // tout le parc à la fois — tondeuses et tables comprises.
     config: JSON.stringify({
       fuel_types: ['Diesel', 'Essence SP95', 'Essence SP98', 'E85', 'GPL', 'Électrique'],
-      track_mileage: true,
       track_cost: true
     })
   },
@@ -536,8 +538,7 @@ const DEFAULT_PLUGINS = [
         'Batterie',
         'Autre'
       ],
-      reminder_days: [30, 15, 7],
-      track_mileage: true
+      reminder_days: [30, 15, 7]
     })
   },
   {

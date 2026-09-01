@@ -25,6 +25,7 @@ api.interceptors.request.use((config) => {
 /** Décrit une saisie en attente dans les termes de l'agent, pas de l'API. */
 function decrireSaisie(url: string): string {
   if (/\/fuel$/.test(url)) return 'Plein de carburant'
+  if (/\/compteurs$/.test(url)) return 'Relevé de compteur'
   if (/\/technical-control$/.test(url)) return 'Contrôle technique'
   if (/green-spaces\/\d+\/maintenances$/.test(url)) return "Entretien d'espace vert"
   if (/\/maintenance$/.test(url)) return 'Entretien'
@@ -113,7 +114,7 @@ api.interceptors.response.use(
       if (estDifferable(url, methode)) {
         const saisie = await offlineQueue.enqueue({
           url,
-          method: methode.toUpperCase() as 'POST' | 'PUT',
+          method: methode.toUpperCase() as 'POST' | 'PUT' | 'PATCH',
           body: originalRequest.data ? JSON.parse(originalRequest.data) : undefined,
           label: decrireSaisie(url),
         })

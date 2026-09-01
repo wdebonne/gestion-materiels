@@ -95,6 +95,39 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 🔄 Réorganisation de l'ordre des champs par glisser-déposer
 - 👀 Prévisualisation en temps réel des modifications
 - 🏷️ Badges visuels indiquant le niveau de configuration et les restrictions
+- 🔢 **Compteurs** : un champ Nombre peut être déclaré compteur, avec son unité
+
+#### Les compteurs
+
+Un champ Nombre coché **« Suivre ce champ comme un compteur »** cesse d'être une
+simple case à remplir : il est proposé en relevé à chaque plein, entretien et
+contrôle technique, et sa valeur ne redescend jamais.
+
+Chaque branche compte ce qui la concerne, et rien d'autre :
+
+| Catégorie | Compteur | Unité |
+|-----------|----------|-------|
+| Véhicules | Kilométrage | km |
+| Tondeuses, groupes électrogènes | Heures moteur | h |
+| Mobilier, outillage | *(aucun)* | |
+
+Une catégorie sans compteur ne voit **aucun** champ de relevé dans ses
+formulaires de saisie. C'est ce qui débarrasse l'entretien d'une tondeuse ou
+d'une table du « Kilométrage » qui s'y affichait auparavant.
+
+Un tracteur qui compte à la fois des kilomètres et des heures de prise de force
+en déclare deux : le premier dans l'ordre d'affichage sert de compteur principal
+pour le module Suivi et les modèles d'e-mail.
+
+**Un compteur ne recule pas.** Un relevé inférieur à la valeur en fiche reste
+enregistré sur la saisie — une facture retrouvée, un rattrapage — mais ne
+rabaisse pas la fiche, et l'agent en est prévenu. Le report est fait par le
+serveur au moment de l'écriture : il vaut donc aussi pour une saisie faite hors
+réseau et rejouée plus tard, pour un import de fichier et pour l'API.
+
+Le relevé se fait aussi directement depuis la carte **Compteurs** de la fiche,
+sans passer par « Modifier » — un agent de terrain y a droit, et n'obtient pas au
+passage la permission de renommer le véhicule.
 
 ### 📊 Module Suivi (Nouveau!)
 - 📈 **Tableau de bord** : Vue consolidée des coûts (carburant, entretiens, contrôles techniques)
@@ -165,9 +198,34 @@ L'application est utilisée par des agents de terrain — jardiniers, mécanicie
 - 🔗 **Intégrations** : Alertes automatiques (cron), événements calendrier, coûts dans le module Suivi
 
 ### Plugins intégrés
-- ⛽ **Carburant** : Suivi des consommations et coûts, gestion des stations, filtrage avancé, pièces jointes (PDF/images)
-- 🔧 **Maintenance** : Historique des interventions, gestion des types d'entretien et prestataires, synchronisation kilométrage, pièces jointes (PDF/images)
+- ⛽ **Carburant / Recharges** : Suivi des consommations et coûts, gestion des stations et des bornes, filtrage avancé, pièces jointes (PDF/images). Le module **s'adapte à ce que consomme le matériel** (voir ci-dessous)
+- 🔧 **Maintenance** : Historique des interventions, gestion des types d'entretien et prestataires, relevés de compteurs, pièces jointes (PDF/images)
 - 📋 **Contrôle technique** : Suivi des échéances, gestion des centres, calcul automatique expiration (+2 ans), pièces jointes (PDF/images)
+
+#### Carburant ou électrique : un seul module
+
+Le module lit le **type d'énergie** du matériel — un champ personnalisé nommé
+`typeEnergie`, `typeCarburant`, `energie`, « Type de carburant »… — et change de
+vocabulaire en conséquence :
+
+| | Thermique | Électrique |
+|---|---|---|
+| Onglet | Carburant | Recharges |
+| Quantité | litres (L) | kilowattheures (kWh) |
+| Prix unitaire | €/L | €/kWh |
+| Point de ravitaillement | Station | Borne |
+
+Un **hybride rechargeable** (valeur contenant « hybride ») voit un onglet
+« Énergie » et choisit à chaque saisie entre un plein et une recharge.
+
+Sans champ d'énergie renseigné, le matériel reste thermique : c'est le cas de la
+quasi-totalité d'un parc existant, et présenter des kWh à un camion benne serait
+un contresens plus visible que l'inverse.
+
+L'historique reste **unique** : le module Suivi, les exports, les alertes et le
+tableau de bord continuent de tout additionner sans qu'un second module ait à
+être branché partout. Un véhicule reconverti garde l'historique juste de ce qu'il
+a réellement consommé, chaque écriture portant sa propre nature.
 - 📅 **Calendrier** *(plugin système)* : Planning et événements
 - 🔄 **Réservations** *(plugin système)* : Gestion des prêts de matériel, statuts, alertes retards
 - 📉 **Amortissement** *(plugin système)* : Dépréciation linéaire, graphiques Recharts
@@ -558,9 +616,17 @@ POST /api/plugins/import-zip          # Importer un plugin avancé (ZIP)
 GET  /api/plugins/:slug/pages         # Pages d'un plugin
 GET  /api/plugins/:slug/data/*        # API dynamique d'un plugin
 
-# Carburant
-GET  /api/objects/:id/fuel            # Historique carburant
-POST /api/objects/:id/fuel            # Ajouter un plein
+# Compteurs
+PATCH /api/objects/:id/compteurs      # Relever un ou plusieurs compteurs
+                                      # { "readings": { "kilometrage": 84500 } }
+                                      # La fiche ne retient que les valeurs plus élevées
+
+# Carburant / Recharges
+GET  /api/objects/:id/fuel            # Historique carburant et recharges
+POST /api/objects/:id/fuel            # Ajouter un plein ou une recharge
+                                      # energyKind: "fuel" | "electric" (déduit du matériel si absent)
+                                      # readings: { "<champ compteur>": <valeur> }
+GET  /api/objects/fuel-stations/list  # Stations et bornes (?kind=fuel|electric)
 
 # Maintenance
 GET  /api/objects/:id/maintenance     # Historique maintenance

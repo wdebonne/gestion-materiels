@@ -35,18 +35,26 @@ const nombreFacultatif = (min = 0) =>
 
 const dateObligatoire = z.string().min(1, 'Indiquez une date')
 
+/**
+ * Les relevés de compteurs ne sont plus validés ici.
+ *
+ * Ils l'étaient sous la forme d'un unique champ `mileage`, présent dans les
+ * trois schémas. Un matériel peut désormais porter zéro, un ou plusieurs
+ * compteurs déclarés par sa catégorie : un schéma figé ne peut plus les nommer.
+ * Le contrôle porte sur la valeur — un nombre positif — et se fait au saisie
+ * dans `ChampsCompteurs`, puis au serveur, qui est de toute façon le seul à
+ * pouvoir comparer un relevé à ce que porte la fiche.
+ */
 export const schemaPlein = z.object({
   date: dateObligatoire,
-  quantity: nombreSaisi({ min: 0.1, requis: 'Indiquez la quantité en litres' }),
+  quantity: nombreSaisi({ min: 0.1, requis: 'Indiquez la quantité' }),
   cost: nombreFacultatif(0),
-  mileage: nombreFacultatif(0),
 })
 
 export const schemaEntretien = z.object({
   date: dateObligatoire,
   type: z.string().min(1, "Choisissez le type d'entretien"),
   cost: nombreFacultatif(0),
-  mileage: nombreFacultatif(0),
 })
 
 export const schemaControle = z
@@ -54,7 +62,6 @@ export const schemaControle = z
     date: dateObligatoire,
     expirationDate: dateObligatoire,
     cost: nombreFacultatif(0),
-    mileage: nombreFacultatif(0),
   })
   .refine((v) => !v.date || !v.expirationDate || v.expirationDate >= v.date, {
     message: "L'expiration ne peut pas précéder la date du contrôle",

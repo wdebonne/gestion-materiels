@@ -1,7 +1,7 @@
 # 🔒 Rapport d'Audit de Sécurité des API
 
 **Date de l'audit initial** : 6 février 2026  
-**Révision** : 29 août 2026  
+**Révision** : 1er septembre 2026  
 **Projet** : Gestion Matériels  
 **Version auditée** : Branche `main`
 
@@ -79,6 +79,7 @@ La matrice complète est figée par `tests/roles.test.ts`, qui vérifie à la fo
 | `POST /api/objects/:id/fuel` | `object.routes.ts` | Relevé de plein |
 | `POST /api/objects/:id/maintenance` | `object.routes.ts` | Relevé d'entretien |
 | `POST /api/objects/:id/technical-control` | `object.routes.ts` | Relevé de contrôle technique |
+| `PATCH /api/objects/:id/compteurs` | `object.routes.ts` | Relevé de compteur depuis la fiche — vérifie en plus la portée par catégorie (`peutVoirObjet`) |
 | `POST /api/green-spaces/:id/maintenances` | `espaceVert.routes.ts` | Entretien d'espace vert |
 | `POST /api/upload/*` | `upload.routes.ts` | Pièces jointes |
 | `POST /api/reservations` | `reservation.routes.ts` | Demande de réservation (statut forcé à `pending` si non-superviseur) |
@@ -378,6 +379,16 @@ Deux défauts indépendants faisaient disparaître des entrées de journal sans 
 - [x] ~~Implémenter la détection de tentatives de brute force~~ ✅ Via rate limiting
 - [x] ~~Ajouter des tests de sécurité automatisés~~ ✅ Août 2026 — `roles.test.ts` (31 tests, matrice rôle × endpoint) et `apiTokens.test.ts` (10 tests, portée des tokens)
 - [ ] Mettre en place un WAF (Web Application Firewall)
+
+### Révision de septembre 2026 — relevés de compteurs
+
+Le point d'entrée `PATCH /api/objects/:id/compteurs` ouvre l'écriture d'un champ de la fiche à l'agent de terrain, là où la modification d'une fiche demande le rôle superviseur. Le compromis est volontaire et borné :
+
+- l'écriture ne porte que sur les champs **déclarés compteurs** par la catégorie, jamais sur le reste de la fiche ;
+- elle est **monotone** — une valeur ne peut qu'augmenter — donc irréversible sans passer par un superviseur, mais aussi impossible à utiliser pour effacer une donnée ;
+- elle vérifie la **portée par catégorie** (`peutVoirObjet`), et pas seulement le rôle : un compte cantonné aux espaces verts ne peut pas faire avancer le compteur d'un camion qu'il n'a pas le droit de voir.
+
+**Défaut antérieur, toujours ouvert :** les trois routes de saisie de terrain — `POST /:id/fuel`, `/:id/maintenance`, `/:id/technical-control` — ne vérifient que le rôle, pas la portée par catégorie. Un agent peut donc écrire un plein sur un matériel qu'il ne peut pas consulter. L'exposition est limitée (écriture d'une ligne d'historique sur un identifiant à deviner, aucune lecture en retour), mais l'asymétrie avec la lecture — corrigée en août 2026 — reste à résorber.
 
 ### Ouvert après la révision d'août 2026
 

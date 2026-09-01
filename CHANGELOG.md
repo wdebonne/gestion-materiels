@@ -7,6 +7,38 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Compteurs et énergie — un parc qui n'est pas fait que de voitures diesel
+
+> Deux manques partaient de la même cause : le parc était décrit comme s'il n'était fait que de véhicules thermiques. Le kilométrage était un nom de champ écrit en dur, et l'électrique n'existait pas.
+
+#### Ajouté
+
+- **Compteurs déclarés par catégorie.** Dans « Configuration des champs », un champ Nombre peut être coché **« Suivre ce champ comme un compteur »** et recevoir son unité — km, h, kWh. Il est alors proposé en relevé à chaque plein, entretien et contrôle technique, et sa valeur ne redescend jamais
+  - Véhicules en kilomètres, tondeuses et groupes électrogènes en heures moteur, mobilier et outillage sans aucun compteur — et donc **sans aucun champ de relevé** dans leurs formulaires de saisie
+  - Plusieurs compteurs par branche : un tracteur compte ses kilomètres *et* ses heures de prise de force. Le premier dans l'ordre d'affichage reste le compteur principal, celui que lisent le module Suivi, les exports et le modèle d'e-mail de rappel d'entretien
+  - Une sous-catégorie ayant sa propre configuration décide seule de ses compteurs : elle n'hérite plus de ceux du parent, ce qui permet d'en retirer un
+  - Les relevés sont conservés **sur l'écriture** (`readings`), et plus seulement reportés sur la fiche : un relevé effacé par erreur se retrouve dans l'historique
+- **Relevé depuis la fiche.** Une carte « Compteurs » sur l'onglet Détails, avec mise à jour directe (`PATCH /api/objects/:id/compteurs`) ouverte à l'agent de terrain. Relever un compteur passait jusqu'ici par « Modifier la fiche », réservé au superviseur — qui donne au passage le droit de renommer le véhicule et de changer sa catégorie. Le relevé se met en file d'attente hors réseau comme les autres saisies de terrain
+- **Recharges électriques**, dans le module Carburant plutôt qu'à côté. Le module lit le type d'énergie du matériel et change de vocabulaire : onglet « Recharges », quantité en kWh, prix en €/kWh, « Borne » au lieu de « Station ». Un hybride rechargeable voit un onglet « Énergie » et choisit à chaque saisie
+  - L'historique reste unique : le module Suivi, les exports, les alertes et le tableau de bord continuent d'additionner sans qu'un second module ait à être branché partout
+  - Chaque écriture porte sa nature (`energy_kind`), et non celle du matériel au moment où on la relit : un véhicule reconverti garde l'historique juste de ce qu'il a consommé
+  - Les bornes de recharge sont séparées des stations-service (`fuel_stations.kind`) : on ne propose plus « Total » pour brancher une voiture
+
+#### Corrigé
+
+- **Le report du kilométrage visait une clé écrite en dur.** La saisie d'un plein annonçait « Met à jour la fiche s'il est plus élevé », et recopiait la valeur dans `custom_fields.kilometrage`. Un champ personnalisé nommé autrement — « kilométrages », au pluriel, ce que produit la saisie d'un libellé dans l'écran de configuration — n'était **jamais** alimenté : la fiche affichait un compteur vide pendant que l'historique des pleins en portait un. Le report suit maintenant le nom réel du champ déclaré compteur
+- **Le report ne s'appliquait qu'aux saisies faites page ouverte.** Il était lancé par un `PUT` sur la fiche entière, depuis le navigateur, après l'enregistrement. Une saisie faite hors réseau et rejouée au retour de la connexion, un import de fichier ou un appel d'API laissaient donc la fiche à sa valeur de la veille. Le serveur s'en charge à l'écriture, quel que soit le chemin d'entrée — et renvoie ce qu'il a retenu
+- **Le champ « Kilométrage » s'affichait sur tout le parc.** Les trois modales de saisie le montraient sans condition : sur une tondeuse, sur une table, sur un lot de chaises. Le seul garde-fou existant, `track_mileage`, était un réglage **global** du plugin, appliqué aux seuls plugins personnalisés : le désactiver l'aurait retiré aux véhicules aussi
+- **Une saisie plus basse était silencieusement perdue.** Un relevé inférieur à la valeur en fiche ne déclenchait rien : l'agent voyait « Plein ajouté », rouvrait la fiche, y trouvait l'ancienne valeur et concluait à une perte de saisie. Le relevé est conservé sur l'écriture, la fiche garde la valeur la plus haute, et l'écran le dit
+- **Une voiture électrique se voyait demander des litres.** Le plugin Carburant réclamait une quantité en « L », un prix au litre et une station, y compris pour la 208 électrique déjà au parc. Saisir une recharge obligeait à écrire des kWh dans une colonne libellée « L » : personne ne le fait deux fois, les recharges n'étaient donc pas saisies, et le coût d'usage du véhicule électrique restait à zéro
+- **« Électrique » n'était pas reconnu comme de l'électrique.** La détection comparait sans retirer les accents : le « É » de la valeur proposée par une liste déroulante ne correspondait pas, et le véhicule serait resté en litres sans que rien ne le signale
+
+#### Migration
+
+- `014_compteurs_et_energie` : `is_counter` et `counter_unit` sur `custom_fields_config`, `energy_kind` et `readings` sur `fuel_entries`, `readings` sur `maintenances` et `technical_controls`, `kind` sur `fuel_stations`
+  - **Reprise des champs existants** : tout champ Nombre dont le nom ou le libellé évoque un kilométrage devient un compteur en km. Sans elle, les catégories qui suivaient déjà leur kilométrage auraient perdu le report automatique le jour de la mise à jour, sans que personne ne le remarque avant de lire une fiche restée à la valeur de la veille
+  - Aucune reprise sur l'historique : les écritures antérieures n'ont pas de `readings`, et leur `mileage` est présenté comme le relevé du compteur principal
+
 ### Déploiement — MySQL, et une installation neuve qui démarre
 
 > L'application annonce deux moteurs depuis toujours, mais n'avait jamais été déployée ni sur MySQL, ni sur une base vide. Le premier essai de déploiement a montré qu'aucune installation neuve ne pouvait démarrer — MySQL comme SQLite. Tout ce qui suit a été vérifié en rejouant le même parcours métier sur les deux moteurs, depuis une base vierge.
