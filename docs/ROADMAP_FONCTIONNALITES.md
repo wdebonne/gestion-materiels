@@ -1,7 +1,7 @@
 # 🗺️ Roadmap des Fonctionnalités - Gestion Matériels
 
 > Document de suivi des fonctionnalités du projet.
-> Créé le 6 mars 2026 — état vérifié contre le code le 29 août 2026.
+> Créé le 6 mars 2026 — état vérifié contre le code le 1er septembre 2026.
 
 ---
 
@@ -13,7 +13,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
-| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 131 tests (87 backend, 44 frontend) |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 639 tests (595 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
@@ -28,6 +28,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
+| 18 | 🟠 Moyenne | Compteurs et énergie (relevés par catégorie, recharges électriques) | ✅ Fait | Septembre 2026 — voir la section dédiée plus bas |
 
 **Légende** — ✅ fonctionne · 🟡 fonctionne partiellement, écart documenté · ⚠️ visible dans l'interface mais sans effet
 
@@ -352,8 +353,30 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Système de migration versionné** : `npm run db:migrate` pointait vers un fichier inexistant
   - **Types vérifiés à la construction de l'image** : la production était le seul endroit où le code n'était jamais type-checké. Client passé de 76 à 0 erreur de type
   - **Lint client réparé** : le script existait, les plugins étaient installés, aucun fichier de configuration n'existait
-  - **131 tests** contre 36
+  - **639 tests** contre 36
 - **Reste à faire :**
-  - Découpage des fichiers-monstres (`EspacesVertsPage.tsx` ~5 700 lignes, `ObjectDetailPage.tsx` ~2 800 lignes, `espaceVert.routes.ts` ~1 500 lignes) — à faire au fil de l'eau, pas en sprint dédié
+  - Découpage des fichiers-monstres (`EspacesVertsPage.tsx` ~5 900 lignes, `ObjectDetailPage.tsx` ~3 000 lignes, `espaceVert.routes.ts` ~1 550 lignes) — à faire au fil de l'eau, pas en sprint dédié. Les compteurs de septembre 2026 en ont sorti un premier morceau : les relevés et leur carte vivent dans `components/Compteurs.tsx`, le vocabulaire de l'énergie dans `lib/energie.ts`
   - Types partagés entre client et serveur (449 avertissements ESLint restants, presque tous des `any`)
   - Les requêtes du cron encadrent leurs colonnes de dates dans `date()`, ce qui empêche les index correspondants de servir
+
+---
+
+## 🟠 Priorité Moyenne
+
+### 18. Compteurs et énergie
+
+- **Contexte :** le parc était décrit comme s'il n'était fait que de véhicules thermiques. Deux conséquences, longtemps prises pour des détails d'affichage.
+- **Deux problèmes de fond :**
+  1. **Le kilométrage était un nom de champ écrit en dur.** Les trois modales de saisie — plein, entretien, contrôle — affichaient « Kilométrage » quel que soit le matériel : sur une tondeuse, sur une table, sur un lot de chaises. La valeur relevée était recopiée dans `custom_fields.kilometrage`, une clé fixe : un champ personnalisé nommé autrement — « kilométrages », au pluriel, ce que produit la saisie d'un libellé dans l'écran de configuration — n'était **jamais** alimenté. La fiche affichait un compteur vide pendant que l'historique des pleins en portait un. Le seul garde-fou existant, `track_mileage`, était un réglage global du plugin appliqué aux seuls plugins personnalisés : le désactiver l'aurait retiré aux véhicules aussi.
+  2. **L'électrique n'existait pas.** Le plugin Carburant réclamait une quantité en litres, un prix au litre et une station, y compris pour une voiture électrique déjà au parc. Saisir une recharge obligeait à écrire des kWh dans une colonne libellée « L » — ce que personne ne fait deux fois. Les recharges n'étaient donc pas saisies, et le coût d'usage du véhicule électrique restait à zéro sans que rien ne le signale.
+
+- **Livré :**
+  - **Compteurs déclarés par catégorie** : un champ Nombre se coche « compteur » avec son unité, dans l'écran de configuration des champs. Véhicules en km, tondeuses et groupes électrogènes en heures moteur, mobilier sans aucun compteur — donc **sans aucun champ de relevé** dans ses formulaires. Plusieurs compteurs par branche : un tracteur compte ses kilomètres *et* ses heures de prise de force
+  - **Un compteur ne recule pas** : un relevé inférieur à la valeur en fiche reste enregistré sur la saisie — facture retrouvée, rattrapage — mais ne rabaisse pas la fiche, et l'agent en est prévenu au lieu de conclure à une perte de saisie
+  - **Report côté serveur**, à l'écriture : il vaut donc aussi pour une saisie faite hors réseau et rejouée au retour de la connexion, pour un import de fichier et pour l'API. Il était jusque-là lancé par le navigateur, après coup, par un `PUT` sur la fiche entière
+  - **Relevé depuis la fiche** : carte « Compteurs » sur l'onglet Détails, `PATCH /api/objects/:id/compteurs`, ouvert à l'agent de terrain et différable hors réseau. Le relevé passait par « Modifier la fiche », réservé au superviseur — qui donne au passage le droit de renommer le véhicule
+  - **Un seul module d'énergie**, qui s'adapte à ce que consomme le matériel : onglet « Recharges », kWh, €/kWh et « Borne » pour un électrique ; onglet « Énergie » et choix à chaque saisie pour un hybride rechargeable. L'historique reste unique, donc Suivi, exports, alertes et tableau de bord continuent d'additionner sans qu'un second module ait à être branché partout
+  - **Chaque écriture porte sa nature**, et non celle du matériel au moment où on la relit : un véhicule reconverti garde l'historique juste de ce qu'il a consommé. Les bornes de recharge sont séparées des stations-service
+  - **Migration `014_compteurs_et_energie`** avec reprise des champs existants : tout champ Nombre dont le nom ou le libellé évoque un kilométrage devient un compteur en km. Sans elle, les catégories qui suivaient déjà leur kilométrage auraient perdu le report le jour de la mise à jour, sans que personne ne le remarque avant de lire une fiche restée à la valeur de la veille
+- **Impact :** l'entretien d'une tondeuse ne demande plus de kilomètres, et une voiture électrique se saisit enfin dans ses propres unités.
+- **Reste à faire :** le module Suivi et les exports lisent encore la colonne `mileage`, alimentée avec le compteur principal. Les compteurs secondaires d'une branche qui en déclare plusieurs n'y apparaissent donc pas.

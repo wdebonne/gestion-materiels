@@ -12,6 +12,18 @@ import ObjectTimeline from '@/components/ObjectTimeline'
 import Can from '@/components/Can'
 import { useFavoritesStore } from '@/stores/favorites.store'
 import { useValidation, schemaPlein, schemaEntretien, schemaControle } from '@/lib/validation'
+import {
+  CarteCompteurs,
+  ChampsCompteurs,
+  compteurPrincipal,
+  formaterCompteur,
+  relevesInitiaux,
+  relevesPourEnvoi,
+  signalerReport,
+  type Compteur,
+  type Releves,
+} from '@/components/Compteurs'
+import { libelleOnglet, natureParDefaut, vocabulaire, type NatureEcriture, type NatureEnergie } from '@/lib/energie'
 import { 
   Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select,
   LoadingInline, Alert, Card, CardBody, CardHeader, CardTitle, Tabs, Badge,
@@ -52,7 +64,7 @@ export default function ObjectDetailPage() {
   const [fuelEditModal, setFuelEditModal] = useState<any>(null) // Pour édition carburant
   const [fuelDeleteConfirm, setFuelDeleteConfirm] = useState<number | null>(null) // Pour suppression carburant
   const [stationsModal, setStationsModal] = useState(false) // Pour gestion des stations
-  const [stationEditData, setStationEditData] = useState<{ id?: number; name: string; address: string } | null>(null)
+  const [stationEditData, setStationEditData] = useState<{ id?: number; name: string; address: string; kind: NatureEcriture } | null>(null)
   const [stationDeleteConfirm, setStationDeleteConfirm] = useState<number | null>(null)
   const [maintenanceModal, setMaintenanceModal] = useState(false)
   const [maintenanceEditModal, setMaintenanceEditModal] = useState<any>(null) // Pour édition maintenance
@@ -76,7 +88,9 @@ export default function ObjectDetailPage() {
     fuelType: string
     quantity: string
     cost: string
-    mileage: string
+    /** Un relevé par compteur déclaré sur la branche du matériel. */
+    readings: Releves
+    energyKind: NatureEcriture
     station: string
     notes: string
     attachments: UploadedFile[]
@@ -85,7 +99,8 @@ export default function ObjectDetailPage() {
     fuelType: '',
     quantity: '',
     cost: '',
-    mileage: '',
+    readings: {},
+    energyKind: 'fuel',
     station: '',
     notes: '',
     attachments: []
@@ -96,7 +111,7 @@ export default function ObjectDetailPage() {
     type: string
     description: string
     cost: string
-    mileage: string
+    readings: Releves
     nextDate: string
     provider: string
     notes: string
@@ -106,7 +121,7 @@ export default function ObjectDetailPage() {
     type: '',
     description: '',
     cost: '',
-    mileage: '',
+    readings: {},
     nextDate: '',
     provider: '',
     notes: '',
@@ -114,12 +129,21 @@ export default function ObjectDetailPage() {
   })
 
   // Données pour le formulaire de plugin personnalisé
-  const [customMaintenanceData, setCustomMaintenanceData] = useState({
+  const [customMaintenanceData, setCustomMaintenanceData] = useState<{
+    date: string
+    type: string
+    description: string
+    cost: string
+    readings: Releves
+    nextDate: string
+    provider: string
+    notes: string
+  }>({
     date: new Date().toISOString().split('T')[0],
     type: '',
     description: '',
     cost: '',
-    mileage: '',
+    readings: {},
     nextDate: '',
     provider: '',
     notes: ''
@@ -129,7 +153,7 @@ export default function ObjectDetailPage() {
     date: string
     expirationDate: string
     result: string
-    mileage: string
+    readings: Releves
     center: string
     cost: string
     notes: string
@@ -142,7 +166,7 @@ export default function ObjectDetailPage() {
       date: today.toISOString().split('T')[0],
       expirationDate: expDate.toISOString().split('T')[0],
       result: 'passed',
-      mileage: '',
+      readings: {},
       center: '',
       cost: '',
       notes: '',
@@ -150,25 +174,23 @@ export default function ObjectDetailPage() {
     }
   })
 
-  // Fonction pour obtenir le kilométrage actuel depuis les champs personnalisés
-  const getCurrentMileage = (): string => {
-    const mileage = object?.customFields?.kilometrage
-    return mileage ? String(mileage) : ''
-  }
-
-  // Fonction pour ouvrir le modal carburant avec le kilométrage pré-rempli
+  // Pré-remplir avec la valeur en fiche : au dépôt, le compteur a rarement
+  // bougé de plus de quelques kilomètres, et corriger est plus rapide que
+  // ressaisir six chiffres avec des gants.
   const openFuelModal = () => {
-    setFuelData(prev => ({ ...prev, mileage: getCurrentMileage() }))
+    setFuelData(prev => ({
+      ...prev,
+      readings: relevesInitiaux(compteurs),
+      energyKind: natureParDefaut(natureEnergie),
+    }))
     setFuelModal(true)
   }
 
-  // Fonction pour ouvrir le modal maintenance avec le kilométrage pré-rempli
   const openMaintenanceModal = () => {
-    setMaintenanceData(prev => ({ ...prev, mileage: getCurrentMileage() }))
+    setMaintenanceData(prev => ({ ...prev, readings: relevesInitiaux(compteurs) }))
     setMaintenanceModal(true)
   }
 
-  // Fonction pour ouvrir le modal contrôle technique avec le kilométrage pré-rempli
   const openControlModal = () => {
     const today = new Date()
     const expDate = new Date(today)
@@ -177,7 +199,7 @@ export default function ObjectDetailPage() {
       date: today.toISOString().split('T')[0],
       expirationDate: expDate.toISOString().split('T')[0],
       result: 'passed',
-      mileage: getCurrentMileage(),
+      readings: relevesInitiaux(compteurs),
       center: '',
       cost: '',
       notes: '',
@@ -186,28 +208,22 @@ export default function ObjectDetailPage() {
     setControlModal(true)
   }
 
-  // Fonction pour mettre à jour le kilométrage dans les champs personnalisés
-  const updateMileageIfHigher = async (newMileage: number | string | null, currentObject: any) => {
-    if (!newMileage || !currentObject) return
-    const mileageNum = typeof newMileage === 'string' ? parseInt(newMileage) : newMileage
-    if (isNaN(mileageNum)) return
-    
-    const currentMileage = currentObject?.customFields?.kilometrage ? parseInt(currentObject.customFields.kilometrage) : 0
-    
-    if (mileageNum > currentMileage) {
-      try {
-        await api.put(`/objects/${id}`, {
-          customFields: {
-            ...currentObject?.customFields,
-            kilometrage: mileageNum
-          }
-        })
-        queryClient.invalidateQueries({ queryKey: ['object', id] })
-      } catch (error) {
-        console.error('Erreur mise à jour kilométrage:', error)
-      }
-    }
-  }
+  /**
+   * Relevés d'un formulaire, prêts pour l'API.
+   *
+   * `mileage` reste transmis pour le compteur principal : le module Suivi, les
+   * exports et le modèle d'e-mail de rappel lisent encore cette colonne.
+   *
+   * Le report sur la fiche n'est plus fait ici. Il l'était par un `PUT` lancé
+   * après coup depuis la page, ce qui laissait sans effet tout ce qui n'y
+   * passait pas — saisie hors réseau rejouée plus tard, import de fichier,
+   * jeton d'API — et exigeait au passage le droit de modifier la fiche entière.
+   * Le serveur s'en charge à l'écriture, et renvoie ce qu'il a retenu.
+   */
+  const relevesAEnvoyer = (readings: Releves) => ({
+    readings: relevesPourEnvoi(readings),
+    mileage: compteurPrincipal(compteurs, readings),
+  })
 
   // Récupérer l'objet
   const { data: object, isLoading, error } = useQuery({
@@ -230,6 +246,10 @@ export default function ObjectDetailPage() {
         notes?: string;
         specifications?: Record<string, any>;
         customFields?: Record<string, any>;
+        /** Compteurs déclarés sur la branche, avec leur valeur du moment. */
+        counters?: Compteur[];
+        /** Ce que le matériel consomme, lu sur son champ d'énergie. */
+        energy?: { kind: NatureEnergie; label: string | null };
         createdAt?: string;
         updatedAt?: string;
         category?: any; 
@@ -271,13 +291,27 @@ export default function ObjectDetailPage() {
     setParametres({}, { replace: true })
   }, [object])
 
-  // Récupérer les stations de carburant
+  // Points de ravitaillement. La liste suit la nature de l'écriture en cours :
+  // proposer « Total » pour brancher une voiture n'aiderait personne.
+  const natureListePoints = fuelEditModal?.energyKind ?? fuelData.energyKind
   const { data: fuelStations = [], refetch: refetchStations } = useQuery({
-    queryKey: ['fuelStations'],
+    queryKey: ['fuelStations', natureListePoints],
+    queryFn: async () => {
+      const response = await api.get(`/objects/fuel-stations/list?kind=${natureListePoints}`)
+      return response.data.stations as Array<{ id: number; name: string; address?: string; kind?: NatureEcriture }>
+    }
+  })
+
+  // L'écran d'administration du référentiel, lui, les gère ensemble : filtrer
+  // ici cacherait à l'administrateur les bornes qu'il vient de créer, selon le
+  // matériel depuis lequel il a ouvert la modale.
+  const { data: tousLesPoints = [], refetch: refetchTousLesPoints } = useQuery({
+    queryKey: ['fuelStations', 'tous'],
     queryFn: async () => {
       const response = await api.get('/objects/fuel-stations/list')
-      return response.data.stations as Array<{ id: number; name: string; address?: string }>
-    }
+      return response.data.stations as Array<{ id: number; name: string; address?: string; kind?: NatureEcriture }>
+    },
+    enabled: stationsModal
   })
 
   // Récupérer les types d'entretien
@@ -324,6 +358,21 @@ export default function ObjectDetailPage() {
     enabled: !!id
   })
 
+  /**
+   * Compteurs déclarés sur la branche du matériel.
+   *
+   * Vide pour une tondeuse sans heures moteur, une table, un lot de chaises :
+   * aucun champ de relevé n'apparaît alors dans les formulaires de saisie.
+   */
+  const compteurs: Compteur[] = object?.counters ?? []
+
+  /** Ce que consomme ce matériel : du carburant, de l'électricité, ou les deux. */
+  const natureEnergie: NatureEnergie = object?.energy?.kind ?? 'fuel'
+
+  // Le formulaire de plein s'ouvre sur ce que consomme le matériel ; un hybride
+  // peut basculer dans la modale.
+  const motsEnergie = vocabulaire(fuelData.energyKind)
+
   // Mutation pour modifier l'objet
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -341,17 +390,27 @@ export default function ObjectDetailPage() {
 
   // Mutations pour les plugins
   const addFuelMutation = useMutation({
-    mutationFn: async (data: any) => {
-      return api.post(`/objects/${id}/fuel`, data)
+    mutationFn: async (data: typeof fuelData) => {
+      const { readings, ...reste } = data
+      return api.post(`/objects/${id}/fuel`, { ...reste, ...relevesAEnvoyer(readings) })
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (reponse) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
-      toast.success('Plein ajouté')
+      toast.success(reponse.data?.message || 'Plein ajouté')
+      signalerReport(reponse.data?.compteurs)
       setFuelModal(false)
-      // Mettre à jour le kilométrage si supérieur
-      updateMileageIfHigher(variables.mileage, object)
-      setFuelData({ date: new Date().toISOString().split('T')[0], fuelType: '', quantity: '', cost: '', mileage: '', station: '', notes: '', attachments: [] })
+      setFuelData({
+        date: new Date().toISOString().split('T')[0],
+        fuelType: '',
+        quantity: '',
+        cost: '',
+        readings: {},
+        energyKind: natureParDefaut(natureEnergie),
+        station: '',
+        notes: '',
+        attachments: []
+      })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
@@ -360,12 +419,14 @@ export default function ObjectDetailPage() {
 
   const updateFuelMutation = useMutation({
     mutationFn: async ({ entryId, data }: { entryId: number, data: any }) => {
-      return api.put(`/objects/${id}/fuel/${entryId}`, data)
+      const { readings, ...reste } = data
+      return api.put(`/objects/${id}/fuel/${entryId}`, { ...reste, ...relevesAEnvoyer(readings || {}) })
     },
-    onSuccess: () => {
+    onSuccess: (reponse) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
-      toast.success('Plein modifié')
+      toast.success(reponse.data?.message || 'Plein modifié')
+      signalerReport(reponse.data?.compteurs)
       setFuelEditModal(null)
     },
     onError: (err: any) => {
@@ -390,12 +451,13 @@ export default function ObjectDetailPage() {
 
   // Mutations pour les stations
   const addStationMutation = useMutation({
-    mutationFn: async (data: { name: string; address?: string }) => {
+    mutationFn: async (data: { name: string; address?: string; kind?: NatureEcriture }) => {
       return api.post('/objects/fuel-stations', data)
     },
-    onSuccess: () => {
+    onSuccess: (reponse) => {
       refetchStations()
-      toast.success('Station ajoutée')
+      refetchTousLesPoints()
+      toast.success(reponse.data?.message || 'Station ajoutée')
       setStationEditData(null)
     },
     onError: (err: any) => {
@@ -404,11 +466,12 @@ export default function ObjectDetailPage() {
   })
 
   const updateStationMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: { name: string; address?: string } }) => {
+    mutationFn: async ({ id, data }: { id: number; data: { name: string; address?: string; kind?: NatureEcriture } }) => {
       return api.put(`/objects/fuel-stations/${id}`, data)
     },
     onSuccess: () => {
       refetchStations()
+      refetchTousLesPoints()
       toast.success('Station modifiée')
       setStationEditData(null)
     },
@@ -423,6 +486,7 @@ export default function ObjectDetailPage() {
     },
     onSuccess: () => {
       refetchStations()
+      refetchTousLesPoints()
       toast.success('Station supprimée')
       setStationDeleteConfirm(null)
     },
@@ -435,14 +499,13 @@ export default function ObjectDetailPage() {
     mutationFn: async (data: any) => {
       return api.post(`/objects/${id}/maintenance`, data)
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (reponse) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Entretien ajouté')
+      signalerReport(reponse.data?.compteurs)
       setMaintenanceModal(false)
-      // Mettre à jour le kilométrage si supérieur
-      updateMileageIfHigher(variables.mileage, object)
-      setMaintenanceData({ date: new Date().toISOString().split('T')[0], type: '', description: '', cost: '', mileage: '', nextDate: '', provider: '', notes: '', attachments: [] })
+      setMaintenanceData({ date: new Date().toISOString().split('T')[0], type: '', description: '', cost: '', readings: {}, nextDate: '', provider: '', notes: '', attachments: [] })
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.error || 'Erreur')
@@ -566,37 +629,36 @@ export default function ObjectDetailPage() {
   })
 
   const addControlMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: typeof controlData) => {
       // Mapper les champs client vers les champs attendus par le serveur
       const mappedData = {
         controlDate: data.date,
         expiryDate: data.expirationDate,
         result: data.result,
-        mileage: data.mileage ? parseInt(data.mileage) : null,
         centerName: data.center,
         cost: data.cost ? parseFloat(data.cost) : null,
         notes: data.notes,
-        attachments: data.attachments
+        attachments: data.attachments,
+        ...relevesAEnvoyer(data.readings)
       }
       return api.post(`/objects/${id}/technical-control`, mappedData)
     },
-    onSuccess: (_, variables) => {
+    onSuccess: (reponse) => {
       queryClient.invalidateQueries({ queryKey: ['object', id] })
       queryClient.invalidateQueries({ queryKey: ['alerts'] })
       toast.success('Contrôle technique ajouté')
+      signalerReport(reponse.data?.compteurs)
       setControlModal(false)
-      // Mettre à jour le kilométrage si supérieur
-      updateMileageIfHigher(variables.mileage, object)
       const today = new Date()
       const expDate = new Date(today)
       expDate.setFullYear(expDate.getFullYear() + 2)
-      setControlData({ 
-        date: today.toISOString().split('T')[0], 
-        expirationDate: expDate.toISOString().split('T')[0], 
-        result: 'passed', 
-        mileage: '', 
-        center: '', 
-        cost: '', 
+      setControlData({
+        date: today.toISOString().split('T')[0],
+        expirationDate: expDate.toISOString().split('T')[0],
+        result: 'passed',
+        readings: {},
+        center: '',
+        cost: '',
         notes: '',
         attachments: []
       })
@@ -613,11 +675,12 @@ export default function ObjectDetailPage() {
         controlDate: data.date,
         expiryDate: data.expirationDate,
         result: data.result,
-        mileage: data.mileage,
         centerName: data.center,
         cost: data.cost,
         notes: data.notes,
-        attachments: data.attachments
+        attachments: data.attachments,
+        readings: data.readings,
+        mileage: data.mileage
       }
       return api.put(`/objects/${id}/technical-control/${entryId}`, mappedData)
     },
@@ -745,7 +808,7 @@ export default function ObjectDetailPage() {
     
     // Plugins système avec leurs onglets spécifiques
     if (isPluginActive('fuel')) {
-      baseTabs.push({ id: 'fuel', label: 'Carburant', count: object?.fuelRecords?.length || 0 } as any)
+      baseTabs.push({ id: 'fuel', label: libelleOnglet(natureEnergie), count: object?.fuelRecords?.length || 0 } as any)
     }
     if (isPluginActive('maintenance')) {
       baseTabs.push({ id: 'maintenance', label: 'Entretiens', count: object?.maintenanceRecords?.length || 0 } as any)
@@ -993,6 +1056,12 @@ export default function ObjectDetailPage() {
         <StockDuLot objet={object} />
       )}
 
+      {/* Compteurs : relevables ici sans passer par « Modifier la fiche », qui
+          demande d'être superviseur et donne au passage le droit de tout changer. */}
+      {activeTab === 'details' && (
+        <CarteCompteurs objectId={object.id} compteurs={compteurs} />
+      )}
+
       {activeTab === 'details' && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
@@ -1056,12 +1125,17 @@ export default function ObjectDetailPage() {
                   }
                   // Champs personnalisés
                   const value = object.customFields?.[field.fieldName]
+                  // Un compteur se lit avec son unité et ses séparateurs de
+                  // milliers : « 84 320 km » plutôt que « 84320 ».
+                  const compteur = compteurs.find(c => c.fieldName === field.fieldName)
                   return (
                     <div key={field.fieldName}>
                       <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">{field.fieldLabel}</h4>
                       <p className="text-gray-900 dark:text-gray-100">
-                        {value !== undefined && value !== null && value !== '' 
-                          ? (field.fieldType === 'date' ? formatDate(String(value)) : String(value))
+                        {value !== undefined && value !== null && value !== ''
+                          ? compteur
+                            ? formaterCompteur(Number(value), compteur.unit)
+                            : (field.fieldType === 'date' ? formatDate(String(value)) : String(value))
                           : '-'
                         }
                       </p>
@@ -1114,7 +1188,7 @@ export default function ObjectDetailPage() {
           <CardHeader className="flex flex-row items-center justify-between flex-wrap gap-4">
             <CardTitle className="flex items-center gap-2">
               <Fuel className="w-5 h-5 text-green-600" />
-              Historique carburant
+              {natureEnergie === 'both' ? 'Historique énergie' : vocabulaire(natureParDefaut(natureEnergie)).titreHistorique}
             </CardTitle>
             <div className="flex items-center gap-2 flex-wrap">
               <div className="relative">
@@ -1142,7 +1216,7 @@ export default function ObjectDetailPage() {
               <Can fieldWrite>
                 <Button size="sm" onClick={openFuelModal}>
                   <Plus className="w-4 h-4 mr-1" />
-                  Ajouter un plein
+                  {natureEnergie === 'both' ? 'Ajouter' : vocabulaire(natureParDefaut(natureEnergie)).ajouter}
                 </Button>
               </Can>
             </div>
@@ -1178,10 +1252,14 @@ export default function ObjectDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Quantité</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prix/L</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prix unitaire</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Coût total</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Kilométrage</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Station</th>
+                      {compteurs.map((compteur) => (
+                        <th key={compteur.fieldName} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{compteur.fieldLabel}</th>
+                      ))}
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">
+                        {natureEnergie === 'both' ? 'Point' : vocabulaire(natureParDefaut(natureEnergie)).labelPoint}
+                      </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pièces jointes</th>
                       {isAdmin && <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Actions</th>}
                     </tr>
@@ -1191,10 +1269,16 @@ export default function ObjectDetailPage() {
                       <tr key={record.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{record.fuelType || '-'}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.quantity} L</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.unitPrice ? `${parseFloat(record.unitPrice).toFixed(3)} €/L` : '-'}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.quantity} {vocabulaire(record.energyKind).unite}</td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.unitPrice ? `${parseFloat(record.unitPrice).toFixed(3)} ${vocabulaire(record.energyKind).suffixePrixUnitaire}` : '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
+                        {compteurs.map((compteur) => (
+                          <td key={compteur.fieldName} className="px-6 py-4 whitespace-nowrap text-sm">
+                            {record.readings?.[compteur.fieldName] !== undefined
+                              ? formaterCompteur(record.readings[compteur.fieldName], compteur.unit)
+                              : '-'}
+                          </td>
+                        ))}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{record.station || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {record.attachments && record.attachments.length > 0 ? (
@@ -1211,9 +1295,12 @@ export default function ObjectDetailPage() {
                                   id: record.id,
                                   date: record.date,
                                   fuelType: record.fuelType || '',
+                                  energyKind: record.energyKind || 'fuel',
                                   quantity: record.quantity || '',
                                   cost: record.cost || '',
-                                  mileage: record.mileage || '',
+                                  readings: Object.fromEntries(
+                                    compteurs.map(c => [c.fieldName, record.readings?.[c.fieldName] !== undefined ? String(record.readings[c.fieldName]) : ''])
+                                  ),
                                   station: record.station || '',
                                   notes: record.notes || '',
                                   attachments: record.attachments || []
@@ -1248,7 +1335,9 @@ export default function ObjectDetailPage() {
             ) : (
               <div className="text-center py-12">
                 <Fuel className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-                <p className="text-gray-500 dark:text-gray-400">Aucun enregistrement de carburant</p>
+                <p className="text-gray-500 dark:text-gray-400">
+                  {natureEnergie === 'both' ? 'Aucun plein ni recharge enregistré' : vocabulaire(natureParDefaut(natureEnergie)).historiqueVide}
+                </p>
               </div>
             )}
           </CardBody>
@@ -1324,7 +1413,9 @@ export default function ObjectDetailPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Date</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Type</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Coût</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Kilométrage</th>
+                      {compteurs.map((compteur) => (
+                        <th key={compteur.fieldName} className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">{compteur.fieldLabel}</th>
+                      ))}
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prestataire</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Prochain</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase">Pièces jointes</th>
@@ -1337,7 +1428,13 @@ export default function ObjectDetailPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatDate(record.date)}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">{record.type}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">{formatCurrency(record.cost)}</td>
-                        <td className="px-6 py-4 whitespace-nowrap text-sm">{record.mileage ? `${record.mileage} km` : '-'}</td>
+                        {compteurs.map((compteur) => (
+                          <td key={compteur.fieldName} className="px-6 py-4 whitespace-nowrap text-sm">
+                            {record.readings?.[compteur.fieldName] !== undefined
+                              ? formaterCompteur(record.readings[compteur.fieldName], compteur.unit)
+                              : '-'}
+                          </td>
+                        ))}
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">{record.provider || '-'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           {record.nextDate ? (
@@ -1361,7 +1458,9 @@ export default function ObjectDetailPage() {
                                   type: record.type || '',
                                   description: record.description || '',
                                   cost: record.cost || '',
-                                  mileage: record.mileage || '',
+                                  readings: Object.fromEntries(
+                                    compteurs.map(c => [c.fieldName, record.readings?.[c.fieldName] !== undefined ? String(record.readings[c.fieldName]) : ''])
+                                  ),
                                   nextDate: record.nextDate || '',
                                   provider: record.provider || '',
                                   notes: record.notes || '',
@@ -1505,9 +1604,13 @@ export default function ObjectDetailPage() {
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
                           {control.centerName || '-'}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
-                          {control.mileage ? `${control.mileage} km` : '-'}
-                        </td>
+                        {compteurs.map((compteur) => (
+                          <td key={compteur.fieldName} className="px-4 py-3 whitespace-nowrap text-sm text-gray-500 dark:text-gray-400">
+                            {control.readings?.[compteur.fieldName] !== undefined
+                              ? formaterCompteur(control.readings[compteur.fieldName], compteur.unit)
+                              : '-'}
+                          </td>
+                        ))}
                         <td className="px-4 py-3 whitespace-nowrap text-sm text-gray-900 dark:text-gray-100 text-right font-medium">
                           {formatCurrency(control.cost)}
                         </td>
@@ -1534,7 +1637,9 @@ export default function ObjectDetailPage() {
                                   date: control.date?.split('T')[0] || '',
                                   expirationDate: control.expiryDate?.split('T')[0] || '',
                                   result: control.result || 'passed',
-                                  mileage: control.mileage?.toString() || '',
+                                  readings: Object.fromEntries(
+                                    compteurs.map(c => [c.fieldName, control.readings?.[c.fieldName] !== undefined ? String(control.readings[c.fieldName]) : ''])
+                                  ),
                                   center: control.centerName || '',
                                   cost: control.cost?.toString() || '',
                                   notes: control.notes || '',
@@ -1593,7 +1698,7 @@ export default function ObjectDetailPage() {
                   type: '',
                   description: '',
                   cost: '',
-                  mileage: '',
+                  readings: relevesInitiaux(compteurs),
                   nextDate: '',
                   provider: '',
                   notes: ''
@@ -1617,14 +1722,27 @@ export default function ObjectDetailPage() {
         )
       })()}
 
-      {/* Modal Carburant */}
-      <Modal isOpen={fuelModal} onClose={() => setFuelModal(false)} title="Ajouter un plein">
+      {/* Modal Carburant / Recharge */}
+      <Modal isOpen={fuelModal} onClose={() => setFuelModal(false)} title={motsEnergie.ajouter}>
         <form onSubmit={(e) => {
           e.preventDefault()
           if (!validationPlein.valider(fuelData)) return
           addFuelMutation.mutate(fuelData)
         }}>
           <ModalBody className="space-y-4">
+            {/* Un hybride rechargeable fait les deux : il choisit ici, et tout
+                le formulaire suit — unités, prix, point de ravitaillement. */}
+            {natureEnergie === 'both' && (
+              <Select
+                label="Nature"
+                value={fuelData.energyKind}
+                onChange={(e) => setFuelData({ ...fuelData, energyKind: e.target.value as NatureEcriture, station: '' })}
+                options={[
+                  { value: 'fuel', label: 'Plein de carburant' },
+                  { value: 'electric', label: 'Recharge électrique' }
+                ]}
+              />
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input
                 label="Date"
@@ -1635,7 +1753,7 @@ export default function ObjectDetailPage() {
                 required
               />
               <Input
-                label="Quantité (L)"
+                label={motsEnergie.labelQuantite}
                 type="number"
                 inputMode="decimal"
                 step="0.01"
@@ -1645,35 +1763,29 @@ export default function ObjectDetailPage() {
                 required
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Coût (€)"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={fuelData.cost}
-                onChange={(e) => { setFuelData({ ...fuelData, cost: e.target.value }); validationPlein.effacer('cost') }}
-                error={validationPlein.erreurs.cost}
-                hint="Montant total payé. Le prix au litre est calculé tout seul."
-              />
-              <Input
-                label="Kilométrage"
-                type="number"
-                inputMode="numeric"
-                value={fuelData.mileage}
-                onChange={(e) => { setFuelData({ ...fuelData, mileage: e.target.value }); validationPlein.effacer('mileage') }}
-                error={validationPlein.erreurs.mileage}
-                hint="Relevé au compteur. Met à jour la fiche s'il est plus élevé."
-              />
-            </div>
+            <Input
+              label="Coût (€)"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              value={fuelData.cost}
+              onChange={(e) => { setFuelData({ ...fuelData, cost: e.target.value }); validationPlein.effacer('cost') }}
+              error={validationPlein.erreurs.cost}
+              hint={`Montant total payé. Le prix ${motsEnergie.suffixePrixUnitaire} est calculé tout seul.`}
+            />
+            <ChampsCompteurs
+              compteurs={compteurs}
+              valeurs={fuelData.readings}
+              onChange={(readings) => setFuelData({ ...fuelData, readings })}
+            />
             <ReferenceSelect
-              label="Station"
+              label={motsEnergie.labelPoint}
               value={fuelData.station}
               onChange={(valeur) => setFuelData({ ...fuelData, station: valeur })}
               options={fuelStations}
-              nomSingulier="une station"
-              placeholder="Choisir une station"
-              onCreate={async (nom) => { await addStationMutation.mutateAsync({ name: nom }) }}
+              nomSingulier={motsEnergie.pointSingulier}
+              placeholder={motsEnergie.pointPlaceholder}
+              onCreate={async (nom) => { await addStationMutation.mutateAsync({ name: nom, kind: motsEnergie.kind }) }}
             />
             <TextArea
               label="Notes"
@@ -1699,24 +1811,29 @@ export default function ObjectDetailPage() {
         </form>
       </Modal>
 
-      {/* Modal Édition Carburant */}
-      <Modal isOpen={!!fuelEditModal} onClose={() => setFuelEditModal(null)} title="Modifier le plein">
+      {/* Modal Édition Carburant / Recharge */}
+      <Modal
+        isOpen={!!fuelEditModal}
+        onClose={() => setFuelEditModal(null)}
+        title={fuelEditModal?.energyKind === 'electric' ? 'Modifier la recharge' : 'Modifier le plein'}
+      >
         {fuelEditModal && (
-          <form onSubmit={(e) => { 
-            e.preventDefault(); 
-            updateFuelMutation.mutate({ 
-              entryId: fuelEditModal.id, 
+          <form onSubmit={(e) => {
+            e.preventDefault();
+            updateFuelMutation.mutate({
+              entryId: fuelEditModal.id,
               data: {
                 date: fuelEditModal.date,
                 fuelType: fuelEditModal.fuelType,
+                energyKind: fuelEditModal.energyKind,
                 quantity: fuelEditModal.quantity,
                 cost: fuelEditModal.cost,
-                mileage: fuelEditModal.mileage,
+                readings: fuelEditModal.readings,
                 station: fuelEditModal.station,
                 notes: fuelEditModal.notes,
                 attachments: fuelEditModal.attachments || []
               }
-            }); 
+            });
           }}>
             <ModalBody className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1728,15 +1845,15 @@ export default function ObjectDetailPage() {
                   required
                 />
                 <Input
-                  label="Type de carburant"
+                  label={fuelEditModal.energyKind === 'electric' ? "Type d'énergie" : 'Type de carburant'}
                   value={fuelEditModal.fuelType}
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, fuelType: e.target.value })}
-                  placeholder="Ex: Diesel, SP95..."
+                  placeholder={fuelEditModal.energyKind === 'electric' ? 'Ex: Électrique' : 'Ex: Diesel, SP95...'}
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Input
-                  label="Quantité (L)"
+                  label={vocabulaire(fuelEditModal.energyKind).labelQuantite}
                   type="number"
                 inputMode="decimal"
                   step="0.01"
@@ -1753,24 +1870,20 @@ export default function ObjectDetailPage() {
                   onChange={(e) => setFuelEditModal({ ...fuelEditModal, cost: e.target.value })}
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Input
-                  label="Kilométrage"
-                  type="number"
-                inputMode="numeric"
-                  value={fuelEditModal.mileage}
-                  onChange={(e) => setFuelEditModal({ ...fuelEditModal, mileage: e.target.value })}
-                />
-                <ReferenceSelect
-                  label="Station"
-                  value={fuelEditModal.station}
-                  onChange={(valeur) => setFuelEditModal({ ...fuelEditModal, station: valeur })}
-                  options={fuelStations}
-                  nomSingulier="une station"
-                  placeholder="Choisir une station"
-                  onCreate={async (nom) => { await addStationMutation.mutateAsync({ name: nom }) }}
-                />
-              </div>
+              <ChampsCompteurs
+                compteurs={compteurs}
+                valeurs={fuelEditModal.readings || {}}
+                onChange={(readings) => setFuelEditModal({ ...fuelEditModal, readings })}
+              />
+              <ReferenceSelect
+                label={vocabulaire(fuelEditModal.energyKind).labelPoint}
+                value={fuelEditModal.station}
+                onChange={(valeur) => setFuelEditModal({ ...fuelEditModal, station: valeur })}
+                options={fuelStations}
+                nomSingulier={vocabulaire(fuelEditModal.energyKind).pointSingulier}
+                placeholder={vocabulaire(fuelEditModal.energyKind).pointPlaceholder}
+                onCreate={async (nom) => { await addStationMutation.mutateAsync({ name: nom, kind: vocabulaire(fuelEditModal.energyKind).kind }) }}
+              />
               <TextArea
                 label="Notes"
                 value={fuelEditModal.notes}
@@ -1818,28 +1931,33 @@ export default function ObjectDetailPage() {
       </Modal>
 
       {/* Modal Gestion des Stations */}
-      <Modal isOpen={stationsModal} onClose={() => setStationsModal(false)} title="Gérer les stations">
+      <Modal isOpen={stationsModal} onClose={() => setStationsModal(false)} title="Gérer les stations et les bornes">
         <ModalBody className="space-y-4">
           <div className="flex justify-end">
-            <Button size="sm" onClick={() => setStationEditData({ name: '', address: '' })}>
+            <Button size="sm" onClick={() => setStationEditData({ name: '', address: '', kind: motsEnergie.kind })}>
               <Plus className="w-4 h-4 mr-1" />
-              Ajouter une station
+              Ajouter
             </Button>
           </div>
-          
-          {fuelStations.length > 0 ? (
+
+          {tousLesPoints.length > 0 ? (
             <div className="divide-y divide-gray-200 dark:divide-gray-700 border rounded-lg">
-              {fuelStations.map((station) => (
+              {tousLesPoints.map((station) => (
                 <div key={station.id} className="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                   <div>
-                    <p className="font-medium text-gray-900 dark:text-gray-100">{station.name}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                      {station.name}
+                      <Badge variant={station.kind === 'electric' ? 'info' : 'default'} size="sm">
+                        {station.kind === 'electric' ? 'Borne' : 'Station'}
+                      </Badge>
+                    </p>
                     {station.address && (
                       <p className="text-sm text-gray-500 dark:text-gray-400">{station.address}</p>
                     )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button aria-label="Modifier"
-                      onClick={() => setStationEditData({ id: station.id, name: station.name, address: station.address || '' })}
+                      onClick={() => setStationEditData({ id: station.id, name: station.name, address: station.address || '', kind: station.kind === 'electric' ? 'electric' : 'fuel' })}
                       className="p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded touch-target"
                       title="Modifier"
                     >
@@ -1858,8 +1976,8 @@ export default function ObjectDetailPage() {
             </div>
           ) : (
             <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-              <p>Aucune station enregistrée</p>
-              <p className="text-sm mt-1">Ajoutez des stations pour les retrouver facilement lors de vos pleins</p>
+              <p>Aucune station ni borne enregistrée</p>
+              <p className="text-sm mt-1">Ajoutez-les pour les retrouver facilement lors de vos pleins et recharges</p>
             </div>
           )}
         </ModalBody>
@@ -1874,23 +1992,36 @@ export default function ObjectDetailPage() {
       <Modal 
         isOpen={!!stationEditData} 
         onClose={() => setStationEditData(null)} 
-        title={stationEditData?.id ? 'Modifier la station' : 'Ajouter une station'}
+        title={stationEditData?.id ? 'Modifier le point de ravitaillement' : 'Ajouter un point de ravitaillement'}
       >
         {stationEditData && (
           <form onSubmit={(e) => {
             e.preventDefault()
+            const donnees = { name: stationEditData.name, address: stationEditData.address, kind: stationEditData.kind }
             if (stationEditData.id) {
-              updateStationMutation.mutate({ id: stationEditData.id, data: { name: stationEditData.name, address: stationEditData.address } })
+              updateStationMutation.mutate({ id: stationEditData.id, data: donnees })
             } else {
-              addStationMutation.mutate({ name: stationEditData.name, address: stationEditData.address })
+              addStationMutation.mutate(donnees)
             }
           }}>
             <ModalBody className="space-y-4">
+              {/* Sans ce choix, tout point créé ici serait une station-service,
+                  et une borne saisie par erreur resterait introuvable dans la
+                  liste des recharges. */}
+              <Select
+                label="Nature"
+                value={stationEditData.kind}
+                onChange={(e) => setStationEditData({ ...stationEditData, kind: e.target.value as NatureEcriture })}
+                options={[
+                  { value: 'fuel', label: 'Station-service' },
+                  { value: 'electric', label: 'Borne de recharge' }
+                ]}
+              />
               <Input
-                label="Nom de la station"
+                label={stationEditData.kind === 'electric' ? 'Nom de la borne' : 'Nom de la station'}
                 value={stationEditData.name}
                 onChange={(e) => setStationEditData({ ...stationEditData, name: e.target.value })}
-                placeholder="Ex: Total Barentin"
+                placeholder={stationEditData.kind === 'electric' ? 'Ex: Borne mairie' : 'Ex: Total Barentin'}
                 required
               />
               <Input
@@ -1943,10 +2074,10 @@ export default function ObjectDetailPage() {
             maintenanceType: maintenanceData.type,
             notes: maintenanceData.description || maintenanceData.notes,
             cost: maintenanceData.cost,
-            mileage: maintenanceData.mileage,
             nextDate: maintenanceData.nextDate,
             provider: maintenanceData.provider,
-            attachments: maintenanceData.attachments
+            attachments: maintenanceData.attachments,
+            ...relevesAEnvoyer(maintenanceData.readings)
           }); 
         }}>
           <ModalBody className="space-y-4">
@@ -1977,25 +2108,22 @@ export default function ObjectDetailPage() {
               onChange={(e) => setMaintenanceData({ ...maintenanceData, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Coût (€)"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={maintenanceData.cost}
-                onChange={(e) => { setMaintenanceData({ ...maintenanceData, cost: e.target.value }); validationEntretien.effacer('cost') }}
-                error={validationEntretien.erreurs.cost}
-              />
-              <Input
-                label="Kilométrage"
-                type="number"
-                inputMode="numeric"
-                value={maintenanceData.mileage}
-                onChange={(e) => { setMaintenanceData({ ...maintenanceData, mileage: e.target.value }); validationEntretien.effacer('mileage') }}
-                error={validationEntretien.erreurs.mileage}
-              />
-            </div>
+            <Input
+              label="Coût (€)"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              value={maintenanceData.cost}
+              onChange={(e) => { setMaintenanceData({ ...maintenanceData, cost: e.target.value }); validationEntretien.effacer('cost') }}
+              error={validationEntretien.erreurs.cost}
+            />
+            {/* Relevés : rien du tout pour une tondeuse ou une table dont la
+                branche ne déclare aucun compteur. */}
+            <ChampsCompteurs
+              compteurs={compteurs}
+              valeurs={maintenanceData.readings}
+              onChange={(readings) => setMaintenanceData({ ...maintenanceData, readings })}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ReferenceSelect
                 label="Prestataire"
@@ -2050,10 +2178,10 @@ export default function ObjectDetailPage() {
                 maintenanceType: maintenanceEditModal.type,
                 notes: maintenanceEditModal.description || maintenanceEditModal.notes,
                 cost: maintenanceEditModal.cost,
-                mileage: maintenanceEditModal.mileage,
                 nextDate: maintenanceEditModal.nextDate,
                 provider: maintenanceEditModal.provider,
-                attachments: maintenanceEditModal.attachments || []
+                attachments: maintenanceEditModal.attachments || [],
+                ...relevesAEnvoyer(maintenanceEditModal.readings || {})
               }
             })
           }
@@ -2084,23 +2212,19 @@ export default function ObjectDetailPage() {
               onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, description: e.target.value })}
               rows={2}
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Coût (€)"
-                type="number"
-                inputMode="decimal"
-                step="0.01"
-                value={maintenanceEditModal?.cost || ''}
-                onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, cost: e.target.value })}
-              />
-              <Input
-                label="Kilométrage"
-                type="number"
-                inputMode="numeric"
-                value={maintenanceEditModal?.mileage || ''}
-                onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, mileage: e.target.value })}
-              />
-            </div>
+            <Input
+              label="Coût (€)"
+              type="number"
+              inputMode="decimal"
+              step="0.01"
+              value={maintenanceEditModal?.cost || ''}
+              onChange={(e) => setMaintenanceEditModal({ ...maintenanceEditModal, cost: e.target.value })}
+            />
+            <ChampsCompteurs
+              compteurs={compteurs}
+              valeurs={maintenanceEditModal?.readings || {}}
+              onChange={(readings) => setMaintenanceEditModal({ ...maintenanceEditModal, readings })}
+            />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <ReferenceSelect
                 label="Prestataire"
@@ -2445,12 +2569,10 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setControlData({ ...controlData, cost: e.target.value })}
               />
             </div>
-            <Input
-              label="Kilométrage"
-              type="number"
-                inputMode="numeric"
-              value={controlData.mileage}
-              onChange={(e) => setControlData({ ...controlData, mileage: e.target.value })}
+            <ChampsCompteurs
+              compteurs={compteurs}
+              valeurs={controlData.readings}
+              onChange={(readings) => setControlData({ ...controlData, readings })}
             />
             <TextArea
               label="Notes"
@@ -2537,31 +2659,20 @@ export default function ObjectDetailPage() {
                 value={customMaintenanceData.cost}
                 onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, cost: e.target.value })}
               />
-              {/* Afficher le kilométrage uniquement si track_mileage est true dans la config */}
-              {customPluginModal?.config?.track_mileage && (
-                <Input
-                  label="Kilométrage"
-                  type="number"
-                inputMode="numeric"
-                  value={customMaintenanceData.mileage}
-                  onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, mileage: e.target.value })}
-                />
-              )}
-              {!customPluginModal?.config?.track_mileage && (
-                <Input
-                  label="Prestataire"
-                  value={customMaintenanceData.provider}
-                  onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, provider: e.target.value })}
-                />
-              )}
-            </div>
-            {customPluginModal?.config?.track_mileage && (
               <Input
                 label="Prestataire"
                 value={customMaintenanceData.provider}
                 onChange={(e) => setCustomMaintenanceData({ ...customMaintenanceData, provider: e.target.value })}
               />
-            )}
+            </div>
+            {/* Les relevés viennent des compteurs de la branche, et non plus du
+                drapeau `track_mileage` du plugin : celui-ci valait pour tous les
+                matériels à la fois, tondeuses et tables comprises. */}
+            <ChampsCompteurs
+              compteurs={compteurs}
+              valeurs={customMaintenanceData.readings}
+              onChange={(readings) => setCustomMaintenanceData({ ...customMaintenanceData, readings })}
+            />
             <Input
               label="Prochain entretien"
               type="date"
@@ -2739,7 +2850,7 @@ export default function ObjectDetailPage() {
                 date: controlEditModal.date,
                 expirationDate: controlEditModal.expirationDate,
                 result: controlEditModal.result,
-                mileage: controlEditModal.mileage ? parseInt(controlEditModal.mileage) : null,
+                ...relevesAEnvoyer(controlEditModal.readings || {}),
                 center: controlEditModal.center,
                 cost: controlEditModal.cost ? parseFloat(controlEditModal.cost) : null,
                 notes: controlEditModal.notes,
@@ -2804,12 +2915,10 @@ export default function ObjectDetailPage() {
                 onChange={(e) => setControlEditModal({ ...controlEditModal, cost: e.target.value })}
               />
             </div>
-            <Input
-              label="Kilométrage"
-              type="number"
-                inputMode="numeric"
-              value={controlEditModal?.mileage || ''}
-              onChange={(e) => setControlEditModal({ ...controlEditModal, mileage: e.target.value })}
+            <ChampsCompteurs
+              compteurs={compteurs}
+              valeurs={controlEditModal?.readings || {}}
+              onChange={(readings) => setControlEditModal({ ...controlEditModal, readings })}
             />
             <TextArea
               label="Notes"

@@ -18,7 +18,9 @@ Les plugins système sont intégrés à l'application avec des pages React dédi
 | Manifestations | `manifestations` | `/manifestations` | Gestion événements et prêt matériel |
 | Espaces Verts | `espaces-verts` | `/espaces-verts` | Plan interactif, composition botanique, entretiens |
 
-S'y ajoutent trois plugins associables à des catégories, qui n'ont pas de route propre mais enrichissent la fiche d'un matériel : `fuel` (carburant), `maintenance` (entretien) et `technical-control` (contrôle technique).
+S'y ajoutent trois plugins associables à des catégories, qui n'ont pas de route propre mais enrichissent la fiche d'un matériel : `fuel` (carburant **et** recharges électriques), `maintenance` (entretien) et `technical-control` (contrôle technique).
+
+Ces trois-là ne décident plus seuls de ce qu'ils affichent. Le champ de relevé — kilométrage, heures moteur — vient des **compteurs déclarés par la catégorie du matériel** dans « Configuration des champs », et non d'un réglage du plugin : `track_mileage`, qui valait pour tout le parc à la fois, a disparu de leur configuration. De même, `fuel` lit le type d'énergie du matériel pour choisir entre litres et kilowattheures. Un plugin personnalisé dont le slug contient `maintenance` bénéficie du même mécanisme.
 
 Les plugins qui disposent d'une page JSON ont leurs fichiers de configuration dans `plugins/pages/<slug>/` (plugin.json + index.json). Ceux dont la page est écrite en React — Calendrier et Espaces Verts — n'y figurent pas.
 
