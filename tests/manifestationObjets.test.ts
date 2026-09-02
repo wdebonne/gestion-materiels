@@ -39,6 +39,7 @@ import {
   ETATS_RETOUR,
   indisponibilites,
   objetsDe,
+  objetsDePlusieurs,
   parcAvecDisponibilite,
   remplacerObjets,
   STATUTS_IMMOBILISANTS,
@@ -238,6 +239,26 @@ describe('Composition de la liste', () => {
   it('écarte une ligne sans identifiant', async () => {
     await remplacerObjets(100, [{ object_id: 0 as any }, { object_id: 1 }]);
     expect((await objetsDe(100)).map((l: any) => l.object_id)).toEqual([1]);
+  });
+
+  it('rend les mêmes lignes pour plusieurs manifestations d’un coup', async () => {
+    // La liste des manifestations ne rendait que les quantités : la fiche
+    // annonçait « aucun matériel demandé » sur une manifestation qui retenait
+    // un lot, et le formulaire de modification rouvrait vide — donc
+    // réenregistrait vide. Une liste doit dire la même chose que le détail.
+    await remplacerObjets(100, [{ object_id: 1 }, { object_id: 5, quantity: 20 }]);
+    await remplacerObjets(200, [{ object_id: 4, quantity: 3 }]);
+
+    const parManifestation = await objetsDePlusieurs([100, 200, 300]);
+
+    expect(parManifestation.get(100)?.map((l: any) => l.object_id).sort()).toEqual([1, 5]);
+    expect(parManifestation.get(100)?.find((l: any) => l.object_id === 5)).toMatchObject({
+      object_name: 'Chaise pliante',
+      nature: 'lot',
+      quantity: 20,
+    });
+    expect(parManifestation.get(200)).toMatchObject([{ object_id: 4, quantity: 3, nature: 'prestation' }]);
+    expect(parManifestation.get(300)).toBeUndefined();
   });
 });
 
