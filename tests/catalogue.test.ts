@@ -268,6 +268,64 @@ describe('catalogue', () => {
   it('ne rend rien pour un service inconnu, plutôt que tout', async () => {
     expect(await lire({ service: 'nexiste-pas' })).toEqual([]);
   });
+
+  /**
+   * Dire sur chaque ligne quel service la porte, c'est ce qui permet à l'écran de n'offrir au
+   * filtre que les services qui prêtent réellement quelque chose : un service Véhicules qui ne
+   * prête aucun véhicule n'a rien à faire dans la liste, alors que le service Technique doit y
+   * figurer pour sa seule prestation de raccordement électrique.
+   */
+  it('rattache chaque ligne au service qui la porte', async () => {
+    const articles = await lire();
+    const technique = [{ id: 1, name: 'Service Technique', slug: 'technique' }];
+
+    // Rattaché par sa sous-catégorie, et non par une catégorie directe.
+    expect(parNom(articles, 'Raccordement électrique')!.services).toEqual(technique);
+    expect(parNom(articles, 'Nacelle')!.services).toEqual(technique);
+    // Le stock aussi : la règle ne dépend pas de la table d'origine.
+    expect(parNom(articles, 'Débit de boissons')!.services).toEqual(technique);
+    // Le mobilier n'est le périmètre d'aucun service : personne ne le prête, et on ne l'invente pas.
+    expect(parNom(articles, 'Chaise pliante')!.services).toEqual([]);
+    expect(parNom(articles, 'Table brasserie')!.services).toEqual([]);
+  });
+
+  it('rend la catégorie effective, sous-catégorie comprise', async () => {
+    const articles = await lire();
+    expect(parNom(articles, 'Raccordement électrique')!.category_id).toBe(1);
+    expect(parNom(articles, 'Chaise pliante')!.category_id).toBe(3);
+    expect(parNom(articles, 'Débit de boissons')!.category_id).toBe(1);
+  });
+
+  it('dit comment chaque ligne se compte', async () => {
+    const articles = await lire();
+    expect(parNom(articles, 'Raccordement électrique')!.nature).toBe('prestation');
+    expect(parNom(articles, 'Nacelle')!.nature).toBe('unique');
+    expect(parNom(articles, 'Chaise pliante')!.nature).toBe('lot');
+    // Le stock ne connaît que des quantités anonymes : il se compte comme un lot.
+    expect(parNom(articles, 'Table brasserie')!.nature).toBe('lot');
+  });
+
+  /**
+   * Le solde ne suffit pas : « il reste 40 chaises » ne dit pas si les dix autres sont dehors ou
+   * seulement promises. Un agent qui prépare une livraison a besoin de la différence.
+   */
+  it('sépare ce qui est promis de ce qui est déjà dehors', async () => {
+    const articles = await lire();
+    // La brocante est confirmée, pas livrée : tout est promis, rien n'est sorti.
+    expect(parNom(articles, 'Chaise pliante')!).toMatchObject({
+      quantity_engaged: 10,
+      quantity_out: 0,
+    });
+    expect(parNom(articles, 'Table brasserie')!).toMatchObject({
+      quantity_engaged: 12,
+      quantity_out: 0,
+    });
+    // Une prestation n'engage rien : elle n'a ni stock ni exemplaire à immobiliser.
+    expect(parNom(articles, 'Raccordement électrique')!).toMatchObject({
+      quantity_engaged: 0,
+      quantity_out: 0,
+    });
+  });
 });
 
 /**

@@ -178,6 +178,10 @@ passage la permission de renommer le véhicule.
 - 📝 **Historique horodaté** : timeline de chaque action — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et son commentaire
 - 📄 **Export PDF** : Génération de rapport PDF avec en-tête, articles (commandé/livré/récupéré), et historique
 - 🗂️ **Onglets** : Vue par manifestations actives, stock, et archives
+- 📚 **Stock matériel = le catalogue entier** : l'onglet montre le stock des manifestations **et** le parc prêtable dans une seule liste, chaque ligne disant d'où elle vient. Une collectivité qui tient tout son matériel dans le parc n'y voyait rien ; le matériel se déclare désormais depuis le parc uniquement, et l'onglet n'a plus de bouton « Ajouter au stock »
+- 🔭 **Trois vues sur le même catalogue** : **Stock** (ce dont je dispose aujourd'hui), **Stock à date** (ce qu'il restera le 14 juillet, ou sur toute une période, engagements déduits) et **Sorties** (où est le matériel — chez qui, jusqu'à quand, et ce qui part)
+- 🏛️ **Filtre par service qui ne ment pas** : la liste des services se déduit de ce qui est réellement prêtable. Un service Véhicules qui ne prête aucun véhicule n'y figure pas ; le service Technique y figure pour sa seule prestation de raccordement électrique. Une entrée « Sans service » rassemble ce qu'aucune catégorie ne rattache
+- ↕️ **Tri sur chaque colonne** : nom, origine, catégorie, service, total, dehors, promis, disponible — et sur les sorties, la manifestation, la période et l'état. Les nombres se trient en nombres, les mots dans l'ordre alphabétique français
 
 ### 🌳 Espaces Verts (Nouveau!)
 - 🗺️ **Plan interactif** : Upload du plan, placement de repères par clic avec drag & drop, popup persistant, labels visibles
@@ -656,7 +660,12 @@ GET    /api/manifestations/:id/history # Historique des changements
 ```
 GET    /api/manifestations/catalogue   # Ce qui peut être proposé : stock **et** parc prêtable réunis,
                                        # avec ce qu'il en reste (mêmes filtres service/kind/category_id).
+                                       # Chaque ligne porte sa nature, sa catégorie, les services qui la
+                                       # portent, ce qui est dehors et ce qui est promis sur la période.
                                        # Une prestation y vaut « sans limite », jamais zéro.
+GET    /api/manifestations/sorties     # Où est le matériel : une ligne par article ET par manifestation
+                                       # (date_from/date_to, à défaut le jour même ; service, kind, search).
+                                       # État : dehors, rendu, à sortir.
 GET    /api/manifestations/stock       # Liste (date_from/date_to → prévisionnel et réel à cette période)
 GET    /api/manifestations/stock/availability  # Disponibilité à une date ou sur une période
                                                # (service, kind=prestation|materiel, category_id : périmètre proposé)

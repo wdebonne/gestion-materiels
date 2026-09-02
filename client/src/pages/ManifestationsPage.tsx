@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import {
   PartyPopper, Plus, Search, Package, Archive, FileDown, Truck, RotateCcw,
-  Check, X, Edit, Trash2, Eye, ChevronDown, ChevronUp, Filter, Calendar, MapPin, Tag
+  Check, X, Edit, Trash2, Eye, ChevronDown, ChevronUp, ChevronsUpDown, Filter, Calendar, MapPin, Tag
 } from 'lucide-react'
 import {
   Button, Input, Select, Modal, ModalBody, ModalFooter,
@@ -21,9 +22,13 @@ import { usePermissions } from '@/lib/permissions'
 import api from '@/lib/api'
 import {
   manifestationApi,
+  type ArticleCatalogue,
+  type EtatSortie,
+  type LigneSortie,
   type Manifestation,
   type ManifestationStockItem as StockItem,
-  type ManifestationMaterial as ManifMaterial
+  type ManifestationMaterial as ManifMaterial,
+  type ServiceBref
 } from '@/lib/api'
 import toast from 'react-hot-toast'
 
@@ -149,7 +154,7 @@ export default function ManifestationsPage() {
     }
   })
 
-  const { data: stock = [], isLoading: stockLoading } = useQuery({
+  const { data: stock = [] } = useQuery({
     queryKey: ['manifestation-stock'],
     queryFn: async () => {
       const res = await manifestationApi.getStock()
@@ -161,14 +166,6 @@ export default function ManifestationsPage() {
     queryKey: ['manifestation-stock-categories'],
     queryFn: async () => {
       const res = await manifestationApi.getStockCategories()
-      return res.data.data
-    }
-  })
-
-  const { data: stockEtats = [] } = useQuery({
-    queryKey: ['manifestation-stock-etats'],
-    queryFn: async () => {
-      const res = await manifestationApi.getStockEtats()
       return res.data.data
     }
   })
@@ -219,6 +216,18 @@ export default function ManifestationsPage() {
 
   // ==================== MUTATIONS ====================
 
+  /**
+   * Ce qui bouge le stock bouge aussi le catalogue et les sorties.
+   *
+   * Les trois lisent les mêmes engagements : n'en rafraîchir qu'un afficherait deux vérités
+   * différentes du même écran — un article rendu disponible d'un côté, encore promis de l'autre.
+   */
+  const rafraichirCatalogue = () => {
+    queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
+    queryClient.invalidateQueries({ queryKey: ['manifestation-catalogue'] })
+    queryClient.invalidateQueries({ queryKey: ['manifestation-sorties'] })
+  }
+
   const createManifMutation = useMutation({
     mutationFn: (data: any) => editingManif
       ? manifestationApi.update(editingManif.id, data)
@@ -226,7 +235,7 @@ export default function ManifestationsPage() {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
-      queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
+      rafraichirCatalogue()
       setShowManifModal(false)
       setEditingManif(null)
       setManifForm(emptyForm)
@@ -263,7 +272,7 @@ export default function ManifestationsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
-      queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
+      rafraichirCatalogue()
       toast.success('Statut mis à jour')
     },
     onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
@@ -274,7 +283,7 @@ export default function ManifestationsPage() {
       manifestationApi.updateMaterials(id, materials),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
-      queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
+      rafraichirCatalogue()
       setShowDeliveryModal(null)
       toast.success('Matériel mis à jour')
     },
@@ -297,9 +306,8 @@ export default function ManifestationsPage() {
       ? manifestationApi.updateStock(editingStock.id, data)
       : manifestationApi.createStock(data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
+      rafraichirCatalogue()
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock-categories'] })
-      queryClient.invalidateQueries({ queryKey: ['manifestation-stock-etats'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock-lieux'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stock-types'] })
       setShowStockModal(false)
@@ -313,7 +321,7 @@ export default function ManifestationsPage() {
   const deleteStockMutation = useMutation({
     mutationFn: (id: number) => manifestationApi.deleteStock(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['manifestation-stock'] })
+      rafraichirCatalogue()
       setDeleteConfirm(null)
       toast.success('Article supprimé')
     },
@@ -420,11 +428,6 @@ export default function ManifestationsPage() {
           <Button variant="outline" icon={<FileDown className="w-4 h-4" />} onClick={handleExportPDF}>
             Export PDF
           </Button>
-          {isSupervisor && activeTab === 'stock' && (
-            <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingStock(null); setStockForm(emptyStockForm); setShowStockModal(true) }}>
-              Ajouter au stock
-            </Button>
-          )}
           {isSupervisor && activeTab === 'manifestations' && (
             <Button icon={<Plus className="w-4 h-4" />} onClick={() => { setEditingManif(null); setManifForm(emptyForm); setShowManifModal(true) }}>
               Nouvelle manifestation
@@ -463,7 +466,7 @@ export default function ManifestationsPage() {
           </CardBody></Card>
           <Card><CardBody className="text-center py-3">
             <div className="text-2xl font-bold text-green-600">{stats.stockItems}</div>
-            <div className="text-xs text-gray-500 dark:text-gray-400">Articles stock</div>
+            <div className="text-xs text-gray-500 dark:text-gray-400">Articles prêtables</div>
           </CardBody></Card>
         </div>
       )}
@@ -490,8 +493,7 @@ export default function ManifestationsPage() {
 
       {activeTab === 'stock' && (
         <StockTab
-          stock={stock} isLoading={stockLoading} isSupervisor={isSupervisor}
-          categories={stockCategories} etats={stockEtats} lieux={stockLieux} types={stockTypes}
+          isSupervisor={isSupervisor} stockLegacy={stock}
           onEdit={openEditStock}
           onDelete={(id: number, name: string) => setDeleteConfirm({ type: 'stock', id, name })}
         />
@@ -999,148 +1001,466 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
   )
 }
 
-// ==================== ONGLET STOCK ====================
+// ==================== ONGLET STOCK MATÉRIEL ====================
 
-function StockTab({ stock, isLoading, isSupervisor, categories, etats, lieux, types, onEdit, onDelete }: any) {
-  const [catFilter, setCatFilter] = useState('')
-  const [etatFilter, setEtatFilter] = useState('')
-  const [lieuFilter, setLieuFilter] = useState('')
-  const [typeFilter, setTypeFilter] = useState('')
-  const [natureFilter, setNatureFilter] = useState('')
-  const [searchStock, setSearchStock] = useState('')
+/**
+ * Ce que la collectivité peut prêter, et où c'est passé.
+ *
+ * L'onglet n'interrogeait que `manifestation_stock`. Une collectivité qui tient son matériel
+ * prêtable et ses prestations dans le parc — « Technique › Prestations › Raccordement
+ * électrique » — voyait donc un écran vide alors que tout était saisi. Il lit désormais le
+ * catalogue : les deux sources réunies, chaque ligne disant d'où elle vient.
+ *
+ * Trois vues, parce que ce sont trois questions et non trois affichages de la même :
+ * - **Stock** : ce dont je dispose aujourd'hui ;
+ * - **Stock à date** : ce dont je disposerai le 14 juillet, ou sur toute une période ;
+ * - **Sorties** : où est le matériel — chez qui, jusqu'à quand, et ce qui part.
+ */
 
-  const filtered = stock.filter((s: StockItem) => {
-    if (catFilter && s.category !== catFilter) return false
-    if (etatFilter && s.etat !== etatFilter) return false
-    if (lieuFilter && s.lieu !== lieuFilter) return false
-    if (typeFilter && s.stock_type !== typeFilter) return false
-    // Matériel et prestations cohabitent dans le même catalogue : les séparer
-    // évite de chercher un raccordement électrique parmi trois cents chaises.
-    if (natureFilter === 'materiel' && s.is_prestation) return false
-    if (natureFilter === 'prestation' && !s.is_prestation) return false
-    if (searchStock && !s.name.toLowerCase().includes(searchStock.toLowerCase())) return false
-    return true
+type VueCatalogue = 'stock' | 'date' | 'sorties'
+
+const vuesCatalogue: { value: VueCatalogue; label: string; icon: any; aide: string }[] = [
+  { value: 'stock', label: 'Stock', icon: Package, aide: 'Ce dont vous disposez aujourd’hui.' },
+  { value: 'date', label: 'Stock à date', icon: Calendar, aide: 'Ce qu’il restera sur la période choisie, engagements déduits.' },
+  { value: 'sorties', label: 'Sorties', icon: Truck, aide: 'Où est le matériel, et ce qui part sur la période.' },
+]
+
+/** Valeur réservée au filtre : les articles qu'aucun service n'a pris en charge. */
+const SANS_SERVICE = '__sans_service__'
+
+/** Aujourd'hui, au format des champs date. */
+const jourCourant = () => new Date().toISOString().split('T')[0]
+
+const etatsSortie: Record<EtatSortie, { label: string; variant: 'warning' | 'info' | 'success' }> = {
+  dehors: { label: 'Dehors', variant: 'warning' },
+  prevue: { label: 'À sortir', variant: 'info' },
+  rendu: { label: 'Rendu', variant: 'success' },
+}
+
+const naturesArticle: Record<string, string> = {
+  prestation: 'Prestation',
+  lot: 'Quantité',
+  unique: 'Exemplaire',
+}
+
+const alignements = { left: 'text-left', center: 'text-center', right: 'text-right' }
+
+/**
+ * Tri d'une liste sur la colonne choisie.
+ *
+ * Les colonnes chiffrées se comparent en nombres, les autres avec l'ordre alphabétique
+ * français : `localeCompare` sur des nombres classerait 100 avant 20, et un tri par octets
+ * renverrait « Éclairage » derrière « Véhicules ».
+ */
+function useTri<T>(
+  lignes: T[],
+  colonnes: Record<string, (ligne: T) => string | number | null>,
+  defaut: string
+) {
+  const [cle, setCle] = useState(defaut)
+  const [sens, setSens] = useState<'asc' | 'desc'>('asc')
+
+  const triees = useMemo(() => {
+    const valeur = colonnes[cle] ?? colonnes[defaut]
+    const signe = sens === 'asc' ? 1 : -1
+    return [...lignes].sort((a, b) => {
+      const va = valeur(a)
+      const vb = valeur(b)
+      if (typeof va === 'number' || typeof vb === 'number') {
+        // Une prestation n'a pas de quantité : elle se range en bout de liste plutôt que de se
+        // faire passer pour un stock épuisé.
+        return signe * (Number(va ?? -1) - Number(vb ?? -1))
+      }
+      return signe * String(va ?? '').localeCompare(String(vb ?? ''), 'fr')
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lignes, cle, sens])
+
+  // Recliquer sur la colonne déjà triée inverse le sens ; en changer repart du croissant, sinon
+  // on hérite d'un sens qu'on n'a pas demandé.
+  const basculer = (nouvelle: string) => {
+    if (nouvelle === cle) setSens(sens === 'asc' ? 'desc' : 'asc')
+    else { setCle(nouvelle); setSens('asc') }
+  }
+
+  return { triees, cle, sens, basculer }
+}
+
+type Tri = { cle: string; sens: 'asc' | 'desc'; basculer: (cle: string) => void }
+
+/** En-tête de colonne qui trie, et qui montre sur quoi et dans quel sens. */
+function EnTeteTri({ cle, label, tri, align = 'left' }: {
+  cle: string; label: string; tri: Tri; align?: keyof typeof alignements
+}) {
+  const actif = tri.cle === cle
+  return (
+    <th className={`pb-2 font-medium text-gray-500 dark:text-gray-400 ${alignements[align]}`}>
+      <button type="button" onClick={() => tri.basculer(cle)}
+        aria-label={`Trier par ${label}`}
+        className={`inline-flex items-center gap-1 hover:text-gray-800 dark:hover:text-gray-200 ${actif ? 'text-gray-800 dark:text-gray-200' : ''}`}>
+        {label}
+        {actif
+          ? (tri.sens === 'asc' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)
+          : <ChevronsUpDown className="w-3 h-3 opacity-40" />}
+      </button>
+    </th>
+  )
+}
+
+/** Une quantité, ou un tiret quand la notion n'a pas de sens — une prestation ne se compte pas. */
+function Quantite({ valeur }: { valeur: number | null }) {
+  if (valeur === null || valeur === undefined) {
+    return <span className="text-gray-400" title="Une prestation n’a ni stock ni disponibilité">—</span>
+  }
+  return <span>{valeur}</span>
+}
+
+function StockTab({ isSupervisor, stockLegacy, onEdit, onDelete }: {
+  isSupervisor: boolean
+  stockLegacy: StockItem[]
+  onEdit: (article: StockItem) => void
+  onDelete: (id: number, name: string) => void
+}) {
+  const [vue, setVue] = useState<VueCatalogue>('stock')
+  const [dateDebut, setDateDebut] = useState(jourCourant)
+  const [dateFin, setDateFin] = useState(jourCourant)
+  const [recherche, setRecherche] = useState('')
+  const [nature, setNature] = useState('')
+  const [service, setService] = useState('')
+
+  // La vue « Stock » répond sur le jour même ; les deux autres sur la période saisie. Une fin
+  // laissée vide vaut le jour de début : on interroge alors une date, pas une période ouverte.
+  const debut = vue === 'stock' ? jourCourant() : (dateDebut || jourCourant())
+  const fin = vue === 'stock' ? jourCourant() : (dateFin || dateDebut || jourCourant())
+
+  const { data: articles = [], isLoading } = useQuery({
+    queryKey: ['manifestation-catalogue', debut, fin],
+    queryFn: async () => {
+      const res = await manifestationApi.getCatalogue({ date_from: debut, date_to: fin })
+      return res.data.data
+    }
   })
+
+  const { data: sorties = [], isLoading: chargementSorties } = useQuery({
+    queryKey: ['manifestation-sorties', debut, fin],
+    queryFn: async () => {
+      const res = await manifestationApi.getSorties({ date_from: debut, date_to: fin })
+      return res.data.data
+    },
+    enabled: vue === 'sorties'
+  })
+
+  /**
+   * Seuls les services qui prêtent réellement quelque chose.
+   *
+   * Proposer « Véhicules » à une collectivité qui n'en prête aucun fait chercher dans une liste
+   * vide ; « Technique » doit y figurer, lui, ne serait-ce que pour sa prestation de
+   * raccordement électrique. La liste se déduit donc du catalogue, jamais de la table des
+   * services.
+   */
+  const services = useMemo(() => {
+    const parId = new Map<number, ServiceBref>()
+    for (const article of articles) {
+      for (const s of article.services) parId.set(s.id, s)
+    }
+    return [...parId.values()].sort((a, b) => a.name.localeCompare(b.name, 'fr'))
+  }, [articles])
+
+  // Beaucoup d'articles ne sont rattachés à aucune catégorie, donc à aucun service : sans cette
+  // entrée, le filtre par service les rendrait introuvables.
+  const sansService = useMemo(
+    () => articles.some((a: ArticleCatalogue) => a.services.length === 0),
+    [articles]
+  )
+
+  const correspondService = (liste: ServiceBref[]) => {
+    if (!service) return true
+    if (service === SANS_SERVICE) return liste.length === 0
+    return liste.some(s => s.slug === service)
+  }
+
+  const correspondNature = (prestation: boolean) => {
+    if (nature === 'materiel') return !prestation
+    if (nature === 'prestation') return prestation
+    return true
+  }
+
+  const terme = recherche.trim().toLowerCase()
+
+  const articlesFiltres = useMemo(
+    () => articles.filter((a: ArticleCatalogue) =>
+      correspondNature(a.is_prestation)
+      && correspondService(a.services)
+      && (!terme || `${a.name} ${a.category}`.toLowerCase().includes(terme))
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [articles, nature, service, terme]
+  )
+
+  const sortiesFiltrees = useMemo(
+    () => sorties.filter((l: LigneSortie) =>
+      correspondNature(l.is_prestation)
+      && correspondService(l.services)
+      // La recherche porte aussi sur la manifestation : « où est le matériel de la brocante ? ».
+      && (!terme || `${l.name} ${l.manifestation}`.toLowerCase().includes(terme))
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [sorties, nature, service, terme]
+  )
+
+  const triCatalogue = useTri<ArticleCatalogue>(articlesFiltres, {
+    name: a => a.name,
+    source: a => a.source,
+    category: a => a.category,
+    service: a => a.services.map(s => s.name).join(', '),
+    quantity_total: a => a.quantity_total,
+    quantity_out: a => a.quantity_out,
+    quantity_engaged: a => a.quantity_engaged,
+    quantity_available: a => a.quantity_available,
+  }, 'name')
+
+  const triSorties = useTri<LigneSortie>(sortiesFiltrees, {
+    name: l => l.name,
+    manifestation: l => l.manifestation,
+    service: l => l.services.map(s => s.name).join(', '),
+    debut: l => l.debut,
+    quantite_demandee: l => l.quantite_demandee,
+    quantite_sortie: l => l.quantite_sortie,
+    quantite_dehors: l => l.quantite_dehors,
+    etat: l => l.etat,
+  }, 'name')
+
+  const filtresActifs = Boolean(nature || service || recherche)
+  const chargement = vue === 'sorties' ? chargementSorties : isLoading
+  const formatD = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR') : ''
 
   return (
     <div className="space-y-4">
+      {/* Trois vues, trois questions — et non trois affichages de la même. */}
+      <div className="flex flex-wrap items-center gap-2">
+        {vuesCatalogue.map(v => {
+          const Icone = v.icon
+          const actif = vue === v.value
+          return (
+            <button key={v.value} type="button" onClick={() => setVue(v.value)}
+              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-medium border transition-colors ${
+                actif
+                  ? 'bg-primary-50 border-primary-300 text-primary-700 dark:bg-primary-900/30 dark:border-primary-700 dark:text-primary-300'
+                  : 'border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800'
+              }`}>
+              <Icone className="w-4 h-4" />
+              {v.label}
+            </button>
+          )
+        })}
+        <span className="text-xs text-gray-500 dark:text-gray-400">
+          {vuesCatalogue.find(v => v.value === vue)?.aide}
+        </span>
+      </div>
+
+      {/* Recherche et filtres */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 focus:ring-2 focus:ring-primary-500"
-            placeholder="Rechercher un article..." value={searchStock} onChange={e => setSearchStock(e.target.value)} />
+            placeholder={vue === 'sorties' ? 'Rechercher un article ou une manifestation...' : 'Rechercher un article...'}
+            value={recherche} onChange={e => setRecherche(e.target.value)} />
         </div>
-        {categories.length > 0 && (
-          <Select value={catFilter} onChange={(e: any) => setCatFilter(e.target.value)}
-            options={[{ value: '', label: 'Toutes catégories' }, ...categories.map((c: string) => ({ value: c, label: c }))]} />
-        )}
+        <div className="sm:w-56">
+          <Select value={nature} onChange={(e: any) => setNature(e.target.value)}
+            options={[
+              { value: '', label: 'Matériel et prestations' },
+              { value: 'materiel', label: 'Matériel seulement' },
+              { value: 'prestation', label: 'Prestations seulement' },
+            ]} />
+        </div>
+        <div className="sm:w-56">
+          <Select value={service} onChange={(e: any) => setService(e.target.value)}
+            options={[
+              { value: '', label: 'Tous les services' },
+              ...services.map(s => ({ value: s.slug, label: s.name })),
+              ...(sansService ? [{ value: SANS_SERVICE, label: 'Sans service' }] : []),
+            ]} />
+        </div>
       </div>
 
-      {/* Filtres avancés */}
-      <div className="flex flex-wrap gap-2">
-        {etats.length > 0 && (
-          <Select value={etatFilter} onChange={(e: any) => setEtatFilter(e.target.value)}
-            options={[{ value: '', label: 'Tous états' }, ...etatOptions.map(e => ({ value: e.value, label: e.label }))]} />
-        )}
-        {lieux.length > 0 && (
-          <Select value={lieuFilter} onChange={(e: any) => setLieuFilter(e.target.value)}
-            options={[{ value: '', label: 'Tous lieux' }, ...lieux.map((l: string) => ({ value: l, label: l }))]} />
-        )}
-        {types.length > 0 && (
-          <Select value={typeFilter} onChange={(e: any) => setTypeFilter(e.target.value)}
-            options={[{ value: '', label: 'Tous types' }, ...types.map((t: string) => ({ value: t, label: t }))]} />
-        )}
-        <Select value={natureFilter} onChange={(e: any) => setNatureFilter(e.target.value)}
-          options={[
-            { value: '', label: 'Matériel et prestations' },
-            { value: 'materiel', label: 'Matériel seulement' },
-            { value: 'prestation', label: 'Prestations seulement' },
-          ]} />
-        {(etatFilter || lieuFilter || typeFilter || natureFilter) && (
-          <Button size="sm" variant="ghost" onClick={() => { setEtatFilter(''); setLieuFilter(''); setTypeFilter(''); setNatureFilter('') }}>
-            <X className="w-3 h-3 mr-1" /> Réinitialiser
+      {/* Période : les vues datées ; la vue « Stock » répond toujours sur aujourd'hui. */}
+      {vue !== 'stock' && (
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Le champ occupe toute la largeur de son conteneur : c'est lui qu'on borne, sinon
+              chaque date prend une ligne pour elle seule. */}
+          <div className="w-44">
+            <Input type="date" label={vue === 'sorties' ? 'Sorties du' : 'Disponibilité du'}
+              value={dateDebut} onChange={e => setDateDebut(e.target.value)} />
+          </div>
+          <div className="w-44">
+            <Input type="date" label="au" value={dateFin}
+              onChange={e => setDateFin(e.target.value)} />
+          </div>
+          <Button size="sm" variant="ghost"
+            onClick={() => { setDateDebut(jourCourant()); setDateFin(jourCourant()) }}>
+            Aujourd’hui
           </Button>
-        )}
-      </div>
+          <span className="text-xs text-gray-500 dark:text-gray-400 pb-2">
+            {debut === fin ? `Le ${formatD(debut)}` : `Du ${formatD(debut)} au ${formatD(fin)}`}
+          </span>
+        </div>
+      )}
 
-      {isLoading ? (
+      {filtresActifs && (
+        <Button size="sm" variant="ghost" onClick={() => { setNature(''); setService(''); setRecherche('') }}>
+          <X className="w-3 h-3 mr-1" /> Réinitialiser les filtres
+        </Button>
+      )}
+
+      {chargement ? (
         <div className="text-center py-12 text-gray-500 dark:text-gray-400">Chargement...</div>
-      ) : filtered.length === 0 ? (
+      ) : vue === 'sorties' ? (
+        triSorties.triees.length === 0 ? (
+          <Card><CardBody className="text-center py-12 text-gray-500 dark:text-gray-400">
+            {sorties.length === 0
+              ? 'Aucun matériel dehors sur cette période'
+              : 'Aucune sortie ne correspond aux filtres'}
+          </CardBody></Card>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b dark:border-gray-700 text-left">
+                  <EnTeteTri cle="name" label="Article" tri={triSorties} />
+                  <EnTeteTri cle="service" label="Service" tri={triSorties} />
+                  <EnTeteTri cle="manifestation" label="Manifestation" tri={triSorties} />
+                  <EnTeteTri cle="debut" label="Période" tri={triSorties} />
+                  <EnTeteTri cle="quantite_demandee" label="Demandé" tri={triSorties} align="center" />
+                  <EnTeteTri cle="quantite_sortie" label="Sorti" tri={triSorties} align="center" />
+                  <EnTeteTri cle="quantite_dehors" label="Dehors" tri={triSorties} align="center" />
+                  <EnTeteTri cle="etat" label="État" tri={triSorties} align="center" />
+                </tr>
+              </thead>
+              <tbody>
+                {triSorties.triees.map((l: LigneSortie) => (
+                  <tr key={`${l.ref}-${l.manifestation_id}`} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{l.name}</span>
+                        {l.is_prestation && <Badge variant="info" size="sm">Prestation</Badge>}
+                      </div>
+                      {l.category && <div className="text-xs text-gray-500 dark:text-gray-400">📁 {l.category}</div>}
+                    </td>
+                    <td className="py-2 text-xs text-gray-600 dark:text-gray-300">
+                      {l.services.length > 0 ? l.services.map(s => s.name).join(', ') : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="py-2">
+                      <span className="text-gray-900 dark:text-gray-100">{l.manifestation}</span>
+                      <div className="text-xs text-gray-500 dark:text-gray-400">{statusLabels[l.status] || l.status}</div>
+                    </td>
+                    <td className="py-2 text-xs text-gray-600 dark:text-gray-300">
+                      {formatD(l.debut)}{l.fin !== l.debut ? ` → ${formatD(l.fin)}` : ''}
+                    </td>
+                    <td className="py-2 text-center">{l.quantite_demandee}</td>
+                    <td className="py-2 text-center">{l.quantite_sortie}</td>
+                    <td className="py-2 text-center font-semibold text-yellow-600">{l.quantite_dehors}</td>
+                    <td className="py-2 text-center">
+                      <Badge variant={etatsSortie[l.etat].variant} size="sm">{etatsSortie[l.etat].label}</Badge>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )
+      ) : triCatalogue.triees.length === 0 ? (
         <Card><CardBody className="text-center py-12 text-gray-500 dark:text-gray-400">
-          Aucun article en stock
+          {articles.length === 0
+            ? 'Aucun article prêtable. Le matériel se déclare depuis le parc : ouvrez une catégorie au prêt dans Réglages › Manifestations.'
+            : 'Aucun article ne correspond aux filtres'}
         </CardBody></Card>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b dark:border-gray-700 text-left">
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Article</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Catégorie</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">État</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Lieu</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400">Type</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Total</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-right">Prix unit.</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Disponible</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">En prêt</th>
-                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Réservé (futur)</th>
-                {isSupervisor && <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Actions</th>}
+                <EnTeteTri cle="name" label="Article" tri={triCatalogue} />
+                <EnTeteTri cle="source" label="Origine" tri={triCatalogue} />
+                <EnTeteTri cle="category" label="Catégorie" tri={triCatalogue} />
+                <EnTeteTri cle="service" label="Service" tri={triCatalogue} />
+                <EnTeteTri cle="quantity_total" label="Total" tri={triCatalogue} align="center" />
+                <EnTeteTri cle="quantity_out" label="Dehors" tri={triCatalogue} align="center" />
+                <EnTeteTri cle="quantity_engaged" label="Promis" tri={triCatalogue} align="center" />
+                <EnTeteTri cle="quantity_available" label="Disponible" tri={triCatalogue} align="center" />
+                <th className="pb-2 font-medium text-gray-500 dark:text-gray-400 text-center">Fiche</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s: StockItem) => {
-                const etatLabel = etatOptions.find(e => e.value === s.etat)?.label || s.etat
+              {triCatalogue.triees.map((a: ArticleCatalogue) => {
+                // Seul un article de l'ancien catalogue se modifie ici : celui du parc a sa
+                // fiche, où il porte sa référence, son état et son historique.
+                const legacy = a.source === 'stock'
+                  ? stockLegacy.find((s: StockItem) => s.id === a.id)
+                  : undefined
                 return (
-                <tr key={s.id} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <td className="py-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-medium text-gray-900 dark:text-gray-100">{s.name}</span>
-                      {s.is_prestation ? <Badge variant="info">Prestation</Badge> : null}
-                    </div>
-                    {s.description && <div className="text-xs text-gray-500 dark:text-gray-400">{s.description}</div>}
-                    {s.category_name && <div className="text-xs text-gray-600 dark:text-gray-300">📁 {s.category_name}{s.subcategory_name ? ` / ${s.subcategory_name}` : ''}</div>}
-                  </td>
-                  <td className="py-2">
-                    {s.category && <Badge variant="default">{s.category}</Badge>}
-                  </td>
-                  <td className="py-2">
-                    {s.etat && <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${etatColors[s.etat] || 'bg-gray-100 text-gray-800'}`}>
-                      {etatLabel}
-                    </span>}
-                  </td>
-                  <td className="py-2">
-                    {s.lieu && <span className="inline-flex items-center text-xs text-gray-600 dark:text-gray-400"><MapPin className="w-3 h-3 mr-1" />{s.lieu}</span>}
-                  </td>
-                  <td className="py-2">
-                    {s.stock_type && <Badge variant="default">{s.stock_type}</Badge>}
-                  </td>
-                  <td className="py-2 text-center">{s.is_prestation ? '—' : `${s.quantity_total} ${s.unit}`}</td>
-                  <td className="py-2 text-right text-gray-700 dark:text-gray-300">{s.price ? `${Number(s.price).toFixed(2)} €` : '—'}</td>
-                  <td className="py-2 text-center">
-                    {s.is_prestation ? (
-                      <span className="text-gray-400">—</span>
-                    ) : (
-                      <span className={s.quantity_available <= 0 ? 'text-red-600 font-bold' : s.quantity_available < s.quantity_total * 0.2 ? 'text-yellow-600 font-semibold' : 'text-green-600 font-semibold'}>
-                        {s.quantity_available}
-                      </span>
-                    )}
-                  </td>
-                  <td className="py-2 text-center text-yellow-600">{s.is_prestation ? '—' : s.quantity_lent}</td>
-                  <td className="py-2 text-center text-blue-600">{s.is_prestation ? '—' : s.quantity_reserved_future}</td>
-                  {isSupervisor && (
-                    <td className="py-2 text-center">
-                      <div className="flex justify-center gap-1">
-                        <button onClick={() => onEdit(s)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Modifier" aria-label="Modifier">
-                          <Edit className="w-4 h-4 text-blue-600" />
-                        </button>
-                        <button aria-label="Supprimer" onClick={() => onDelete(s.id, s.name)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Supprimer">
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </button>
+                  <tr key={a.ref} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
+                    <td className="py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-medium text-gray-900 dark:text-gray-100">{a.name}</span>
+                        {a.is_prestation
+                          ? <Badge variant="info" size="sm">Prestation</Badge>
+                          : <Badge variant="default" size="sm">{naturesArticle[a.nature] || a.nature}</Badge>}
                       </div>
                     </td>
-                  )}
-                </tr>
-              )})}
+                    <td className="py-2">
+                      <Badge variant={a.source === 'parc' ? 'success' : 'default'} size="sm">
+                        {a.source === 'parc' ? 'Parc' : 'Stock'}
+                      </Badge>
+                    </td>
+                    <td className="py-2 text-gray-700 dark:text-gray-300">
+                      {a.category || <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="py-2 text-xs text-gray-600 dark:text-gray-300">
+                      {a.services.length > 0 ? a.services.map(s => s.name).join(', ') : <span className="text-gray-400">—</span>}
+                    </td>
+                    <td className="py-2 text-center">
+                      <Quantite valeur={a.quantity_total} />
+                      {a.unit && a.quantity_total !== null ? <span className="text-xs text-gray-500 ml-1">{a.unit}</span> : null}
+                    </td>
+                    <td className="py-2 text-center text-yellow-600"><Quantite valeur={a.is_prestation ? null : a.quantity_out} /></td>
+                    <td className="py-2 text-center text-blue-600"><Quantite valeur={a.is_prestation ? null : a.quantity_engaged} /></td>
+                    <td className="py-2 text-center">
+                      {a.quantity_available === null ? (
+                        <span className="text-gray-400" title="Une prestation se réalise, elle ne se stocke pas">—</span>
+                      ) : (
+                        <span className={a.quantity_available <= 0
+                          ? 'text-red-600 font-bold'
+                          : (a.quantity_total && a.quantity_available < a.quantity_total * 0.2)
+                            ? 'text-yellow-600 font-semibold'
+                            : 'text-green-600 font-semibold'}>
+                          {a.quantity_available}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 text-center">
+                      <div className="flex justify-center gap-1">
+                        {a.source === 'parc' ? (
+                          <Link to={`/objects/${a.id}`} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Voir la fiche" aria-label="Voir la fiche">
+                            <Eye className="w-4 h-4 text-gray-500" />
+                          </Link>
+                        ) : isSupervisor && legacy ? (
+                          <>
+                            <button onClick={() => onEdit(legacy)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Modifier" aria-label="Modifier">
+                              <Edit className="w-4 h-4 text-blue-600" />
+                            </button>
+                            <button onClick={() => onDelete(a.id, a.name)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Supprimer" aria-label="Supprimer">
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </button>
+                          </>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>

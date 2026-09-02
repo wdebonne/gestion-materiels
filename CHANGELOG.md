@@ -7,6 +7,32 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Stock matériel — un onglet qui montre enfin ce que la collectivité prête
+
+> L'onglet « Stock matériel » n'interrogeait qu'une seule des deux tables du prêt. Une collectivité qui tient tout son matériel prêtable et ses prestations dans le parc — l'organisation que l'application recommande — y voyait « Aucun article en stock », et un compteur à zéro, alors que tout était saisi.
+
+#### Ajouté
+
+- **Trois vues, parce que ce sont trois questions** et non trois affichages de la même :
+  - **Stock** : ce dont on dispose aujourd'hui
+  - **Stock à date** : ce qu'il restera à une date ou sur une période, engagements déduits — « aurai-je 200 chaises le 14 juillet ? »
+  - **Sorties** : où est le matériel. Une ligne **par article et par manifestation**, avec chez qui il est, jusqu'à quand, ce qui est sorti, ce qui est revenu et ce qui reste dehors. Cinquante chaises dehors en trois endroits sont trois déplacements, pas un
+- **Filtre par service, déduit de ce qui est réellement prêtable.** Un service Véhicules qui ne prête aucun véhicule n'apparaît pas dans la liste ; le service Technique y apparaît pour sa seule prestation de raccordement électrique. La liste des services vient du catalogue, jamais de la table des services — proposer un filtre qui ne rend rien fait chercher là où il n'y a rien. Une entrée « Sans service » rassemble les articles qu'aucune catégorie ne rattache, sans quoi le filtre les rendrait introuvables
+- **Tri sur chaque colonne** : nom, origine, catégorie, service, total, dehors, promis, disponible — et sur les sorties, la manifestation, la période et l'état. Les nombres se comparent en nombres et les mots dans l'ordre alphabétique français : « Éclairage » ne se retrouve plus derrière « Véhicules », et 100 ne passe plus avant 20
+- **`GET /api/manifestations/sorties`** : ce qui est dehors, et ce qui part. Sans dates, le jour même ; avec `date_from`/`date_to`, la fenêtre demandée, ce qui donne le planning des livraisons et des récupérations. Filtres `service`, `kind` et recherche libre portant aussi bien sur l'article que sur la manifestation qui l'a emporté
+- **Le catalogue dit qui prête quoi** : chaque ligne porte désormais sa catégorie effective — la directe **ou** celle de sa sous-catégorie —, les services dont le périmètre la couvre, sa nature (quantité, exemplaire, prestation), ce qui est **dehors** et ce qui est **promis** sur la période. Le solde seul ne disait pas si les dix chaises manquantes étaient parties ou seulement réservées
+
+#### Corrigé
+
+- **L'onglet « Stock matériel » était vide alors que tout était saisi.** Il lisait `manifestation_stock`, quand le matériel prêtable et les prestations sont tenus dans le parc — « Technique › Prestations › Raccordement électrique ». Il lit maintenant le catalogue, les deux sources réunies, chaque ligne disant d'où elle vient : sur une base de contrôle, 61 articles là où l'écran en montrait zéro
+- **Le compteur « Articles stock » restait à zéro** pour la même raison : il comptait la table plutôt que ce que l'onglet montre. Il suit désormais le catalogue, et s'intitule « Articles prêtables »
+- **Les filtres État, Lieu et Type ne servaient plus à rien** : ils n'existent que sur les articles de l'ancien catalogue, absents d'une base moderne. Ils laissent la place aux filtres qui portent sur les deux sources — nature, service, recherche
+
+#### Retiré
+
+- **Le bouton « Ajouter au stock »**, qui ouvrait un second endroit où déclarer du matériel. Le matériel se déclare dans le parc, où il porte sa référence, son état, son historique et son coût ; l'ouvrir au prêt est un réglage de branche. Les articles de l'ancien catalogue restent modifiables et supprimables depuis leur ligne, le temps de les reprendre
+
+
 ### Compteurs et énergie — un parc qui n'est pas fait que de voitures diesel
 
 > Deux manques partaient de la même cause : le parc était décrit comme s'il n'était fait que de véhicules thermiques. Le kilométrage était un nom de champ écrit en dur, et l'électrique n'existait pas.

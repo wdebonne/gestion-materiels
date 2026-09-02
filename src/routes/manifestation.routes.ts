@@ -72,6 +72,7 @@ import {
 } from '../services/generationDocuments.service';
 import { manquesSurLots } from '../services/lotParc.service';
 import { catalogue } from '../services/catalogue.service';
+import { sorties } from '../services/manifestationSorties.service';
 import { coutDe } from '../services/coutManifestation.service';
 
 const router = Router();
@@ -425,10 +426,40 @@ router.get('/catalogue', authenticateToken, async (req: AuthRequest, res: Respon
   }
 });
 
+// ======================== SORTIES ========================
+
+/**
+ * GET /sorties - Ce qui est dehors, et ce qui part.
+ *
+ * Le catalogue dit ce qu'il reste ; il ne dit pas chez qui est le reste. Sans période, la réponse
+ * porte sur le jour même — « qu'est-ce qui est dehors en ce moment ». Avec `date_from` et
+ * `date_to`, elle porte sur la fenêtre demandée, ce qui donne le planning des livraisons et des
+ * récupérations à venir.
+ *
+ * Les mêmes filtres que le catalogue : `service`, `kind`, plus une recherche libre qui porte
+ * aussi bien sur l'article que sur la manifestation qui l'a emporté.
+ */
+router.get('/sorties', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { date, date_from, date_to, service, kind, search } = req.query;
+    const debut = String(date_from || date || aujourdHui());
+    const fin = String(date_to || date || debut);
+
+    const lignes = await sorties(req, debut, fin, { service, kind, search });
+    if (lignes === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    res.json({ success: true, data: lignes, periode: { debut, fin } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ======================== STATS / DASHBOARD ========================
 
 // GET /stats/summary - Statistiques globales
-router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: Response) => {
+router.get('/stats/summary', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     // `date('now')` est propre à SQLite : la date est passée en paramètre pour
     // que le décompte soit juste aussi sur MySQL.
@@ -441,7 +472,10 @@ router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: R
     );
     const delivered = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'delivered'");
     const archived = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestations WHERE status = 'archived'");
-    const stockItems = await db.queryOne("SELECT COUNT(*) as cnt FROM manifestation_stock");
+    // Compter `manifestation_stock` seule affichait « 0 article » à une collectivité qui tient
+    // pourtant tout son matériel prêtable dans le parc. Le compteur suit désormais ce que
+    // l'onglet montre : le catalogue, les deux sources réunies.
+    const articles = await catalogue(req, jour, jour);
 
     res.json({
       success: true,
@@ -451,7 +485,7 @@ router.get('/stats/summary', authenticateToken, async (_req: AuthRequest, res: R
         upcoming: upcoming?.cnt || 0,
         delivered: delivered?.cnt || 0,
         archived: archived?.cnt || 0,
-        stockItems: stockItems?.cnt || 0
+        stockItems: articles?.length || 0
       }
     });
   } catch (error: any) {
