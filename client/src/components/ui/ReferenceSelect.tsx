@@ -65,7 +65,13 @@ export default function ReferenceSelect({
   }, [])
 
   useEffect(() => {
-    if (ouvert) champRef.current?.focus()
+    // `preventScroll` : donner le focus au champ demande au navigateur de le
+    // rendre visible, et pour cela il fait défiler ses ancêtres — y compris le
+    // panneau, qui est `overflow-hidden` et donc défilable sans barre. Le
+    // contenu partait alors vers la gauche : l'icône de recherche disparaissait
+    // et chaque option perdait ses premières lettres — « Vidange » s'affichait
+    // « dange ».
+    if (ouvert) champRef.current?.focus({ preventScroll: true })
   }, [ouvert])
 
   const recherche = filtre.trim().toLowerCase()
@@ -118,7 +124,9 @@ export default function ReferenceSelect({
           'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500'
         )}
       >
-        <span className={cn('truncate', !value && 'text-gray-500 dark:text-gray-400')}>
+        {/* `min-w-0` rend `truncate` effectif : sans lui, un libellé long
+            pousserait le chevron hors du champ au lieu de se couper. */}
+        <span className={cn('min-w-0 truncate', !value && 'text-gray-500 dark:text-gray-400')}>
           {value || placeholder}
         </span>
         <span className="flex flex-shrink-0 items-center gap-1">
@@ -155,6 +163,9 @@ export default function ReferenceSelect({
         <div className="absolute z-50 mt-1 w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-600 dark:bg-gray-800">
           <div className="flex items-center gap-2 border-b border-gray-200 px-3 dark:border-gray-700">
             <Search className="h-4 w-4 flex-shrink-0 text-gray-500" />
+            {/* `min-w-0` : un `<input>` ne descend jamais sous sa largeur intrinsèque — une
+                vingtaine de caractères — même en `flex-1`. Dans un panneau étroit, la rangée
+                débordait, et c'est ce débordement que le navigateur allait ensuite révéler. */}
             <input
               ref={champRef}
               type="text"
@@ -162,7 +173,7 @@ export default function ReferenceSelect({
               onChange={(e) => setFiltre(e.target.value)}
               placeholder={`Filtrer ou nommer ${nomSingulier}…`}
               aria-label={`Filtrer ${nomSingulier}`}
-              className="min-h-[44px] flex-1 border-0 bg-transparent text-gray-900 outline-none placeholder:text-gray-500 dark:text-gray-100"
+              className="min-h-[44px] w-full min-w-0 flex-1 border-0 bg-transparent text-gray-900 outline-none placeholder:text-gray-500 dark:text-gray-100"
             />
           </div>
 
@@ -176,7 +187,7 @@ export default function ReferenceSelect({
                   onClick={() => choisir(o.name)}
                   className="flex min-h-[44px] w-full items-center justify-between gap-2 px-3 text-left text-gray-900 hover:bg-gray-100 dark:text-gray-100 dark:hover:bg-gray-700"
                 >
-                  <span className="truncate">{o.name}</span>
+                  <span className="min-w-0 truncate">{o.name}</span>
                   {o.name === value && <Check className="h-4 w-4 flex-shrink-0 text-primary-600" />}
                 </button>
               </li>
