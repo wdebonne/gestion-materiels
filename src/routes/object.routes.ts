@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
 import { notifierWebhooks } from '../services/webhook.service';
+import { dateOuNull, nombreOuNull } from '../utils/valeursSql';
 import { filtreObjets, peutVoirObjet, REFUS_PORTEE } from '../middleware/objectScope';
 import {
   expressionPrestation,
@@ -730,7 +731,10 @@ router.post('/:id/fuel', authenticateToken, requireFieldWrite, [
     const result = await db.execute(
       `INSERT INTO fuel_entries (object_id, fuel_type, energy_kind, quantity, unit_price, total_price, mileage, readings, station, entry_date, notes, attachments)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, finalFuelType, nature, qty, unitPriceCalculated, totalPrice, releves.mileage, releves.readings, station || null, finalEntryDate, notes || null, attachmentsJson]
+      [
+        id, finalFuelType, nature, qty, unitPriceCalculated, totalPrice, releves.mileage,
+        releves.readings, station || null, dateOuNull(finalEntryDate), notes || null, attachmentsJson,
+      ]
     );
 
     const compteurs = await appliquerReleves(id, releves.valeurs);
@@ -777,7 +781,11 @@ router.put('/:id/fuel/:entryId', authenticateToken, requireAdmin, async (req: Au
         fuel_type = ?, energy_kind = ?, quantity = ?, unit_price = ?, total_price = ?,
         mileage = ?, readings = ?, station = ?, entry_date = ?, notes = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [fuelType || (nature === 'electric' ? 'Électrique' : 'Carburant'), nature, qty, unitPriceCalculated, totalPrice, releves.mileage, releves.readings, station || null, date, notes || null, attachmentsJson, entryId, id]
+      [
+        fuelType || (nature === 'electric' ? 'Électrique' : 'Carburant'), nature, qty,
+        unitPriceCalculated, totalPrice, releves.mileage, releves.readings, station || null,
+        dateOuNull(date), notes || null, attachmentsJson, entryId, id,
+      ]
     );
 
     if (result.changes === 0) {
@@ -1324,7 +1332,10 @@ router.post('/:id/technical-control', authenticateToken, requireFieldWrite, [
     const insertResult = await db.execute(
       `INSERT INTO technical_controls (object_id, control_date, expiry_date, mileage, readings, result, center_name, cost, document, notes, attachments)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, controlDate, expiryDate, releves.mileage, releves.readings, controlResult, centerName, cost, document, notes, attachmentsJson]
+      [
+        id, dateOuNull(controlDate), dateOuNull(expiryDate), releves.mileage, releves.readings,
+        controlResult, centerName, nombreOuNull(cost), document, notes, attachmentsJson,
+      ]
     );
 
     const compteurs = await appliquerReleves(id, releves.valeurs);
@@ -1432,7 +1443,10 @@ router.put('/:id/technical-control/:controlId', authenticateToken, requireAdmin,
         control_date = ?, expiry_date = ?, mileage = ?, readings = ?, result = ?,
         center_name = ?, cost = ?, document = ?, notes = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [controlDate, expiryDate, releves.mileage, releves.readings, controlResult, centerName, cost, document, notes, attachmentsJson, controlId, id]
+      [
+        dateOuNull(controlDate), dateOuNull(expiryDate), releves.mileage, releves.readings,
+        controlResult, centerName, nombreOuNull(cost), document, notes, attachmentsJson, controlId, id,
+      ]
     );
 
     if (result.changes === 0) {
@@ -1509,7 +1523,11 @@ router.post('/:id/maintenance', authenticateToken, requireFieldWrite, [
     const insertResult = await db.execute(
       `INSERT INTO maintenances (object_id, maintenance_type, maintenance_date, next_date, mileage, readings, next_mileage, cost, provider, document, notes, add_to_calendar, attachments)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [id, maintenanceType, maintenanceDate, nextDate, releves.mileage, releves.readings, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson]
+      [
+        id, maintenanceType, dateOuNull(maintenanceDate), dateOuNull(nextDate),
+        releves.mileage, releves.readings, nombreOuNull(nextMileage), nombreOuNull(cost),
+        provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson,
+      ]
     );
 
     const compteurs = await appliquerReleves(id, releves.valeurs);
@@ -1625,7 +1643,11 @@ router.put('/:id/maintenance/:maintenanceId', authenticateToken, requireAdmin, a
         mileage = ?, readings = ?, next_mileage = ?, cost = ?, provider = ?,
         document = ?, notes = ?, add_to_calendar = ?, attachments = ?
        WHERE id = ? AND object_id = ?`,
-      [maintenanceType, maintenanceDate, nextDate, releves.mileage, releves.readings, nextMileage, cost, provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson, maintenanceId, id]
+      [
+        maintenanceType, dateOuNull(maintenanceDate), dateOuNull(nextDate),
+        releves.mileage, releves.readings, nombreOuNull(nextMileage), nombreOuNull(cost),
+        provider, document, notes, addToCalendar ? 1 : 0, attachmentsJson, maintenanceId, id,
+      ]
     );
 
     if (result.changes === 0) {

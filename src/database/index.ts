@@ -38,8 +38,16 @@ const DATE_ISO_AVEC_FUSEAU =
 /** Repère un LIMIT ou un OFFSET dont la valeur est passée en paramètre. */
 const LIMIT_PARAMETRE = /\b(?:LIMIT|OFFSET)\s+\?/i;
 
-function parametresMySQL(params: any[]): any[] {
+/** Exportée pour être mise à l'épreuve : c'est ici que se règle ce que MySQL accepte. */
+export function parametresMySQL(params: any[]): any[] {
   return params.map((valeur) => {
+    // Un champ que le client n'envoie pas arrive ici en `undefined`. SQLite le
+    // range comme `NULL` sans un mot ; mysql2 refuse de lier le paramètre et
+    // lève « Bind parameters must not contain undefined », ce qui fait retomber
+    // la route sur son `catch` et répondre « Erreur serveur ». Une colonne
+    // absente d'un formulaire suffisait donc à rendre une écriture impossible
+    // sur MySQL, et sur MySQL seulement. SQL ne connaît qu'une absence : NULL.
+    if (valeur === undefined) return null;
     if (typeof valeur !== 'string' || !DATE_ISO_AVEC_FUSEAU.test(valeur)) return valeur;
     const date = new Date(valeur);
     if (Number.isNaN(date.getTime())) return valeur;

@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Saisies impossibles sur MySQL, et listes déroulantes illisibles
+
+> Deux pannes rencontrées sur l'instance de production, invisibles en développement : ajouter un entretien répondait « Erreur serveur », et les listes de choix perdaient les premières lettres de chaque option.
+
+#### Corrigé
+
+- **Aucun entretien ne pouvait être enregistré sur MySQL** — `POST /api/objects/:id/maintenance` répondait 500 systématiquement. mysql2 refuse de lier un paramètre `undefined` : « Bind parameters must not contain undefined ». Le formulaire n'envoie ni `nextMileage` ni `document`, donc deux paramètres sur treize étaient absents, et l'écriture entière échouait. SQLite, lui, les range comme `NULL` sans un mot : la saisie passait en développement et jamais en production. `undefined` est traduit en `NULL` au seul point de passage vers le serveur, ce qui ferme la même porte pour toutes les autres routes
+- **Un champ date ou nombre laissé vide faisait échouer l'écriture.** Un `<input>` non rempli envoie une chaîne vide, pas une absence. MySQL en mode strict refuse `''` dans une colonne `DATE` ou `DECIMAL` — « Incorrect date value » — quand SQLite l'accepte. Sans « prochain entretien » ni coût, l'enregistrement était donc impossible. Les entretiens, les contrôles techniques et les pleins traduisent maintenant le vide en `NULL` avant d'écrire
+- **Les listes déroulantes perdaient le début de chaque option** : « Vidange » s'affichait « dange », « Régie » s'affichait « gie », et l'icône de recherche disparaissait. À l'ouverture, le champ de filtre reçoit le focus, et le navigateur fait défiler ses ancêtres pour le rendre visible — y compris le panneau, `overflow-hidden` et donc défilable sans barre. Ce qu'il fallait révéler, c'était le débordement du champ lui-même : un `<input>` ne descend jamais sous sa largeur intrinsèque, une vingtaine de caractères, même en `flex-1`. Le champ se rétracte désormais, et le focus ne fait plus défiler
+- **Le champ de recherche des manifestations était réduit à trois mots.** Dans une rangée flex, un élément ne descend pas sous la largeur de son contenu sans `min-w-0` : la liste des statuts, large de son option la plus longue, prenait la moitié de la barre. Les listes sont bornées, la recherche prend le reste, et les hauteurs s'alignent. Même correction sur la barre de l'onglet Stock matériel
+
+
 ### Stock matériel — un onglet qui montre enfin ce que la collectivité prête
 
 > L'onglet « Stock matériel » n'interrogeait qu'une seule des deux tables du prêt. Une collectivité qui tient tout son matériel prêtable et ses prestations dans le parc — l'organisation que l'application recommande — y voyait « Aucun article en stock », et un compteur à zéro, alors que tout était saisi.
