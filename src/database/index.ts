@@ -1132,6 +1132,7 @@ class DatabaseManager {
         pos_y DECIMAL(10,4),
         quantity INTEGER DEFAULT 1,
         purchase_price DECIMAL(10,2),
+        cost_source VARCHAR(20) DEFAULT 'saisi',
         maintenance_notes ${textType},
         species VARCHAR(255) DEFAULT '',
         planting_date DATE,
@@ -1412,6 +1413,10 @@ class DatabaseManager {
 
       // Espaces verts
       ['idx_gs_elements_space', 'green_space_elements', 'green_space_id'],
+      // Coût par variété et « où ce matériel est-il déjà implanté ? » : deux
+      // questions qui partent du matériel du parc, pas de l'espace vert.
+      ['idx_gs_elements_object', 'green_space_elements', 'object_id'],
+      ['idx_gs_elements_group', 'green_space_elements', 'group_id'],
       ['idx_gs_maint_space', 'green_space_maintenances', 'green_space_id'],
       ['idx_gs_documents_space', 'green_space_documents', 'green_space_id'],
 

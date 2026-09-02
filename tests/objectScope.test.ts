@@ -38,7 +38,7 @@ const EXEMPTIONS: Record<string, string> = {
   'routes/customFields.routes.ts':
     "Lit la catégorie d'un matériel pour rendre la configuration de ses champs, jamais ses données. Révèle au plus l'existence d'un identifiant.",
   'routes/espaceVert.routes.ts':
-    "Les jointures restantes ne concernent que des matériels explicitement rattachés à un élément d'espace vert par un superviseur : l'accès y est gouverné par l'espace vert, pas par la catégorie du matériel. La recherche libre, elle, applique la portée.",
+    "Les jointures restantes ne concernent que des matériels explicitement rattachés à un élément d'espace vert par un superviseur : l'accès y est gouverné par l'espace vert, pas par la catégorie du matériel. Les trois entrées qui lisent le parc lui-même appliquent la portée : la recherche libre, le catalogue implantable et la pose depuis le parc, qui refuse ligne à ligne ce que l'appelant n'a pas le droit de consulter.",
   'services/cron.service.ts':
     "Tâche planifiée, sans requête ni utilisateur : il n'y a pas de portée à appliquer.",
   'services/email.service.ts':
@@ -49,6 +49,8 @@ const EXEMPTIONS: Record<string, string> = {
     "Ne lit que la branche et les champs personnalisés d'un matériel dont l'appelant fournit déjà l'identifiant, pour savoir quels compteurs s'y appliquent. Ne rend jamais de fiche : au plus le libellé et la valeur des compteurs de ce matériel-là. Les deux entrées qui l'exposent au public contrôlent la portée en amont — `GET /objects/:id` par filtreObjets, `PATCH /objects/:id/compteurs` par peutVoirObjet.",
   'services/coutManifestation.service.ts':
     "Ne lit que les matériels déjà rattachés à une manifestation, pour en chiffrer le coût, et n'est appelé que par des routes qui ont déjà vérifié que l'appelant voit cette manifestation. Ne rend que des montants et des libellés, jamais une fiche de matériel.",
+  'services/coutEspaceVert.service.ts':
+    "Chiffre des implantations déjà posées dans un espace vert par un superviseur : l'accès y est gouverné par l'espace vert, pas par la catégorie du matériel. La jointure sur `objects` ne sert qu'à nommer une variété sur une ligne de total, et le coût lu est celui figé à la pose, jamais le prix courant du parc. Ne rend ni fiche, ni référence, ni prix d'achat du matériel.",
   'services/lotParc.service.ts':
     "Arithmétique de stock sur des matériels déjà rattachés à une manifestation, ou dont l'appelant a obtenu les identifiants par une lecture qui, elle, applique la portée (parcAvecDisponibilite, objetsDe). Ne rend que des quantités et le nom d'un lot en rupture, jamais une fiche de matériel ni un prix d'achat.",
   'services/manifestationServices.service.ts':

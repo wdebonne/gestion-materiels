@@ -5,6 +5,16 @@ import { authenticateToken, AuthRequest, requireSupervisor, requireFieldWrite } 
 import { logService } from '../services/log.service';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
+import {
+  COUT_IMPLANTATION,
+  coutEspace,
+  syntheseCouts,
+  implantationsParObjet,
+  prixUnitaireDuParc,
+} from '../services/coutEspaceVert.service';
+import { expressionNature } from '../services/lotParc.service';
+import { jointuresPrestation } from '../services/prestationParc.service';
+import { dateOuNull, nombreOuNull } from '../utils/valeursSql';
 
 const router = Router();
 
@@ -12,11 +22,19 @@ const router = Router();
 
 router.get('/stats', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
-    const [total, totalElements, totalSuperficie, typesCount] = await Promise.all([
+    const [total, totalElements, totalSuperficie, typesCount, cout] = await Promise.all([
       db.queryOne("SELECT COUNT(*) as cnt FROM green_spaces"),
       db.queryOne("SELECT COUNT(*) as cnt FROM green_space_elements"),
       db.queryOne("SELECT COALESCE(SUM(area_m2), 0) as total FROM green_spaces"),
-      db.query("SELECT space_type, COUNT(*) as cnt FROM green_spaces GROUP BY space_type ORDER BY cnt DESC")
+      db.query("SELECT space_type, COUNT(*) as cnt FROM green_spaces GROUP BY space_type ORDER BY cnt DESC"),
+      // Ce qui a été dépensé, au prix figé à la pose. `sansPrix` accompagne
+      // toujours le total : un montant seul laisserait croire qu'il est complet
+      // alors que les lignes sans prix n'y sont pas.
+      db.queryOne(
+        `SELECT COALESCE(SUM(${COUT_IMPLANTATION}), 0) as total,
+                COALESCE(SUM(CASE WHEN gse.purchase_price IS NULL OR gse.purchase_price = 0 THEN 1 ELSE 0 END), 0) as sans_prix
+         FROM green_space_elements gse`
+      ),
     ]);
 
     res.json({
@@ -25,9 +43,47 @@ router.get('/stats', authenticateToken, async (_req: AuthRequest, res: Response)
         total: total?.cnt || 0,
         totalElements: totalElements?.cnt || 0,
         totalSuperficie: totalSuperficie?.total || 0,
+        coutTotal: Number(cout?.total || 0),
+        coutSansPrix: Number(cout?.sans_prix || 0),
         byType: typesCount
       }
     });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== COÛTS ========================
+
+/**
+ * GET /couts — ce que le fleurissement et le mobilier ont coûté, tous espaces.
+ *
+ * Déclarée avant `/:id`, sans quoi Express y verrait un espace vert nommé
+ * « couts ». Le filtre `space_type` répond à la question posée le plus souvent :
+ * « combien pour les ronds-points », « combien pour les rues » — un coût par
+ * nature de lieu, sans avoir à additionner les fiches à la main.
+ */
+router.get('/couts', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { space_type, status } = req.query;
+
+    // Sans filtre, la synthèse porte sur tout : inutile de lister tous les
+    // identifiants pour redire « tout ».
+    let espaceIds: number[] | undefined;
+    if (space_type || status) {
+      const conditions: string[] = [];
+      const params: any[] = [];
+      if (space_type) { conditions.push('space_type = ?'); params.push(space_type); }
+      if (status) { conditions.push('status = ?'); params.push(status); }
+      const lignes = await db.query(
+        `SELECT id FROM green_spaces WHERE ${conditions.join(' AND ')}`,
+        params
+      );
+      espaceIds = lignes.map((l: any) => Number(l.id));
+    }
+
+    const synthese = await syntheseCouts(espaceIds ? { espaceIds } : undefined);
+    res.json({ success: true, data: synthese });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -491,9 +547,18 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
     }
 
     // Récupérer les éléments liés
+    //
+    // `o.purchase_price` est renommé, et ce détail vaut une explication : sous
+    // son nom d'origine il arrivait après `gse.*` et **écrasait** le prix figé
+    // à la pose. Le prix courant du parc s'affichait donc partout à sa place,
+    // et mettre à jour un tarif réécrivait rétroactivement le coût de tous les
+    // massifs déjà plantés — exactement ce que le prix figé sert à empêcher.
     const elements = await db.query(`
       SELECT gse.*, o.name as object_name, o.image as object_image, o.reference,
-        o.serial_number, o.purchase_price, o.status as object_status,
+        o.serial_number, o.purchase_price as object_purchase_price,
+        o.unit_cost as object_unit_cost, o.material_type as object_material_type,
+        o.status as object_status,
+        ${COUT_IMPLANTATION} as cout_total,
         c.name as category_name, sc.name as subcategory_name
       FROM green_space_elements gse
       LEFT JOIN objects o ON o.id = gse.object_id
@@ -674,10 +739,15 @@ router.delete('/:id', authenticateToken, requireSupervisor, async (req: AuthRequ
 router.get('/:id/elements', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { search, element_type } = req.query;
+    // `o.purchase_price` renommé : sous son nom d'origine il écrasait le prix
+    // figé à la pose porté par `gse.*` (voir GET /:id).
     let sql = `
       SELECT gse.*, o.name as object_name, o.image as object_image,
-        o.reference, o.serial_number, o.purchase_price, o.purchase_date,
+        o.reference, o.serial_number, o.purchase_date,
+        o.purchase_price as object_purchase_price,
+        o.unit_cost as object_unit_cost, o.material_type as object_material_type,
         o.status as object_status, o.custom_fields as object_custom_fields,
+        ${COUT_IMPLANTATION} as cout_total,
         c.name as category_name, sc.name as subcategory_name
       FROM green_space_elements gse
       LEFT JOIN objects o ON o.id = gse.object_id
@@ -705,6 +775,24 @@ router.get('/:id/elements', authenticateToken, async (req: AuthRequest, res: Res
   }
 });
 
+/**
+ * GET /:id/couts — ce que cet espace a coûté, par groupe, type, variété, année.
+ *
+ * Le détail par groupe est celui qu'on regarde vraiment : une jardinière mêle
+ * trois variétés à trois prix, et son coût n'apparaît nulle part ailleurs.
+ */
+router.get('/:id/couts', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const space = await db.queryOne('SELECT id FROM green_spaces WHERE id = ?', [req.params.id]);
+    if (!space) {
+      return res.status(404).json({ success: false, message: 'Espace vert non trouvé' });
+    }
+    res.json({ success: true, data: await coutEspace(req.params.id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // POST /:id/elements - Ajouter un élément à un espace vert
 router.post('/:id/elements', authenticateToken, requireSupervisor,
   body('label').notEmpty().withMessage('Le libellé est requis'),
@@ -721,7 +809,7 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
 
       const {
         object_id, label, code, element_type, description, image,
-        pos_x, pos_y, quantity, purchase_price, maintenance_notes,
+        pos_x, pos_y, quantity, purchase_price, cost_source, maintenance_notes,
         species, planting_date, last_maintenance_date, next_maintenance_date,
         condition_state, custom_fields, area_m2, zone_points, latitude, longitude
       } = req.body;
@@ -730,15 +818,18 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
       const result = await db.execute(
         `INSERT INTO green_space_elements (green_space_id, object_id, label, code,
           element_type, description, image, pos_x, pos_y, quantity,
-          purchase_price, maintenance_notes, species, planting_date,
+          purchase_price, cost_source, maintenance_notes, species, planting_date,
           last_maintenance_date, next_maintenance_date, condition_state,
           custom_fields, area_m2, zone_points, latitude, longitude, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           req.params.id, object_id || null, label, code || '',
           element_type || 'autre', description || '', image || '',
           pos_x || null, pos_y || null, quantity || 1,
-          purchase_price || null, maintenance_notes || '',
+          // Prix unitaire, figé ici : c'est ce qu'on a payé, et rien de ce qui
+          // arrivera au tarif du parc ne doit le réécrire.
+          nombreOuNull(purchase_price), cost_source === 'parc' ? 'parc' : 'saisi',
+          maintenance_notes || '',
           species || '', planting_date || null,
           last_maintenance_date || null, next_maintenance_date || null,
           condition_state || 'bon',
@@ -767,6 +858,200 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
   }
 );
 
+/**
+ * POST /:id/implantations — poser du matériel du parc dans un espace vert.
+ *
+ * C'est l'entrée normale d'un élément dans un espace vert, et elle part
+ * toujours du parc : dix rosiers, trois bancs, une corbeille, choisis dans le
+ * catalogue et posés d'un coup, éventuellement tous dans la même jardinière.
+ * Chaque ligne devient un élément, parce que dix rosiers et trois bancs ne se
+ * remplacent pas, ne s'entretiennent pas et ne se chiffrent pas ensemble.
+ *
+ * **Le prix est figé ici et jamais recalculé.** Repris du parc au moment de la
+ * pose, ou saisi si la facture du pépiniériste disait autre chose. Ce que le
+ * parc vaudra demain ne changera rien à ce qui est écrit aujourd'hui : c'est ce
+ * qui permet de dire ce qu'un massif a réellement coûté, des années après.
+ *
+ * Une pose partielle vaut mieux qu'un refus global : les lignes acceptées sont
+ * enregistrées, les autres rendues avec leur motif. Refuser les quinze parce
+ * qu'une prestation s'est glissée dans la sélection obligerait à tout ressaisir.
+ */
+router.post('/:id/implantations', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const space = await db.queryOne('SELECT id FROM green_spaces WHERE id = ?', [req.params.id]);
+    if (!space) {
+      return res.status(404).json({ success: false, message: 'Espace vert non trouvé' });
+    }
+
+    const { lignes, group_id } = req.body;
+    if (!Array.isArray(lignes) || lignes.length === 0) {
+      return res.status(400).json({ success: false, message: 'Aucun matériel à implanter' });
+    }
+
+    const identifiants = lignes
+      .map((l: any) => Number(l.object_id))
+      .filter((n: number) => Number.isFinite(n));
+    if (identifiants.length === 0) {
+      return res.status(400).json({ success: false, message: 'Chaque ligne doit désigner un matériel du parc' });
+    }
+
+    // La portée s'applique ici comme partout ailleurs : on ne pose pas dans un
+    // espace vert du matériel qu'on n'a pas le droit de consulter.
+    const filtre = await filtreObjets(req, 'o');
+    if (filtre === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    const objets = await db.query(
+      `SELECT o.id, o.name, o.reference, o.image, o.description, o.purchase_price,
+              o.unit_cost, o.custom_fields,
+              ${expressionNature()} as nature
+       FROM objects o
+       ${jointuresPrestation()}
+       WHERE o.id IN (${identifiants.map(() => '?').join(', ')})${filtre.sql}`,
+      [...identifiants, ...filtre.params]
+    );
+    const parId = new Map(objets.map((o: any) => [Number(o.id), o]));
+
+    // Un groupe reçu doit appartenir à cet espace : un identifiant venu d'une
+    // autre fiche rattacherait la jardinière au mauvais parc. Les groupes sont
+    // vérifiés en une fois — les quinze lignes d'une pose désignent presque
+    // toujours la même jardinière, et une requête par ligne les revérifierait
+    // quinze fois.
+    const groupesDemandes = [group_id, ...lignes.map((l: any) => l.group_id)]
+      .map(Number)
+      .filter((n) => Number.isFinite(n) && n > 0);
+    const groupesValides = await groupesDeLEspace(groupesDemandes, req.params.id);
+    const groupeRetenu = (brut: any): number | null => {
+      const identifiant = Number(brut);
+      return groupesValides.has(identifiant) ? identifiant : null;
+    };
+
+    const groupeCommun = groupeRetenu(group_id);
+
+    const now = new Date().toISOString();
+    const crees: any[] = [];
+    const refuses: Array<{ object_id: any; motif: string }> = [];
+
+    for (const ligne of lignes) {
+      const objet = parId.get(Number(ligne.object_id));
+      if (!objet) {
+        refuses.push({ object_id: ligne.object_id, motif: REFUS_PORTEE });
+        continue;
+      }
+      // Une prestation — un raccordement électrique, une vacation d'agent — n'a
+      // ni quantité en terre ni emplacement : elle ne se plante pas.
+      if (objet.nature === 'prestation') {
+        refuses.push({ object_id: ligne.object_id, motif: `« ${objet.name} » est une prestation : elle ne s'implante pas` });
+        continue;
+      }
+
+      // Un exemplaire identifié est posé une fois : ce banc-là, pas trois.
+      const quantite = objet.nature === 'lot'
+        ? Math.max(1, Math.floor(Number(ligne.quantity) || 1))
+        : 1;
+
+      // Le prix figé : celui saisi, sinon celui du parc au moment de la pose.
+      // `cost_source` ne dit « saisi » que si le nombre s'écarte du parc — la
+      // fenêtre pré-remplit avec le tarif du parc, et renvoyer ce même tarif ne
+      // fait pas de la ligne un prix négocié.
+      const prixParc = prixUnitaireDuParc(objet);
+      const saisi = nombreOuNull(ligne.unit_price);
+      const prixUnitaire = saisi !== null ? saisi : prixParc;
+      const source = saisi !== null && saisi !== prixParc ? 'saisi' : 'parc';
+
+      const groupe = ligne.group_id !== undefined ? groupeRetenu(ligne.group_id) : groupeCommun;
+
+      const result = await db.execute(
+        `INSERT INTO green_space_elements (green_space_id, object_id, label, code,
+          element_type, description, image, quantity, purchase_price, cost_source,
+          species, planting_date, condition_state, group_id, custom_fields,
+          maintenance_notes, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          req.params.id, objet.id,
+          texte(ligne.label) || objet.name,
+          texte(ligne.code) || objet.reference || '',
+          ligne.element_type || 'autre',
+          ligne.description ?? '',
+          ligne.image || objet.image || '',
+          quantite,
+          prixUnitaire,
+          source,
+          ligne.species || especeDe(objet),
+          dateOuNull(ligne.planting_date),
+          ligne.condition_state || 'neuf',
+          groupe,
+          ligne.custom_fields ? JSON.stringify(ligne.custom_fields) : '{}',
+          '',
+          now, now,
+        ]
+      );
+
+      crees.push(await elementComplet(result.lastInsertRowid));
+    }
+
+    await logService.info(
+      'other',
+      `Implantation depuis le parc : ${crees.length} ligne(s) posée(s) dans l'espace vert ${req.params.id}`,
+      { userId: req.user!.userId }
+    );
+
+    res.status(201).json({ success: true, data: crees, refuses });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** L'espèce déclarée sur la fiche du parc, si elle y est. */
+function especeDe(objet: any): string {
+  try {
+    const champs = typeof objet.custom_fields === 'string'
+      ? JSON.parse(objet.custom_fields || '{}')
+      : (objet.custom_fields || {});
+    return champs.espece || champs.variete || champs.species || champs.espece_variete || '';
+  } catch {
+    return '';
+  }
+}
+
+/** Une chaîne propre, ou rien — ce qui arrive d'une API n'est pas toujours du texte. */
+function texte(valeur: unknown): string {
+  return typeof valeur === 'string' ? valeur.trim() : '';
+}
+
+/** Ceux de ces groupes qui appartiennent bien à cet espace vert. */
+async function groupesDeLEspace(
+  groupIds: number[],
+  greenSpaceId: string
+): Promise<Set<number>> {
+  const uniques = [...new Set(groupIds)];
+  if (uniques.length === 0) return new Set();
+
+  const lignes = await db.query(
+    `SELECT id FROM green_space_groups
+     WHERE green_space_id = ? AND id IN (${uniques.map(() => '?').join(', ')})`,
+    [greenSpaceId, ...uniques]
+  );
+  return new Set(lignes.map((l: any) => Number(l.id)));
+}
+
+/** Un élément tel que les écrans l'attendent, coût figé compris. */
+async function elementComplet(elementId: number | string): Promise<any> {
+  return db.queryOne(`
+    SELECT gse.*, o.name as object_name, o.image as object_image, o.reference,
+      o.purchase_price as object_purchase_price, o.unit_cost as object_unit_cost,
+      o.material_type as object_material_type,
+      ${COUT_IMPLANTATION} as cout_total,
+      c.name as category_name, sc.name as subcategory_name
+    FROM green_space_elements gse
+    LEFT JOIN objects o ON o.id = gse.object_id
+    LEFT JOIN categories c ON c.id = o.category_id
+    LEFT JOIN subcategories sc ON sc.id = o.subcategory_id
+    WHERE gse.id = ?
+  `, [elementId]);
+}
+
 // PUT /elements/:elementId - Modifier un élément
 router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
@@ -782,12 +1067,17 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
       condition_state, custom_fields, area_m2, zone_points, latitude, longitude
     } = req.body;
 
+    // Corriger un prix à la main, c'est dire que la facture ne disait pas ce
+    // que le parc affichait : la ligne cesse alors de se réclamer du parc.
+    const prixCorrige = purchase_price !== undefined
+      && nombreOuNull(purchase_price) !== (existing.purchase_price === null ? null : Number(existing.purchase_price));
+
     const now = new Date().toISOString();
     await db.execute(
       `UPDATE green_space_elements SET object_id = ?, label = ?, code = ?,
         element_type = ?, description = ?, image = ?,
         pos_x = ?, pos_y = ?, quantity = ?,
-        purchase_price = ?, maintenance_notes = ?,
+        purchase_price = ?, cost_source = ?, maintenance_notes = ?,
         species = ?, planting_date = ?,
         last_maintenance_date = ?, next_maintenance_date = ?,
         condition_state = ?, custom_fields = ?, area_m2 = ?, zone_points = ?,
@@ -798,7 +1088,9 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         code ?? existing.code, element_type ?? existing.element_type,
         description ?? existing.description, image ?? existing.image,
         pos_x ?? existing.pos_x, pos_y ?? existing.pos_y,
-        quantity ?? existing.quantity, purchase_price ?? existing.purchase_price,
+        quantity ?? existing.quantity,
+        purchase_price !== undefined ? nombreOuNull(purchase_price) : existing.purchase_price,
+        prixCorrige ? 'saisi' : (existing.cost_source || 'saisi'),
         maintenance_notes ?? existing.maintenance_notes,
         species ?? existing.species, planting_date ?? existing.planting_date,
         last_maintenance_date ?? existing.last_maintenance_date,
@@ -1026,6 +1318,88 @@ router.delete('/documents/:docId', authenticateToken, requireSupervisor, async (
 
 // ======================== RECHERCHE D'OBJETS DU PARC ========================
 
+/**
+ * GET /parc/catalogue — le matériel du parc qu'un espace vert peut recevoir.
+ *
+ * C'est la liste dans laquelle on puise pour garnir un massif : des **lots**
+ * — rosiers, bulbes, graminées, comptés à l'unité — et du **mobilier**, tenu à
+ * l'exemplaire ou en lot. Chaque ligne arrive avec ce qu'il faut pour décider :
+ * sa nature, son prix unitaire courant, ce que le parc en détient, et ce qui
+ * est **déjà implanté** ailleurs. Savoir que trente rosiers sont déjà en terre
+ * dans quatre espaces évite d'en recommander cent pour être tranquille.
+ *
+ * Les prestations sont écartées : un raccordement électrique ou une vacation
+ * d'agent ne se plante pas, et les proposer ferait chercher longtemps pourquoi
+ * la pose échoue.
+ *
+ * Sans recherche, la liste complète est rendue, ordonnée par catégorie : on
+ * choisit le plus souvent en parcourant « Fleurissement », pas en tapant un nom
+ * qu'on ne connaît pas encore.
+ */
+router.get('/parc/catalogue', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { q, category_id, nature } = req.query;
+
+    const filtre = await filtreObjets(req, 'o');
+    if (filtre === null) {
+      return res.json({ success: true, data: [] });
+    }
+
+    const conditions: string[] = [`${expressionNature()} != 'prestation'`];
+    const params: any[] = [];
+
+    if (q && String(q).trim() !== '') {
+      conditions.push('(o.name LIKE ? OR o.reference LIKE ?)');
+      params.push(`%${q}%`, `%${q}%`);
+    }
+    if (category_id) {
+      // La catégorie effective est la directe, ou celle de la sous-catégorie :
+      // un matériel rangé sous « Fleurissement › Rosiers » n'a pas toujours de
+      // catégorie propre, et le filtre le perdrait.
+      conditions.push('COALESCE(o.category_id, psc.category_id) = ?');
+      params.push(category_id);
+    }
+    if (nature === 'lot' || nature === 'unique') {
+      conditions.push(`${expressionNature()} = ?`);
+      params.push(nature);
+    }
+
+    const objets = await db.query(
+      `SELECT o.id, o.name, o.reference, o.image, o.description, o.status,
+              o.purchase_price, o.unit_cost, o.quantity_total, o.custom_fields,
+              ${expressionNature()} as nature,
+              COALESCE(o.category_id, psc.category_id) as category_id,
+              pc.name as category_name, psc.name as subcategory_name
+       FROM objects o
+       ${jointuresPrestation()}
+       WHERE ${conditions.join(' AND ')}${filtre.sql}
+       LIMIT 300`,
+      [...params, ...filtre.params]
+    );
+
+    const implantations = await implantationsParObjet(objets.map((o: any) => o.id));
+
+    const catalogue = objets
+      .map((objet: any) => ({
+        ...objet,
+        prix_unitaire: prixUnitaireDuParc(objet),
+        implante: implantations.get(Number(objet.id))?.quantite ?? 0,
+        implante_espaces: implantations.get(Number(objet.id))?.espaces ?? 0,
+      }))
+      // Tri fait ici et non en SQL : `ORDER BY name` compare des octets sous
+      // SQLite, et « Érable » se retrouverait après « Rosier ».
+      .sort(
+        (a: any, b: any) =>
+          (a.category_name || '').localeCompare(b.category_name || '', 'fr') ||
+          (a.name || '').localeCompare(b.name || '', 'fr')
+      );
+
+    res.json({ success: true, data: catalogue });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.get('/search/objects', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { q } = req.query;
@@ -1042,7 +1416,7 @@ router.get('/search/objects', authenticateToken, async (req: AuthRequest, res: R
 
     const objects = await db.query(`
       SELECT o.id, o.name, o.reference, o.image, o.purchase_price, o.purchase_date,
-        o.status, o.description, o.custom_fields,
+        o.unit_cost, o.material_type, o.status, o.description, o.custom_fields,
         c.name as category_name, sc.name as subcategory_name
       FROM objects o
       LEFT JOIN categories c ON c.id = o.category_id
