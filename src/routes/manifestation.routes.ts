@@ -13,6 +13,7 @@ import {
   ETATS_RETOUR,
   indisponibilites,
   objetsDe,
+  objetsDePlusieurs,
   parcAvecDisponibilite,
   remplacerObjets,
 } from '../services/manifestationObjets.service';
@@ -553,20 +554,31 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     const manifestations = await db.query(sql, params);
 
     // Matériaux de toutes les manifestations en une requête
-    const materiauxParManifestation = await grouperEnfants(
-      (marqueurs) => `
-        SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category, ms.is_prestation
-        FROM manifestation_materials mm
-        JOIN manifestation_stock ms ON ms.id = mm.stock_id
-        WHERE mm.manifestation_id IN (${marqueurs})
-      `,
-      manifestations.map((m: any) => m.id),
-      'manifestation_id'
-    );
+    const identifiants = manifestations.map((m: any) => m.id);
+
+    // Les deux natures de demande, jointes ensemble : la fiche et le formulaire
+    // de modification se nourrissent de cette liste. Rendre les quantités sans
+    // les exemplaires du parc leur faisait annoncer « aucun matériel demandé »
+    // sur une manifestation qui retenait un lot et une prestation — et
+    // réenregistrer le formulaire effaçait la demande.
+    const [materiauxParManifestation, objetsParManifestation] = await Promise.all([
+      grouperEnfants(
+        (marqueurs) => `
+          SELECT mm.*, ms.name as stock_name, ms.unit, ms.category as stock_category, ms.is_prestation
+          FROM manifestation_materials mm
+          JOIN manifestation_stock ms ON ms.id = mm.stock_id
+          WHERE mm.manifestation_id IN (${marqueurs})
+        `,
+        identifiants,
+        'manifestation_id'
+      ),
+      objetsDePlusieurs(identifiants),
+    ]);
 
     const enriched = manifestations.map((m: any) => ({
       ...m,
-      materials: enfantsDe(materiauxParManifestation, m.id)
+      materials: enfantsDe(materiauxParManifestation, m.id),
+      objects: enfantsDe(objetsParManifestation, m.id)
     }));
 
     res.json({ success: true, data: enriched });

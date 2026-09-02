@@ -140,22 +140,45 @@ export async function indisponibilites(
   return conflits;
 }
 
+/** Colonnes d'une ligne de `manifestation_items`, fiche du parc jointe. */
+const SELECTION_OBJETS = `
+  SELECT mi.*, o.name as object_name, o.reference, o.serial_number,
+         o.status as object_status, o.category_id, o.subcategory_id,
+         c.name as category_name,
+         o.quantity_total,
+         ${expressionPrestation()} as is_prestation,
+         ${expressionNature()} as nature
+  FROM manifestation_items mi
+  JOIN objects o ON o.id = mi.object_id
+  LEFT JOIN categories c ON c.id = o.category_id
+  ${jointuresDisponibilite()}
+`;
+
 /** Matériels du parc demandés par une manifestation, avec leur fiche. */
 export async function objetsDe(manifestationId: number | string): Promise<any[]> {
   return db.query(
-    `SELECT mi.*, o.name as object_name, o.reference, o.serial_number,
-            o.status as object_status, o.category_id, o.subcategory_id,
-            c.name as category_name,
-            o.quantity_total,
-            ${expressionPrestation()} as is_prestation,
-            ${expressionNature()} as nature
-     FROM manifestation_items mi
-     JOIN objects o ON o.id = mi.object_id
-     LEFT JOIN categories c ON c.id = o.category_id
-     ${jointuresDisponibilite()}
-     WHERE mi.manifestation_id = ?
-     ORDER BY o.name`,
+    `${SELECTION_OBJETS} WHERE mi.manifestation_id = ? ORDER BY o.name`,
     [manifestationId]
+  );
+}
+
+/**
+ * Les mêmes lignes, pour plusieurs manifestations d'un coup.
+ *
+ * La liste ne rendait que les quantités et laissait `objects` absent : la fiche
+ * annonçait « aucun matériel demandé » alors qu'un lot et une prestation
+ * étaient bien réservés, et le formulaire de modification rouvrait vide — donc
+ * réenregistrait vide, effaçant la demande. Une liste doit dire la même chose
+ * que le détail.
+ */
+export async function objetsDePlusieurs(
+  manifestationIds: Array<number | string>
+): Promise<Map<any, any[]>> {
+  return grouperEnfants(
+    (marqueursIds) =>
+      `${SELECTION_OBJETS} WHERE mi.manifestation_id IN (${marqueursIds}) ORDER BY o.name`,
+    manifestationIds,
+    'manifestation_id'
   );
 }
 

@@ -350,8 +350,11 @@ export default function ManifestationsPage() {
         unit_value: mat.unit_value, notes: mat.notes || '',
         stock_name: mat.stock_name, unit: mat.unit
       })) || [],
+      // La quantité fait partie de la demande : un lot de 50 chaises rouvert à
+      // 1 se réenregistrerait à 1.
       objects: m.objects?.map(o => ({
-        object_id: o.object_id, object_name: o.object_name, reference: o.reference, notes: o.notes
+        object_id: o.object_id, object_name: o.object_name, reference: o.reference,
+        notes: o.notes, quantity: o.quantity ?? 1
       })) || []
     })
     setShowManifModal(true)

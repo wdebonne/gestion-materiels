@@ -574,7 +574,7 @@ export interface ManifestationFormData {
   notes_exterior?: string
   materials?: Omit<ManifestationMaterial, 'id' | 'stock_name' | 'unit' | 'stock_category' | 'stock_total'>[]
   /** Matériels uniques demandés, par identifiant de fiche parc. */
-  objects?: Array<{ object_id: number; notes?: string | null }>
+  objects?: Array<{ object_id: number; notes?: string | null; quantity?: number }>
 }
 
 export interface StockFormData {
