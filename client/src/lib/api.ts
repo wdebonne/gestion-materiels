@@ -411,6 +411,75 @@ export interface ManifestationStockItem {
   updated_at: string
 }
 
+/** Un service réduit à ce qu'il faut pour l'afficher et le filtrer. */
+export interface ServiceBref {
+  id: number
+  name: string
+  slug: string
+}
+
+/**
+ * Une ligne du catalogue : ce que la collectivité peut prêter, d'où que ça vienne.
+ *
+ * Deux tables portent ce qu'on prête — le stock des manifestations pour les quantités anonymes,
+ * le parc pour les exemplaires, les lots et les prestations déclarées par branche. L'écran, lui,
+ * n'a pas à connaître cette frontière : `source` dit seulement d'où vient la ligne, pour savoir
+ * où aller la modifier.
+ */
+export interface ArticleCatalogue {
+  /** Référence stable et sans collision entre les deux tables : `stock:7`, `parc:12`. */
+  ref: string
+  source: 'stock' | 'parc'
+  id: number
+  name: string
+  category: string
+  category_id: number | null
+  unit: string
+  is_prestation: boolean
+  /** Une quantité anonyme, un exemplaire identifié, ou un acte : les trois se comptent autrement. */
+  nature: 'prestation' | 'lot' | 'unique'
+  /** `null` pour une prestation : elle ne se stocke pas. */
+  quantity_total: number | null
+  /** `null` veut dire « sans limite », et non « zéro ». */
+  quantity_available: number | null
+  /** Physiquement dehors sur la période. */
+  quantity_out: number
+  /** Promis sur la période sans être sorti. */
+  quantity_engaged: number
+  /** Services dont le périmètre couvre cet article ; vide s'il n'est rattaché à rien. */
+  services: ServiceBref[]
+}
+
+/** Où en est une ligne de sortie : partie, revenue, ou encore à partir. */
+export type EtatSortie = 'dehors' | 'rendu' | 'prevue'
+
+/**
+ * Un article dehors — ou qui va sortir — sur une manifestation donnée.
+ *
+ * Une ligne par article **et par manifestation** : cinquante chaises dehors en trois endroits
+ * sont trois déplacements, pas un.
+ */
+export interface LigneSortie {
+  ref: string
+  source: 'stock' | 'parc'
+  id: number
+  name: string
+  category: string
+  category_id: number | null
+  is_prestation: boolean
+  services: ServiceBref[]
+  manifestation_id: number
+  manifestation: string
+  status: string
+  debut: string
+  fin: string
+  quantite_demandee: number
+  quantite_sortie: number
+  quantite_rendue: number
+  quantite_dehors: number
+  etat: EtatSortie
+}
+
 /** Article demandé au-delà de ce qui restera disponible sur la période. */
 export interface ConflitStock {
   stock_id: number
@@ -591,6 +660,35 @@ export const manifestationApi = {
       `/manifestations/stock/availability${requete}`
     )
   },
+  // Catalogue : le stock et le parc réunis, ce que l'onglet « Stock matériel » montre
+  // réellement. `getStock` ne connaît que `manifestation_stock`, vide dans une collectivité qui
+  // tient tout son matériel prêtable dans le parc.
+  getCatalogue: (params?: { date_from?: string; date_to?: string; service?: string; kind?: string }) => {
+    const p = new URLSearchParams()
+    if (params?.date_from) p.append('date_from', params.date_from)
+    if (params?.date_to) p.append('date_to', params.date_to)
+    if (params?.service) p.append('service', params.service)
+    if (params?.kind) p.append('kind', params.kind)
+    const requete = p.toString() ? `?${p.toString()}` : ''
+    return api.get<{ success: boolean; data: ArticleCatalogue[]; periode?: { debut: string; fin: string } }>(
+      `/manifestations/catalogue${requete}`
+    )
+  },
+
+  // Sorties : où est le matériel, et ce qui part. Sans dates, le jour même.
+  getSorties: (params?: { date_from?: string; date_to?: string; service?: string; kind?: string; search?: string }) => {
+    const p = new URLSearchParams()
+    if (params?.date_from) p.append('date_from', params.date_from)
+    if (params?.date_to) p.append('date_to', params.date_to)
+    if (params?.service) p.append('service', params.service)
+    if (params?.kind) p.append('kind', params.kind)
+    if (params?.search) p.append('search', params.search)
+    const requete = p.toString() ? `?${p.toString()}` : ''
+    return api.get<{ success: boolean; data: LigneSortie[]; periode?: { debut: string; fin: string } }>(
+      `/manifestations/sorties${requete}`
+    )
+  },
+
   createStock: (data: StockFormData) =>
     api.post<{ success: boolean; data: ManifestationStockItem }>('/manifestations/stock', data),
   updateStock: (id: number, data: StockFormData) =>

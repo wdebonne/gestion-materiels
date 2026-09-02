@@ -156,6 +156,51 @@ export async function servicesPourObjetsDuParc(
   );
 }
 
+/** Un service réduit à ce qu'il faut pour l'afficher et le filtrer. */
+export interface ServiceBref {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+/**
+ * Quels services couvrent chaque catégorie du référentiel.
+ *
+ * La même règle que `servicesPourArticles`, prise cette fois en table : plutôt que d'interroger
+ * service par service, on rend l'annuaire une bonne fois, et l'appelant y lit le rattachement de
+ * chacune de ses lignes. C'est ce qui permet au catalogue de dire, sur chaque article, quel
+ * service le prête — et donc de n'offrir au filtre que les services qui prêtent réellement
+ * quelque chose : le service Véhicules n'a pas à figurer dans une liste où il n'a rien mis, alors
+ * que le service Technique doit y être pour sa seule prestation de raccordement électrique.
+ *
+ * `service_categories` est un annuaire d'organisation, pas un journal : quelques dizaines de
+ * lignes, que l'on charge entièrement plutôt que d'écrire un `IN (...)` de plus.
+ */
+export async function servicesParCategorie(): Promise<Map<number, ServiceBref[]>> {
+  const lignes = await db.query(
+    `SELECT sc.category_id, s.id, s.name, s.slug
+     FROM service_categories sc
+     JOIN services s ON s.id = sc.service_id
+     WHERE s.is_active = 1
+     ORDER BY s.name`
+  );
+
+  const parCategorie = new Map<number, ServiceBref[]>();
+  for (const ligne of lignes) {
+    const categorie = Number(ligne.category_id);
+    if (!Number.isFinite(categorie)) continue;
+    const service: ServiceBref = {
+      id: Number(ligne.id),
+      name: String(ligne.name ?? ''),
+      slug: String(ligne.slug ?? ''),
+    };
+    const deja = parCategorie.get(categorie);
+    if (deja) deja.push(service);
+    else parCategorie.set(categorie, [service]);
+  }
+  return parCategorie;
+}
+
 /** Services qui suivent toutes les manifestations sans rien avoir à approuver. */
 export async function servicesObservateurs(): Promise<any[]> {
   return db.query('SELECT * FROM services WHERE is_observer = 1 AND is_active = 1 ORDER BY name');
