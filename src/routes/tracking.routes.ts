@@ -75,6 +75,7 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
       fuel: [],
       maintenance: [],
       technicalControl: [],
+      greenSpace: [],
       summary: {
         totalFuelCost: 0,
         totalFuelQuantity: 0,
@@ -291,8 +292,12 @@ router.get('/data', authenticateToken, checkTrackingPermission, async (req: Auth
 
     // Récupérer les données d'entretien d'espaces verts
     if (filters.dataTypes?.includes('green_space')) {
+      // La colonne de `green_spaces` s'appelle `space_type`, pas `type` : la
+      // requête échouait donc systématiquement, et comme « Espaces verts » est
+      // coché par défaut côté client, toute la page Suivi des coûts répondait
+      // 500, carburant et entretiens compris.
       let gsQuery = `
-        SELECT gsm.*, gs.name as space_name, gs.type as space_type
+        SELECT gsm.*, gs.name as space_name, gs.space_type
         FROM green_space_maintenances gsm
         JOIN green_spaces gs ON gs.id = gsm.green_space_id
         WHERE 1=1
