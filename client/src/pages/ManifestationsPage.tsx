@@ -846,21 +846,27 @@ function ManifestationsTab({
   return (
     <div className="space-y-4">
       {/* Barre de recherche et filtres */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 relative">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        {/* `min-w-0` avec `flex-1` : sans lui, la liste déroulante voisine, large de tout son
+            contenu, prend la moitié de la barre et laisse au champ de recherche de quoi afficher
+            trois mots. */}
+        <div className="flex-1 min-w-0 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 focus:ring-2 focus:ring-primary-500"
+            className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 focus:ring-2 focus:ring-primary-500"
             placeholder="Rechercher une manifestation..."
             value={search} onChange={e => setSearch(e.target.value)}
           />
         </div>
-        <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          options={[
-            { value: '', label: 'Tous les statuts' },
-            ...Object.entries(statusLabels).filter(([k]) => k !== 'archived').map(([value, label]) => ({ value, label }))
-          ]} />
-        <Button variant="outline" size="sm" icon={<Filter className="w-4 h-4" />}
+        <div className="sm:w-56 sm:shrink-0">
+          <Select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
+            options={[
+              { value: '', label: 'Tous les statuts' },
+              ...Object.entries(statusLabels).filter(([k]) => k !== 'archived').map(([value, label]) => ({ value, label }))
+            ]} />
+        </div>
+        <Button variant="outline" icon={<Filter className="w-4 h-4" />}
+          className="sm:shrink-0"
           onClick={() => setShowFilters(!showFilters)}>
           Filtres
         </Button>
@@ -1259,14 +1265,14 @@ function StockTab({ isSupervisor, stockLegacy, onEdit, onDelete }: {
       </div>
 
       {/* Recherche et filtres */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="flex-1 relative">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="flex-1 min-w-0 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 focus:ring-2 focus:ring-primary-500"
+          <input className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 focus:ring-2 focus:ring-primary-500"
             placeholder={vue === 'sorties' ? 'Rechercher un article ou une manifestation...' : 'Rechercher un article...'}
             value={recherche} onChange={e => setRecherche(e.target.value)} />
         </div>
-        <div className="sm:w-56">
+        <div className="sm:w-56 sm:shrink-0">
           <Select value={nature} onChange={(e: any) => setNature(e.target.value)}
             options={[
               { value: '', label: 'Matériel et prestations' },
@@ -1274,7 +1280,7 @@ function StockTab({ isSupervisor, stockLegacy, onEdit, onDelete }: {
               { value: 'prestation', label: 'Prestations seulement' },
             ]} />
         </div>
-        <div className="sm:w-56">
+        <div className="sm:w-56 sm:shrink-0">
           <Select value={service} onChange={(e: any) => setService(e.target.value)}
             options={[
               { value: '', label: 'Tous les services' },
