@@ -184,6 +184,9 @@ passage la permission de renommer le véhicule.
 - ↕️ **Tri sur chaque colonne** : nom, origine, catégorie, service, total, dehors, promis, disponible — et sur les sorties, la manifestation, la période et l'état. Les nombres se trient en nombres, les mots dans l'ordre alphabétique français
 
 ### 🌳 Espaces Verts (Nouveau!)
+- 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
+- 💶 **Prix figé à la pose** : repris du parc ou corrigé selon la facture. Mettre à jour un tarif ne réévalue **jamais** ce qui a déjà été planté — c'est ce qui permet de dire ce qu'un massif a réellement coûté, des années après
+- 📊 **Coûts par groupe, variété, type et année** : ce qu'a coûté *cette* jardinière, ce que pèsent les rosiers tous massifs confondus, ce qu'a coûté le fleurissement d'une saison. Et sur l'ensemble des espaces, un total **par nature de lieu** — ronds-points, allées, parcs. Les lignes sans prix sont comptées à part, jamais chiffrées à zéro
 - 🗺️ **Plan interactif** : Upload du plan, placement de repères par clic avec drag & drop, popup persistant, labels visibles
 - 🌿 **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec état de santé et fiche détaillée
 - 📐 **Zones polygonales** : Dessin de zones par clics successifs avec couleur et opacité
@@ -827,9 +830,17 @@ PUT    /api/green-spaces/:id          # Modifier un espace vert
 DELETE /api/green-spaces/:id          # Supprimer un espace vert
 
 # Éléments
-POST   /api/green-spaces/:id/elements      # Ajouter un élément
+POST   /api/green-spaces/:id/elements      # Ajouter un élément libre (hors parc)
 PUT    /api/green-spaces/elements/:eid     # Modifier un élément
 DELETE /api/green-spaces/elements/:eid     # Supprimer un élément
+
+# Implantation depuis le parc
+GET    /api/green-spaces/parc/catalogue    # Matériel implantable (lots et exemplaires, prix unitaire, déjà implanté)
+POST   /api/green-spaces/:id/implantations # Poser plusieurs matériels d'un coup, prix figé à la pose
+
+# Coûts
+GET    /api/green-spaces/couts             # Synthèse : par espace, par nature de lieu, par variété, par année
+GET    /api/green-spaces/:id/couts         # Détail d'un espace : par groupe, type, variété, année
 
 # Annotations
 POST   /api/green-spaces/:id/annotations   # Ajouter une annotation

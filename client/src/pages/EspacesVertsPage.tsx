@@ -6,7 +6,7 @@ import {
   Download, Image, Tag, Ruler, CloudSun,
   Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
   Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight,
-  Navigation, Globe, Hash, Leaf, Euro, RefreshCw
+  Navigation, Globe, Hash, Leaf, Euro, RefreshCw, Package
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -18,6 +18,8 @@ import LocationPicker from '@/components/ui/LocationPicker'
 import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/ui'
 import HelpSheet from '@/components/HelpSheet'
+import ImplantationDepuisParc from '@/components/ImplantationDepuisParc'
+import { ELEMENT_TYPES, CONDITION_STATES, typeElement, euros } from '@/lib/espacesVerts'
 
 /** Normalise un chemin d'image : évite le doublon /uploads//uploads/... */
 /**
@@ -82,8 +84,16 @@ interface GreenSpaceElement {
   next_maintenance_date: string | null
   condition_state: string
   custom_fields: string
+  /** D'où vient le prix figé : repris du parc à la pose, ou saisi à la main. */
+  cost_source?: 'parc' | 'saisi'
+  /** Quantité × prix figé, calculé par le serveur pour que tous lisent pareil. */
+  cout_total?: number
   object_name?: string
   object_image?: string
+  /** Prix courant du parc — ce que coûterait un rachat, jamais le coût passé. */
+  object_purchase_price?: number | null
+  object_unit_cost?: number | null
+  object_material_type?: string | null
   category_name?: string
   subcategory_name?: string
   reference?: string
@@ -187,34 +197,9 @@ const SPACE_TYPES = [
   { value: 'autre', label: 'Autre', icon: '📍' },
 ]
 
-const ELEMENT_TYPES = [
-  { value: 'arbre', label: 'Arbre', icon: '🌳', color: '#16a34a' },
-  { value: 'arbuste', label: 'Arbuste', icon: '🌿', color: '#22c55e' },
-  { value: 'fleur', label: 'Massif floral', icon: '🌺', color: '#ec4899' },
-  { value: 'pelouse', label: 'Pelouse', icon: '🟢', color: '#86efac' },
-  { value: 'haie', label: 'Haie', icon: '🌲', color: '#15803d' },
-  { value: 'mobilier_urbain', label: 'Mobilier urbain', icon: '🪑', color: '#78716c' },
-  { value: 'banc', label: 'Banc', icon: '🪑', color: '#a16207' },
-  { value: 'poubelle', label: 'Poubelle / Corbeille', icon: '🗑️', color: '#6b7280' },
-  { value: 'bac_fleurs', label: 'Bac à fleurs', icon: '🌷', color: '#f472b6' },
-  { value: 'eclairage', label: 'Éclairage', icon: '💡', color: '#eab308' },
-  { value: 'fontaine', label: 'Fontaine / Bassin', icon: '⛲', color: '#3b82f6' },
-  { value: 'cloture', label: 'Clôture / Barrière', icon: '🚧', color: '#d97706' },
-  { value: 'jeux', label: 'Jeux enfants', icon: '🎠', color: '#8b5cf6' },
-  { value: 'allee', label: 'Allée / Chemin', icon: '🛤️', color: '#a3a3a3' },
-  { value: 'panneau', label: 'Panneau / Signalétique', icon: '🪧', color: '#0ea5e9' },
-  { value: 'arrosage', label: 'Système d\'arrosage', icon: '💧', color: '#06b6d4' },
-  { value: 'statue', label: 'Statue / Œuvre d\'art', icon: '🗿', color: '#737373' },
-  { value: 'autre', label: 'Autre', icon: '📌', color: '#6b7280' },
-]
-
-const CONDITION_STATES = [
-  { value: 'neuf', label: 'Neuf', color: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' },
-  { value: 'bon', label: 'Bon état', color: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' },
-  { value: 'moyen', label: 'Moyen', color: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200' },
-  { value: 'mauvais', label: 'Mauvais', color: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200' },
-  { value: 'remplacer', label: 'À remplacer', color: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' },
-]
+// ELEMENT_TYPES et CONDITION_STATES vivent dans `@/lib/espacesVerts` : la
+// fenêtre d'implantation depuis le parc les partage, et deux listes recopiées
+// finiraient par ne plus décrire les mêmes éléments.
 
 const SEASONS_LIST = [
   { value: 'printemps', label: 'Printemps', icon: '🌸', color: 'bg-pink-50 border-pink-200 dark:bg-pink-950 dark:border-pink-800' },
@@ -253,7 +238,7 @@ export default function EspacesVertsPage() {
   const [selectedSpace, setSelectedSpace] = useState<GreenSpace | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingSpace, setEditingSpace] = useState<GreenSpace | null>(null)
-  const [activeTab, setActiveTab] = useState<'elements' | 'plan' | 'saisons' | 'documents' | 'carte' | 'entretien'>('elements')
+  const [activeTab, setActiveTab] = useState<'elements' | 'couts' | 'plan' | 'saisons' | 'documents' | 'carte' | 'entretien'>('elements')
   const [expanded, setExpanded] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
 
@@ -363,7 +348,7 @@ export default function EspacesVertsPage() {
 
       {/* Statistiques */}
       {stats && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
             <div className="flex items-center gap-3">
               <div className="h-11 w-11 flex items-center justify-center bg-green-100 dark:bg-green-900 rounded-lg">
@@ -398,6 +383,29 @@ export default function EspacesVertsPage() {
                     : `${stats.totalSuperficie.toLocaleString()} m²`}
                 </p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">Superficie totale</p>
+              </div>
+            </div>
+          </div>
+          {/* Ce qui a été dépensé, au prix figé à la pose — jamais réévalué par
+              le tarif du jour. Les lignes sans prix sont annoncées à côté du
+              total : un montant seul se lirait comme complet. */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl p-4 border border-gray-200 dark:border-gray-700">
+            <div className="flex items-center gap-3">
+              <div className="h-11 w-11 flex items-center justify-center bg-amber-100 dark:bg-amber-900 rounded-lg">
+                <Euro className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {euros(stats.coutTotal || 0)}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  Coût implanté
+                  {stats.coutSansPrix > 0 && (
+                    <span className="text-orange-600 dark:text-orange-400">
+                      {' '}• {stats.coutSansPrix} sans prix
+                    </span>
+                  )}
+                </p>
               </div>
             </div>
           </div>
@@ -631,6 +639,7 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
         <div className="flex overflow-x-auto">
           {[
             { key: 'elements', label: 'Éléments', icon: Tag, count: space.elements?.length },
+            { key: 'couts', label: 'Coûts', icon: Euro },
             { key: 'plan', label: 'Plan annoté', icon: Move },
             { key: 'carte', label: 'Carte', icon: MapPin },
             { key: 'saisons', label: 'Saisons', icon: CloudSun, count: space.seasons?.length },
@@ -663,6 +672,9 @@ function SpaceDetailView({ space, activeTab, setActiveTab, onEdit, onDelete, que
       <div className="p-5">
         {activeTab === 'elements' && (
           <ElementsTab space={space} queryClient={queryClient} />
+        )}
+        {activeTab === 'couts' && (
+          <CoutsTab space={space} />
         )}
         {activeTab === 'plan' && (
           <PlanAnnotationTab space={space} queryClient={queryClient} />
@@ -703,6 +715,7 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
   const [historyElement, setHistoryElement] = useState<GreenSpaceElement | null>(null)
   const [searchElements, setSearchElements] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
+  const [showImplantation, setShowImplantation] = useState(false)
 
   const elements = (space.elements || []).filter(el => {
     const matchSearch = !searchElements ||
@@ -755,12 +768,25 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
             ))}
           </select>
         </div>
-        <button
-          onClick={() => { setEditingElement(null); setShowForm(true) }}
-          className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 min-h-[44px]"
-        >
-          <Plus className="h-4 w-4" /> Ajouter
-        </button>
+        {/* Deux entrées, et une seule est la bonne dans presque tous les cas :
+            ce qu'on plante ou qu'on installe a été acheté, donc il est au parc,
+            avec sa référence et son prix. L'élément libre reste pour ce qui n'a
+            jamais été acheté — un chêne centenaire, un talus. */}
+        <div className="flex gap-2">
+          <button
+            onClick={() => setShowImplantation(true)}
+            className="flex items-center gap-1.5 px-3 py-2 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 min-h-[44px]"
+          >
+            <Package className="h-4 w-4" /> Implanter depuis le parc
+          </button>
+          <button
+            onClick={() => { setEditingElement(null); setShowForm(true) }}
+            title="Pour ce qui n'a jamais été acheté et n'est donc pas au parc"
+            className="flex items-center gap-1.5 px-3 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 text-sm rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 min-h-[44px]"
+          >
+            <Plus className="h-4 w-4" /> Élément libre
+          </button>
+        </div>
       </div>
 
       {elements.length === 0 ? (
@@ -810,7 +836,19 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                             </span>
                           )}
                           {el.quantity > 1 && <span className="text-xs text-gray-600">×{el.quantity}</span>}
-                          {el.purchase_price && <span className="text-xs text-gray-600">{el.purchase_price}€</span>}
+                          {/* Le prix affiché est celui figé à la pose, jamais
+                              le tarif du jour : c'est la dépense, pas la valeur
+                              de remplacement. */}
+                          {el.purchase_price ? (
+                            <span className="text-xs text-gray-600 dark:text-gray-300">
+                              {euros(el.quantity > 1 ? el.quantity * el.purchase_price : el.purchase_price)}
+                              {el.quantity > 1 && (
+                                <span className="text-gray-500"> ({euros(el.purchase_price)}/u)</span>
+                              )}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-orange-600 dark:text-orange-400">Sans prix</span>
+                          )}
                         </div>
                       </div>
                       <div className="flex gap-1">
@@ -893,6 +931,21 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
         />
       )}
 
+      {/* Implantation depuis le parc : l'entrée normale du matériel */}
+      {showImplantation && (
+        <ImplantationDepuisParc
+          spaceId={space.id}
+          groups={space.groups || []}
+          onClose={() => setShowImplantation(false)}
+          onSaved={() => {
+            setShowImplantation(false)
+            queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+            queryClient.invalidateQueries({ queryKey: ['green-space-couts', space.id] })
+            queryClient.invalidateQueries({ queryKey: ['green-spaces-stats'] })
+          }}
+        />
+      )}
+
       {/* Modal de remplacement d'élément */}
       {replacingElement && (
         <ReplaceElementModal
@@ -917,6 +970,130 @@ function ElementsTab({ space, queryClient }: { space: GreenSpace, queryClient: a
   )
 }
 
+// ======================== COÛTS ========================
+
+/**
+ * Ce que cet espace a coûté, sous ses quatre angles.
+ *
+ * Un total par espace ne suffit pas : on veut savoir ce qu'a coûté *cette*
+ * jardinière, qui mêle trois variétés à trois prix, ce que pèsent les rosiers
+ * tous massifs confondus, et ce qu'a coûté le fleurissement de l'année. Ce sont
+ * quatre questions différentes posées au même chiffre.
+ *
+ * Les montants sont ceux **figés à la pose**. Mettre à jour un tarif au parc ne
+ * les touche pas : c'est ce qui permet de comparer deux saisons.
+ */
+function CoutsTab({ space }: { space: GreenSpace }) {
+  const { data: couts, isLoading } = useQuery({
+    queryKey: ['green-space-couts', space.id],
+    queryFn: () => api.get(`/green-spaces/${space.id}/couts`).then(r => r.data.data)
+  })
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center py-12">
+        <div className="animate-spin h-8 w-8 border-2 border-green-600 border-t-transparent rounded-full" />
+      </div>
+    )
+  }
+
+  if (!couts || couts.lignes === 0) {
+    return (
+      <div className="text-center py-10 text-gray-500 dark:text-gray-400">
+        <Euro className="h-10 w-10 mx-auto mb-2 opacity-50" />
+        <p className="text-sm">Rien d'implanté dans cet espace</p>
+        <p className="text-xs mt-1">
+          Le coût se construit en implantant du matériel du parc, avec son prix du moment.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="p-4 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{euros(couts.total)}</p>
+          <p className="text-xs text-gray-600 dark:text-gray-400">Coût total implanté</p>
+        </div>
+        <div className="p-4 rounded-xl bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600">
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{couts.quantite}</p>
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            Unités posées, sur {couts.lignes} ligne{couts.lignes > 1 ? 's' : ''}
+          </p>
+        </div>
+        {/* Le nombre de lignes sans prix accompagne toujours le total : sans
+            lui, un montant partiel se lirait comme un budget complet. */}
+        <div className={`p-4 rounded-xl border ${couts.sans_prix > 0
+          ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
+          : 'bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600'}`}>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{couts.sans_prix}</p>
+          <p className="text-xs text-gray-600 dark:text-gray-400">
+            {couts.sans_prix > 0 ? 'Lignes sans prix, hors du total' : 'Tout est chiffré'}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <AxeCout titre="Par groupe" aide="Une jardinière, un massif : ce qu'il a coûté en entier" lignes={couts.par_groupe} total={couts.total} />
+        <AxeCout titre="Par variété" aide="Le même matériel du parc, toutes poses confondues" lignes={couts.par_variete} total={couts.total} />
+        <AxeCout
+          titre="Par type"
+          lignes={(couts.par_type || []).map((l: any) => ({
+            ...l,
+            libelle: `${typeElement(l.cle).icon} ${typeElement(l.cle).label}`,
+          }))}
+          total={couts.total}
+        />
+        <AxeCout titre="Par année de pose" aide="Le fleurissement d'une saison, comparable à la suivante" lignes={couts.par_annee} total={couts.total} />
+      </div>
+    </div>
+  )
+}
+
+/** Un axe d'analyse, du plus cher au moins cher, avec sa part en barre. */
+function AxeCout({ titre, aide, lignes, total }: {
+  titre: string
+  aide?: string
+  lignes: Array<{ cle: any, libelle: string, quantite: number, cout: number, sans_prix: number }>
+  total: number
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+      <div className="px-4 py-2.5 bg-gray-50 dark:bg-gray-700/50 border-b border-gray-200 dark:border-gray-700">
+        <h4 className="text-sm font-semibold text-gray-900 dark:text-white">{titre}</h4>
+        {aide && <p className="text-xs text-gray-500 dark:text-gray-400">{aide}</p>}
+      </div>
+      <div className="divide-y divide-gray-100 dark:divide-gray-700">
+        {lignes.map((ligne, index) => (
+          <div key={`${ligne.cle ?? 'sans'}-${index}`} className="px-4 py-2.5">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-sm text-gray-900 dark:text-white truncate">{ligne.libelle}</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white whitespace-nowrap">
+                {euros(ligne.cout)}
+              </span>
+            </div>
+            <div className="mt-1 flex items-center gap-2">
+              <div className="flex-1 h-1.5 rounded-full bg-gray-100 dark:bg-gray-700 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-green-500"
+                  style={{ width: `${total > 0 ? Math.round((ligne.cout / total) * 100) : 0}%` }}
+                />
+              </div>
+              <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                {ligne.quantite} u.
+                {ligne.sans_prix > 0 && (
+                  <span className="text-orange-600 dark:text-orange-400"> • {ligne.sans_prix} sans prix</span>
+                )}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ======================== GROUPES DE COMPOSITION ========================
 
 function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
@@ -927,6 +1104,8 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   const [assigningGroup, setAssigningGroup] = useState<CompositionGroup | null>(null)
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([])
   const [showGroupTypeSettings, setShowGroupTypeSettings] = useState(false)
+  /** Groupe dans lequel on est en train d'implanter du matériel du parc. */
+  const [implantationGroupe, setImplantationGroupe] = useState<number | null>(null)
 
   // Types de groupes dynamiques depuis la BDD
   const { data: dynamicGroupTypes = [] } = useQuery({
@@ -1081,6 +1260,13 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
         const typeInfo = activeGroupTypes.find((t: any) => t.value === g.group_type) || GROUP_TYPES.find(t => t.value === g.group_type)
         const groupElements = elements.filter(el => el.group_id === g.id)
         const isExpanded = expandedGroups.has(g.id)
+        // Ce que cette jardinière a coûté : c'est la question qui justifie le
+        // groupe, puisqu'elle mêle des variétés à des prix différents. Le calcul
+        // reprend celui du serveur — quantité × prix figé.
+        const coutGroupe = groupElements.reduce(
+          (somme, el) => somme + (el.quantity || 1) * (el.purchase_price || 0),
+          0
+        )
         return (
           <div key={g.id} className="rounded-lg border border-gray-200 dark:border-gray-600 overflow-hidden">
             <div
@@ -1094,11 +1280,15 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                 <span className="text-sm font-medium text-gray-900 dark:text-white">{g.name}</span>
                 <span className="ml-2 text-xs text-gray-500">
                   {typeInfo?.label} • {groupElements.length} élément{groupElements.length > 1 ? 's' : ''}
+                  {coutGroupe > 0 ? ` • ${euros(coutGroupe)}` : ''}
                   {g.area_m2 ? ` • ${g.area_m2} m²` : ''}
                   {g.pos_x != null ? ' • 📍 Placé' : ''}
                 </span>
               </div>
               <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                <button onClick={() => setImplantationGroupe(g.id)} className="p-1 text-gray-600 hover:text-green-600 touch-target" title="Implanter du matériel du parc ici" aria-label="Implanter du matériel du parc ici">
+                  <Package className="h-3.5 w-3.5" />
+                </button>
                 <button onClick={() => openAssign(g)} className="p-1 text-gray-600 hover:text-purple-600 touch-target" title="Gérer les éléments" aria-label="Gérer les éléments">
                   <Tag className="h-3.5 w-3.5" />
                 </button>
@@ -1120,7 +1310,10 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
               <div className="p-3 space-y-1 border-t border-gray-200 dark:border-gray-600">
                 {g.description && <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{g.description}</p>}
                 {groupElements.length === 0 ? (
-                  <p className="text-xs text-gray-600 italic">Aucun élément dans ce groupe. Cliquez sur <Tag className="h-3 w-3 inline" /> pour en assigner.</p>
+                  <p className="text-xs text-gray-600 italic">
+                    Aucun élément dans ce groupe. Cliquez sur <Package className="h-3 w-3 inline" /> pour y implanter
+                    du matériel du parc, ou sur <Tag className="h-3 w-3 inline" /> pour y ranger des éléments existants.
+                  </p>
                 ) : (
                   groupElements.map(el => {
                     const elType = ELEMENT_TYPES.find(t => t.value === el.element_type)
@@ -1130,6 +1323,10 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                         <span className="text-gray-900 dark:text-white truncate">{el.label}</span>
                         {el.species && <span className="text-xs text-gray-600 italic truncate">{el.species}</span>}
                         {el.code && <span className="text-xs font-mono text-gray-600">{el.code}</span>}
+                        <span className="ml-auto text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                          {el.quantity > 1 ? `${el.quantity} × ` : ''}
+                          {el.purchase_price ? euros(el.purchase_price) : '— €'}
+                        </span>
                       </div>
                     )
                   })
@@ -1284,6 +1481,23 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
         </div>
       )}
       {showGroupTypeSettings && <GroupTypesSettingsModal onClose={() => setShowGroupTypeSettings(false)} />}
+
+      {/* Implanter directement dans une jardinière : c'est là qu'on mélange
+          plusieurs variétés, et c'est là qu'on veut lire leur coût commun. */}
+      {implantationGroupe !== null && (
+        <ImplantationDepuisParc
+          spaceId={space.id}
+          groups={groups}
+          groupeInitial={implantationGroupe}
+          onClose={() => setImplantationGroupe(null)}
+          onSaved={() => {
+            setImplantationGroupe(null)
+            queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+            queryClient.invalidateQueries({ queryKey: ['green-space-couts', space.id] })
+            queryClient.invalidateQueries({ queryKey: ['green-spaces-stats'] })
+          }}
+        />
+      )}
     </div>
   )
 }
@@ -4421,9 +4635,24 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace
               </div>
             )}
             {element.purchase_price && (
+              // Le prix figé à la pose, et le total qu'il fait. Le tarif actuel
+              // du parc n'apparaît pas ici : il dirait ce que coûterait un
+              // rachat, pas ce que celui-ci a coûté.
               <div>
-                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">Prix d'achat</span>
-                <p className="text-sm text-gray-900 dark:text-white">{element.purchase_price} €</p>
+                <span className="text-xs font-medium text-gray-500 dark:text-gray-400">
+                  Coût à la pose
+                </span>
+                <p className="text-sm text-gray-900 dark:text-white">
+                  {euros(element.quantity > 1 ? element.quantity * element.purchase_price : element.purchase_price)}
+                  {element.quantity > 1 && (
+                    <span className="text-gray-500 dark:text-gray-400">
+                      {' '}({element.quantity} × {euros(element.purchase_price)})
+                    </span>
+                  )}
+                </p>
+                {element.cost_source === 'parc' && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Prix repris du parc</p>
+                )}
               </div>
             )}
             {element.planting_date && (
@@ -4526,6 +4755,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
     pos_y: element?.pos_y?.toString() || '',
     quantity: element?.quantity?.toString() || '1',
     purchase_price: element?.purchase_price?.toString() || '',
+    cost_source: element?.cost_source || 'saisi',
     maintenance_notes: element?.maintenance_notes || '',
     species: element?.species || '',
     planting_date: element?.planting_date || '',
@@ -4719,7 +4949,15 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                         const customFields = obj.custom_fields ? (typeof obj.custom_fields === 'string' ? JSON.parse(obj.custom_fields) : obj.custom_fields) : {}
                         const updates: any = { object_id: obj.id.toString() }
                         if (obj.image && !form.image) updates.image = obj.image
-                        if (obj.purchase_price && !form.purchase_price) updates.purchase_price = obj.purchase_price.toString()
+                        // Même règle que le serveur : `unit_cost` est le prix
+                        // d'**une** unité, `purchase_price` ce qu'a coûté la
+                        // fiche — la facture entière, sur un lot. Les confondre
+                        // multiplierait par la quantité un montant déjà total.
+                        const prixUnitaire = Number(obj.unit_cost) > 0 ? Number(obj.unit_cost) : Number(obj.purchase_price) || 0
+                        if (prixUnitaire > 0 && !form.purchase_price) {
+                          updates.purchase_price = String(prixUnitaire)
+                          updates.cost_source = 'parc'
+                        }
                         if (obj.description && !form.description) updates.description = obj.description
                         if (obj.purchase_date && !form.planting_date) updates.planting_date = obj.purchase_date
                         if (obj.status && form.condition_state === 'bon') {
@@ -4803,7 +5041,7 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Prix d'achat (€)</label>
+                <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Prix unitaire (€)</label>
                 <div className="relative">
                   <Euro className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-600" />
                   <input
@@ -4815,6 +5053,15 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
                     className="w-full pl-8 pr-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-colors"
                   />
                 </div>
+                {/* Le prix d'**une** unité, figé ici une fois pour toutes : le
+                    coût de la ligne est ce prix multiplié par la quantité, et
+                    aucune mise à jour du parc ne le réécrira. */}
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Prix d'une unité, figé à la pose.
+                  {parseFloat(form.purchase_price) > 0 && (parseInt(form.quantity) || 1) > 1 && (
+                    <> Coût de la ligne : {euros((parseInt(form.quantity) || 1) * parseFloat(form.purchase_price))}</>
+                  )}
+                </p>
               </div>
             </div>
           </div>

@@ -7,6 +7,38 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Espaces verts — on garnit depuis le parc, et le coût ne bouge plus
+
+> Les éléments d'un espace vert se saisissaient à la main dans une fenêtre qui ignorait le parc : on retapait « Rosier Pierre de Ronsard », son espèce, son image et son prix, alors que tout cela était déjà sur sa fiche. Deux saisies pour une chose, et la seconde ne ressemblait jamais tout à fait à la première : « rosier », « Rosier PdR » et « rosiers rouges » devenaient trois lignes, donc trois coûts, et plus aucun total ne voulait dire quoi que ce soit.
+
+#### Ajouté
+
+- **Implanter depuis le parc**, l'entrée normale du matériel dans un espace vert. On choisit dans le catalogue — des **lots** (rosiers, bulbes, graminées, comptés à l'unité) et du **mobilier** tenu à l'exemplaire ou en lot —, on dit combien, et on pose. Chaque ligne devient un élément, parce que dix rosiers et trois bancs ne se remplacent pas, ne s'entretiennent pas et ne se chiffrent pas ensemble
+  - Le **prix est figé à la pose**, repris du parc ou corrigé si la facture du pépiniériste disait autre chose. Le tarif du parc montera l'an prochain — il le doit, c'est le prix auquel on rachètera — sans rien changer à ce que ce massif-ci a coûté
+  - Le type d'élément est **deviné** de la branche du parc : trente lignes à choisir « Massif floral » dans une liste de dix-huit entrées, personne ne le fait, et tout finit en « Autre ». La proposition reste modifiable ligne à ligne
+  - Une **jardinière se crée au moment où l'on plante**, sans passer par un autre écran : plusieurs variétés à plusieurs prix se posent en une fois, dans le même groupe
+  - Le catalogue dit ce qu'il faut pour décider : nature, prix unitaire, quantité au parc, et **ce qui est déjà implanté** ailleurs — savoir que trente rosiers sont en terre dans quatre espaces évite d'en commander cent pour être tranquille
+  - Une pose partielle est enregistrée : les lignes refusées — une prestation glissée dans la sélection, un matériel hors de portée — sont rendues avec leur motif plutôt que d'annuler les quinze autres
+- **Onglet « Coûts » sur chaque espace vert**, qui répond à quatre questions et non à une :
+  - **par groupe** — ce qu'a coûté *cette* jardinière, celle qui mêle trois variétés à trois prix
+  - **par variété** — ce que pèsent les rosiers, tous massifs confondus
+  - **par type** — arbres, mobilier, massifs
+  - **par année de pose** — le fleurissement d'une saison, comparable à la suivante
+- **`GET /api/green-spaces/couts`** : la même lecture sur l'ensemble des espaces, avec un total **par nature de lieu** — les ronds-points, les allées, les parcs —, filtrable par type et par statut. Le coût par rue se lit sans additionner les fiches à la main
+- **Coût implanté sur la vignette de chaque groupe** et sur le bandeau de statistiques, avec le **nombre de lignes sans prix** juste à côté : un montant seul se lirait comme complet alors qu'il ne l'est pas, et c'est ainsi qu'on présente un budget faux
+- **`GET /api/green-spaces/parc/catalogue`** et **`POST /api/green-spaces/:id/implantations`**, l'une et l'autre soumises à la portée par catégorie comme le reste du parc
+
+#### Corrigé
+
+- **Le prix figé d'un élément n'arrivait jamais à l'écran.** La requête sélectionnait `gse.*` puis `o.purchase_price` sous le même nom, et c'est la seconde qui gagne : le prix courant du parc s'affichait partout à la place de celui payé, si bien que mettre à jour un tarif **réévaluait rétroactivement** le coût de tous les massifs déjà plantés. Le prix du parc est désormais rendu à part (`object_purchase_price`), et ne peut plus écraser la dépense
+- **Le prix repris du parc pouvait être celui de la facture entière.** `unit_cost` est le prix d'**une** unité — 2,50 € le rosier — quand `purchase_price` est ce qu'a coûté la fiche, parfois les cent rosiers d'un coup. Les confondre multipliait par la quantité un montant déjà total. La règle est écrite une fois et suivie partout : le prix unitaire d'abord, le prix d'achat ensuite, et **rien** plutôt qu'un zéro qui se lirait comme la gratuité
+
+#### Modifié
+
+- Le bouton « Ajouter » de l'onglet Éléments devient **« Implanter depuis le parc »**. La création manuelle reste, sous « Élément libre », pour ce qui n'a jamais été acheté et n'a donc rien à faire au parc : un chêne centenaire, un talus
+- Le champ « Prix d'achat » de la fiche d'un élément s'intitule **« Prix unitaire »** et annonce le coût de la ligne : le nombre saisi n'a jamais été un total, et rien ne le disait
+
+
 ### Saisies impossibles sur MySQL, et listes déroulantes illisibles
 
 > Deux pannes rencontrées sur l'instance de production, invisibles en développement : ajouter un entretien répondait « Erreur serveur », et les listes de choix perdaient les premières lettres de chaque option.
