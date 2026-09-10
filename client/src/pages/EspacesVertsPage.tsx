@@ -2780,7 +2780,20 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
                           </span>
                         )}
                       </p>
-                      {doc.file_path && <p className="text-xs text-blue-500 mt-0.5">{doc.file_path.split('/').pop()}</p>}
+                      {/* Le nom du fichier est bleu : il se lit comme un lien, et
+                          n'en était pas un. Une photo ne s'ouvrait qu'en visant la
+                          petite flèche à l'autre bout de la ligne. */}
+                      {doc.file_path && (
+                        <a
+                          href={getImageUrl(doc.file_path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block text-xs text-blue-500 hover:text-blue-600 hover:underline mt-0.5 break-all"
+                          title="Ouvrir le fichier"
+                        >
+                          {doc.file_path.split('/').pop()}
+                        </a>
+                      )}
                       {doc.notes && <p className="text-xs text-gray-600 mt-1">{doc.notes}</p>}
                       {doc.element_ids && doc.element_ids.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-1.5">

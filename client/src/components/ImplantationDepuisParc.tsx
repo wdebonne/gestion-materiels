@@ -93,12 +93,14 @@ export default function ImplantationDepuisParc({
             nature: nature || undefined,
           },
         })
-        .then((r) => r.data.data),
+        .then((r) => r.data.data ?? []),
   })
 
   const { data: categories = [] } = useQuery<any[]>({
     queryKey: ['categories-pour-implantation'],
-    queryFn: () => api.get('/categories').then((r) => r.data.data ?? r.data),
+    // `/categories` rend `{ categories: [...] }` et non `{ data }` : se replier
+    // sur `r.data` donnait l'enveloppe entière, et la liste plantait au rendu.
+    queryFn: () => api.get('/categories').then((r) => r.data.categories ?? r.data.data ?? []),
   })
 
   const choisis = useMemo(() => new Set(lignes.map((l) => l.object_id)), [lignes])
