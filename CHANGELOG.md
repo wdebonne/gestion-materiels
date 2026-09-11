@@ -7,6 +7,120 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### La cartographie cesse de demander vingt-trois bancs identiques
+
+> Un banc, un candélabre, une corbeille s'achètent **en série** et se posent
+> **un par un**. Le parc ne savait dire que la première moitié : une ligne
+> « Banc modèle Ville » dans une catégorie, et rien pour les vingt-trois bancs
+> réellement scellés dans la commune. Restaient deux issues, toutes deux
+> mauvaises — créer vingt-trois fiches identiques qu'il faudrait toutes reprendre
+> le jour où le fournisseur change, ou n'en créer qu'une avec « quantité : 23 »,
+> qui dit combien on en a et jamais où ils sont ni lequel a été repeint.
+>
+> L'écran « Cartographie », lui, affichait une carte vide de la France et, à
+> côté, la liste des matériels dont le champ « Lieu » n'était pas vide — avec
+> un commentaire dans le code expliquant qu'il faudrait un jour géocoder les
+> adresses.
+
+#### Ajouté
+
+- **Un modèle au parc, des exemplaires sur la carte.** « Banc modèle Ville »
+  reste **une** fiche dans les catégories ; ses exemplaires se posent depuis la
+  cartographie, numérotés d'office — Banc 1, Banc 2, … Banc 23 — chacun avec sa
+  position, sa rue, son état et son historique. Le même mécanisme que les
+  éléments d'un espace vert, transposé à la voie publique : il n'y a pas de plan
+  à capturer, la commune entière est le plan
+- **« Poser un matériel », en trois questions** — quoi, où, le reste. Le
+  catalogue annonce pour chaque modèle **combien sont déjà posés**, ce qui répond
+  au passage à « l'ai-je déjà créé ? ». « Poser et continuer » enchaîne sur
+  l'exemplaire suivant du même modèle sans repasser par le catalogue
+- **Deux façons de dire « où », également légitimes** : le doigt sur la carte au
+  bureau, et **« Utiliser ma position »** sur le trottoir. L'application retient
+  laquelle a parlé : un point relevé à quinze mètres près ne se corrige pas comme
+  un point cliqué sur une photo aérienne. Sur la fiche d'un exemplaire, **« Je
+  suis devant »** reprend la position d'un seul geste
+- **L'adresse, la rue et le quartier se lisent du point**, par géocodage inverse,
+  et restent modifiables. C'est exactement ce que personne ne tape sur un
+  téléphone, et exactement ce dont l'export « par rue » a besoin
+- **Des marqueurs qu'on distingue sans cliquer.** La famille d'un mobilier —
+  éclairage, banc, corbeille, abribus, potelet, passage piéton, jardinière… — est
+  **devinée du catalogue** (nom, catégorie, sous-catégorie) et donne sa couleur
+  et son pictogramme au point. Aucun référentiel à garnir avant de poser le
+  premier banc ; corriger le nom au catalogue corrige la carte
+- **Un historique par exemplaire.** « Le banc 23 a été repeint le 14 mars, en
+  vert RAL 6005, par la régie, pour 85 € » se range sur ce banc-là et sur aucun
+  autre. L'état après intervention et la prochaine échéance se saisissent dans le
+  même formulaire — les demander ailleurs garantissait que personne ne les
+  remplirait
+- **Trois fonds de carte** — photo aérienne IGN, plan IGN, OpenStreetMap — les
+  mêmes que ceux du plan d'un espace vert, et le choix est mémorisé
+- **Une recherche à deux étages.** Le simple tient sur une ligne (un mot, une
+  catégorie, un modèle, un statut) ; l'avancé, replié, ouvre l'état, la rue, la
+  zone, les dates de pose, l'échéance d'entretien, « en retard », « jamais
+  entretenu », « inclure le déposé » et **« autour de moi »** à 100 m, 300 m ou
+  1 km. Les rues et les zones proposent ce qui a **déjà été saisi** : sans cela,
+  « rue de la Gare » tapée trois fois avec trois casses ferait trois rues
+- **Un export PDF paramétrable**, parce qu'un document de voirie n'a pas une
+  forme mais dix. Regroupement **par matériel, par rue, par zone, par catégorie,
+  par statut ou par état** ; quinze colonnes à cocher ; la carte telle qu'elle
+  est affichée ; une synthèse par groupe ; l'historique des interventions sous
+  chaque ligne ; titre, mention de service et orientation libres
+- **Un onglet « Sur la voie publique » sur la fiche d'un matériel**, qui répond à
+  la question de départ : combien d'exemplaires sont dehors, dans quelle rue,
+  dans quel état, et lequel a été repris récemment. Il ne s'affiche que si le
+  modèle a été posé — un onglet vide sur un tracteur serait du bruit
+- **Un réglage d'administration, Paramètres → Cartographie**, qui dit quelle part
+  du parc se pose sur la voie publique. Même mécanique que le prêt en
+  manifestation et l'implantation en espace vert — **trois niveaux, le plus
+  précis l'emporte**, `Hérite` comme troisième état — et les prestations sont
+  exclues d'office : elles ne se scellent pas dans un trottoir
+- **« Déposé » plutôt que supprimé.** Un candélabre retiré sort de la carte et
+  garde son historique : la question « qu'y avait-il à cet angle avant ? » ne
+  doit pas rester sans réponse. La suppression existe, pour les erreurs de saisie,
+  et le dit
+
+#### Modifié
+
+- **La cartographie ne montre plus les matériels du parc dont le champ « Lieu »
+  est rempli.** Ce champ est une chaîne libre — « atelier », « dépôt », « chez le
+  garagiste » — qu'aucune carte ne saura jamais placer, et qui décrit *où se
+  trouve* un matériel, pas *où il est implanté*. Les deux questions n'ont ni le
+  même objet ni la même réponse
+- **`adresseDuPoint` a déménagé** de la fenêtre de capture d'un plan vers
+  `lib/geocodage`, et y est réexportée : la cartographie posait la même question
+  et n'avait pas à importer sept cents lignes de fenêtre modale pour obtenir une
+  chaîne de caractères
+
+#### Corrigé
+
+- **Une fenêtre ouverte au-dessus de la carte passait derrière elle.** Leaflet
+  numérote ses contrôles à `z-index: 1000` ; sans contexte d'empilement autour de
+  la carte, ces valeurs vivent dans celui de la page et passent devant les
+  fenêtres modales, qui montent à 50. La fenêtre « Que posez-vous ? » s'ouvrait à
+  moitié cachée sous la vue aérienne
+- **Le PDF pesait 8,5 Mo pour trois bancs** — un document qu'on ne peut plus
+  envoyer par courriel. La vue capturée partait en PNG sans perte ; en JPEG à
+  0,85 le même document fait 0,27 Mo, et la différence ne se voit pas à
+  l'impression
+- **La capture de la carte emportait ses boutons de zoom**, imprimés sur la vue
+
+#### Vérifié
+
+- Trois bancs posés depuis le catalogue : numérotés 1, 2 et 3 ; le banc 1
+  supprimé, le suivant prend le n° 4 et non le 1 — un numéro d'inventaire ne se
+  réattribue pas, la plaque vissée sur l'assise non plus
+- Une peinture consignée sur le banc 2 : la dernière intervention et la prochaine
+  échéance remontent seules sur l'exemplaire, l'état passe à « bon », et le banc 3
+  ressort seul du filtre « entretien en retard »
+- Catégorie fermée à la pose : le modèle disparaît du catalogue **et** la pose est
+  refusée en nommant la raison — un onglet resté ouvert ne doit pas échouer en
+  silence
+- Une prestation refusée à la pose, sans que l'administrateur ait eu à la décocher
+- « Autour de moi » à 200 m : deux bancs sur trois, avec leur distance
+- Export PDF regroupé par rue, historique compris : deux pages, en-tête, carte,
+  synthèse et tableaux ; accents français corrects
+- Carte, filtres et liste vérifiés à 414 px de large — la largeur d'un téléphone
+
 ### Le nom d'un repère flottait loin sous lui
 
 > Sur un plan agrandi, le nom d'un repère se retrouvait des dizaines de pixels

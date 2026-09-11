@@ -1561,3 +1561,237 @@ export const essaiIntakeApi = {
       source_id: sourceId,
     }),
 }
+
+// ======================== MOBILIER DE VOIE PUBLIQUE ========================
+
+/**
+ * Un exemplaire posé sur la voie publique.
+ *
+ * Le modèle voyage avec lui — `object_name`, `category_name` — parce que la
+ * carte affiche des points et non des jointures : sans ces colonnes, mille
+ * marqueurs seraient anonymes ou demanderaient mille requêtes.
+ */
+export interface MobilierUrbain {
+  id: number
+  object_id: number
+  /** Le rang de cet exemplaire dans son modèle : le « 23 » de « Banc 23 ». */
+  numero: number
+  label: string
+  /** Le numéro d'inventaire de la commune, gravé sur le mobilier. Souvent vide. */
+  code: string
+  latitude: number
+  longitude: number
+  position_source: string
+  position_accuracy: number | null
+  address: string
+  street: string
+  sector: string
+  status: string
+  condition_state: string
+  installed_on: string | null
+  last_intervention_date: string | null
+  next_intervention_date: string | null
+  notes: string
+  image: string
+  custom_fields: string
+  created_at: string
+  updated_at: string
+  object_name: string | null
+  object_reference: string | null
+  object_image: string | null
+  category_id: number | null
+  category_name: string | null
+  subcategory_id: number | null
+  subcategory_name: string | null
+  /** Rendu par le seul filtre « autour de moi ». */
+  distance_m?: number
+  /** Rendu par le détail, et par l'export qui la demande. */
+  interventions?: InterventionMobilier[]
+}
+
+export interface InterventionMobilier {
+  id: number
+  item_id: number
+  intervention_type: string
+  performed_on: string | null
+  next_date: string | null
+  description: string
+  cost: number | null
+  performed_by: string
+  user_id: number | null
+  auteur: string | null
+  created_at: string
+}
+
+/** Un modèle du parc qu'on peut poser, et ce qui l'a déjà été. */
+export interface ModelePosable {
+  id: number
+  name: string
+  reference: string | null
+  image: string | null
+  unit_cost: number | null
+  purchase_price: number | null
+  material_type: string
+  category_id: number | null
+  category_name: string | null
+  subcategory_id: number | null
+  subcategory_name: string | null
+  /** Nombre d'exemplaires déjà posés : le prochain portera ce numéro plus un. */
+  poses: number
+}
+
+/** Ce qu'une recherche peut demander. Tout est facultatif, et tout se combine. */
+export interface FiltresMobilier {
+  /*
+    L'index libre n'est pas une facilité : ces filtres partent tels quels dans
+    une chaîne de requête, et c'est lui qui autorise à les parcourir sans
+    réécrire la liste des clés à chaque ajout d'un critère.
+  */
+  [critere: string]: string | undefined
+  q?: string
+  category_id?: string
+  subcategory_id?: string
+  object_id?: string
+  status?: string
+  condition_state?: string
+  street?: string
+  sector?: string
+  bbox?: string
+  pose_du?: string
+  pose_au?: string
+  en_retard?: string
+  echeance_avant?: string
+  jamais_entretenu?: string
+  avec_deposes?: string
+  /** « Autour de moi » : centre et rayon en mètres. */
+  lat?: string
+  lng?: string
+  rayon?: string
+  limit?: string
+}
+
+/** Les valeurs déjà saisies, pour que les filtres proposent au lieu de deviner. */
+export interface FacettesMobilier {
+  rues: Array<{ valeur: string; cnt: number }>
+  secteurs: Array<{ valeur: string; cnt: number }>
+  modeles: Array<{ id: number; nom: string; reference: string | null; cnt: number }>
+  categories: Array<{ id: number; nom: string; cnt: number }>
+}
+
+export interface StatsMobilier {
+  total: number
+  en_service: number
+  a_revoir: number
+  en_retard: number
+  modeles: number
+  rues: number
+}
+
+/** Un fond de carte publié par le serveur, jamais recopié côté client. */
+export interface FondCarto {
+  cle: string
+  libelle: string
+  court: string
+  description: string
+  modele: string
+  attribution: string
+  zoomMax: number
+}
+
+/** Les filtres, tels qu'une chaîne de requête les attend. */
+const enParametres = (filtres: Record<string, unknown>): string => {
+  const params = new URLSearchParams()
+  for (const [clef, valeur] of Object.entries(filtres)) {
+    if (valeur === undefined || valeur === null || valeur === '') continue
+    params.set(clef, String(valeur))
+  }
+  const chaine = params.toString()
+  return chaine ? `?${chaine}` : ''
+}
+
+export const mobilierUrbainApi = {
+  lister: (filtres: FiltresMobilier = {}) =>
+    api.get<{ success: boolean; data: MobilierUrbain[]; total: number }>(
+      `/mobilier-urbain${enParametres(filtres)}`
+    ),
+
+  /** Les mêmes lignes, avec l'historique quand le document en a besoin. */
+  exporter: (filtres: FiltresMobilier & { avec_interventions?: string } = {}) =>
+    api.get<{ success: boolean; data: MobilierUrbain[]; total: number }>(
+      `/mobilier-urbain/export${enParametres(filtres)}`
+    ),
+
+  detail: (id: number) =>
+    api.get<{ success: boolean; data: MobilierUrbain }>(`/mobilier-urbain/${id}`),
+
+  /** Tous les exemplaires d'un modèle : « où sont mes vingt-trois bancs ? ». */
+  parModele: (objectId: number) =>
+    api.get<{ success: boolean; data: MobilierUrbain[]; total: number }>(
+      `/mobilier-urbain/objets/${objectId}`
+    ),
+
+  catalogue: (q?: string) =>
+    api.get<{ success: boolean; data: ModelePosable[] }>(
+      `/mobilier-urbain/catalogue${q ? `?q=${encodeURIComponent(q)}` : ''}`
+    ),
+
+  facettes: () =>
+    api.get<{ success: boolean; data: FacettesMobilier }>('/mobilier-urbain/facettes'),
+
+  stats: () => api.get<{ success: boolean; data: StatsMobilier }>('/mobilier-urbain/stats'),
+
+  fonds: () => api.get<{ success: boolean; data: FondCarto[] }>('/mobilier-urbain/fonds'),
+
+  poser: (corps: Record<string, unknown>) =>
+    api.post<{ success: boolean; data: MobilierUrbain }>('/mobilier-urbain', corps),
+
+  modifier: (id: number, corps: Record<string, unknown>) =>
+    api.put<{ success: boolean; data: MobilierUrbain }>(`/mobilier-urbain/${id}`, corps),
+
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/mobilier-urbain/${id}`),
+
+  ajouterIntervention: (id: number, corps: Record<string, unknown>) =>
+    api.post<{
+      success: boolean
+      data: { intervention: InterventionMobilier; mobilier: MobilierUrbain }
+    }>(`/mobilier-urbain/${id}/interventions`, corps),
+
+  modifierIntervention: (interventionId: number, corps: Record<string, unknown>) =>
+    api.put<{ success: boolean; data: MobilierUrbain }>(
+      `/mobilier-urbain/interventions/${interventionId}`,
+      corps
+    ),
+
+  supprimerIntervention: (interventionId: number) =>
+    api.delete<{ success: boolean; data: MobilierUrbain }>(
+      `/mobilier-urbain/interventions/${interventionId}`
+    ),
+}
+
+/**
+ * Quel matériel du parc peut être posé sur la voie publique.
+ *
+ * Même règle et mêmes formes que le prêt et l'implantation, sur une troisième
+ * colonne : les candélabres et les corbeilles se posent, les barrières Vauban
+ * des manifestations et les prestations non. Les lignes portent
+ * `available_for_public_space` (le choix fait à ce niveau) et `posable` (ce qui
+ * s'applique une fois la résolution faite).
+ */
+export const materielVoiePubliqueApi = {
+  getTree: () =>
+    api.get<{ success: boolean; data: CategorieReglee[] }>(
+      '/mobilier-urbain/materiel-voie-publique/tree'
+    ),
+  getObjects: (categoryId: number) =>
+    api.get<{ success: boolean; data: ObjetRegle[] }>(
+      `/mobilier-urbain/materiel-voie-publique/objects?category_id=${categoryId}`
+    ),
+  rechercher: (terme: string) =>
+    api.get<{ success: boolean; data: ObjetRegleTrouve[] }>(
+      `/mobilier-urbain/materiel-voie-publique/search?q=${encodeURIComponent(terme)}`
+    ),
+  regler: (niveau: 'category' | 'subcategory' | 'object', id: number, available: Disponibilite) =>
+    api.put<{ success: boolean }>(`/mobilier-urbain/materiel-voie-publique/${niveau}/${id}`, {
+      available,
+    }),
+}

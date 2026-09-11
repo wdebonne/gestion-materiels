@@ -218,6 +218,20 @@ passage la permission de renommer le véhicule.
 - 📊 **Export PDF** : Plan annoté en paysage + légende + tableaux détaillés
 - 🔗 **Intégrations** : Alertes automatiques (cron), événements calendrier, coûts dans le module Suivi
 
+### 🗺️ Cartographie — mobilier de voie publique (Nouveau!)
+- 🪑 **Un modèle au parc, des exemplaires sur la carte** : « Banc modèle Ville » reste **une** fiche dans les catégories ; ses exemplaires se posent depuis la cartographie, **numérotés d'office** — Banc 1, Banc 2, … Banc 23 —, chacun avec sa position, sa rue, son état et son historique. Plus besoin de créer vingt-trois fiches identiques, ni de se contenter d'un champ « quantité : 23 » qui ne dit ni où ils sont ni lequel a été repeint
+- 📍 **Poser en trois questions** — quoi, où, le reste. Le catalogue annonce pour chaque modèle **combien sont déjà posés**, ce qui répond au passage à « l'ai-je déjà créé ? ». « Poser et continuer » enchaîne sur l'exemplaire suivant du même modèle sans repasser par le catalogue
+- 📲 **Deux façons de dire « où »**, également légitimes : le doigt sur la carte au bureau, et **« Utiliser ma position »** sur le trottoir. L'application retient laquelle a parlé et la précision du relevé. Sur la fiche d'un exemplaire, **« Je suis devant »** reprend la position d'un seul geste
+- 🏠 **Adresse, rue et quartier lus du point** par géocodage inverse, et modifiables : c'est ce que personne ne tape sur un téléphone, et ce dont l'export « par rue » a besoin
+- 🎨 **Des marqueurs qu'on distingue sans cliquer** : la famille d'un mobilier — éclairage, banc, corbeille, abribus, potelet, passage piéton, jardinière, borne, jeux… — est **devinée du catalogue** et donne sa couleur et son pictogramme au point. Aucun référentiel à garnir avant de poser le premier banc ; une pastille signale ce qui est hors service, en mauvais état ou en retard d'entretien
+- 🔧 **Un historique par exemplaire** : « le banc 23 a été repeint le 14 mars, en vert RAL 6005, par la régie, pour 85 € » se range sur ce banc-là et sur aucun autre. Onze natures d'intervention (pose, contrôle, nettoyage, entretien, peinture, réparation, remplacement de pièce, déplacement, dépose, dégradation, autre). L'état après intervention et la prochaine échéance se saisissent dans le même formulaire
+- 🛰️ **Trois fonds de carte** — photo aérienne IGN, plan IGN, OpenStreetMap —, les mêmes que le plan d'un espace vert. Aucune clé ni compte tiers ; le choix est mémorisé
+- 🔍 **Recherche à deux étages** : le simple tient sur une ligne (un mot, une catégorie, un modèle, un statut) ; l'avancé, replié, ouvre l'état, la rue, la zone, les dates de pose, l'échéance, « en retard », « jamais entretenu », « inclure le déposé » et **« autour de moi »** à 100 m, 300 m ou 1 km. Les rues et zones proposent ce qui a **déjà été saisi**, pour que « rue de la Gare » tapée trois fois ne fasse pas trois rues
+- 📄 **Export PDF paramétrable** : regroupement **par matériel, par rue, par zone, par catégorie, par statut ou par état** ; quinze colonnes à cocher ; la carte telle qu'elle est affichée ; une synthèse par groupe ; l'historique des interventions sous chaque ligne ; titre, mention de service et orientation libres
+- 🔗 **Onglet « Sur la voie publique » sur la fiche d'un matériel** : combien d'exemplaires sont dehors, dans quelle rue, dans quel état, et lequel a été repris récemment — avec un lien qui ouvre la carte filtrée sur ce modèle
+- 🔒 **Quel parc se pose sur la voie publique** : réglable par l'administrateur depuis **Paramètres → Cartographie**, par catégorie, sous-catégorie ou matériel — même mécanique que le prêt en manifestation et l'implantation en espace vert, **le réglage le plus précis l'emporte**. Les prestations sont exclues d'office : elles ne se scellent pas dans un trottoir
+- 🗃️ **« Déposé » plutôt que supprimé** : un candélabre retiré sort de la carte et garde son historique — « qu'y avait-il à cet angle avant ? » ne doit pas rester sans réponse
+
 ### Plugins intégrés
 - ⛽ **Carburant / Recharges** : Suivi des consommations et coûts, gestion des stations et des bornes, filtrage avancé, pièces jointes (PDF/images). Le module **s'adapte à ce que consomme le matériel** (voir ci-dessous)
 - 🔧 **Maintenance** : Historique des interventions, gestion des types d'entretien et prestataires, relevés de compteurs, pièces jointes (PDF/images)
@@ -928,6 +942,53 @@ GET    /api/green-spaces/snapshots/:sid    # Détail d'un snapshot
 DELETE /api/green-spaces/snapshots/:sid    # Supprimer un snapshot
 GET    /api/green-spaces/:id/archives      # Archives (snapshots + données source si cloné)
 ```
+
+### Cartographie — mobilier de voie publique
+
+Un **modèle** vit dans le parc (`/api/objects`), ses **exemplaires** vivent ici.
+Toutes les lectures appliquent la portée par catégorie du compte ; toutes les
+écritures vérifient en plus que l'administrateur a ouvert ce matériel à la pose.
+
+```
+GET    /api/mobilier-urbain                # Exemplaires posés, filtrés (voir ci-dessous)
+GET    /api/mobilier-urbain/:id            # Un exemplaire et son historique
+POST   /api/mobilier-urbain                # Poser un exemplaire (modèle + position requis)
+PUT    /api/mobilier-urbain/:id            # Modifier, déplacement compris (le modèle n'est pas modifiable)
+DELETE /api/mobilier-urbain/:id            # Supprimer (superviseur ; préférer le statut « déposé »)
+
+# Interventions — ce qui n'est arrivé qu'à cet exemplaire
+POST   /api/mobilier-urbain/:id/interventions             # Consigner (état et prochaine échéance compris)
+PUT    /api/mobilier-urbain/interventions/:iid            # Corriger
+DELETE /api/mobilier-urbain/interventions/:iid            # Retirer (superviseur)
+
+# Depuis la fiche d'un matériel du parc
+GET    /api/mobilier-urbain/objets/:objectId # Tous les exemplaires de ce modèle
+
+# Poser, chercher, documenter
+GET    /api/mobilier-urbain/catalogue       # Modèles posables (?q=), avec le nombre déjà posé
+GET    /api/mobilier-urbain/facettes        # Rues, zones, modèles et catégories déjà saisis, avec effectifs
+GET    /api/mobilier-urbain/stats           # Total, en service, à reprendre, en retard, modèles, rues
+GET    /api/mobilier-urbain/export          # Les mêmes lignes (?avec_interventions=1) pour le PDF
+GET    /api/mobilier-urbain/referentiels    # Statuts, états, sources de position, natures d'intervention
+GET    /api/mobilier-urbain/fonds           # Fonds de carte (photo IGN, plan IGN, OSM)
+
+# Quel parc se pose sur la voie publique (superviseur)
+GET    /api/mobilier-urbain/materiel-voie-publique/tree          # Arbre des catégories et leur réglage
+GET    /api/mobilier-urbain/materiel-voie-publique/objects       # Matériels d'une catégorie (?category_id=)
+GET    /api/mobilier-urbain/materiel-voie-publique/search        # Recherche dans tout le parc (?q=)
+PUT    /api/mobilier-urbain/materiel-voie-publique/:niveau/:id   # Régler (category | subcategory | object)
+```
+
+**Filtres de `GET /` et `GET /export`**, tous facultatifs et combinables :
+`q`, `category_id`, `subcategory_id`, `object_id` (listes séparées par des
+virgules), `status`, `condition_state`, `street`, `sector`,
+`bbox=minLat,minLng,maxLat,maxLng`, `pose_du`, `pose_au`, `echeance_avant`,
+`en_retard=1`, `jamais_entretenu=1`, `avec_deposes=1`, `lat`/`lng`/`rayon`
+(« autour de moi », en mètres — la distance est rendue avec chaque ligne),
+`limit`.
+
+Le mobilier **déposé** est exclu par défaut : il sort de la carte sans perdre son
+historique. `avec_deposes=1` le ramène.
 
 ### Calendrier
 

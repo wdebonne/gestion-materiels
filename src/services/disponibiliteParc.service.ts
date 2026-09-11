@@ -11,14 +11,18 @@ import type { AuthRequest } from '../middleware/auth.middleware';
  * on y plante du gazon et de l'enrobé, pas les prestations de la police
  * municipale ni le matériel de fête.
  *
- * Deux modules, une seule règle : **trois niveaux, le plus précis l'emporte**.
+ * Elle se repose une troisième fois pour le mobilier de voie publique : on
+ * pose des candélabres et des corbeilles sur le trottoir, pas les chaises de la
+ * salle des fêtes.
+ *
+ * Trois modules, une seule règle : **trois niveaux, le plus précis l'emporte**.
  * La catégorie donne le ton, la sous-catégorie l'affine, le matériel fait
  * exception. `NULL` veut dire « suivre le niveau au-dessus » — trois états et
  * non deux, sans quoi ouvrir une catégorie obligerait à recocher chacun de ses
  * matériels, et personne ne le ferait.
  *
- * Recopier ce fichier par module ferait diverger deux écrans qui disent la même
- * chose. Seule la **colonne** change, et elle se passe en paramètre.
+ * Recopier ce fichier par module ferait diverger trois écrans qui disent la
+ * même chose. Seule la **colonne** change, et elle se passe en paramètre.
  */
 
 /** Trois états : `true` ouvert, `false` exclu, `null` hérite du niveau au-dessus. */
@@ -45,7 +49,8 @@ export function versColonne(valeur: Disponibilite): number | null {
  */
 export type ColonneDisponibilite =
   | 'available_for_manifestations'
-  | 'available_for_green_spaces';
+  | 'available_for_green_spaces'
+  | 'available_for_public_space';
 
 /**
  * Fragment SQL rendant la disponibilité effective d'un matériel.

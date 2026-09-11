@@ -52,6 +52,7 @@ import serviceRoutes from './routes/service.routes';
 import notificationRoutes from './routes/notification.routes';
 import manifestationExportRoutes from './routes/manifestationExport.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
+import mobilierUrbainRoutes from './routes/mobilierUrbain.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -281,6 +282,7 @@ app.use('/api/manifestations', manifestationRoutes);
 app.use('/api/services', serviceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
+app.use('/api/mobilier-urbain', mobilierUrbainRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {

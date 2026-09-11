@@ -9,6 +9,9 @@ import {
 import { useAuthStore } from '@/stores/auth.store'
 import QRCodeDisplay from '@/components/QRCodeDisplay'
 import ObjectTimeline from '@/components/ObjectTimeline'
+import ImplantationsVoiePublique, {
+  useImplantationsVoiePublique,
+} from '@/components/ImplantationsVoiePublique'
 import Can from '@/components/Can'
 import { useFavoritesStore } from '@/stores/favorites.store'
 import { useValidation, schemaPlein, schemaEntretien, schemaControle } from '@/lib/validation'
@@ -47,6 +50,16 @@ export default function ObjectDetailPage() {
   const isAdmin = user?.role === 'admin'
   const [activeTab, setActiveTab] = useState('details')
   const [isEditing, setIsEditing] = useState(false)
+
+  /*
+    Les exemplaires de ce modèle posés sur la voie publique.
+
+    Un banc acheté en série est **une** fiche ici et cent points sur la carte :
+    l'onglet répond à « où sont-ils ? » sans quitter la fiche. Il ne s'affiche
+    que s'il y en a — un onglet « Sur la voie publique » vide sur un tracteur
+    serait du bruit sur toutes les autres fiches du parc.
+  */
+  const { data: implantations = [] } = useImplantationsVoiePublique(Number(id) || undefined)
   const [editFormData, setEditFormData] = useState<any>(null)
   
   // Filtres pour les tableaux
@@ -831,6 +844,14 @@ export default function ObjectDetailPage() {
       }
     })
     
+    if (implantations.length > 0) {
+      baseTabs.push({
+        id: 'voie-publique',
+        label: 'Sur la voie publique',
+        count: implantations.length,
+      } as any)
+    }
+
     // Onglet Timeline (toujours visible)
     baseTabs.push({ id: 'timeline', label: 'Historique' } as any)
     
@@ -2945,6 +2966,10 @@ export default function ObjectDetailPage() {
       </Modal>
 
       {/* Onglet Timeline / Historique */}
+      {activeTab === 'voie-publique' && object && (
+        <ImplantationsVoiePublique objectId={Number(id)} objectName={object.name} />
+      )}
+
       {activeTab === 'timeline' && object && (
         <Card>
           <CardHeader>

@@ -43,6 +43,8 @@ const EXEMPTIONS: Record<string, string> = {
     "Tâche planifiée, sans requête ni utilisateur : il n'y a pas de portée à appliquer.",
   'services/email.service.ts':
     "Composition d'e-mails côté serveur, sans requête ni utilisateur.",
+  'services/mobilierUrbain.service.ts':
+    "Ne porte que les colonnes et les jointures que les routes du mobilier de voie publique assemblent : celles-ci appliquent la portée sur chaque lecture de liste, et `exemplaireComplet` n'est appelé qu'avec l'identifiant d'un exemplaire dont l'accès vient d'être vérifié, ou d'un exemplaire créé à l'instant depuis un modèle que l'appelant a le droit de voir. La jointure sur `objects` ne sert qu'à nommer le modèle d'un point déjà autorisé.",
   'services/manifestationDocuments.service.ts':
     "La jointure ne sert qu'à afficher le nom du matériel qu'une pièce jointe désigne, sur une manifestation que l'appelant a déjà le droit de voir (peutVoirManifestation en amont de chaque route). Filtrer ici masquerait le document entier au lieu de son libellé, et le rattachement a été contrôlé au moment où il a été posé.",
   'services/compteurs.service.ts':
