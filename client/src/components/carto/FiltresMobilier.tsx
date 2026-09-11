@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Crosshair, Filter, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react'
 import type { FacettesMobilier, FiltresMobilier } from '@/lib/api'
-import { ETATS, STATUTS } from '@/lib/mobilierUrbain'
+import { ETATS, SOURCES, STATUTS } from '@/lib/mobilierUrbain'
 
 /**
  * Chercher un mobilier parmi mille.
@@ -63,6 +63,8 @@ export default function FiltresMobilier({
    * liste paraît alors incomplète, et la réponse « il n'y a rien » est fausse.
    */
   const poses = [
+    filtres.source,
+    filtres.green_space_id,
     filtres.condition_state,
     filtres.street,
     filtres.sector,
@@ -117,6 +119,29 @@ export default function FiltresMobilier({
           {(facettes?.modeles ?? []).map((m) => (
             <option key={m.id} value={m.id}>
               {m.nom} ({m.cnt})
+            </option>
+          ))}
+        </select>
+
+        {/*
+          « Où » plutôt que « quoi ».
+
+          La carte montre par défaut **les deux** gisements : c'est le sens même
+          de l'écran, un banc est un banc qu'il soit sur un trottoir ou dans un
+          parc. Mais préparer une tournée de voirie, ou lister ce qui relève des
+          espaces verts, sont deux demandes réelles — d'où ce choix, au premier
+          rang et non replié.
+        */}
+        <select
+          value={filtres.source ?? ''}
+          onChange={(e) => poser({ source: e.target.value })}
+          className={`${CHAMP} w-auto min-w-[140px] flex-1 sm:max-w-[170px]`}
+          aria-label="Où"
+        >
+          <option value="">Partout</option>
+          {SOURCES.map((s) => (
+            <option key={s.valeur} value={s.valeur}>
+              {s.icone} {s.libelle}
             </option>
           ))}
         </select>
@@ -238,6 +263,28 @@ export default function FiltresMobilier({
                   </option>
                 ))}
               </datalist>
+              {/* Un élément de parc n'a pas de rue : il a un parc. Filtrer par
+                  rue écarte donc les espaces verts, et mieux vaut l'annoncer
+                  que laisser croire à une liste incomplète. */}
+              <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                Rue et zone ne concernent que la voie publique.
+              </p>
+            </div>
+
+            <div>
+              <label className={LIBELLE}>Espace vert</label>
+              <select
+                value={filtres.green_space_id ?? ''}
+                onChange={(e) => poser({ green_space_id: e.target.value })}
+                className={CHAMP}
+              >
+                <option value="">Tous les espaces verts</option>
+                {(facettes?.espaces_verts ?? []).map((e) => (
+                  <option key={e.id} value={e.id}>
+                    {e.nom} ({e.cnt})
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>

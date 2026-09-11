@@ -252,6 +252,31 @@ export function cadrageEnregistre(brut: unknown): (Cadrage & { fond: string }) |
   }
 }
 
+
+/**
+ * Où se trouve, sur le globe, un point exprimé en pourcentages du plan.
+ *
+ * L'inverse exact de ce que fait la capture. C'est elle qui rend possible la
+ * carte unique : un arbre posé sur le plan d'un parc n'a que des pourcentages
+ * d'image, mais le cadrage mémorisé dit à quel morceau de globe ces
+ * pourcentages correspondent. Sans cette fonction, les éléments des espaces
+ * verts ne pourraient s'afficher qu'au marqueur de leur parc, tous au même
+ * endroit — ce qui répond « quelque part par là » à la question « où ».
+ *
+ * Ne vaut que pour un plan **capturé** : un plan chargé à la main ne regarde
+ * nulle part, et `plan_capture` y est nul.
+ */
+export function positionGeographique(
+  point: PointPlan,
+  cadrage: Cadrage
+): { lat: number; lng: number } {
+  const f = fenetreDe(cadrage);
+  return {
+    lat: latDepuisPixel(f.haut + (point.y / 100) * f.hauteur, cadrage.zoom),
+    lng: lngDepuisPixel(f.gauche + (point.x / 100) * f.largeur, cadrage.zoom),
+  };
+}
+
 // ------------------------------------------------- d'un cadrage à un autre
 
 /**

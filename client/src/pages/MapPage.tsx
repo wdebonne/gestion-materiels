@@ -12,10 +12,20 @@ import ExportMobilierPDF from '@/components/carto/ExportMobilierPDF'
 import {
   mobilierUrbainApi,
   type FiltresMobilier,
+  type Implantation,
   type MobilierUrbain,
   type ModelePosable,
 } from '@/lib/api'
-import { alerteDe, etat, familleExemplaire, jour, nomComplet, statut } from '@/lib/mobilierUrbain'
+import {
+  alerteDe,
+  etat,
+  familleExemplaire,
+  jour,
+  nomComplet,
+  precision,
+  source as gisement,
+  statut,
+} from '@/lib/mobilierUrbain'
 import { useGeolocation } from '@/lib/useGeolocation'
 
 /**
@@ -58,7 +68,7 @@ export default function MapPage() {
   })
   const [recherche, setRecherche] = useState(filtres.q ?? '')
   const [cleFond, setCleFond] = useState(() => localStorage.getItem(CLEF_FOND) ?? 'photo')
-  const [selection, setSelection] = useState<MobilierUrbain | null>(null)
+  const [selection, setSelection] = useState<Implantation | null>(null)
   const [maPosition, setMaPosition] = useState<{ lat: number; lng: number; accuracy: number } | null>(
     null
   )
@@ -121,7 +131,11 @@ export default function MapPage() {
   const cible = parametres.get('mobilier')
   useEffect(() => {
     if (!cible) return
-    const trouve = items.find((item) => String(item.id) === cible)
+    // L'adresse porte la clé complète (`voirie-12`) ou le seul identifiant de
+    // voirie, forme que les liens plus anciens emploient encore.
+    const trouve = items.find(
+      (item) => item.cle === cible || (item.source === 'voirie' && String(item.id) === cible)
+    )
     if (!trouve) return
     setSelection(trouve)
     const suivants = new URLSearchParams(parametres)
@@ -137,6 +151,20 @@ export default function MapPage() {
     queryClient.invalidateQueries({ queryKey: ['mobilier-catalogue'] })
   }
 
+  /**
+   * Rouvrir une ligne quand la liste l'aura rechargée.
+   *
+   * Après une pose ou un déplacement, la ligne qu'on veut montrer n'est pas
+   * encore dans `items` : la requête part à peine. Passer par l'adresse plutôt
+   * que par un état de plus réutilise le chemin déjà emprunté par les liens
+   * venus de la fiche d'un matériel — un seul mécanisme, testé une fois.
+   */
+  const ouvrirPlusTard = (cle: string) => {
+    const suivants = new URLSearchParams(parametres)
+    suivants.set('mobilier', cle)
+    setParametres(suivants, { replace: true })
+  }
+
   /** Déplacer : le prochain clic sur la carte devient la nouvelle position. */
   const deplacer = useMutation({
     mutationFn: ({ item, lat, lng }: { item: MobilierUrbain; lat: number; lng: number }) =>
@@ -148,9 +176,9 @@ export default function MapPage() {
       }),
     onSuccess: (reponse) => {
       toast.success('Position mise à jour')
-      setSelection(reponse.data.data)
       queryClient.invalidateQueries({ queryKey: ['mobilier', reponse.data.data.id] })
       rafraichir()
+      ouvrirPlusTard(`voirie-${reponse.data.data.id}`)
     },
     onError: (erreur: any) =>
       toast.error(erreur?.response?.data?.message ?? 'Déplacement impossible'),
@@ -202,7 +230,8 @@ export default function MapPage() {
             Cartographie
           </h1>
           <p className="mt-1 text-gray-500 dark:text-gray-400">
-            Le mobilier de la voie publique, exemplaire par exemplaire
+            Où est implanté le matériel du parc — voirie et espaces verts, exemplaire par
+            exemplaire
           </p>
         </div>
 
@@ -229,13 +258,24 @@ export default function MapPage() {
       {/* Ce que porte la commune, en six nombres */}
       {stats && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <Chiffre valeur={stats.total} libelle="Mobiliers posés" />
+          <Chiffre valeur={stats.total} libelle="Implantations" />
+          <Chiffre valeur={stats.voirie} libelle="Sur la voie publique" />
+          <Chiffre valeur={stats.espaces_verts} libelle="Dans les espaces verts" ton="vert" />
           <Chiffre valeur={stats.modeles} libelle="Modèles différents" />
-          <Chiffre valeur={stats.rues} libelle="Rues concernées" />
-          <Chiffre valeur={stats.en_service} libelle="En service" ton="vert" />
           <Chiffre valeur={stats.a_revoir} libelle="À reprendre" ton="orange" />
           <Chiffre valeur={stats.en_retard} libelle="Entretien en retard" ton="rouge" />
         </div>
+      )}
+
+      {/* Ce que la carte ne peut pas montrer se dit, plutôt que de laisser
+          quelqu'un compter les points et trouver le compte faux. */}
+      {stats && stats.sans_position > 0 && (
+        <p className="text-sm text-amber-700 dark:text-amber-400">
+          {stats.sans_position} implantation{stats.sans_position > 1 ? 's' : ''} sans position :
+          {' '}elle{stats.sans_position > 1 ? 's' : ''} figure{stats.sans_position > 1 ? 'nt' : ''}
+          {' '}dans la liste mais pas sur la carte. Capturer le plan de leur espace vert, ou
+          relever leur position sur le terrain, les y ferait apparaître.
+        </p>
       )}
 
       {/* Filtres */}
@@ -293,7 +333,7 @@ export default function MapPage() {
                 fonds={fonds}
                 cleFond={cleFond}
                 onFond={setCleFond}
-                selectionId={selection?.id ?? null}
+                selectionCle={selection?.cle ?? null}
                 onSelection={(item) => setSelection(item)}
                 modePose={modePose}
                 onPointPose={clicCarte}
@@ -312,8 +352,7 @@ export default function MapPage() {
             {selection ? (
               <div className="h-full max-h-[calc(62vh+2rem)] overflow-hidden">
                 <FicheMobilier
-                  itemId={selection.id}
-                  apercu={selection}
+                  implantation={selection}
                   onFermer={() => setSelection(null)}
                   onDeplacer={(item) => {
                     setDeplacement(item)
@@ -358,7 +397,7 @@ export default function MapPage() {
               })
             } else {
               setPose(null)
-              setSelection(item)
+              ouvrirPlusTard(`voirie-${item.id}`)
             }
           }}
         />
@@ -412,9 +451,9 @@ function ListeMobilier({
   filtre,
   localisationEnCours,
 }: {
-  items: MobilierUrbain[]
+  items: Implantation[]
   isLoading: boolean
-  onSelection: (item: MobilierUrbain) => void
+  onSelection: (item: Implantation) => void
   filtre?: string
   localisationEnCours?: boolean
 }) {
@@ -423,7 +462,7 @@ function ListeMobilier({
       <div className="flex items-center gap-2 border-b border-gray-200 p-4 dark:border-gray-700">
         <Layers className="h-4 w-4 text-gray-500" />
         <h3 className="flex-1 font-semibold text-gray-900 dark:text-gray-100">
-          {filtre ? filtre : 'Mobilier affiché'}
+          {filtre ? filtre : 'Implantations affichées'}
           <span className="ml-1.5 font-normal text-gray-500 dark:text-gray-400">
             ({items.length})
           </span>
@@ -478,9 +517,22 @@ function ListeMobilier({
                         />
                       )}
                     </span>
-                    <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
-                      {item.street || item.address || 'Sans adresse'}
-                      {item.distance_m !== undefined ? ` · à ${item.distance_m} m` : ''}
+                    <span className="flex items-center gap-1 truncate text-xs text-gray-500 dark:text-gray-400">
+                      {/* Le lieu d'abord : c'est lui qui distingue le banc du
+                          square du banc de la rue de la Gare. */}
+                      <span className="flex-shrink-0">{gisement(item.source).icone}</span>
+                      <span className="truncate">
+                        {item.street || item.lieu || 'Sans adresse'}
+                        {item.distance_m !== undefined ? ` · à ${item.distance_m} m` : ''}
+                      </span>
+                      {!precision(item.precision_position).sure && (
+                        <span
+                          className="flex-shrink-0 text-amber-600 dark:text-amber-400"
+                          title={precision(item.precision_position).libelle}
+                        >
+                          ≈
+                        </span>
+                      )}
                     </span>
                     <span className="mt-1 flex flex-wrap items-center gap-1.5">
                       <span

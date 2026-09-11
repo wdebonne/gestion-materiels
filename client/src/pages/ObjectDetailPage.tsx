@@ -9,9 +9,9 @@ import {
 import { useAuthStore } from '@/stores/auth.store'
 import QRCodeDisplay from '@/components/QRCodeDisplay'
 import ObjectTimeline from '@/components/ObjectTimeline'
-import ImplantationsVoiePublique, {
-  useImplantationsVoiePublique,
-} from '@/components/ImplantationsVoiePublique'
+import ImplantationsDuMateriel, {
+  useImplantationsDuMateriel,
+} from '@/components/ImplantationsDuMateriel'
 import Can from '@/components/Can'
 import { useFavoritesStore } from '@/stores/favorites.store'
 import { useValidation, schemaPlein, schemaEntretien, schemaControle } from '@/lib/validation'
@@ -52,14 +52,15 @@ export default function ObjectDetailPage() {
   const [isEditing, setIsEditing] = useState(false)
 
   /*
-    Les exemplaires de ce modèle posés sur la voie publique.
+    Où ce modèle est implanté — trottoirs et parcs confondus.
 
-    Un banc acheté en série est **une** fiche ici et cent points sur la carte :
-    l'onglet répond à « où sont-ils ? » sans quitter la fiche. Il ne s'affiche
-    que s'il y en a — un onglet « Sur la voie publique » vide sur un tracteur
-    serait du bruit sur toutes les autres fiches du parc.
+    Un banc acheté en série est **une** fiche ici et vingt-trois points dehors,
+    dont trois dans le square : l'onglet répond à « où sont-ils ? » sans quitter
+    la fiche et sans avoir à chercher dans deux modules. Il ne s'affiche que
+    s'il y en a — un onglet « Implantations » vide sur un tracteur serait du
+    bruit sur toutes les autres fiches du parc.
   */
-  const { data: implantations = [] } = useImplantationsVoiePublique(Number(id) || undefined)
+  const { data: implantations = [] } = useImplantationsDuMateriel(Number(id) || undefined)
   const [editFormData, setEditFormData] = useState<any>(null)
   
   // Filtres pour les tableaux
@@ -846,8 +847,8 @@ export default function ObjectDetailPage() {
     
     if (implantations.length > 0) {
       baseTabs.push({
-        id: 'voie-publique',
-        label: 'Sur la voie publique',
+        id: 'implantations',
+        label: 'Implantations',
         count: implantations.length,
       } as any)
     }
@@ -2966,8 +2967,8 @@ export default function ObjectDetailPage() {
       </Modal>
 
       {/* Onglet Timeline / Historique */}
-      {activeTab === 'voie-publique' && object && (
-        <ImplantationsVoiePublique objectId={Number(id)} objectName={object.name} />
+      {activeTab === 'implantations' && object && (
+        <ImplantationsDuMateriel objectId={Number(id)} objectName={object.name} />
       )}
 
       {activeTab === 'timeline' && object && (

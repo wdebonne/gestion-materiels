@@ -10,12 +10,14 @@ import {
   Move,
   Pencil,
   Plus,
+  Sprout,
   Trash2,
+  TreePine,
   X,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Button, Spinner, useConfirm } from '@/components/ui'
-import { mobilierUrbainApi, type MobilierUrbain } from '@/lib/api'
+import { mobilierUrbainApi, type Implantation, type MobilierUrbain } from '@/lib/api'
 import {
   ETATS,
   STATUTS,
@@ -26,6 +28,7 @@ import {
   familleExemplaire,
   jour,
   nomComplet,
+  precision,
   sourcePosition,
   statut,
   typeIntervention,
@@ -49,9 +52,8 @@ import { useGeolocation } from '@/lib/useGeolocation'
  */
 
 interface Props {
-  itemId: number
-  /** La version déjà connue de la liste : évite un écran vide le temps du détail. */
-  apercu?: MobilierUrbain | null
+  /** La ligne choisie sur la carte ou dans la liste, quel que soit son gisement. */
+  implantation: Implantation
   onFermer: () => void
   /** Passe la carte en mode « pointer » pour déplacer cet exemplaire. */
   onDeplacer?: (item: MobilierUrbain) => void
@@ -62,7 +64,45 @@ const CHAMP =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100'
 const LIBELLE = 'mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400'
 
-export default function FicheMobilier({ itemId, apercu, onFermer, onDeplacer, onSupprime }: Props) {
+/**
+ * Aiguillage : ce n'est pas la même fiche selon d'où vient la ligne.
+ *
+ * Un mobilier de voirie se modifie ici, c'est son chez-lui. Un élément
+ * d'espace vert ne s'y modifie pas : sa fiche d'espace vert sait des choses
+ * que la carte ignore — le plan, les zones, les surfaces, les coûts figés à la
+ * pose, les saisons, l'historique des remplacements. Offrir ici un second
+ * formulaire ferait deux vérités pour la même ligne. La carte montre, nomme,
+ * et renvoie là où ça se modifie.
+ */
+export default function FicheMobilier(props: Props) {
+  if (props.implantation.source === 'espace_vert') {
+    return <FicheElementEspaceVert implantation={props.implantation} onFermer={props.onFermer} />
+  }
+  return (
+    <FicheVoirie
+      itemId={props.implantation.id}
+      apercu={props.implantation}
+      onFermer={props.onFermer}
+      onDeplacer={props.onDeplacer}
+      onSupprime={props.onSupprime}
+    />
+  )
+}
+
+function FicheVoirie({
+  itemId,
+  apercu,
+  onFermer,
+  onDeplacer,
+  onSupprime,
+}: {
+  itemId: number
+  /** La version déjà connue de la liste : évite un écran vide le temps du détail. */
+  apercu?: Implantation | null
+  onFermer: () => void
+  onDeplacer?: (item: MobilierUrbain) => void
+  onSupprime?: () => void
+}) {
   const queryClient = useQueryClient()
   const confirmer = useConfirm()
   const [edition, setEdition] = useState(false)
@@ -73,7 +113,9 @@ export default function FicheMobilier({ itemId, apercu, onFermer, onDeplacer, on
     queryFn: async () => (await mobilierUrbainApi.detail(itemId)).data.data,
   })
 
-  const item = data ?? apercu ?? null
+  // L'aperçu venu de la liste tient l'écran pendant que le détail arrive : il
+  // porte moins de champs, et les blocs qui en dépendent se gardent seuls.
+  const item: any = data ?? apercu ?? null
 
   const rafraichir = () => {
     queryClient.invalidateQueries({ queryKey: ['mobilier'] })
@@ -187,7 +229,44 @@ export default function FicheMobilier({ itemId, apercu, onFermer, onDeplacer, on
             Exemplaire <strong>n° {item.numero}</strong> de ce modèle. Ce qui est écrit ici ne
             concerne que lui.
           </p>
+          {item.parent_id && (
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              Posé dans un contenant : il suit sa position.
+            </p>
+          )}
         </div>
+
+        {/* Ce que porte une jardinière. Absent d'un banc, et c'est très bien :
+            la question ne se pose que là où la réponse existe. */}
+        {(item.contenu?.length ?? 0) > 0 && (
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              <Sprout className="h-3.5 w-3.5" />
+              Ce qu’il contient ({item.contenu.length})
+            </p>
+            <ul className="space-y-1.5">
+              {item.contenu.map((enfant: MobilierUrbain) => (
+                <li key={enfant.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate text-gray-900 dark:text-gray-100">
+                    {familleExemplaire(enfant).icone} {enfant.label}
+                  </span>
+                  <span className="flex flex-shrink-0 items-center gap-2">
+                    {enfant.quantity > 1 && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
+                        ×{enfant.quantity}
+                      </span>
+                    )}
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${etat(enfant.condition_state).pastille}`}
+                    >
+                      {etat(enfant.condition_state).libelle}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {edition ? (
           <Edition item={item} onFini={() => setEdition(false)} onEnregistre={rafraichir} />
@@ -301,7 +380,7 @@ export default function FicheMobilier({ itemId, apercu, onFermer, onDeplacer, on
             </p>
           ) : (
             <ol className="space-y-2">
-              {(item.interventions ?? []).map((intervention) => {
+              {(item.interventions ?? []).map((intervention: any) => {
                 const type = typeIntervention(intervention.intervention_type)
                 return (
                   <li
@@ -614,6 +693,205 @@ function AjoutIntervention({
         <Button onClick={() => enregistrer.mutate()} disabled={enregistrer.isPending}>
           Consigner
         </Button>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Un élément d'espace vert, vu depuis la carte.
+ *
+ * En lecture, et c'est tout l'objet : la carte sert à **trouver**, pas à
+ * ressaisir. Quelqu'un qui cherche « où sont mes bancs » doit voir le banc du
+ * parc à côté de ceux du trottoir, savoir dans quel état il est et quand il a
+ * été revu — puis, s'il veut le modifier, arriver d'un clic dans la fiche du
+ * parc, qui connaît son plan, ses voisins, ses surfaces et ses coûts.
+ */
+function FicheElementEspaceVert({
+  implantation,
+  onFermer,
+}: {
+  implantation: Implantation
+  onFermer: () => void
+}) {
+  const { data, isLoading } = useQuery({
+    queryKey: ['implantation-element', implantation.id],
+    queryFn: async () => (await mobilierUrbainApi.detailElement(implantation.id)).data.data,
+  })
+
+  const item: any = data ?? implantation
+  const famille = familleExemplaire(item)
+  const alerte = alerteDe(item)
+  const lEtat = etat(item.condition_state)
+  const situation = precision(item.precision_position)
+
+  return (
+    <div className="flex h-full flex-col">
+      <div className="flex items-start gap-3 border-b border-gray-200 p-4 dark:border-gray-700">
+        <span
+          className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-lg text-xl"
+          style={{ background: `${famille.couleur}22` }}
+        >
+          {famille.icone}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-lg font-bold text-gray-900 dark:text-gray-100">
+            {nomComplet(item)}
+          </h3>
+          <p className="flex items-center gap-1 truncate text-sm text-gray-500 dark:text-gray-400">
+            <TreePine className="h-3.5 w-3.5 flex-shrink-0 text-green-600 dark:text-green-400" />
+            {item.lieu}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onFermer}
+          aria-label="Fermer la fiche"
+          className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="flex-1 space-y-4 overflow-y-auto p-4">
+        {alerte && (
+          <div
+            className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm"
+            style={{ background: `${alerte.couleur}1a`, color: alerte.couleur }}
+          >
+            <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+            <span className="font-medium">{alerte.motif}</span>
+          </div>
+        )}
+
+        {item.object_id && (
+          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Matériel du parc
+            </p>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {item.object_name}
+                </p>
+                <p className="truncate text-xs text-gray-500 dark:text-gray-400">
+                  {[item.object_reference, item.category_name, item.subcategory_name]
+                    .filter(Boolean)
+                    .join(' · ')}
+                </p>
+              </div>
+              <Link
+                to={`/objects/${item.object_id}`}
+                className="inline-flex flex-shrink-0 items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-primary-700 hover:bg-primary-50 dark:text-primary-400 dark:hover:bg-primary-900/30"
+              >
+                Ouvrir
+                <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+          </div>
+        )}
+
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
+          <Donnee libelle="État">
+            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${lEtat.pastille}`}>
+              {lEtat.libelle}
+            </span>
+          </Donnee>
+          <Donnee libelle="Quantité">{item.quantity > 1 ? `×${item.quantity}` : '1'}</Donnee>
+          <Donnee libelle="Planté le">{jour(item.installed_on)}</Donnee>
+          <Donnee libelle="Dernier entretien">{jour(item.last_intervention_date)}</Donnee>
+          <Donnee libelle="Prochaine échéance">{jour(item.next_intervention_date)}</Donnee>
+          <Donnee libelle="Composition">{item.contenant || '—'}</Donnee>
+        </div>
+
+        {item.notes && (
+          <div>
+            <p className={LIBELLE}>Notes</p>
+            <p className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+              {item.notes}
+            </p>
+          </div>
+        )}
+
+        <div className="rounded-lg bg-gray-50 p-3 dark:bg-gray-800/60">
+          <p className="mb-1 flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            <MapPin className="h-3.5 w-3.5" />
+            Position
+          </p>
+          <p className="text-sm text-gray-900 dark:text-gray-100">{item.address || item.lieu}</p>
+          {item.latitude !== null && item.longitude !== null && (
+            <p className="mt-0.5 font-mono text-xs text-gray-600 dark:text-gray-400">
+              {coord(item.latitude)}, {coord(item.longitude)}
+            </p>
+          )}
+          {/* Une position de repli ne doit pas passer pour un relevé : dire
+              « approchée » évite d'envoyer quelqu'un chercher à l'endroit exact. */}
+          <p
+            className={`mt-0.5 text-xs ${
+              situation.sure ? 'text-gray-500 dark:text-gray-400' : 'text-amber-700 dark:text-amber-400'
+            }`}
+          >
+            {situation.libelle}
+          </p>
+        </div>
+
+        <Link
+          to={`/espaces-verts?espace=${item.green_space_id}`}
+          className="inline-flex min-h-[42px] w-full items-center justify-center gap-2 rounded-lg border border-green-600 px-4 text-sm font-medium text-green-700 transition-colors hover:bg-green-50 dark:border-green-500 dark:text-green-400 dark:hover:bg-green-900/30"
+        >
+          <TreePine className="h-4 w-4" />
+          Ouvrir dans « {item.lieu} »
+        </Link>
+        <p className="-mt-2 text-xs text-gray-500 dark:text-gray-400">
+          Cet élément se modifie dans sa fiche d’espace vert, qui connaît son plan, ses surfaces et
+          ses coûts.
+        </p>
+
+        <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
+          <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            <History className="h-4 w-4" />
+            Entretiens
+            <span className="font-normal text-gray-500 dark:text-gray-400">
+              ({item.interventions?.length ?? 0})
+            </span>
+          </h4>
+
+          {isLoading ? (
+            <div className="flex justify-center py-6">
+              <Spinner />
+            </div>
+          ) : (item.interventions ?? []).length === 0 ? (
+            <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+              Aucun entretien de cet espace n’est rattaché à cet élément.
+            </p>
+          ) : (
+            <ol className="space-y-2">
+              {(item.interventions ?? []).map((intervention: any) => (
+                <li
+                  key={intervention.id}
+                  className="rounded-lg border border-gray-200 p-2.5 dark:border-gray-700"
+                >
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {intervention.intervention_type}
+                    <span className="ml-2 font-normal text-gray-500 dark:text-gray-400">
+                      {jour(intervention.performed_on)}
+                    </span>
+                  </p>
+                  {intervention.description && (
+                    <p className="whitespace-pre-wrap text-sm text-gray-600 dark:text-gray-300">
+                      {intervention.description}
+                    </p>
+                  )}
+                  {intervention.performed_by && (
+                    <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {intervention.performed_by}
+                    </p>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
       </div>
     </div>
   )

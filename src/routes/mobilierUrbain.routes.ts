@@ -20,9 +20,7 @@ import {
 import { expressionNature } from '../services/lotParc.service';
 import {
   aujourdhui,
-  clauseFiltres,
   COLONNES_EXEMPLAIRE,
-  distanceMetres,
   ETATS,
   exemplaireComplet,
   JOINTURES_EXEMPLAIRE,
@@ -35,21 +33,34 @@ import {
   STATUTS,
   termeValide,
   TYPES_INTERVENTION,
-  type FiltresMobilier,
 } from '../services/mobilierUrbain.service';
+import {
+  historiques,
+  lireImplantations,
+  SOURCES,
+  type FiltresImplantations,
+  type Implantation,
+} from '../services/implantations.service';
 import { FONDS } from '../services/captureCarte.service';
 import { dateOuNull, fusionner, nombreOuNull } from '../utils/valeursSql';
 
 /**
- * Le mobilier de la voie publique : candélabres, bancs, corbeilles, passages
- * piétons — tout ce qui s'entretient dehors et qui n'est pas dans un parc.
+ * La cartographie : où est posé le matériel du parc, et dans quel état.
  *
- * Le fil conducteur de ce fichier tient en une phrase : **un modèle au parc,
- * des exemplaires sur la carte**. Toutes les routes qui écrivent vérifient donc
- * deux choses avant d'accepter — que le compte a le droit de voir ce matériel
- * (`objectScope`), et que l'administrateur a ouvert ce matériel à la pose
- * (`materielVoiePublique`). La seconde n'est pas une redite de la première :
- * l'une dit qui regarde, l'autre dit ce que le module propose.
+ * Deux fils tendus d'un bout à l'autre de ce fichier.
+ *
+ * **Un modèle au parc, des exemplaires sur le terrain.** Toutes les routes qui
+ * écrivent vérifient donc deux choses avant d'accepter — que le compte a le
+ * droit de voir ce matériel (`objectScope`), et que l'administrateur a ouvert ce
+ * matériel à la pose (`materielVoiePublique`). La seconde n'est pas une redite
+ * de la première : l'une dit qui regarde, l'autre dit ce que le module propose.
+ *
+ * **On lit partout, on écrit là où ça vit.** Les routes de lecture — liste,
+ * carte, export, « où est ce matériel ? » — couvrent la voie publique **et**
+ * les espaces verts, parce qu'un banc est un banc et qu'on ne veut pas chercher
+ * deux fois. Les routes d'écriture ne touchent que la voie publique : un arbre
+ * se modifie dans la fiche de son espace vert, où l'on voit son plan, ses
+ * voisins, ses coûts et ses saisons.
  */
 
 const router = Router();
@@ -69,6 +80,7 @@ router.get('/referentiels', authenticateToken, async (_req: AuthRequest, res: Re
     data: {
       statuts: STATUTS,
       etats: ETATS,
+      sources: SOURCES,
       sources_position: SOURCES_POSITION,
       types_intervention: TYPES_INTERVENTION,
     },
@@ -195,12 +207,13 @@ router.put('/materiel-voie-publique/:niveau/:id', authenticateToken, requireSupe
 // ======================== CATALOGUE DE POSE ========================
 
 /**
- * GET /catalogue - Les modèles qu'on peut poser, avec le nombre déjà posé.
+ * GET /catalogue - Les modèles qu'on peut poser, avec ce qui l'a déjà été.
  *
  * Le décompte n'est pas décoratif : c'est lui qui dit qu'on va poser le banc
- * n° 24 et non un vingt-quatrième banc anonyme. Il évite aussi la question qui
- * a motivé tout le module — « ai-je déjà créé ce matériel ? » — en montrant
- * qu'un modèle existe **et** qu'il a déjà servi.
+ * n° 24 et non un vingt-quatrième banc anonyme. Il compte **les deux
+ * gisements** — un banc déjà posé trois fois dans un parc et vingt fois sur les
+ * trottoirs a bien été implanté vingt-trois fois —, mais seule la part voirie
+ * entre dans la numérotation, qui n'a de sens que là où elle est appliquée.
  */
 router.get('/catalogue', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
@@ -227,7 +240,8 @@ router.get('/catalogue', authenticateToken, async (req: AuthRequest, res: Respon
               COALESCE(o.category_id, psc.category_id) as category_id,
               pc.name as category_name,
               o.subcategory_id, psc.name as subcategory_name,
-              (SELECT COUNT(*) FROM street_furniture sf WHERE sf.object_id = o.id) as poses
+              (SELECT COUNT(*) FROM street_furniture sf WHERE sf.object_id = o.id) as poses,
+              (SELECT COUNT(*) FROM green_space_elements gse WHERE gse.object_id = o.id) as implantations
        FROM objects o
        ${jointuresPosable()}
        WHERE ${expressionPosable()} = 1
@@ -245,42 +259,42 @@ router.get('/catalogue', authenticateToken, async (req: AuthRequest, res: Respon
 // ======================== SYNTHÈSES ========================
 
 /**
- * GET /stats - De quoi titrer l'écran sans charger mille points.
+ * GET /stats - De quoi titrer l'écran, les deux gisements confondus.
+ *
+ * Comptées sur la liste normalisée et non en SQL : deux requêtes portant la
+ * même question sur deux schémas divergeraient, et le bandeau annoncerait un
+ * total que la carte en dessous ne montrerait pas.
  */
 router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const portee = await filtreObjets(req, 'o');
-    if (portee === null) {
+    const lignes = await lireImplantations(req, { limit: '20000' });
+    if (lignes === null) {
       return res.status(403).json({ success: false, message: REFUS_PORTEE });
     }
 
     const jour = aujourdhui();
-    const base = `FROM street_furniture sf LEFT JOIN objects o ON o.id = sf.object_id WHERE 1=1${portee.sql}`;
-
-    const [total, enService, aRevoir, enRetard, modeles, rues] = await Promise.all([
-      db.queryOne(`SELECT COUNT(*) as cnt ${base}`, portee.params),
-      db.queryOne(`SELECT COUNT(*) as cnt ${base} AND sf.status = 'en_service'`, portee.params),
-      db.queryOne(
-        `SELECT COUNT(*) as cnt ${base} AND sf.condition_state IN ('moyen','mauvais') AND sf.status <> 'depose'`,
-        portee.params
-      ),
-      db.queryOne(
-        `SELECT COUNT(*) as cnt ${base} AND sf.next_intervention_date IS NOT NULL AND sf.next_intervention_date < ? AND sf.status <> 'depose'`,
-        [...portee.params, jour]
-      ),
-      db.queryOne(`SELECT COUNT(DISTINCT sf.object_id) as cnt ${base}`, portee.params),
-      db.queryOne(`SELECT COUNT(DISTINCT sf.street) as cnt ${base} AND sf.street <> ''`, portee.params),
-    ]);
+    const echeance = (l: Implantation) =>
+      l.next_intervention_date ? String(l.next_intervention_date).slice(0, 10) : null;
 
     res.json({
       success: true,
       data: {
-        total: Number(total?.cnt ?? 0),
-        en_service: Number(enService?.cnt ?? 0),
-        a_revoir: Number(aRevoir?.cnt ?? 0),
-        en_retard: Number(enRetard?.cnt ?? 0),
-        modeles: Number(modeles?.cnt ?? 0),
-        rues: Number(rues?.cnt ?? 0),
+        total: lignes.length,
+        voirie: lignes.filter((l) => l.source === 'voirie').length,
+        espaces_verts: lignes.filter((l) => l.source === 'espace_vert').length,
+        modeles: new Set(lignes.map((l) => l.object_id).filter((id) => id !== null)).size,
+        rues: new Set(lignes.map((l) => l.street).filter(Boolean)).size,
+        a_revoir: lignes.filter(
+          (l) => l.condition_state === 'mauvais' || l.condition_state === 'remplacer'
+        ).length,
+        en_retard: lignes.filter((l) => {
+          const date = echeance(l);
+          return date !== null && date < jour;
+        }).length,
+        // Ce que la carte ne peut pas montrer, et qu'il vaut mieux annoncer que
+        // laisser deviner : des éléments d'espaces verts sans plan capturé ni
+        // position relevée.
+        sans_position: lignes.filter((l) => l.precision_position === 'inconnue').length,
       },
     });
   } catch (error: any) {
@@ -293,55 +307,68 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
  *
  * Les rues et les secteurs sont du texte libre : proposer la liste de ce qui a
  * déjà été saisi est le seul moyen d'éviter que « rue de la Gare », « Rue de la
- * gare » et « r. de la Gare » désignent trois rues différentes. Les modèles et
- * catégories sont rendus avec leur effectif, pour que le filtre annonce ce
- * qu'il va trouver.
+ * gare » et « r. de la Gare » désignent trois rues différentes. Les modèles,
+ * les catégories et les espaces verts sont rendus avec leur effectif, pour que
+ * le filtre annonce ce qu'il va trouver.
  */
 router.get('/facettes', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const portee = await filtreObjets(req, 'o');
-    if (portee === null) {
+    const lignes = await lireImplantations(req, { limit: '20000' });
+    if (lignes === null) {
       return res.status(403).json({ success: false, message: REFUS_PORTEE });
     }
 
-    const jointure = 'FROM street_furniture sf LEFT JOIN objects o ON o.id = sf.object_id';
-    const [rues, secteurs, modeles, categories] = await Promise.all([
-      db.query(
-        `SELECT sf.street as valeur, COUNT(*) as cnt ${jointure}
-         WHERE sf.street <> ''${portee.sql} GROUP BY sf.street`,
-        portee.params
-      ),
-      db.query(
-        `SELECT sf.sector as valeur, COUNT(*) as cnt ${jointure}
-         WHERE sf.sector <> ''${portee.sql} GROUP BY sf.sector`,
-        portee.params
-      ),
-      db.query(
-        `SELECT sf.object_id as id, o.name as nom, o.reference, COUNT(*) as cnt ${jointure}
-         WHERE 1=1${portee.sql} GROUP BY sf.object_id, o.name, o.reference`,
-        portee.params
-      ),
-      db.query(
-        `SELECT pc.id, pc.name as nom, COUNT(*) as cnt
-         FROM street_furniture sf
-         LEFT JOIN objects o ON o.id = sf.object_id
-         LEFT JOIN subcategories psc ON psc.id = o.subcategory_id
-         LEFT JOIN categories pc ON pc.id = COALESCE(o.category_id, psc.category_id)
-         WHERE pc.id IS NOT NULL${portee.sql} GROUP BY pc.id, pc.name`,
-        portee.params
-      ),
-    ]);
+    const compter = <T>(
+      valeurs: Array<T | null>,
+      cle: (valeur: T) => string
+    ): Map<string, { valeur: T; cnt: number }> => {
+      const vus = new Map<string, { valeur: T; cnt: number }>();
+      for (const valeur of valeurs) {
+        if (valeur === null || valeur === undefined) continue;
+        const k = cle(valeur);
+        const deja = vus.get(k);
+        if (deja) deja.cnt += 1;
+        else vus.set(k, { valeur, cnt: 1 });
+      }
+      return vus;
+    };
 
-    const parNom = (a: any, b: any) =>
-      String(a.valeur ?? a.nom ?? '').localeCompare(String(b.valeur ?? b.nom ?? ''), 'fr');
+    const texte = (valeurs: Array<string>) =>
+      [...compter(valeurs.filter(Boolean), (v) => v).values()]
+        .map(({ valeur, cnt }) => ({ valeur, cnt }))
+        .sort((a, b) => a.valeur.localeCompare(b.valeur, 'fr'));
+
+    const paire = (
+      valeurs: Array<{ id: number; nom: string; reference?: string | null }>
+    ) =>
+      [...compter(valeurs, (v) => String(v.id)).values()]
+        .map(({ valeur, cnt }) => ({ ...valeur, cnt }))
+        .sort((a, b) => a.nom.localeCompare(b.nom, 'fr'));
 
     res.json({
       success: true,
       data: {
-        rues: rues.sort(parNom),
-        secteurs: secteurs.sort(parNom),
-        modeles: modeles.sort(parNom),
-        categories: categories.sort(parNom),
+        rues: texte(lignes.map((l) => l.street)),
+        secteurs: texte(lignes.map((l) => l.sector)),
+        modeles: paire(
+          lignes
+            .filter((l) => l.object_id !== null)
+            .map((l) => ({
+              id: l.object_id!,
+              nom: l.object_name ?? 'Sans nom',
+              reference: l.object_reference,
+            }))
+        ),
+        categories: paire(
+          lignes
+            .filter((l) => l.category_id !== null)
+            .map((l) => ({ id: l.category_id!, nom: l.category_name ?? 'Sans nom' }))
+        ),
+        espaces_verts: paire(
+          lignes
+            .filter((l) => l.green_space_id !== null)
+            .map((l) => ({ id: l.green_space_id!, nom: l.lieu }))
+        ),
       },
     });
   } catch (error: any) {
@@ -352,60 +379,15 @@ router.get('/facettes', authenticateToken, async (req: AuthRequest, res: Respons
 // ======================== LISTE, EXPORT ========================
 
 /**
- * Les exemplaires répondant aux filtres, portée du compte comprise.
+ * GET / - Les implantations, tous gisements confondus.
  *
- * Partagé par la liste, la carte et l'export : trois lectures de la même
- * question ne doivent pas pouvoir donner trois réponses. Rend `null` si le
- * compte n'a accès à aucune catégorie.
+ * Voie publique **et** espaces verts. `source=voirie` ou `source=espace_vert`
+ * restreint, et c'est le seul moyen de ne voir qu'un des deux : le défaut est
+ * de tout montrer, parce que c'est la question qu'on se pose.
  */
-async function exemplairesFiltres(
-  req: AuthRequest,
-  options: { limite?: number } = {}
-): Promise<any[] | null> {
-  const portee = await filtreObjets(req, 'o');
-  if (portee === null) return null;
-
-  const filtres = clauseFiltres(req.query as FiltresMobilier);
-  const limite = Math.min(Math.max(1, Number(options.limite ?? req.query.limit ?? 2000)), 10000);
-
-  const lignes = await db.query(
-    `SELECT ${COLONNES_EXEMPLAIRE}
-     FROM street_furniture sf
-     ${JOINTURES_EXEMPLAIRE}
-     WHERE 1=1${portee.sql}${filtres.sql}
-     ORDER BY o.name, sf.numero
-     LIMIT ${limite}`,
-    [...portee.params, ...filtres.params]
-  );
-
-  // « Autour de moi » se termine ici plutôt qu'en SQL : le filtre est un
-  // cercle, et le rectangle que sait faire un index laisse passer les coins.
-  // La distance est rendue avec la ligne — sur le terrain, « à 40 m » vaut
-  // mieux que la seule présence dans la liste.
-  const centre = lirePosition(req.query.lat, req.query.lng);
-  const rayon = Number(req.query.rayon);
-  if (centre && Number.isFinite(rayon) && rayon > 0) {
-    return lignes
-      .map((ligne: any) => ({
-        ...ligne,
-        distance_m: Math.round(
-          distanceMetres(centre, {
-            latitude: Number(ligne.latitude),
-            longitude: Number(ligne.longitude),
-          })
-        ),
-      }))
-      .filter((ligne: any) => ligne.distance_m <= rayon)
-      .sort((a: any, b: any) => a.distance_m - b.distance_m);
-  }
-
-  return lignes;
-}
-
-/** GET / - Les exemplaires posés, filtrés. */
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const lignes = await exemplairesFiltres(req);
+    const lignes = await lireImplantations(req, req.query as FiltresImplantations);
     if (lignes === null) {
       return res.status(403).json({ success: false, message: REFUS_PORTEE });
     }
@@ -420,42 +402,26 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
  *
  * L'export PDF est fabriqué dans le navigateur, parce qu'il doit contenir la
  * carte telle qu'elle est affichée. Mais il ne doit pas se contenter de ce que
- * la carte a chargé : `avec_interventions` rapatrie l'historique, qu'aucun
- * écran n'affiche pour mille points à la fois et qui fait tout l'intérêt d'un
- * document d'entretien.
+ * la carte a chargé : `avec_interventions` rapatrie l'historique des deux
+ * gisements — les interventions de voirie et les entretiens d'espaces verts
+ * rattachés à l'élément —, qu'aucun écran n'affiche pour mille points à la fois
+ * et qui fait tout l'intérêt d'un document d'entretien.
  */
 router.get('/export', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const lignes = await exemplairesFiltres(req, { limite: Number(req.query.limit ?? 5000) });
+    const filtres = { ...(req.query as FiltresImplantations) };
+    filtres.limit = String(req.query.limit ?? 5000);
+
+    const lignes = await lireImplantations(req, filtres);
     if (lignes === null) {
       return res.status(403).json({ success: false, message: REFUS_PORTEE });
     }
 
-    const avecInterventions =
-      req.query.avec_interventions === '1' || req.query.avec_interventions === 'true';
-
-    if (avecInterventions && lignes.length > 0) {
-      // Une requête pour tout l'ensemble, et non une par exemplaire : mille
-      // lignes feraient mille allers-retours, et l'export expirerait avant de
-      // s'ouvrir.
-      const ids = lignes.map((l: any) => Number(l.id));
-      const interventions = await db.query(
-        `SELECT i.*, CONCAT_WS(' ', u.first_name, u.last_name) as auteur
-         FROM street_furniture_interventions i
-         LEFT JOIN users u ON u.id = i.user_id
-         WHERE i.item_id IN (${ids.map(() => '?').join(',')})
-         ORDER BY i.performed_on DESC, i.id DESC`,
-        ids
-      );
-      const parItem = new Map<number, any[]>();
-      for (const intervention of interventions) {
-        const cle = Number(intervention.item_id);
-        if (!parItem.has(cle)) parItem.set(cle, []);
-        parItem.get(cle)!.push(intervention);
-      }
-      for (const ligne of lignes) {
-        ligne.interventions = parItem.get(Number(ligne.id)) ?? [];
-      }
+    if (
+      (req.query.avec_interventions === '1' || req.query.avec_interventions === 'true') &&
+      lignes.length > 0
+    ) {
+      await historiques(lignes);
     }
 
     res.json({ success: true, data: lignes, total: lignes.length });
@@ -465,36 +431,68 @@ router.get('/export', authenticateToken, async (req: AuthRequest, res: Response)
 });
 
 /**
- * GET /objets/:objectId - Tous les exemplaires d'un modèle.
+ * GET /objets/:objectId - Toutes les implantations d'un modèle, où qu'elles soient.
  *
  * C'est la route qui répond à la question de départ : « j'ai créé un banc dans
- * les catégories, où sont les vingt-trois bancs posés ? ». Elle est appelée
- * depuis la fiche du matériel, qui n'a aucune raison de connaître les filtres
- * de la carte.
+ * les catégories, où sont les vingt-trois bancs posés ? ». Et la réponse ne
+ * s'arrête pas au trottoir : trois d'entre eux sont peut-être dans le parc
+ * municipal, et les chercher ailleurs est exactement ce qu'on veut éviter.
  */
 router.get('/objets/:objectId', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const portee = await filtreObjets(req, 'o');
-    if (portee === null) {
+    const lignes = await lireImplantations(req, {
+      object_id: req.params.objectId,
+      // Un modèle retiré du terrain compte dans son inventaire : la fiche du
+      // parc doit pouvoir dire « vingt posés, trois déposés ».
+      avec_deposes: '1',
+      limit: '5000',
+    });
+    if (lignes === null) {
       return res.status(403).json({ success: false, message: REFUS_PORTEE });
     }
-
-    const lignes = await db.query(
-      `SELECT ${COLONNES_EXEMPLAIRE}
-       FROM street_furniture sf
-       ${JOINTURES_EXEMPLAIRE}
-       WHERE sf.object_id = ?${portee.sql}
-       ORDER BY sf.numero`,
-      [req.params.objectId, ...portee.params]
-    );
-
     res.json({ success: true, data: lignes, total: lignes.length });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// ======================== UN EXEMPLAIRE ========================
+// ======================== UN ÉLÉMENT D'ESPACE VERT ========================
+
+/**
+ * GET /element/:elementId - Un élément d'espace vert, vu depuis la carte.
+ *
+ * En lecture seule, et c'est délibéré : la fiche de l'espace vert sait des
+ * choses que la carte ignore — le plan, les zones, les surfaces, les coûts
+ * figés, les saisons, l'historique des remplacements. Proposer ici un second
+ * formulaire de modification ferait deux vérités pour la même ligne. La carte
+ * montre, nomme, et renvoie là où ça se modifie.
+ *
+ * Déclarée avant `GET /:id` : `/element` serait sinon lu comme un identifiant.
+ */
+router.get('/element/:elementId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const lignes = await lireImplantations(req, {
+      source: 'espace_vert',
+      avec_deposes: '1',
+      limit: '20000',
+    });
+    if (lignes === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    const element = lignes.find((l) => l.id === Number(req.params.elementId));
+    if (!element) {
+      return res.status(404).json({ success: false, message: 'Élément non trouvé' });
+    }
+
+    await historiques([element]);
+    res.json({ success: true, data: element });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== UN EXEMPLAIRE DE VOIRIE ========================
 
 /**
  * L'exemplaire demandé, si le compte a le droit de le voir.
@@ -516,7 +514,7 @@ async function exemplaireAutorise(req: AuthRequest, itemId: string): Promise<any
   );
 }
 
-/** GET /:id - Un exemplaire et son historique. */
+/** GET /:id - Un exemplaire de voirie, son contenu et son historique. */
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const exemplaire = await exemplaireAutorise(req, req.params.id);
@@ -533,7 +531,18 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       [req.params.id]
     );
 
-    res.json({ success: true, data: { ...exemplaire, interventions } });
+    // Ce que porte une jardinière. Vide pour un banc, et c'est très bien : la
+    // question ne se pose que là où la réponse existe.
+    const contenu = await db.query(
+      `SELECT ${COLONNES_EXEMPLAIRE}
+       FROM street_furniture sf
+       ${JOINTURES_EXEMPLAIRE}
+       WHERE sf.parent_id = ?
+       ORDER BY o.name, sf.numero`,
+      [req.params.id]
+    );
+
+    res.json({ success: true, data: { ...exemplaire, interventions, contenu } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -546,6 +555,10 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
  * modèle et une position — parce que c'est tout ce qu'un agent a sous la main
  * devant un candélabre. Le reste se complète depuis la fiche, plus tard, au
  * bureau.
+ *
+ * `parent_id` pose **dans** un contenant : douze géraniums dans la jardinière
+ * du parking. Le contenu prend alors la position de son contenant — il est là
+ * où il est, et lui demander un point à lui n'aurait aucun sens.
  */
 router.post('/', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
@@ -554,14 +567,34 @@ router.post('/', authenticateToken, requireFieldWrite, async (req: AuthRequest, 
       return res.status(400).json({ success: false, message: 'Matériel du parc requis' });
     }
 
-    const position = lirePosition(req.body.latitude, req.body.longitude);
-    if (!position) {
-      return res.status(400).json({ success: false, message: REFUS_POSITION });
-    }
-
     const portee = await filtreObjets(req, 'o');
     if (portee === null) {
       return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    // Le contenant se vérifie avant la position : c'est lui qui la donne.
+    let contenant: any = null;
+    if (req.body.parent_id !== undefined && req.body.parent_id !== null && req.body.parent_id !== '') {
+      contenant = await exemplaireAutorise(req, String(req.body.parent_id));
+      if (!contenant) {
+        return res.status(404).json({ success: false, message: 'Contenant non trouvé' });
+      }
+      // Un seul niveau : une jardinière porte des fleurs, une fleur ne porte
+      // rien. Autoriser la chaîne obligerait à gérer des cycles et des
+      // profondeurs pour un besoin que personne n'a exprimé.
+      if (contenant.parent_id) {
+        return res.status(400).json({
+          success: false,
+          message: `« ${contenant.label} » est déjà dans un contenant : on ne pose pas dans ce qui est posé`,
+        });
+      }
+    }
+
+    const position = contenant
+      ? lirePosition(contenant.latitude, contenant.longitude)
+      : lirePosition(req.body.latitude, req.body.longitude);
+    if (!position) {
+      return res.status(400).json({ success: false, message: REFUS_POSITION });
     }
 
     const modele = await db.queryOne(
@@ -596,25 +629,38 @@ router.post('/', authenticateToken, requireFieldWrite, async (req: AuthRequest, 
         ? req.body.label.trim()
         : libelleParDefaut(modele.name, numero);
 
+    // Un exemplaire identifié est posé une fois : ce banc-là, pas trois. Une
+    // quantité n'a de sens que dans un contenant — douze géraniums dans un bac.
+    const quantite = contenant
+      ? Math.max(1, Math.floor(Number(req.body.quantity) || 1))
+      : 1;
+
     const resultat = await db.execute(
       `INSERT INTO street_furniture (
-         object_id, numero, label, code, latitude, longitude,
+         object_id, parent_id, numero, quantity, label, code, latitude, longitude,
          position_source, position_accuracy, address, street, sector,
          status, condition_state, installed_on, notes, image, custom_fields,
          created_by, created_at, updated_at
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         objectId,
+        contenant ? contenant.id : null,
         numero,
+        quantite,
         libelle,
         texte(req.body.code),
         position.latitude,
         position.longitude,
-        termeValide(SOURCES_POSITION, req.body.position_source, 'carte'),
-        nombreOuNull(req.body.position_accuracy),
-        texte(req.body.address),
-        texte(req.body.street),
-        texte(req.body.sector),
+        contenant
+          ? contenant.position_source
+          : termeValide(SOURCES_POSITION, req.body.position_source, 'carte'),
+        contenant ? contenant.position_accuracy : nombreOuNull(req.body.position_accuracy),
+        // Le contenu hérite de l'adresse de son contenant : la jardinière est
+        // rue de la Gare, ses fleurs aussi, et la retaper douze fois serait
+        // douze occasions de la taper différemment.
+        contenant ? contenant.address : texte(req.body.address),
+        contenant ? contenant.street : texte(req.body.street),
+        contenant ? contenant.sector : texte(req.body.sector),
         termeValide(STATUTS, req.body.status, 'en_service'),
         termeValide(ETATS, req.body.condition_state, 'bon'),
         dateOuNull(req.body.installed_on),
@@ -630,7 +676,7 @@ router.post('/', authenticateToken, requireFieldWrite, async (req: AuthRequest, 
     await logService.info(
       'other',
       `Mobilier posé : ${libelle} (modèle ${modele.name})`,
-      { itemId: resultat.lastInsertRowid, objectId },
+      { itemId: resultat.lastInsertRowid, objectId, parentId: contenant?.id ?? null },
       { userId: req.user!.userId }
     );
 
@@ -662,6 +708,13 @@ router.put('/:id', authenticateToken, requireFieldWrite, async (req: AuthRequest
     const deplacement =
       req.body.latitude !== undefined || req.body.longitude !== undefined;
     if (deplacement) {
+      if (existant.parent_id) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Ce mobilier est dans un contenant : il suit sa jardinière. Déplacez le contenant.',
+        });
+      }
       const position = lirePosition(req.body.latitude, req.body.longitude);
       if (!position) {
         return res.status(400).json({ success: false, message: REFUS_POSITION });
@@ -672,7 +725,7 @@ router.put('/:id', authenticateToken, requireFieldWrite, async (req: AuthRequest
 
     await db.execute(
       `UPDATE street_furniture SET
-         label = ?, code = ?, latitude = ?, longitude = ?,
+         label = ?, code = ?, quantity = ?, latitude = ?, longitude = ?,
          position_source = ?, position_accuracy = ?,
          address = ?, street = ?, sector = ?,
          status = ?, condition_state = ?, installed_on = ?,
@@ -681,6 +734,9 @@ router.put('/:id', authenticateToken, requireFieldWrite, async (req: AuthRequest
       [
         fusionner(texteOuNull(req.body.label), existant.label) || existant.label,
         fusionner(texteOuNull(req.body.code), existant.code) ?? '',
+        req.body.quantity !== undefined
+          ? Math.max(1, Math.floor(Number(req.body.quantity) || 1))
+          : (existant.quantity ?? 1),
         latitude,
         longitude,
         deplacement
@@ -709,6 +765,38 @@ router.put('/:id', authenticateToken, requireFieldWrite, async (req: AuthRequest
       ]
     );
 
+    /*
+      Le contenu suit son contenant.
+
+      Une jardinière déplacée de trois mètres emmène ses fleurs : les laisser
+      sur l'ancien point ferait douze géraniums plantés au milieu de la
+      chaussée. L'adresse suit pour la même raison — c'est la même adresse.
+    */
+    if (deplacement || req.body.address !== undefined || req.body.street !== undefined) {
+      await db.execute(
+        `UPDATE street_furniture SET
+           latitude = ?, longitude = ?, position_source = ?, position_accuracy = ?,
+           address = (SELECT address FROM street_furniture WHERE id = ?),
+           street = (SELECT street FROM street_furniture WHERE id = ?),
+           sector = (SELECT sector FROM street_furniture WHERE id = ?),
+           updated_at = ?
+         WHERE parent_id = ?`,
+        [
+          latitude,
+          longitude,
+          deplacement
+            ? termeValide(SOURCES_POSITION, req.body.position_source, 'carte')
+            : existant.position_source,
+          deplacement ? nombreOuNull(req.body.position_accuracy) : existant.position_accuracy,
+          req.params.id,
+          req.params.id,
+          req.params.id,
+          new Date().toISOString(),
+          req.params.id,
+        ]
+      );
+    }
+
     res.json({ success: true, data: await exemplaireComplet(req.params.id) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
@@ -730,16 +818,27 @@ router.delete('/:id', authenticateToken, requireSupervisor, async (req: AuthRequ
       return res.status(404).json({ success: false, message: 'Mobilier non trouvé' });
     }
 
+    // Ce que la cascade emporte se dit avant, pas après : une jardinière
+    // supprimée emmène ses plantations, et l'écran doit pouvoir l'annoncer.
+    const contenu = await db.queryOne(
+      'SELECT COUNT(*) as cnt FROM street_furniture WHERE parent_id = ?',
+      [req.params.id]
+    );
+
     await db.execute('DELETE FROM street_furniture WHERE id = ?', [req.params.id]);
 
     await logService.warning(
       'other',
       `Mobilier supprimé : ${existant.label}`,
-      { itemId: existant.id, objectId: existant.object_id },
+      { itemId: existant.id, objectId: existant.object_id, contenu: Number(contenu?.cnt ?? 0) },
       { userId: req.user!.userId }
     );
 
-    res.json({ success: true, message: 'Mobilier supprimé' });
+    res.json({
+      success: true,
+      message: 'Mobilier supprimé',
+      contenu_supprime: Number(contenu?.cnt ?? 0),
+    });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

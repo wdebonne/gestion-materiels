@@ -10,11 +10,14 @@ import { db } from '../database';
  * quartier de la gare »), par état (« ce qui est cassé »), par échéance (« ce
  * qui devait être repassé en mars »).
  *
- * Ces filtres sont assemblés ici plutôt que dans les routes parce qu'ils
- * servent trois fois pour la même question : la liste, la carte et l'export
- * PDF. Trois écritures divergeraient, et l'export ne dirait plus la même chose
- * que la carte qu'on venait de regarder — ce qui est exactement ce qu'on
- * n'attend pas d'un document qu'on imprime pour l'emmener sur le terrain.
+ * Ce fichier porte ce qui appartient en propre à la **voie publique** : son
+ * vocabulaire, la lecture d'une position, la numérotation des exemplaires et
+ * la tenue de leurs échéances.
+ *
+ * Le filtrage, lui, a déménagé dans `implantations.service.ts` le jour où la
+ * carte a cessé de ne montrer que les trottoirs. Un banc de parc et un banc de
+ * trottoir se cherchent avec les mêmes mots ; deux définitions des mêmes
+ * filtres, une par gisement, divergeraient au premier critère ajouté.
  */
 
 // ---------------------------------------------------------------- vocabulaire
@@ -39,12 +42,20 @@ export const STATUTS: readonly Terme[] = [
   { valeur: 'depose', libelle: 'Déposé' },
 ];
 
-/** L'état physique, qui décide de ce qu'on va programmer. */
+/**
+ * L'état physique, qui décide de ce qu'on va programmer.
+ *
+ * Exactement la liste des espaces verts (`client/src/lib/espacesVerts.ts`),
+ * « à remplacer » compris. Ce n'est pas une coïncidence : la carte montre les
+ * deux, et deux vocabulaires voisins mais différents donneraient un filtre
+ * « mauvais état » qui ne ramènerait que la moitié du parc sans le dire.
+ */
 export const ETATS: readonly Terme[] = [
   { valeur: 'neuf', libelle: 'Neuf' },
   { valeur: 'bon', libelle: 'Bon' },
   { valeur: 'moyen', libelle: 'Moyen' },
   { valeur: 'mauvais', libelle: 'Mauvais' },
+  { valeur: 'remplacer', libelle: 'À remplacer' },
 ];
 
 /** D'où vient le point posé sur la carte. */
@@ -138,179 +149,7 @@ export function distanceMetres(a: Position, b: Position): number {
   return 2 * RAYON * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-// -------------------------------------------------------------------- filtres
-
-/** Ce qu'une requête peut demander. Tout est facultatif, et tout se combine. */
-export interface FiltresMobilier {
-  q?: string;
-  category_id?: string;
-  subcategory_id?: string;
-  /** Plusieurs modèles séparés par des virgules : « bancs et corbeilles ». */
-  object_id?: string;
-  status?: string;
-  condition_state?: string;
-  street?: string;
-  sector?: string;
-  /** « minLat,minLng,maxLat,maxLng » — ce que la carte affiche. */
-  bbox?: string;
-  pose_du?: string;
-  pose_au?: string;
-  /** Échéance d'entretien dépassée à la date du jour. */
-  en_retard?: string;
-  /** Échéance d'entretien au plus tard à cette date : ce qu'il reste à faire. */
-  echeance_avant?: string;
-  /** Jamais aucune intervention : ce qui n'a pas été revu depuis la pose. */
-  jamais_entretenu?: string;
-  /** `1` pour inclure les exemplaires déposés, absents par défaut. */
-  avec_deposes?: string;
-}
-
-/** Vrai au sens d'une chaîne de requête : `1`, `true`, `oui`. */
-const vraiDansUrl = (valeur: unknown): boolean =>
-  valeur === '1' || valeur === 1 || valeur === true || valeur === 'true' || valeur === 'oui';
-
-/** Une liste d'identifiants, depuis « 3,7,12 ». Les intrus sont écartés. */
-function identifiants(brut: unknown): number[] {
-  if (brut === null || brut === undefined || brut === '') return [];
-  return String(brut)
-    .split(',')
-    .map((morceau) => Number(morceau.trim()))
-    .filter((n) => Number.isFinite(n) && n > 0);
-}
-
-/** Une liste de valeurs de référentiel, depuis « bon,moyen ». */
-function termes(liste: readonly Terme[], brut: unknown): string[] {
-  if (brut === null || brut === undefined || brut === '') return [];
-  const connus = new Set(liste.map((t) => t.valeur));
-  return String(brut)
-    .split(',')
-    .map((morceau) => morceau.trim())
-    .filter((valeur) => connus.has(valeur));
-}
-
-/** Une date `AAAA-MM-JJ`, ou rien : ce qui vient d'une URL n'est pas une date. */
-function dateOuRien(brut: unknown): string | null {
-  const texte = typeof brut === 'string' ? brut.trim() : '';
-  return /^\d{4}-\d{2}-\d{2}$/.test(texte) ? texte : null;
-}
-
-/**
- * Le fragment `WHERE` correspondant aux filtres, et ses paramètres.
- *
- * Suppose que la requête appelante écrit `FROM street_furniture sf` et joint
- * `objects o` sous cet alias. Le fragment commence toujours par ` AND ` : il
- * se concatène derrière une condition déjà posée, ce qui évite d'avoir à
- * décider ici s'il y a ou non un `WHERE` avant.
- */
-export function clauseFiltres(filtres: FiltresMobilier): { sql: string; params: any[] } {
-  const morceaux: string[] = [];
-  const params: any[] = [];
-
-  // Un exemplaire déposé n'est pas supprimé, mais il n'encombre pas la carte
-  // tant qu'on ne le demande pas. Le filtrer par défaut évite d'expliquer à
-  // chaque ouverture pourquoi un candélabre retiré en 2019 est encore là.
-  const statuts = termes(STATUTS, filtres.status);
-  if (statuts.length > 0) {
-    morceaux.push(`sf.status IN (${statuts.map(() => '?').join(',')})`);
-    params.push(...statuts);
-  } else if (!vraiDansUrl(filtres.avec_deposes)) {
-    morceaux.push(`sf.status <> 'depose'`);
-  }
-
-  const terme = typeof filtres.q === 'string' ? filtres.q.trim() : '';
-  if (terme) {
-    // La recherche traverse l'exemplaire **et** son modèle : on cherche
-    // « candélabre » sans savoir si le mot a été recopié sur chaque point.
-    const motif = `%${terme}%`;
-    morceaux.push(`(
-      sf.label LIKE ? OR sf.code LIKE ? OR sf.address LIKE ?
-      OR sf.street LIKE ? OR sf.sector LIKE ? OR sf.notes LIKE ?
-      OR o.name LIKE ? OR o.reference LIKE ?
-    )`);
-    params.push(motif, motif, motif, motif, motif, motif, motif, motif);
-  }
-
-  const modeles = identifiants(filtres.object_id);
-  if (modeles.length > 0) {
-    morceaux.push(`sf.object_id IN (${modeles.map(() => '?').join(',')})`);
-    params.push(...modeles);
-  }
-
-  // La catégorie d'un matériel est sa catégorie directe **ou** celle de sa
-  // sous-catégorie : filtrer sur la seule colonne directe raterait tout ce qui
-  // est rangé dans une sous-catégorie, c'est-à-dire l'essentiel d'un parc classé.
-  const categorie = identifiants(filtres.category_id);
-  if (categorie.length > 0) {
-    morceaux.push(`COALESCE(o.category_id, (
-      SELECT sc.category_id FROM subcategories sc WHERE sc.id = o.subcategory_id
-    )) IN (${categorie.map(() => '?').join(',')})`);
-    params.push(...categorie);
-  }
-
-  const sousCategorie = identifiants(filtres.subcategory_id);
-  if (sousCategorie.length > 0) {
-    morceaux.push(`o.subcategory_id IN (${sousCategorie.map(() => '?').join(',')})`);
-    params.push(...sousCategorie);
-  }
-
-  const etats = termes(ETATS, filtres.condition_state);
-  if (etats.length > 0) {
-    morceaux.push(`sf.condition_state IN (${etats.map(() => '?').join(',')})`);
-    params.push(...etats);
-  }
-
-  // Rue et secteur sont comparés en `LIKE` et non en égalité : « rue de la
-  // Gare » et « Rue de la gare » sont la même rue, et personne ne tape deux
-  // fois de suite la même casse.
-  const rue = typeof filtres.street === 'string' ? filtres.street.trim() : '';
-  if (rue) {
-    morceaux.push('sf.street LIKE ?');
-    params.push(`%${rue}%`);
-  }
-
-  const secteur = typeof filtres.sector === 'string' ? filtres.sector.trim() : '';
-  if (secteur) {
-    morceaux.push('sf.sector LIKE ?');
-    params.push(`%${secteur}%`);
-  }
-
-  const emprise = lireEmprise(filtres.bbox);
-  if (emprise) {
-    morceaux.push('sf.latitude BETWEEN ? AND ? AND sf.longitude BETWEEN ? AND ?');
-    params.push(emprise.minLat, emprise.maxLat, emprise.minLng, emprise.maxLng);
-  }
-
-  const poseDu = dateOuRien(filtres.pose_du);
-  if (poseDu) {
-    morceaux.push('sf.installed_on >= ?');
-    params.push(poseDu);
-  }
-
-  const poseAu = dateOuRien(filtres.pose_au);
-  if (poseAu) {
-    morceaux.push('sf.installed_on <= ?');
-    params.push(poseAu);
-  }
-
-  if (vraiDansUrl(filtres.en_retard)) {
-    morceaux.push(`sf.next_intervention_date IS NOT NULL AND sf.next_intervention_date < ?`);
-    params.push(aujourdhui());
-  }
-
-  const avant = dateOuRien(filtres.echeance_avant);
-  if (avant) {
-    morceaux.push('sf.next_intervention_date IS NOT NULL AND sf.next_intervention_date <= ?');
-    params.push(avant);
-  }
-
-  if (vraiDansUrl(filtres.jamais_entretenu)) {
-    morceaux.push('sf.last_intervention_date IS NULL');
-  }
-
-  if (morceaux.length === 0) return { sql: '', params: [] };
-  return { sql: ` AND ${morceaux.join(' AND ')}`, params };
-}
-
+// ---------------------------------------------------------------- calendrier
 /** La date du jour au format que la base stocke. */
 export function aujourdhui(): string {
   return new Date().toISOString().slice(0, 10);

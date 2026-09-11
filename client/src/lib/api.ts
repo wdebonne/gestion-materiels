@@ -1562,6 +1562,64 @@ export const essaiIntakeApi = {
     }),
 }
 
+// ======================== IMPLANTATIONS ========================
+
+/**
+ * Une implantation, d'où qu'elle vienne.
+ *
+ * Un banc scellé sur un trottoir et un banc posé dans un parc sont le même
+ * banc : ils se cherchent avec les mêmes mots et s'entretiennent de la même
+ * façon. La carte, la liste et l'export les lisent donc sous cette forme
+ * unique, que le serveur compose depuis `street_furniture` et
+ * `green_space_elements`.
+ *
+ * `source` dit d'où vient la ligne — c'est ce qui décide où l'on va quand on
+ * l'ouvre : la fiche de la carte pour la voirie, celle de l'espace vert pour
+ * un parc.
+ */
+export interface Implantation {
+  /** Clé unique tous gisements confondus : `voirie-12`, `espace_vert-45`. */
+  cle: string
+  source: 'voirie' | 'espace_vert'
+  id: number
+  object_id: number | null
+  /** Le rang dans son modèle. Nul côté espaces verts, qui ne numérote pas. */
+  numero: number | null
+  label: string
+  code: string
+  quantity: number
+  latitude: number | null
+  longitude: number | null
+  /** À quel point on sait où c'est : la carte ne doit pas faire passer une
+   *  position de repli pour un relevé. */
+  precision_position: 'exacte' | 'plan' | 'espace' | 'inconnue'
+  address: string
+  street: string
+  sector: string
+  /** « Voie publique », ou le nom du parc. */
+  lieu: string
+  green_space_id: number | null
+  /** Le contenant : une jardinière de trottoir, un massif d'espace vert. */
+  contenant: string
+  status: string
+  condition_state: string
+  installed_on: string | null
+  last_intervention_date: string | null
+  next_intervention_date: string | null
+  notes: string
+  image: string
+  object_name: string | null
+  object_reference: string | null
+  category_id: number | null
+  category_name: string | null
+  subcategory_id: number | null
+  subcategory_name: string | null
+  /** Rendu par le seul filtre « autour de moi ». */
+  distance_m?: number
+  /** Rendu par le détail et par l'export qui les demande. */
+  interventions?: InterventionMobilier[]
+}
+
 // ======================== MOBILIER DE VOIE PUBLIQUE ========================
 
 /**
@@ -1579,6 +1637,9 @@ export interface MobilierUrbain {
   label: string
   /** Le numéro d'inventaire de la commune, gravé sur le mobilier. Souvent vide. */
   code: string
+  /** Le contenant : une jardinière porte ses plantations. */
+  parent_id: number | null
+  quantity: number
   latitude: number
   longitude: number
   position_source: string
@@ -1607,6 +1668,8 @@ export interface MobilierUrbain {
   distance_m?: number
   /** Rendu par le détail, et par l'export qui la demande. */
   interventions?: InterventionMobilier[]
+  /** Ce que porte ce mobilier : les plantations d'une jardinière. */
+  contenu?: MobilierUrbain[]
 }
 
 export interface InterventionMobilier {
@@ -1636,8 +1699,10 @@ export interface ModelePosable {
   category_name: string | null
   subcategory_id: number | null
   subcategory_name: string | null
-  /** Nombre d'exemplaires déjà posés : le prochain portera ce numéro plus un. */
+  /** Exemplaires déjà posés sur la voie publique : le prochain prend ce numéro plus un. */
   poses: number
+  /** Exemplaires du même modèle déjà implantés dans un espace vert. */
+  implantations: number
 }
 
 /** Ce qu'une recherche peut demander. Tout est facultatif, et tout se combine. */
@@ -1649,6 +1714,9 @@ export interface FiltresMobilier {
   */
   [critere: string]: string | undefined
   q?: string
+  /** `voirie`, `espace_vert`, ou vide pour les deux — le défaut. */
+  source?: string
+  green_space_id?: string
   category_id?: string
   subcategory_id?: string
   object_id?: string
@@ -1676,15 +1744,20 @@ export interface FacettesMobilier {
   secteurs: Array<{ valeur: string; cnt: number }>
   modeles: Array<{ id: number; nom: string; reference: string | null; cnt: number }>
   categories: Array<{ id: number; nom: string; cnt: number }>
+  /** Les parcs qui portent au moins une implantation. */
+  espaces_verts: Array<{ id: number; nom: string; cnt: number }>
 }
 
 export interface StatsMobilier {
   total: number
-  en_service: number
-  a_revoir: number
-  en_retard: number
+  voirie: number
+  espaces_verts: number
   modeles: number
   rues: number
+  a_revoir: number
+  en_retard: number
+  /** Ce que la carte ne peut pas montrer : mieux vaut l'annoncer que le taire. */
+  sans_position: number
 }
 
 /** Un fond de carte publié par le serveur, jamais recopié côté client. */
@@ -1711,23 +1784,35 @@ const enParametres = (filtres: Record<string, unknown>): string => {
 
 export const mobilierUrbainApi = {
   lister: (filtres: FiltresMobilier = {}) =>
-    api.get<{ success: boolean; data: MobilierUrbain[]; total: number }>(
+    api.get<{ success: boolean; data: Implantation[]; total: number }>(
       `/mobilier-urbain${enParametres(filtres)}`
     ),
 
   /** Les mêmes lignes, avec l'historique quand le document en a besoin. */
   exporter: (filtres: FiltresMobilier & { avec_interventions?: string } = {}) =>
-    api.get<{ success: boolean; data: MobilierUrbain[]; total: number }>(
+    api.get<{ success: boolean; data: Implantation[]; total: number }>(
       `/mobilier-urbain/export${enParametres(filtres)}`
     ),
 
   detail: (id: number) =>
     api.get<{ success: boolean; data: MobilierUrbain }>(`/mobilier-urbain/${id}`),
 
-  /** Tous les exemplaires d'un modèle : « où sont mes vingt-trois bancs ? ». */
+  /**
+   * Toutes les implantations d'un modèle : « où sont mes vingt-trois bancs ? ».
+   *
+   * Les deux gisements confondus — trois d'entre eux sont peut-être dans le
+   * parc municipal, et c'est exactement ce qu'on ne veut pas aller chercher
+   * ailleurs.
+   */
   parModele: (objectId: number) =>
-    api.get<{ success: boolean; data: MobilierUrbain[]; total: number }>(
+    api.get<{ success: boolean; data: Implantation[]; total: number }>(
       `/mobilier-urbain/objets/${objectId}`
+    ),
+
+  /** Un élément d'espace vert, vu depuis la carte : en lecture seule. */
+  detailElement: (elementId: number) =>
+    api.get<{ success: boolean; data: Implantation }>(
+      `/mobilier-urbain/element/${elementId}`
     ),
 
   catalogue: (q?: string) =>
