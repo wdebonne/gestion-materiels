@@ -73,3 +73,7 @@ nginx/ssl/*.crt
 
 # Sorties du navigateur piloté (Playwright MCP) — artefacts de test, pas du code
 .playwright-mcp/
+
+# Cache des tuiles de carte (plan des espaces verts) : retéléchargeable,
+# volontairement hors de uploads/ que les sauvegardes archivent en entier
+.cache/

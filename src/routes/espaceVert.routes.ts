@@ -29,6 +29,18 @@ import {
   REFUS_POSITION,
   REFUS_ZONE,
 } from '../services/geometriePlan.service';
+import {
+  capturer as capturerPlan,
+  contoursDuCadre,
+  fond as fondCarte,
+  lireCadrage,
+  FONDS,
+  LIMITES,
+  REFUS_CADRAGE,
+  REFUS_FOND,
+} from '../services/captureCarte.service';
+import { exportLimiter } from '../middleware/rateLimiter.middleware';
+import path from 'path';
 
 const router = Router();
 
@@ -1387,6 +1399,114 @@ router.delete('/annotations/:annotationId', authenticateToken, requireSupervisor
   try {
     await db.execute('DELETE FROM green_space_annotations WHERE id = ?', [req.params.annotationId]);
     res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ======================== PLAN CAPTURÉ DEPUIS LA CARTE ========================
+
+/**
+ * GET /plan/fonds - Les fonds de carte disponibles.
+ *
+ * Déclarée avant les routes en `/:id` pour qu'« plan » ne soit pas lu comme un
+ * identifiant d'espace vert, comme `/materiel-implantable` plus haut.
+ *
+ * Le client a besoin des mêmes modèles d'URL que le serveur — il affiche la
+ * carte pendant qu'on cadre, le serveur assemble ensuite la même vue. Les
+ * décrire ici évite que les deux listes divergent : une URL corrigée d'un seul
+ * côté donnerait une capture qui ne ressemble pas à ce qu'on visait.
+ */
+router.get('/plan/fonds', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  res.json({
+    success: true,
+    data: {
+      fonds: FONDS.map((f) => ({
+        cle: f.cle,
+        libelle: f.libelle,
+        description: f.description,
+        modele: f.modele,
+        attribution: f.attribution,
+        zoomMax: f.zoomMax,
+      })),
+      // Les limites voyagent avec les fonds : le client choisit sa finesse en
+      // fonction d'elles plutôt que d'essuyer un refus après le clic.
+      limites: LIMITES,
+    },
+  });
+});
+
+/**
+ * POST /:id/plan/capture - Fabriquer le plan depuis la carte.
+ *
+ * Remplace l'image du plan **et** son échelle d'un seul geste. Les deux vont
+ * ensemble : garder l'ancien calibrage sur une nouvelle image rendrait toutes
+ * les surfaces fausses en silence, ce contre quoi le PUT plus haut se protège
+ * déjà en effaçant l'échelle quand le plan change.
+ *
+ * Le segment de calibrage manuel est effacé pour la même raison : il désignait
+ * deux points de l'ancienne image.
+ */
+router.post('/:id/plan/capture', authenticateToken, requireSupervisor, exportLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const espace = await db.queryOne('SELECT * FROM green_spaces WHERE id = ?', [req.params.id]);
+    if (!espace) {
+      return res.status(404).json({ success: false, message: 'Espace vert non trouvé' });
+    }
+
+    const cadrage = lireCadrage(req.body);
+    if (!cadrage) {
+      return res.status(400).json({ success: false, message: REFUS_CADRAGE });
+    }
+
+    const choix = fondCarte(String(req.body?.fond ?? ''));
+    if (!choix) {
+      return res.status(400).json({ success: false, message: REFUS_FOND });
+    }
+    if (cadrage.zoom > choix.zoomMax) {
+      return res.status(400).json({
+        success: false,
+        message: `« ${choix.libelle} » ne va pas au-delà du zoom ${choix.zoomMax}`,
+      });
+    }
+
+    const capture = await capturerPlan(cadrage, choix, path.join(__dirname, '../../uploads'));
+
+    const now = new Date().toISOString();
+    await db.execute(
+      `UPDATE green_spaces SET plan_image = ?, plan_scale_metres = ?, plan_ratio = ?,
+        plan_scale_points = NULL, updated_at = ? WHERE id = ?`,
+      [capture.url, capture.metresParPourcent, capture.ratio, now, req.params.id]
+    );
+
+    await logService.info(
+      'other',
+      `Plan capturé depuis la carte (${choix.libelle}) : ${espace.name}`,
+      { userId: req.user!.userId }
+    );
+
+    const updated = await db.queryOne('SELECT * FROM green_spaces WHERE id = ?', [req.params.id]);
+    res.json({ success: true, data: { espace: updated, capture } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /:id/plan/contour - Ce qu'OpenStreetMap connaît dans le cadre capturé.
+ *
+ * Séparée de la capture à dessein : Overpass met parfois une dizaine de
+ * secondes à répondre, et le plan n'a pas à attendre pour s'afficher. La
+ * réponse est consultative — le contour n'est enregistré que si quelqu'un
+ * l'accepte, par le chemin habituel des zones.
+ */
+router.post('/:id/plan/contour', authenticateToken, requireSupervisor, exportLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const cadrage = lireCadrage(req.body);
+    if (!cadrage) {
+      return res.status(400).json({ success: false, message: REFUS_CADRAGE });
+    }
+    res.json({ success: true, data: await contoursDuCadre(cadrage) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

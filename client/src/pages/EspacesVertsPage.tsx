@@ -25,7 +25,9 @@ import { usePermissions } from '@/lib/permissions'
 import { getErrorMessage } from '@/lib/errors'
 import PlanCanvas, { positionSurPlan, type CalquesPlan } from '@/components/plan/PlanCanvas'
 import { usePlanViewport } from '@/components/plan/usePlanViewport'
-import type { EchellePlan, OutilPlan, PointPlan, SelectionPlan } from '@/components/plan/types'
+import type { ContourPropose, EchellePlan, OutilPlan, PointPlan, SelectionPlan } from '@/components/plan/types'
+import CaptureCarte, { chercherContours, type ResultatCapture } from '@/components/plan/CaptureCarte'
+import ContoursProposes from '@/components/plan/ContoursProposes'
 import {
   aireEnM2,
   borner,
@@ -1602,6 +1604,8 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const [nouvelElement, setNouvelElement] = useState<PointPlan | null>(null)
   const [implantation, setImplantation] = useState<PointPlan | null>(null)
   const [exportPDF, setExportPDF] = useState(false)
+  const [captureOuverte, setCaptureOuverte] = useState(false)
+  const [contours, setContours] = useState<ContourPropose[] | null>(null)
 
   const annotations = space.annotations || []
   const elements = space.elements || []
@@ -2010,14 +2014,95 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       ? liste.map(o => (o.id === trace.cible!.id ? { ...o, zone_points: null } : o))
       : liste
 
+  /**
+   * Suite d'une capture réussie.
+   *
+   * Le plan est déjà en base quand on arrive ici : il ne reste qu'à le
+   * réafficher, puis à demander à OpenStreetMap ce qu'il connaît sous ce
+   * cadrage. Cette seconde requête passe par un service public partagé et prend
+   * parfois une dizaine de secondes — elle vient donc après, pour que le plan
+   * s'affiche sans l'attendre.
+   */
+  const apresCapture = async (resultat: ResultatCapture) => {
+    setCaptureOuverte(false)
+    rafraichir()
+    if (resultat.trous > 0) {
+      toast(
+        `${resultat.trous} tuile${resultat.trous > 1 ? 's' : ''} manquante${resultat.trous > 1 ? 's' : ''} : ` +
+        'le fond est incomplet à cet endroit. Essayez un autre fond de carte ou un zoom moins serré.',
+        { icon: '⚠️' }
+      )
+    }
+
+    const recherche = await chercherContours(space.id, resultat.cadrage)
+    if (recherche.etat === 'indisponible') {
+      // Dit plutôt que tu ; sinon on retrace à la main un contour qui existe.
+      toast('OpenStreetMap n’a pas répondu : le contour du parc n’a pas pu être recherché.', { icon: 'ℹ️' })
+      return
+    }
+    if (recherche.contours.length > 0) setContours(recherche.contours)
+  }
+
+  const fenetreCapture = captureOuverte && (
+    <CaptureCarte
+      espaceId={space.id}
+      nom={space.name}
+      latitude={space.latitude}
+      longitude={space.longitude}
+      adresse={space.address}
+      planExistant={Boolean(space.plan_image)}
+      onFermer={() => setCaptureOuverte(false)}
+      onCapture={apresCapture}
+    />
+  )
+
+  /**
+   * Le contour retenu repart par le chemin d'une zone tracée à la main : même
+   * fenêtre de qualification, même rattachement possible à un matériau du parc.
+   * Rien n'est enregistré du seul fait qu'il vienne d'OpenStreetMap.
+   */
+  const fenetreContours = contours && space.plan_image && (
+    <ContoursProposes
+      contours={contours}
+      planImage={space.plan_image}
+      onFermer={() => setContours(null)}
+      onRetenir={(contour) => { setContours(null); setZoneAQualifier(contour.points) }}
+    />
+  )
+
   if (!space.plan_image) {
     return (
-      <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-        <Image className="h-12 w-12 mx-auto mb-3 opacity-50" />
-        <p>Aucun plan n'a été chargé pour cet espace vert.</p>
-        <p className="text-sm mt-2">
-          Ajoutez une image de plan dans les paramètres de l'espace vert pour pouvoir l'annoter.
-        </p>
+      <div className="text-center py-12">
+        <Image className="h-12 w-12 mx-auto mb-3 text-gray-400 opacity-50" />
+        <p className="text-gray-600 dark:text-gray-400">Aucun plan n'a encore été créé pour cet espace vert.</p>
+        {canManage ? (
+          <>
+            {/* Vert comme le reste de l'écran, et non bleu comme le bouton
+                générique : c'est l'unique action de cette page-là. */}
+            <div className="mt-5">
+              <button
+                type="button"
+                onClick={() => setCaptureOuverte(true)}
+                className="inline-flex min-h-[52px] items-center gap-2 rounded-lg bg-green-600 px-6 py-3 font-medium text-white shadow-sm transition-colors hover:bg-green-700"
+              >
+                <Camera className="h-5 w-5" />
+                Créer le plan depuis la carte
+              </button>
+            </div>
+            <p className="mx-auto mt-3 max-w-md text-sm text-gray-500 dark:text-gray-400">
+              Cadrez le parc sur une photo aérienne : le plan est fabriqué et mis à l'échelle
+              tout seul. Les surfaces se calculent alors sans rien avoir à mesurer.
+            </p>
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              Vous pouvez aussi envoyer votre propre image depuis « Modifier l'espace vert ».
+            </p>
+          </>
+        ) : (
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Un superviseur peut le créer depuis la carte, ou charger une image de plan.
+          </p>
+        )}
+        {fenetreCapture}
       </div>
     )
   }
@@ -2047,6 +2132,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
         panneauOuvert={panneauOuvert}
         surPanneau={() => setPanneauOuvert(o => !o)}
         surPDF={() => setExportPDF(true)}
+        surCapture={canManage ? () => setCaptureOuverte(true) : undefined}
       />
 
       {/*
@@ -2249,6 +2335,9 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       )}
 
       {exportPDF && <PlanPDFExport space={space} onClose={() => setExportPDF(false)} />}
+
+      {fenetreCapture}
+      {fenetreContours}
     </div>
   )
 }
@@ -2260,7 +2349,7 @@ const distance = (a: PointPlan, b: PointPlan) => Math.hypot(a.x - b.x, a.y - b.y
 
 function BarreOutilsPlan({
   outil, surOutil, peutModifier, zoom, surZoom, surAjuster, surReinitialiser,
-  calques, surCalques, panneauOuvert, surPanneau, surPDF,
+  calques, surCalques, panneauOuvert, surPanneau, surPDF, surCapture,
 }: {
   outil: OutilPlan
   surOutil: (o: OutilPlan) => void
@@ -2274,6 +2363,8 @@ function BarreOutilsPlan({
   panneauOuvert: boolean
   surPanneau: () => void
   surPDF: () => void
+  /** Absent pour qui ne peut pas écrire : refaire le plan est un geste de superviseur. */
+  surCapture?: () => void
 }) {
   const OUTILS: Array<{ cle: OutilPlan; libelle: string; icone: any; gere: boolean }> = [
     { cle: 'main', libelle: 'Déplacer la vue', icone: Move, gere: false },
@@ -2356,13 +2447,20 @@ function BarreOutilsPlan({
           onClick={surPanneau}
         />
         <IconButton label="Exporter le plan en PDF" icon={<Download className="h-4 w-4" />} onClick={surPDF} />
+        {surCapture && (
+          <IconButton
+            label="Refaire le plan depuis la carte"
+            icon={<Camera className="h-4 w-4" />}
+            onClick={surCapture}
+          />
+        )}
         <HelpSheet
           titre="Le plan annoté"
           points={[
             "Choisissez un outil : la main déplace la vue, « Poser » ajoute un élément ou un repère, « Dessiner une zone » trace un contour, « Mesurer » donne l'échelle du plan.",
             'Attrapez un repère à la souris et lâchez-le où il va. Sans viser la pastille : « Poser » dans la liste, ou « Déplacer » sur la sélection, puis un clic à l’endroit voulu — Échap annule. Les flèches ajustent au dixième de pourcent, Maj pour aller plus vite.',
             'Une zone se dessine en cliquant chaque sommet. Revenez sur le premier point, double-cliquez ou tapez Entrée pour la refermer ; Ctrl+Z revient en arrière, Échap abandonne.',
-            'Mesurez une longueur que vous connaissez — une façade, un terrain — et donnez-la en mètres : toutes les zones affichent ensuite leur surface toutes seules.',
+            'Un plan créé depuis la carte arrive déjà à l’échelle : les surfaces se calculent sans rien mesurer. Sur une image chargée à la main, mesurez une longueur que vous connaissez — une façade, un terrain — et donnez-la en mètres.',
             'Une zone peut porter un matériau du parc — gazon, enrobé — et son coût suit la surface. Cochez « ne pas compter » pour tracer ce qui était déjà là.',
           ]}
         />

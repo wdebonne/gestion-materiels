@@ -47,3 +47,6 @@ coverage/
 .eslintrc*
 .prettierrc*
 
+
+# Cache des tuiles de carte : retéléchargeable, jamais à embarquer dans l'image
+.cache/
