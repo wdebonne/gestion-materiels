@@ -1,7 +1,7 @@
 # 🔒 Rapport d'Audit de Sécurité des API
 
 **Date de l'audit initial** : 6 février 2026  
-**Révision** : 1er septembre 2026  
+**Révision** : 11 septembre 2026  
 **Projet** : Gestion Matériels  
 **Version auditée** : Branche `main`
 
@@ -389,6 +389,28 @@ Le point d'entrée `PATCH /api/objects/:id/compteurs` ouvre l'écriture d'un cha
 - elle vérifie la **portée par catégorie** (`peutVoirObjet`), et pas seulement le rôle : un compte cantonné aux espaces verts ne peut pas faire avancer le compteur d'un camion qu'il n'a pas le droit de voir.
 
 **Défaut antérieur, toujours ouvert :** les trois routes de saisie de terrain — `POST /:id/fuel`, `/:id/maintenance`, `/:id/technical-control` — ne vérifient que le rôle, pas la portée par catégorie. Un agent peut donc écrire un plein sur un matériel qu'il ne peut pas consulter. L'exposition est limitée (écriture d'une ligne d'historique sur un identifiant à deviner, aucune lecture en retour), mais l'asymétrie avec la lecture — corrigée en août 2026 — reste à résorber.
+
+### Révision de septembre 2026 — plan annoté des espaces verts
+
+Le plan écrivait en base des nombres venus d'une souris **sans le moindre contrôle**. `pos_x`, `pos_y` et `zone_points` étaient insérés tels quels : le corps de requête d'une annotation partait dans l'`INSERT`, celui d'une zone passait par `JSON.stringify` sans qu'on regarde ce qu'il contenait.
+
+Aucune élévation de privilège — toutes ces routes exigent déjà `requireSupervisor` —, mais deux effets réels :
+
+- une coordonnée hors de l'intervalle 0–100 y restait, et le repère devenait **introuvable** : hors du plan, il n'y avait plus moyen de cliquer dessus pour le rattraper ni pour le supprimer ;
+- un polygone de taille arbitraire était accepté, et relu à chaque ouverture de la fiche, de l'export PDF et de chaque archive.
+
+`geometriePlan.service.ts` écrit la règle une fois : un pourcentage fini dans les bornes du plan, un polygone de 3 à 500 sommets. Un tableau vide reste une demande légitime d'effacement, et non une erreur de saisie — les confondre aurait rendu impossible la suppression d'une zone.
+
+**Deux routes de réglage ajoutées**, toutes deux sous `requireSupervisor` :
+
+| Route | Fichier | Description |
+|-------|---------|-------------|
+| `GET /api/green-spaces/materiel-implantable/{tree,objects,search}` | `espaceVert.routes.ts` | Lecture de l'arbre du parc et de son réglage |
+| `PUT /api/green-spaces/materiel-implantable/:niveau/:id` | `espaceVert.routes.ts` | Ouvrir ou fermer une catégorie, une sous-catégorie, un matériel |
+
+Les trois lectures appliquent `filtreObjets()` en plus du rôle : régler la disponibilité reste une lecture du parc, et ne doit pas révéler à un superviseur cantonné les matériels des catégories qui lui sont fermées. Le nouveau réglage **s'ajoute** à cette portée, il ne s'y substitue pas.
+
+Enfin, l'onglet du plan proposait toutes ses commandes d'édition à n'importe quel compte connecté : le serveur refusait, sans que rien ne l'explique à l'écran. Les actions sont désormais masquées selon le droit — défense en profondeur, le contrôle serveur restant le seul qui compte.
 
 ### Ouvert après la révision d'août 2026
 

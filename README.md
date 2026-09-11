@@ -4,9 +4,10 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 
 ![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
+![Tests](https://img.shields.io/badge/tests-735-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -459,6 +460,11 @@ gestion-materiels/
 │   ├── src/
 │   │   ├── components/    # Composants réutilisables
 │   │   │   ├── ui/        # Composants UI (Button, Modal, etc.)
+│   │   │   ├── plan/      # Plan annoté : rendu, zoom/panoramique, géométrie
+│   │   │   │   ├── PlanCanvas.tsx      # Le plan et ce qui est posé dessus
+│   │   │   │   ├── usePlanViewport.ts  # Zoom au curseur, panoramique, écran ⇄ %
+│   │   │   │   └── geometrie.ts        # Aires, échelle, sommets
+│   │   │   ├── settings/  # Écrans de réglage partagés entre modules
 │   │   │   ├── Layout.tsx # Layout principal
 │   │   │   ├── ManifestationPDFExport.tsx # Export PDF manifestations
 │   │   │   └── DynamicPluginPage.tsx # Pages plugins dynamiques
@@ -467,6 +473,7 @@ gestion-materiels/
 │   │   │   ├── EspacesVertsPage.tsx   # Gestion des espaces verts
 │   │   │   └── settings/  # Pages d'administration
 │   │   ├── stores/        # État global (Zustand)
+│   │   ├── test/          # Tests frontend (Vitest)
 │   │   └── lib/           # Utilitaires et API
 │   └── ...
 ├── src/                    # Backend Node.js
@@ -475,8 +482,11 @@ gestion-materiels/
 │   │   ├── plugin.service.ts         # Gestion plugins
 │   │   ├── pluginAdvanced.service.ts # Plugins avancés (ZIP, tables)
 │   │   ├── email.service.ts          # Service email
-│   │   └── cron.service.ts           # Tâches planifiées
-│   ├── middleware/        # Middlewares (auth)
+│   │   ├── cron.service.ts           # Tâches planifiées
+│   │   ├── disponibiliteParc.service.ts   # Ce qu'un module accepte du parc
+│   │   ├── coutEspaceVert.service.ts      # Coûts d'implantation, prix figé
+│   │   └── geometriePlan.service.ts       # Ce qu'on accepte comme position/zone
+│   ├── middleware/        # Middlewares (auth, portée par catégorie)
 │   ├── database/          # Gestion BDD
 │   │   ├── migrations/    # Migrations versionnées
 │   │   ├── migrationRunner.ts # Journal, sauvegarde, application
@@ -489,14 +499,15 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest)
+├── tests/                  # Tests backend (Jest) — 40 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain
 │   ├── apiTokens.test.ts  # Portée des tokens API
 │   ├── migrations.test.ts # Système de migration
-│   ├── batchQuery.test.ts # Chargement groupé (N+1)
-│   ├── settingsColumns.test.ts # Noms de colonnes de `settings`
-│   ├── slugify.test.ts    # Utilitaire slugify
+│   ├── geometriePlan.test.ts  # Aires, échelle, sommets du plan annoté
+│   ├── coutEspaceVert.test.ts # Prix figé, lignes sans prix, zones hors coûts
+│   ├── materielPretable.test.ts / materielEspaceVert.test.ts # Trois états du parc
+│   ├── manifestation*.test.ts # Approbations, stock, sorties, réception, export
 │   └── api.test.ts        # Routes API & WebSocket
 ├── docs/                   # Documentation
 │   ├── ROADMAP_FONCTIONNALITES.md # Roadmap et état réel des fonctionnalités
@@ -835,9 +846,13 @@ PUT    /api/green-spaces/:id          # Modifier un espace vert
 DELETE /api/green-spaces/:id          # Supprimer un espace vert
 
 # Éléments
+GET    /api/green-spaces/:id/elements      # Liste filtrable (?search=, ?element_type=)
 POST   /api/green-spaces/:id/elements      # Ajouter un élément libre (hors parc)
 PUT    /api/green-spaces/elements/:eid     # Modifier un élément
 DELETE /api/green-spaces/elements/:eid     # Supprimer un élément
+POST   /api/green-spaces/elements/:eid/replace  # Remplacer, en archivant l'état précédent
+GET    /api/green-spaces/elements/:eid/history  # Historique des remplacements
+GET    /api/green-spaces/:id/replacement-history # Tous les remplacements de l'espace
 
 # Implantation depuis le parc
 GET    /api/green-spaces/parc/catalogue    # Matériel implantable (lots et exemplaires, prix unitaire, déjà implanté)
@@ -858,10 +873,16 @@ GET    /api/green-spaces/materiel-implantable/objects  # Matériels d'une catég
 GET    /api/green-spaces/materiel-implantable/search   # Chercher dans tout le parc (?q=)
 PUT    /api/green-spaces/materiel-implantable/:niveau/:id  # Régler category | subcategory | object
 
-# Groupes
+# Groupes de composition
 POST   /api/green-spaces/:id/groups        # Ajouter un groupe
-PUT    /api/green-spaces/groups/:gid       # Modifier un groupe
-DELETE /api/green-spaces/groups/:gid       # Supprimer un groupe
+PUT    /api/green-spaces/groups/:gid       # Modifier un groupe (partiel)
+PUT    /api/green-spaces/groups/:gid/elements # Fixer la composition du groupe
+DELETE /api/green-spaces/groups/:gid       # Supprimer un groupe (les éléments sont détachés)
+
+# Suivi saisonnier
+POST   /api/green-spaces/:id/seasons       # Ajouter une saison
+PUT    /api/green-spaces/seasons/:sid      # Modifier une saison
+DELETE /api/green-spaces/seasons/:sid      # Supprimer une saison
 
 # Documents
 POST   /api/green-spaces/:id/documents     # Ajouter un document
@@ -872,13 +893,23 @@ POST   /api/green-spaces/:id/maintenances  # Ajouter un entretien
 PUT    /api/green-spaces/maintenances/:mid # Modifier un entretien
 DELETE /api/green-spaces/maintenances/:mid # Supprimer un entretien
 
-# Types personnalisés
-GET    /api/green-spaces/doc-types         # Types de documents
-POST   /api/green-spaces/doc-types         # Créer un type de document
-PUT    /api/green-spaces/doc-types/:id     # Modifier un type
-GET    /api/green-spaces/custom-maintenance-types  # Types d'entretien
-POST   /api/green-spaces/custom-maintenance-types  # Créer un type d'entretien
-PUT    /api/green-spaces/custom-maintenance-types/:id # Modifier un type
+# Référentiels — tous en lecture seule côté agent, CRUD côté superviseur
+GET    /api/green-spaces/types             # Types d'espaces (référence figée)
+GET    /api/green-spaces/element-types      # Types d'éléments
+GET    /api/green-spaces/maintenance-types  # Types d'entretien par défaut
+GET    /api/green-spaces/doc-types          # Types de documents
+POST   /api/green-spaces/doc-types          # Créer un type de document
+PUT    /api/green-spaces/doc-types/:id      # Modifier un type
+DELETE /api/green-spaces/doc-types/:id      # Supprimer un type
+GET    /api/green-spaces/custom-maintenance-types     # Types d'entretien personnalisés
+POST   /api/green-spaces/custom-maintenance-types     # Créer
+PUT    /api/green-spaces/custom-maintenance-types/:id # Modifier
+DELETE /api/green-spaces/custom-maintenance-types/:id # Supprimer
+GET    /api/green-spaces/group-types        # Types de groupes de composition
+POST   /api/green-spaces/group-types        # Créer  (PUT et DELETE /:id existent aussi)
+GET    /api/green-spaces/space-types        # Types d'espaces, éditables par la commune
+GET    /api/green-spaces/space-statuses     # Statuts d'espaces, éditables par la commune
+GET    /api/green-spaces/search/objects     # Recherche libre dans le parc (?q=)
 
 # Clonage & Archives
 POST   /api/green-spaces/:id/clone         # Cloner un espace vert
@@ -1007,7 +1038,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
 - Un service ne peut être mis en copie que globalement ; il n'existe pas encore de mise en copie d'une personne depuis l'écran (l'API l'accepte : `POST /:id/watchers` avec `user_id`)
 - Une image déposée est systématiquement ré-encodée en JPEG par `normalizeImage()`, mais conserve son extension et son `Content-Type` d'origine : un PNG à fond transparent ressort opaque, sous un nom en `.png` dont le contenu est du JPEG. Sans effet sur un cliché de terrain, visible sur un logo ou un favicon
-- Le typage du client comporte encore 449 avertissements ESLint, presque tous des `any`
+- Le typage du client comporte encore 506 avertissements ESLint, presque tous des `any` — aucune erreur
 
 ## 🛠️ Développement
 
@@ -1046,17 +1077,25 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-> **131 tests** : 87 backend + 44 frontend.
+> **735 tests** : 691 backend (40 suites) + 44 frontend (5 suites).
+>
+> Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas
+> vérifier à l'œil — le reste couvre les routes et les écrans module par module.
 >
 > | Suite | Couvre |
 > |-------|--------|
 > | `roles.test.ts` | Matrice rôle × endpoint, contrat de chaque route protégée |
+> | `objectScope.test.ts`, `perimetreService.test.ts`, `cloisonnementService.test.ts` | Portée par catégorie : ce qu'un compte a le droit de voir, et par quelles routes cela pourrait fuir |
 > | `saisie-terrain.test.ts` | Champs obligatoires des relevés, et surtout que les champs validés soient bien ceux que la route lit |
 > | `apiTokens.test.ts` | Portée des tokens API, méthode HTTP → permission |
 > | `migrations.test.ts` | Journal, ordre, non-rejeu, reprise après échec |
+> | `materielPretable.test.ts`, `materielEspaceVert.test.ts` | Les trois états du parc — oui, non, hérite — et le fait que les deux modules ne se confondent pas |
+> | `coutEspaceVert.test.ts` | Prix figé à la pose, lignes sans prix comptées à part, zones écartées des coûts |
+> | `geometriePlan.test.ts` | Aires du plan annoté : un pourcent vertical ne mesure pas comme un pourcent horizontal, et l'oublier double la surface |
+> | `manifestationApprobations.test.ts` | Qui approuve quoi, dans quel ordre, et ce que change une délégation |
 > | `batchQuery.test.ts` | Chargement groupé : regroupement, découpage en tranches |
 > | `settingsColumns.test.ts` | Aucune requête n'interroge `settings` avec de mauvais noms de colonnes |
-> | `api.test.ts`, `slugify.test.ts` | Routes API, WebSocket, génération de slugs |
+> | `valeursSql.test.ts` | Le vide d'un formulaire devient `NULL`, et « ne rien dire » ne vaut pas « effacer » |
 > | `auth.store.test.ts` | Contrat du magasin d'authentification, « Rester connecté » |
 > | `offlineQueue.test.ts` | File hors ligne : ce qui est différable, sort de file, abandonné |
 > | `Badge`, `Button`, `Card` | Composants UI |

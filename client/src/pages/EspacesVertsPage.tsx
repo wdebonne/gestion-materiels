@@ -1587,6 +1587,14 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   /** Repère en cours de glissement : sa position tant que le serveur n'a pas répondu. */
   const [apercu, setApercu] = useState<{ cible: SelectionPlan; point: PointPlan } | null>(null)
 
+  /**
+   * Ce que le prochain clic sur le plan va placer.
+   *
+   * « Poser » depuis la liste n'armait que le mode : le clic suivant rouvrait
+   * la fenêtre pour redemander **quoi** poser, alors qu'on venait de le
+   * désigner. Le même mécanisme sert à « Déplacer » un objet déjà posé.
+   */
+  const [aPlacer, setAPlacer] = useState<SelectionPlan | null>(null)
   const [creation, setCreation] = useState<PointPlan | null>(null)
   const [mesure, setMesure] = useState<{ a: PointPlan; b: PointPlan | null } | null>(null)
   const [zoneAQualifier, setZoneAQualifier] = useState<PointPlan[] | null>(null)
@@ -1654,14 +1662,14 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   )
 
   const poserElement = useMutation({
-    meta: { successMessage: 'Élément posé sur le plan' },
+    meta: { successMessage: 'Élément placé sur le plan' },
     mutationFn: ({ id, x, y }: { id: number; x: number; y: number }) =>
       api.put(`/green-spaces/elements/${id}`, { pos_x: x, pos_y: y }),
     onSuccess: () => { rafraichir(); setCreation(null) },
   })
 
   const poserGroupe = useMutation({
-    meta: { successMessage: 'Groupe posé sur le plan' },
+    meta: { successMessage: 'Groupe placé sur le plan' },
     mutationFn: ({ id, x, y }: { id: number; x: number; y: number }) =>
       api.put(`/green-spaces/groups/${id}`, { pos_x: x, pos_y: y }),
     onSuccess: () => { rafraichir(); setCreation(null) },
@@ -1775,11 +1783,46 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     }
 
     if (outil === 'repere') {
+      // Une cible désignée se pose ici même : redemander laquelle serait
+      // reposer la question à laquelle on vient de répondre.
+      if (aPlacer) {
+        placer(aPlacer, point)
+        return
+      }
       setCreation(point)
       return
     }
 
     setSelection(null)
+  }
+
+  /** Pose l'objet désigné à cet endroit, puis rend la main à l'outil neutre. */
+  const placer = (cible: SelectionPlan, point: PointPlan) => {
+    if (cible.type === 'element') poserElement.mutate({ id: cible.id, x: point.x, y: point.y })
+    else if (cible.type === 'group') poserGroupe.mutate({ id: cible.id, x: point.x, y: point.y })
+    else deplacerAnnotation.mutate({ id: cible.id, x: point.x, y: point.y })
+    setAPlacer(null)
+    setOutil('main')
+  }
+
+  /** Arme le placement d'un objet : le prochain clic sur le plan le posera. */
+  const designerAPlacer = (cible: SelectionPlan) => {
+    setTrace(null)
+    setMesure(null)
+    setCreation(null)
+    setSelection(cible)
+    setAPlacer(cible)
+    setOutil('repere')
+  }
+
+  /** Comment s'appelle ce qu'on est en train de placer, pour le dire à l'écran. */
+  const nomDe = (cible: SelectionPlan): string => {
+    if (cible.type === 'element') {
+      const el = elements.find(e => e.id === cible.id)
+      return el?.label || el?.code || 'cet élément'
+    }
+    if (cible.type === 'group') return groups.find(g => g.id === cible.id)?.name || 'ce groupe'
+    return annotations.find(a => a.id === cible.id)?.label || 'ce repère'
   }
 
   /** Démarre le glissement d'un repère, ou laisse passer au panoramique. */
@@ -1874,6 +1917,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   }
 
   const abandonner = () => {
+    if (aPlacer) { setAPlacer(null); setOutil('main'); return }
     if (trace) { setTrace(null); setHistorique([]); setOutil('main'); return }
     if (mesure) { setMesure(null); return }
     if (creation) { setCreation(null); return }
@@ -1989,6 +2033,8 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
           setTrace(null)
           setMesure(null)
           setCreation(null)
+          // Choisir l'outil à la barre, c'est repartir sans cible désignée.
+          setAPlacer(null)
           if (o === 'zone') commencerZone(null)
         }}
         peutModifier={canManage}
@@ -2013,6 +2059,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       <div className="min-h-[68px] flex items-center">
       <LigneEtat
         outil={outil}
+        aPlacer={aPlacer ? nomDe(aPlacer) : null}
         trace={trace}
         mesure={mesure}
         echelle={echelle}
@@ -2097,7 +2144,8 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
             surModifier={(el) => setElementEnEdition(el)}
             surRenommer={(id, champs) => modifierRepere.mutate({ id, ...champs })}
             surSupprimerRepere={supprimerSelection}
-            surPoser={(cible) => { setOutil('repere'); setCreation(null); setSelection(cible) }}
+            surPoser={designerAPlacer}
+            surDeplacer={designerAPlacer}
           />
         )}
       </div>
@@ -2312,7 +2360,7 @@ function BarreOutilsPlan({
           titre="Le plan annoté"
           points={[
             "Choisissez un outil : la main déplace la vue, « Poser » ajoute un élément ou un repère, « Dessiner une zone » trace un contour, « Mesurer » donne l'échelle du plan.",
-            'Attrapez un repère à la souris pour le déplacer : il se pose là où vous lâchez. Les flèches du clavier l’ajustent au dixième de pourcent, Maj pour aller plus vite.',
+            'Attrapez un repère à la souris et lâchez-le où il va. Sans viser la pastille : « Poser » dans la liste, ou « Déplacer » sur la sélection, puis un clic à l’endroit voulu — Échap annule. Les flèches ajustent au dixième de pourcent, Maj pour aller plus vite.',
             'Une zone se dessine en cliquant chaque sommet. Revenez sur le premier point, double-cliquez ou tapez Entrée pour la refermer ; Ctrl+Z revient en arrière, Échap abandonne.',
             'Mesurez une longueur que vous connaissez — une façade, un terrain — et donnez-la en mètres : toutes les zones affichent ensuite leur surface toutes seules.',
             'Une zone peut porter un matériau du parc — gazon, enrobé — et son coût suit la surface. Cochez « ne pas compter » pour tracer ce qui était déjà là.',
@@ -2326,10 +2374,12 @@ function BarreOutilsPlan({
 // -------------------------------------------------------------- ligne d'état
 
 function LigneEtat({
-  outil, trace, mesure, echelle, surface, peutModifier, peutAnnuler,
+  outil, aPlacer, trace, mesure, echelle, surface, peutModifier, peutAnnuler,
   surTerminer, surAnnulerPoint, surAbandon, surCalibrer,
 }: {
   outil: OutilPlan
+  /** Nom de ce que le prochain clic va poser, si quelque chose est désigné. */
+  aPlacer: string | null
   trace: { cible: SelectionPlan | null; points: PointPlan[] } | null
   mesure: { a: PointPlan; b: PointPlan | null } | null
   echelle: EchellePlan | null
@@ -2379,11 +2429,14 @@ function LigneEtat({
 
   if (outil === 'repere') {
     return (
-      <div className="w-full p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700">
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700">
         <p className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
           <MapPin className="h-4 w-4 flex-shrink-0" />
-          Cliquez à l’endroit voulu sur le plan : vous choisirez ensuite quoi y poser.
+          {aPlacer
+            ? <>Cliquez à l’endroit voulu pour y poser <strong>{aPlacer}</strong>.</>
+            : 'Cliquez à l’endroit voulu sur le plan : vous choisirez ensuite quoi y poser.'}
         </p>
+        {aPlacer && <Button size="sm" variant="ghost" onClick={surAbandon}>Annuler</Button>}
       </div>
     )
   }
@@ -2589,7 +2642,7 @@ function ReglettePlan({ echelle, zoom, largeur }: { echelle: EchellePlan; zoom: 
 function PanneauPlan({
   elements, groups, annotations, aPoser, groupesAPoser, typeGroupe,
   selection, surSelection, masques, surVisibilite, peutModifier, echelle,
-  surRetouche, surRetirer, surModifier, surRenommer, surSupprimerRepere, surPoser,
+  surRetouche, surRetirer, surModifier, surRenommer, surSupprimerRepere, surPoser, surDeplacer,
 }: {
   elements: GreenSpaceElement[]
   groups: CompositionGroup[]
@@ -2609,6 +2662,7 @@ function PanneauPlan({
   surRenommer: (id: number, champs: any) => void
   surSupprimerRepere: () => void
   surPoser: (cible: SelectionPlan) => void
+  surDeplacer: (cible: SelectionPlan) => void
 }) {
   const [recherche, setRecherche] = useState('')
   const correspond = (texte: string | null | undefined) =>
@@ -2647,6 +2701,7 @@ function PanneauPlan({
           surModifier={surModifier}
           surRenommer={surRenommer}
           surSupprimerRepere={surSupprimerRepere}
+          surDeplacer={surDeplacer}
         />
       )}
 
@@ -2810,7 +2865,7 @@ function LignePanneau({ icone, titre, detail, actif, masque, surClic, surVisibil
  */
 function DetailSelection({
   selection, elements, groups, annotations, typeGroupe, echelle, peutModifier,
-  surRetouche, surRetirer, surModifier, surRenommer, surSupprimerRepere,
+  surRetouche, surRetirer, surModifier, surRenommer, surSupprimerRepere, surDeplacer,
 }: {
   selection: SelectionPlan
   elements: GreenSpaceElement[]
@@ -2824,6 +2879,8 @@ function DetailSelection({
   surModifier: (el: GreenSpaceElement) => void
   surRenommer: (id: number, champs: any) => void
   surSupprimerRepere: () => void
+  /** Désigne l'objet : le prochain clic sur le plan le posera là. */
+  surDeplacer: (cible: SelectionPlan) => void
 }) {
   const element = selection.type === 'element' ? elements.find(e => e.id === selection.id) : undefined
   const groupe = selection.type === 'group' ? groups.find(g => g.id === selection.id) : undefined
@@ -2849,6 +2906,10 @@ function DetailSelection({
         </p>
         {peutModifier && (
           <div className="flex flex-wrap gap-1 pt-2">
+            {/* Le glisser reste le geste le plus court ; ce bouton existe pour
+                qui ne veut pas viser une pastille de sept pixels, et pour le
+                clavier. */}
+            <Button size="sm" variant="secondary" onClick={() => surDeplacer(selection)}>Déplacer</Button>
             <Button size="sm" variant="secondary" onClick={() => surRetouche(selection)}>
               {zone.length >= 3 ? 'Retoucher la zone' : 'Dessiner une zone'}
             </Button>
@@ -2877,6 +2938,7 @@ function DetailSelection({
         </p>
         {peutModifier && (
           <div className="flex flex-wrap gap-1 pt-2">
+            <Button size="sm" variant="secondary" onClick={() => surDeplacer(selection)}>Déplacer</Button>
             <Button size="sm" variant="secondary" onClick={() => surRetouche(selection)}>
               {zone.length >= 3 ? 'Retoucher la zone' : 'Dessiner une zone'}
             </Button>
@@ -2917,6 +2979,7 @@ function DetailSelection({
               >
                 Enregistrer
               </Button>
+              <Button size="sm" variant="secondary" onClick={() => surDeplacer(selection)}>Déplacer</Button>
               <Button size="sm" variant="danger" onClick={surSupprimerRepere}>Supprimer</Button>
             </div>
           </div>
