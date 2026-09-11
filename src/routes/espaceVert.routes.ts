@@ -789,21 +789,35 @@ router.post('/', authenticateToken, requireSupervisor,
       const {
         name, description, address, latitude, longitude,
         area_m2, space_type, soil_type, status,
-        image, plan_image, custom_fields
+        image, plan_image, custom_fields,
+        plan_scale_metres, plan_ratio, plan_capture
       } = req.body;
+
+      /*
+        Un plan capturé arrive avec son échelle dès la création.
+
+        Le cadrage n'est retenu que s'il est relu sans erreur et qu'il
+        s'accompagne d'une image : sans cela on enregistrerait un « d'où
+        regarde ce plan » qui ne décrit rien, et le recadrage partirait ensuite
+        d'un cadre imaginaire.
+      */
+      const cadrage = plan_image ? cadrageEnregistre(plan_capture) : null;
 
       const now = new Date().toISOString();
       const result = await db.execute(
         `INSERT INTO green_spaces (name, description, address, latitude, longitude,
           area_m2, space_type, soil_type, status, image, plan_image, custom_fields,
+          plan_scale_metres, plan_ratio, plan_capture,
           created_by, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           name, description || '', address || '',
           latitude || null, longitude || null,
           area_m2 || 0, space_type || 'parc', soil_type || '',
           status || 'actif', image || '', plan_image || '',
           custom_fields ? JSON.stringify(custom_fields) : '{}',
+          nombreOuNull(plan_scale_metres), nombreOuNull(plan_ratio),
+          cadrage ? JSON.stringify(cadrage) : null,
           req.user!.userId, now, now
         ]
       );
@@ -1550,6 +1564,43 @@ router.get('/plan/fonds', authenticateToken, async (_req: AuthRequest, res: Resp
 });
 
 /**
+ * POST /plan/capture - Fabriquer un plan sans le rattacher à quoi que ce soit.
+ *
+ * L'espace vert n'existe pas encore au moment où on le crée : on cadre d'abord
+ * le lieu sur la carte, et c'est le cadrage qui propose le nom, l'adresse, la
+ * position et la surface du formulaire. Créer une fiche vide pour pouvoir y
+ * capturer un plan, puis la supprimer si l'on renonce, laisserait des espaces
+ * fantômes derrière chaque hésitation.
+ *
+ * Ne touche à aucune ligne : l'image est produite et rendue, et c'est la
+ * création de l'espace vert qui l'enregistrera.
+ */
+router.post('/plan/capture', authenticateToken, requireSupervisor, exportLimiter, async (req: AuthRequest, res: Response) => {
+  try {
+    const cadrage = lireCadrage(req.body);
+    if (!cadrage) {
+      return res.status(400).json({ success: false, message: REFUS_CADRAGE });
+    }
+
+    const choix = fondCarte(String(req.body?.fond ?? ''));
+    if (!choix) {
+      return res.status(400).json({ success: false, message: REFUS_FOND });
+    }
+    if (cadrage.zoom > choix.zoomMax) {
+      return res.status(400).json({
+        success: false,
+        message: `« ${choix.libelle} » ne va pas au-delà du zoom ${choix.zoomMax}`,
+      });
+    }
+
+    const capture = await capturerPlan(cadrage, choix, path.join(__dirname, '../../uploads'));
+    res.json({ success: true, data: { capture, cadrage: { ...cadrage, fond: choix.cle } } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
  * POST /:id/plan/capture - Fabriquer le plan depuis la carte.
  *
  * Remplace l'image du plan **et** son échelle d'un seul geste. Les deux vont
@@ -1639,14 +1690,18 @@ router.post('/:id/plan/capture', authenticateToken, requireSupervisor, exportLim
 });
 
 /**
- * POST /:id/plan/contour - Ce qu'OpenStreetMap connaît dans le cadre capturé.
+ * POST /plan/contour - Ce qu'OpenStreetMap connaît dans un cadre donné.
  *
  * Séparée de la capture à dessein : Overpass met parfois une dizaine de
  * secondes à répondre, et le plan n'a pas à attendre pour s'afficher. La
  * réponse est consultative — le contour n'est enregistré que si quelqu'un
  * l'accepte, par le chemin habituel des zones.
+ *
+ * Sans identifiant d'espace vert : elle ne lit que le cadrage, et sert aussi à
+ * la **création**, où l'espace n'existe pas encore et où le contour trouvé
+ * propose son nom et sa surface.
  */
-router.post('/:id/plan/contour', authenticateToken, requireSupervisor, exportLimiter, async (req: AuthRequest, res: Response) => {
+router.post('/plan/contour', authenticateToken, requireSupervisor, exportLimiter, async (req: AuthRequest, res: Response) => {
   try {
     const cadrage = lireCadrage(req.body);
     if (!cadrage) {

@@ -637,6 +637,9 @@ const OVERPASS = 'https://overpass-api.de/api/interpreter';
 /** Overpass est un service public partagé : au-delà, on renonce sans insister. */
 const DELAI_OVERPASS_MS = 20_000;
 
+/** Le temps laissé au service pour se dégager avant la seconde et dernière tentative. */
+const REPRISE_OVERPASS_MS = 2_500;
+
 /** Assez pour un parc détaillé, en deçà du plafond de `geometriePlan`. */
 const SOMMETS_MAX = 400;
 
@@ -671,6 +674,53 @@ const NATURES: Record<string, string> = {
  * rend `indisponible`, une zone sans donnée rend une liste vide — les deux se
  * disent différemment à l'écran.
  */
+/**
+ * Interroge Overpass, une fois, puis une seconde s'il s'est dérobé.
+ *
+ * Le service est public et partagé, et il répond régulièrement `504` ou `429`
+ * quand il est chargé — une fois sur trois pendant les essais. Ces refus-là
+ * sont passagers : une seconde tentative quelques secondes plus tard aboutit
+ * presque toujours. Deux essais et pas davantage : au-delà, on insisterait
+ * auprès d'un service déjà saturé, ce que sa politique d'usage réprouve.
+ *
+ * Rend `null` quand il faut renoncer, ce que l'appelant traduit par
+ * « indisponible » — à distinguer d'une liste vide, qui veut dire que le lieu
+ * n'est pas cartographié.
+ */
+async function interrogerOverpass(requete: string): Promise<any[] | null> {
+  /** Les codes qui disent « je suis débordé », par opposition à « ta requête est fausse ». */
+  const PASSAGERS = new Set([429, 502, 503, 504]);
+
+  for (let essai = 1; essai <= 2; essai++) {
+    try {
+      const reponse = await fetch(OVERPASS, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': AGENT },
+        body: `data=${encodeURIComponent(requete)}`,
+        signal: AbortSignal.timeout(DELAI_OVERPASS_MS),
+      });
+
+      if (reponse.ok) return ((await reponse.json()) as any)?.elements ?? [];
+
+      if (essai === 1 && PASSAGERS.has(reponse.status)) {
+        await new Promise((suite) => setTimeout(suite, REPRISE_OVERPASS_MS));
+        continue;
+      }
+      console.warn(`Contours OpenStreetMap indisponibles : Overpass a répondu ${reponse.status}`);
+      return null;
+    } catch (erreur: any) {
+      // Un délai dépassé se retente aussi : c'est le même encombrement.
+      if (essai === 1) {
+        await new Promise((suite) => setTimeout(suite, REPRISE_OVERPASS_MS));
+        continue;
+      }
+      console.warn('Contours OpenStreetMap indisponibles :', erreur?.message ?? erreur);
+      return null;
+    }
+  }
+  return null;
+}
+
 export async function contoursDuCadre(cadrage: Cadrage): Promise<RechercheContours> {
   const vue = fenetreDe(cadrage);
   const monde = TAILLE_TUILE * 2 ** vue.zoom;
@@ -691,23 +741,8 @@ export async function contoursDuCadre(cadrage: Cadrage): Promise<RechercheContou
 );
 out geom;`;
 
-  let elements: any[];
-  try {
-    const reponse = await fetch(OVERPASS, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': AGENT },
-      body: `data=${encodeURIComponent(requete)}`,
-      signal: AbortSignal.timeout(DELAI_OVERPASS_MS),
-    });
-    if (!reponse.ok) {
-      console.warn(`Contours OpenStreetMap indisponibles : Overpass a répondu ${reponse.status}`);
-      return { etat: 'indisponible' };
-    }
-    elements = ((await reponse.json()) as any)?.elements ?? [];
-  } catch (erreur: any) {
-    console.warn('Contours OpenStreetMap indisponibles :', erreur?.message ?? erreur);
-    return { etat: 'indisponible' };
-  }
+  const elements = await interrogerOverpass(requete);
+  if (elements === null) return { etat: 'indisponible' };
 
   const mpp = metresParPixel(cadrage.lat, vue.zoom);
   const contours: ContourPropose[] = [];

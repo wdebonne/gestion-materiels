@@ -7,6 +7,39 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### La fiche d'un espace vert se remplit depuis la carte
+
+> Créer un espace vert demandait de tout savoir avant d'avoir rien vu : un nom,
+> une superficie en mètres carrés, un « type de sol » en texte libre, et une
+> image de plan qu'il fallait s'être procurée ailleurs. Or trois de ces quatre
+> réponses se lisent sur une carte, et la quatrième a cessé d'être utile le jour
+> où chaque zone a porté son propre matériau du parc.
+
+#### Ajouté
+
+- **« Créer depuis la carte » dans la fiche d'un espace vert.** On cadre le lieu, et la fiche se renseigne : le **plan et son échelle**, la **position**, l'**adresse** (par géocodage inverse), et — quand OpenStreetMap connaît le lieu — le **nom du parc**, sa **superficie** et son **contour**, tracé d'emblée comme zone à la création. Vérifié de bout en bout sur le parc urbain de Pavilly : aucun champ tapé à la main, 12 080 m² et huit sommets posés au bon endroit
+- **« Reprendre celle du plan » à côté de la superficie**, qui reprend la surface du plus grand tracé. La plus grande et non la somme : un massif dessiné dans une pelouse compterait deux fois
+- **L'envoi d'un plan reste un chemin entier**, et non un repli : un plan de géomètre ou d'architecte porte les limites de parcelle et les réseaux qu'aucune photo aérienne ne montre
+
+#### Modifié
+
+- **Le « type de sol » ne s'affiche plus que là où il a déjà été rempli.** Champ texte libre à l'échelle de tout l'espace, il faisait répondre une fois, globalement et sans conséquence, à une question qui se pose par zone : une pelouse, une allée gravillonnée et un massif d'écorce cohabitent dans le même parc. Il reste modifiable là où il porte une valeur — le masquer partout aurait effacé de vue une information saisie sans permettre de la corriger
+- **La capture et la recherche de contour ne supposent plus d'espace vert existant.** Créer une fiche vide pour pouvoir y capturer un plan, puis la supprimer si l'on renonce, aurait laissé un espace fantôme derrière chaque hésitation
+
+#### Corrigé
+
+- **La carte s'ouvrait au large du golfe de Guinée** pour un espace vert sans position. `Number(null)` vaut `0`, et `Number('')` aussi : tester la seule finitude déclarait « position connue » pour un champ vide, et la carte se centrait au zoom 18 sur le point (0, 0) — un carré gris et une trentaine de 404, pour un champ simplement vide
+- **Une requête Overpass refusée est retentée une fois.** Le service est public et partagé, et il répond régulièrement `504` quand il est chargé — une fois sur trois pendant les essais. Ces refus sont passagers : deux essais espacés de deux secondes et demie ont fait passer la réussite de zéro à deux sur trois. Deux et pas davantage : au-delà on insisterait auprès d'un service déjà saturé
+- **L'échec de la recherche de contour se voit et se réessaie.** Le nom et la superficie proposés en dépendent : échouer en silence laissait croire qu'OpenStreetMap ne connaît pas le lieu, et faisait tout retaper à la main
+- **La liste de ce qui a été renseigné annonçait « la position, la position ».** Elle était remplie depuis l'intérieur d'un `setForm`, que React rejoue volontairement deux fois en développement pour débusquer les effets de bord
+
+#### Vérifié
+
+- Une zone d'herbe tracée, trois arbres posés dessus, un arbre déplacé : la zone reste intacte, sa surface ne bouge pas, et les autres arbres non plus
+- Une position GPS relevée sur le terrain par un agent se range sur l'élément sans effacer sa position sur le plan
+- Après un recadrage du plan, les quatre objets suivent et la surface réelle de la pelouse reste identique
+
+
 ### Le plan se recadre, change de fond, et cesse d'effacer ce qu'on ne lui demande pas
 
 > Une capture prend le format de la carte affichée, c'est-à-dire très allongé

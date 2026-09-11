@@ -26,7 +26,7 @@ import { getErrorMessage } from '@/lib/errors'
 import PlanCanvas, { positionSurPlan, type CalquesPlan } from '@/components/plan/PlanCanvas'
 import { usePlanViewport } from '@/components/plan/usePlanViewport'
 import type { ContourPropose, EchellePlan, OutilPlan, PointPlan, SelectionPlan } from '@/components/plan/types'
-import CaptureCarte, { chercherContours, useFondsPlan, type CadragePlan, type ResultatCapture } from '@/components/plan/CaptureCarte'
+import CaptureCarte, { adresseDuPoint, chercherContours, useFondsPlan, type CadragePlan, type ResultatCapture } from '@/components/plan/CaptureCarte'
 import ContoursProposes from '@/components/plan/ContoursProposes'
 import {
   aireEnM2,
@@ -2128,7 +2128,7 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
 
     if (!premierPlan) return
 
-    const recherche = await chercherContours(space.id, resultat.cadrage)
+    const recherche = await chercherContours(resultat.cadrage)
     if (recherche.etat === 'indisponible') {
       // Dit plutôt que tu ; sinon on retrace à la main un contour qui existe.
       toast('OpenStreetMap n’a pas répondu : le contour du parc n’a pas pu être recherché.', { icon: 'ℹ️' })
@@ -5790,6 +5790,20 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
 
 // ======================== MODAL FORMULAIRE ESPACE VERT ========================
 
+/**
+ * La fiche d'un espace vert, à la création comme à la modification.
+ *
+ * Le formulaire demandait de tout savoir avant d'avoir rien vu : un nom, une
+ * superficie en mètres carrés, un « type de sol » en texte libre, et une image
+ * de plan qu'il fallait s'être procurée ailleurs. Or trois de ces quatre
+ * réponses se lisent sur une carte, et la quatrième a cessé d'être utile le
+ * jour où chaque zone a porté son propre matériau du parc.
+ *
+ * On cadre donc le lieu d'abord, et la fiche se remplit : le plan et son
+ * échelle, la position, l'adresse, le nom du parc et sa superficie quand
+ * OpenStreetMap les connaît. Ce qui est proposé reste modifiable, rien n'est
+ * obligatoire, et un plan d'architecte s'envoie toujours à la place.
+ */
 function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { space: GreenSpace | null, spaceTypes: any[], statuses: any[], onClose: () => void, onSaved: () => void }) {
   const [form, setForm] = useState({
     name: space?.name || '',
@@ -5803,12 +5817,84 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
     status: space?.status || 'actif',
     image: space?.image || '',
     plan_image: space?.plan_image || '',
+    plan_scale_metres: (space?.plan_scale_metres ?? null) as number | null,
+    plan_ratio: (space?.plan_ratio ?? null) as number | null,
+    plan_capture: (space?.plan_capture ?? null) as string | null,
   })
+
+  const [captureOuverte, setCaptureOuverte] = useState(false)
+  const [contours, setContours] = useState<ContourPropose[] | null>(null)
+  /** Le contour accepté, tracé comme zone une fois l'espace vert créé. */
+  const [contourRetenu, setContourRetenu] = useState<ContourPropose | null>(null)
+  /** Ce que la carte vient de renseigner, pour le dire plutôt que le laisser deviner. */
+  const [repris, setRepris] = useState<string[]>([])
+  const [contoursEnCours, setContoursEnCours] = useState(false)
+  /** Pourquoi aucun contour n'est proposé : service muet, ou lieu non cartographié. */
+  const [contoursAbsents, setContoursAbsents] = useState<'indisponible' | 'aucun' | null>(null)
+
+  /**
+   * Le « type de sol » ne s'affiche plus que là où il en porte déjà un.
+   *
+   * Champ texte libre à l'échelle de tout l'espace, il a été rendu inutile par
+   * les zones : une pelouse, une allée gravillonnée et un massif d'écorce
+   * cohabitent dans le même parc, et chacune porte désormais son matériau du
+   * parc, avec son prix. Le proposer à la création faisait répondre une fois,
+   * globalement et sans conséquence, à une question qui se pose par zone.
+   *
+   * Il reste modifiable là où il a été rempli : le masquer partout effacerait
+   * de vue une information saisie sans permettre de la corriger.
+   */
+  const montrerTypeDeSol = Boolean(space?.soil_type)
+
+  /** Surface réellement dessinée sur le plan, quand il y en a une. */
+  const surfaceDuPlan = useMemo(() => {
+    const echelle = space?.plan_scale_metres && space?.plan_ratio
+      ? { metresParPourcent: Number(space.plan_scale_metres), ratio: Number(space.plan_ratio) }
+      : null
+    if (!echelle) return null
+    const zones = [...(space?.elements || []), ...(space?.groups || [])]
+      .map((o: any) => aireEnM2(parseZonePoints(o.zone_points), echelle))
+      .filter((v): v is number => v !== null)
+    if (zones.length === 0) return null
+    // La plus grande, et non la somme : un massif tracé dans une pelouse
+    // compterait deux fois, et l'emprise du lieu est celle du plus grand tracé.
+    return Math.max(...zones)
+  }, [space])
 
   const mutation = useMutation({
     meta: { successMessage: 'Espace vert enregistré' },
-    mutationFn: (data: any) =>
-      space ? api.put(`/green-spaces/${space.id}`, data) : api.post('/green-spaces', data),
+    mutationFn: async (data: any) => {
+      const reponse = space
+        ? await api.put(`/green-spaces/${space.id}`, data)
+        : await api.post('/green-spaces', data)
+
+      /*
+        Le contour proposé par OpenStreetMap devient une zone une fois l'espace
+        vert créé — il lui faut un identifiant. Son échec ne doit pas emporter
+        la création : la fiche et son plan sont enregistrés, et le contour se
+        retrace à la main depuis l'onglet Plan.
+      */
+      const cree = reponse.data.data
+      if (!space && contourRetenu && cree?.id) {
+        try {
+          await api.post(`/green-spaces/${cree.id}/elements`, {
+            label: contourRetenu.nom || `Emprise de ${data.name}`,
+            element_type: 'pelouse',
+            quantity: contourRetenu.surface_m2 ?? 1,
+            zone_points: contourRetenu.points,
+            area_m2: contourRetenu.surface_m2,
+            area_source: 'calcule',
+            // Le contour dit l'emprise du lieu ; il n'a rien coûté et ne doit
+            // pas peser dans les coûts comme s'il avait été acheté.
+            exclude_from_costs: true,
+            condition_state: 'bon',
+          })
+        } catch {
+          toast('Le contour n’a pas pu être tracé : vous pourrez le refaire depuis l’onglet Plan.', { icon: 'ℹ️' })
+        }
+      }
+      return reponse
+    },
     onSuccess: () => onSaved()
   })
 
@@ -5820,6 +5906,89 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
       longitude: form.longitude ? parseFloat(form.longitude) : null,
       area_m2: form.area_m2 ? parseFloat(form.area_m2) : 0,
     })
+  }
+
+  /**
+   * Ce que la carte renseigne, sans jamais écraser une saisie.
+   *
+   * Tout est calculé avant d'appeler `setForm`, et rien n'est poussé dans un
+   * tableau depuis l'intérieur d'un updater : React les rejoue volontairement
+   * deux fois en développement pour débusquer les effets de bord, et la liste
+   * de ce qui a été repris annonçait « la position, la position ».
+   */
+  const apresCapture = async (resultat: ResultatCapture) => {
+    setCaptureOuverte(false)
+
+    const positionManquante = !form.latitude || !form.longitude
+    setForm(f => ({
+      ...f,
+      plan_image: resultat.plan.url,
+      plan_scale_metres: resultat.plan.metresParPourcent,
+      plan_ratio: resultat.plan.ratio,
+      plan_capture: JSON.stringify(resultat.cadrage),
+      latitude: positionManquante ? resultat.cadrage.lat.toFixed(6) : f.latitude,
+      longitude: positionManquante ? resultat.cadrage.lng.toFixed(6) : f.longitude,
+    }))
+    setRepris(positionManquante
+      ? ['le plan et son échelle', 'la position']
+      : ['le plan et son échelle'])
+
+    // L'adresse d'abord : elle répond vite, là où le contour peut mettre dix
+    // secondes. Aucune des deux n'est indispensable, et aucune ne bloque.
+    if (!form.address.trim()) {
+      const adresse = await adresseDuPoint(resultat.cadrage.lat, resultat.cadrage.lng)
+      if (adresse) {
+        setForm(f => (f.address.trim() ? f : { ...f, address: adresse }))
+        setRepris(r => (r.includes('l’adresse') ? r : [...r, 'l’adresse']))
+      }
+    }
+
+    await demanderContours(resultat.cadrage)
+  }
+
+  /**
+   * Demande à OpenStreetMap le contour du lieu, et dit ce qu'il en est.
+   *
+   * Overpass est un service public partagé qui refuse régulièrement une requête
+   * quand il est chargé — une fois sur trois pendant les essais. Le nom et la
+   * superficie proposés en dépendent : échouer en silence laisserait croire
+   * qu'OpenStreetMap ne connaît pas le lieu, et ferait tout retaper à la main.
+   */
+  const demanderContours = async (cadrage: CadragePlan) => {
+    setContoursEnCours(true)
+    setContoursAbsents(null)
+    try {
+      const recherche = await chercherContours(cadrage)
+      if (recherche.etat === 'indisponible') {
+        setContoursAbsents('indisponible')
+      } else if (recherche.contours.length === 0) {
+        setContoursAbsents('aucun')
+      } else {
+        setContours(recherche.contours)
+      }
+    } finally {
+      setContoursEnCours(false)
+    }
+  }
+
+  /** Le contour accepté renseigne le nom du lieu, sa superficie, et sera tracé. */
+  const retenirContour = (contour: ContourPropose) => {
+    setContours(null)
+    setContourRetenu(contour)
+    const renseignes: string[] = []
+    setForm(f => {
+      const suivant = { ...f }
+      if (!f.name.trim() && contour.nom) {
+        suivant.name = contour.nom
+        renseignes.push('le nom')
+      }
+      if (!f.area_m2.trim() && contour.surface_m2) {
+        suivant.area_m2 = String(Math.round(contour.surface_m2))
+        renseignes.push('la superficie')
+      }
+      return suivant
+    })
+    setRepris(r => [...r, ...renseignes, 'le contour du lieu, qui sera tracé sur le plan'])
   }
 
   return (
@@ -5911,17 +6080,45 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
                 onChange={(e) => setForm({ ...form, area_m2: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
               />
+              {/*
+                La superficie se lit sur le plan dès qu'une zone y est tracée :
+                la retaper de mémoire donne deux chiffres qui se contredisent,
+                et c'est celui du dessin qui a raison.
+              */}
+              {surfaceDuPlan !== null && (
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, area_m2: String(Math.round(surfaceDuPlan)) })}
+                  className="mt-1.5 inline-flex min-h-[36px] items-center gap-1.5 text-xs text-green-700 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300"
+                >
+                  <Ruler className="h-3.5 w-3.5" />
+                  Reprendre celle du plan ({formaterSurface(surfaceDuPlan)})
+                </button>
+              )}
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type de sol</label>
-              <input
-                type="text"
-                value={form.soil_type}
-                onChange={(e) => setForm({ ...form, soil_type: e.target.value })}
-                placeholder="Terre végétale, gravier, béton..."
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
-              />
-            </div>
+
+            {/*
+              Le type de sol ne s'affiche plus que là où il a déjà été rempli :
+              chaque zone porte son propre matériau du parc, et une réponse
+              unique pour tout le parc ne veut plus rien dire.
+            */}
+            {montrerTypeDeSol && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type de sol</label>
+                <input
+                  type="text"
+                  value={form.soil_type}
+                  onChange={(e) => setForm({ ...form, soil_type: e.target.value })}
+                  placeholder="Terre végétale, gravier, béton..."
+                  className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
+                />
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Repris de l'ancienne fiche. Le matériau se choisit maintenant zone par zone,
+                  dans le parc : videz ce champ quand ses zones seront tracées.
+                </p>
+              </div>
+            )}
+
             <div>
               <ImageUpload
                 label="Image principale"
@@ -5929,12 +6126,115 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
                 onChange={(url) => setForm({ ...form, image: url })}
               />
             </div>
-            <div>
-              <ImageUpload
-                label="Image du plan"
-                value={form.plan_image}
-                onChange={(url) => setForm({ ...form, plan_image: url })}
-              />
+
+            {/* ── Le plan : depuis la carte, ou envoyé ── */}
+            <div className="col-span-2 rounded-xl border border-gray-200 p-4 dark:border-gray-700">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">Plan de l'espace</h4>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">
+                    Cadrez le lieu sur une photo aérienne : le plan arrive à l'échelle, et
+                    la fiche se remplit toute seule.
+                  </p>
+                </div>
+                <Can manage>
+                  <button
+                    type="button"
+                    onClick={() => setCaptureOuverte(true)}
+                    className="inline-flex min-h-[44px] items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-700"
+                  >
+                    <Camera className="h-4 w-4" />
+                    {form.plan_image ? 'Refaire depuis la carte' : 'Créer depuis la carte'}
+                  </button>
+                </Can>
+              </div>
+
+              {form.plan_image ? (
+                <div className="flex items-start gap-3">
+                  <img
+                    src={getImageUrl(form.plan_image)}
+                    alt=""
+                    className="h-24 w-40 flex-shrink-0 rounded-lg border border-gray-200 object-cover dark:border-gray-700"
+                  />
+                  <div className="min-w-0 flex-1 text-sm">
+                    {form.plan_scale_metres ? (
+                      <p className="flex items-center gap-1.5 text-green-700 dark:text-green-400">
+                        <Ruler className="h-4 w-4 flex-shrink-0" />
+                        Plan calibré : 1 % ≈ {Number(form.plan_scale_metres).toFixed(2).replace('.', ',')} m
+                      </p>
+                    ) : (
+                      <p className="text-gray-600 dark:text-gray-400">
+                        Plan non calibré — mesurez une longueur connue depuis l'onglet Plan pour
+                        que les surfaces se calculent.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setForm({
+                        ...form, plan_image: '', plan_scale_metres: null, plan_ratio: null, plan_capture: null,
+                      })}
+                      className="mt-1.5 inline-flex min-h-[36px] items-center gap-1 text-xs text-red-600 hover:text-red-700 dark:text-red-400"
+                    >
+                      <X className="h-3.5 w-3.5" /> Retirer ce plan
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /*
+                  L'envoi d'une image reste un chemin entier, et non un repli :
+                  un plan de géomètre ou d'architecte porte les limites de
+                  parcelle et les réseaux, qu'aucune photo aérienne ne montre.
+                */
+                <ImageUpload
+                  label="Ou envoyez votre propre plan (géomètre, architecte…)"
+                  value={form.plan_image}
+                  onChange={(url) => setForm({
+                    ...form, plan_image: url, plan_scale_metres: null, plan_ratio: null, plan_capture: null,
+                  })}
+                />
+              )}
+
+              {repris.length > 0 && (
+                <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-xs text-green-900 dark:bg-green-900/30 dark:text-green-100">
+                  Renseigné depuis la carte : {repris.join(', ')}. Tout reste modifiable.
+                </p>
+              )}
+
+              {contoursEnCours && (
+                <p className="mt-2 flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Recherche du contour du lieu sur OpenStreetMap…
+                </p>
+              )}
+
+              {/*
+                Dire lequel des deux : « le service n'a pas répondu » invite à
+                réessayer, « le lieu n'est pas cartographié » invite à tracer
+                soi-même. Les confondre ferait retaper un nom et une surface
+                qu'OpenStreetMap connaît.
+              */}
+              {contoursAbsents && !contoursEnCours && form.plan_capture && (
+                <p className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
+                  {contoursAbsents === 'indisponible' ? (
+                    <>
+                      OpenStreetMap n'a pas répondu : le nom et la superficie du lieu n'ont pas
+                      pu être proposés.
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const cadrage = form.plan_capture ? JSON.parse(form.plan_capture) : null
+                          if (cadrage) demanderContours(cadrage)
+                        }}
+                        className="inline-flex min-h-[32px] items-center gap-1 rounded-md border border-gray-300 px-2 text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+                      >
+                        <RefreshCw className="h-3 w-3" /> Réessayer
+                      </button>
+                    </>
+                  ) : (
+                    <>OpenStreetMap ne connaît pas de contour ici : tracez-le depuis l'onglet Plan.</>
+                  )}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -5952,6 +6252,28 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
           </button>
         </div>
       </div>
+
+      {captureOuverte && (
+        <CaptureCarte
+          espaceId={space?.id}
+          nom={form.name.trim() || 'ce nouvel espace vert'}
+          latitude={form.latitude ? Number(form.latitude) : null}
+          longitude={form.longitude ? Number(form.longitude) : null}
+          adresse={form.address}
+          planExistant={Boolean(form.plan_image)}
+          onFermer={() => setCaptureOuverte(false)}
+          onCapture={apresCapture}
+        />
+      )}
+
+      {contours && form.plan_image && (
+        <ContoursProposes
+          contours={contours}
+          planImage={form.plan_image}
+          onFermer={() => setContours(null)}
+          onRetenir={retenirContour}
+        />
+      )}
     </div>
   )
 }
