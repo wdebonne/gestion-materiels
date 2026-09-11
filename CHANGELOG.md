@@ -7,6 +7,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Plan annoté — « Poser » pose, et « Déplacer » rejoint les autres actions
+
+> « Poser » dans la liste des éléments en attente n'armait que le mode : le clic
+> suivant rouvrait la fenêtre pour redemander **quoi** poser, alors qu'on venait
+> de le désigner. Deux clics pour répondre deux fois à la même question.
+
+#### Modifié
+
+- **Un objet désigné se pose au clic suivant, directement.** « Poser » depuis la liste retient l'élément ou le groupe choisi ; la barre d'état annonce ce qui va être posé — « Cliquez à l'endroit voulu pour y poser *Massif du perron* » — et le clic le place. La fenêtre de pose ne s'ouvre plus que lorsqu'on n'a rien désigné, c'est-à-dire quand on clique sur le plan avec l'outil « Poser » : elle sert alors à choisir, ce pour quoi elle est faite
+- **« Déplacer » rejoint « Dessiner une zone », « Modifier » et « Retirer du plan »** sur la sélection, pour les trois types — élément, groupe, repère. Le glisser reste le geste le plus court ; ce bouton existe pour qui ne veut pas viser une pastille de sept pixels, et pour le clavier. Il arme le même mécanisme : un clic à l'endroit voulu, `Échap` pour renoncer
+
 ### Les écrans publics ignoraient le nom et le logo de la commune
 
 > Une commune qui pose son nom et son logo dans les réglages ne les voyait
