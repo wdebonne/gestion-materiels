@@ -60,8 +60,10 @@ export interface CadragePlan {
 }
 
 export interface ResultatCapture {
-  /** L'espace vert mis à jour, plan et échelle compris. */
-  espace: any
+  /** L'espace vert mis à jour — `null` à la création, où il n'existe pas encore. */
+  espace: any | null
+  /** Le plan produit : de quoi remplir une fiche qui n'est pas encore enregistrée. */
+  plan: { url: string; metresParPourcent: number; ratio: number }
   largeurMetres: number
   trous: number
   /** Le cadrage retenu, pour aller chercher les contours sur la même vue. */
@@ -69,7 +71,13 @@ export interface ResultatCapture {
 }
 
 interface Props {
-  espaceId: number
+  /**
+   * L'espace vert auquel rattacher le plan.
+   *
+   * Absent à la création : l'espace n'existe pas encore, le plan est fabriqué
+   * puis rendu à l'appelant, qui l'enregistrera avec le reste de la fiche.
+   */
+  espaceId?: number
   nom: string
   /** Position connue de l'espace vert : la carte s'y ouvre directement. */
   latitude?: number | null
@@ -168,14 +176,31 @@ export default function CaptureCarte({
   espaceId, nom, latitude, longitude, adresse, planExistant,
   cadrageActuel, empriseContenu, onFermer, onCapture,
 }: Props) {
-  const positionConnue = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
+  /*
+    `Number(null)` vaut 0, et `Number('')` aussi.
+
+    Tester la seule finitude déclarait donc « position connue » pour un espace
+    vert qui n'en a pas, et la carte s'ouvrait au zoom 18 sur le point (0, 0) —
+    au large du golfe de Guinée, là où aucun fournisseur n'a d'imagerie. On
+    voyait un carré gris et une trentaine de 404 dans la console, pour un champ
+    simplement vide.
+  */
+  const coordonnee = (valeur: unknown): number | null => {
+    if (valeur === null || valeur === undefined || valeur === '') return null
+    const nombre = Number(valeur)
+    return Number.isFinite(nombre) ? nombre : null
+  }
+
+  const lat = coordonnee(latitude)
+  const lng = coordonnee(longitude)
+  const positionConnue = lat !== null && lng !== null
 
   // Le cadrage en cours prime sur la position de l'espace vert : on recadre ce
   // qu'on regarde, on ne recommence pas de zéro.
   const centreInitial: [number, number] = cadrageActuel
     ? [cadrageActuel.lat, cadrageActuel.lng]
-    : positionConnue
-    ? [Number(latitude), Number(longitude)]
+    : lat !== null && lng !== null
+    ? [lat, lng]
     : CENTRE_DEFAUT
   const zoomInitial = cadrageActuel
     ? cadrageActuel.zoom
@@ -247,7 +272,10 @@ export default function CaptureCarte({
     mutationFn: async () => {
       if (!cadrage || !fond) throw new Error('La carte n’est pas prête')
       setAmpute(null)
-      const reponse = await api.post(`/green-spaces/${espaceId}/plan/capture`, { ...cadrage, fond: fond.cle })
+      // Sans espace vert, la capture ne touche à aucune ligne : elle rend
+      // simplement l'image et son échelle, que la fiche enregistrera.
+      const url = espaceId ? `/green-spaces/${espaceId}/plan/capture` : '/green-spaces/plan/capture'
+      const reponse = await api.post(url, { ...cadrage, fond: fond.cle })
       return reponse.data.data
     },
     onSuccess: (data: any) => {
@@ -257,7 +285,12 @@ export default function CaptureCarte({
           : 'Plan créé et calibré depuis la carte'
       )
       onCapture({
-        espace: data.espace,
+        espace: data.espace ?? null,
+        plan: {
+          url: data.capture.url,
+          metresParPourcent: data.capture.metresParPourcent,
+          ratio: data.capture.ratio,
+        },
         largeurMetres: data.capture.largeurMetres,
         trous: data.capture.trous,
         cadrage: cadrage!,
@@ -533,13 +566,46 @@ function SuiviCadre({
   return null
 }
 
-/** Interroge OpenStreetMap sur ce que le cadre capturé contient. */
+/**
+ * L'adresse la plus proche d'un point, selon OpenStreetMap.
+ *
+ * Rend une chaîne vide plutôt qu'une erreur : une adresse absente n'empêche
+ * rien, et un rond-point ou une berge n'en a souvent aucune. Appelée une fois
+ * par capture, jamais en boucle — Nominatim est gratuit et demande qu'on
+ * l'économise.
+ */
+export async function adresseDuPoint(lat: number, lng: number): Promise<string> {
+  try {
+    const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18'
+      + `&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`
+    const reponse = await fetch(url, { headers: { Accept: 'application/json' } })
+    if (!reponse.ok) return ''
+    const lu = await reponse.json()
+    const a = lu?.address
+    if (!a) return String(lu?.display_name ?? '')
+
+    // Une adresse française lisible plutôt que le `display_name` complet, qui
+    // empile le département, la région et le pays.
+    const voie = [a.house_number, a.road].filter(Boolean).join(' ')
+    const commune = a.village ?? a.town ?? a.city ?? a.municipality ?? ''
+    return [voie, a.postcode, commune].filter(Boolean).join(', ')
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * Interroge OpenStreetMap sur ce que le cadre capturé contient.
+ *
+ * Ne prend pas d'espace vert : la question ne porte que sur un rectangle du
+ * globe, et elle se pose aussi bien à la création, avant qu'aucune fiche
+ * n'existe.
+ */
 export async function chercherContours(
-  espaceId: number,
   cadrage: ResultatCapture['cadrage']
 ): Promise<{ etat: 'ok'; contours: ContourPropose[] } | { etat: 'indisponible' }> {
   try {
-    const reponse = await api.post(`/green-spaces/${espaceId}/plan/contour`, cadrage)
+    const reponse = await api.post('/green-spaces/plan/contour', cadrage)
     return reponse.data.data
   } catch {
     return { etat: 'indisponible' }
