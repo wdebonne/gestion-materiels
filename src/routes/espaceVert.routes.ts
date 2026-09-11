@@ -5,6 +5,14 @@ import { authenticateToken, AuthRequest, requireSupervisor, requireFieldWrite } 
 import { logService } from '../services/log.service';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
+import { lireDisponibilite, versColonne } from '../services/disponibiliteParc.service';
+import {
+  arbreImplantable,
+  expressionImplantable,
+  objetsDeLaCategorie as objetsImplantablesDeLaCategorie,
+  rechercherObjetsImplantables,
+  REFUS_IMPLANTATION,
+} from '../services/materielEspaceVert.service';
 import {
   COUT_IMPLANTATION,
   coutEspace,
@@ -14,7 +22,13 @@ import {
 } from '../services/coutEspaceVert.service';
 import { expressionNature } from '../services/lotParc.service';
 import { jointuresPrestation } from '../services/prestationParc.service';
-import { dateOuNull, nombreOuNull } from '../utils/valeursSql';
+import { dateOuNull, fusionner, nombreOuNull } from '../utils/valeursSql';
+import {
+  lireZone,
+  positionValide,
+  REFUS_POSITION,
+  REFUS_ZONE,
+} from '../services/geometriePlan.service';
 
 const router = Router();
 
@@ -32,7 +46,9 @@ router.get('/stats', authenticateToken, async (_req: AuthRequest, res: Response)
       // alors que les lignes sans prix n'y sont pas.
       db.queryOne(
         `SELECT COALESCE(SUM(${COUT_IMPLANTATION}), 0) as total,
-                COALESCE(SUM(CASE WHEN gse.purchase_price IS NULL OR gse.purchase_price = 0 THEN 1 ELSE 0 END), 0) as sans_prix
+                COALESCE(SUM(CASE WHEN gse.exclude_from_costs = 1 THEN 0
+                                   WHEN gse.purchase_price IS NULL OR gse.purchase_price = 0 THEN 1
+                                   ELSE 0 END), 0) as sans_prix
          FROM green_space_elements gse`
       ),
     ]);
@@ -445,6 +461,113 @@ router.delete('/group-types/:id', authenticateToken, requireSupervisor, async (r
   }
 });
 
+// ======================== MATÉRIEL IMPLANTABLE (RÉGLAGE) ========================
+//
+// Ces routes sont déclarées **avant** `GET /:id` : Express prend la première qui
+// correspond, et `/materiel-implantable` serait sinon lu comme l'identifiant
+// d'un espace vert.
+
+/** GET /materiel-implantable/tree - Catégories et sous-catégories, avec leur réglage. */
+router.get('/materiel-implantable/tree', authenticateToken, requireSupervisor, async (_req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, data: await arbreImplantable() });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /materiel-implantable/objects - Matériels d'une catégorie et leur réglage.
+ *
+ * Rend à la fois le réglage propre au matériel et le résultat effectif : sans
+ * les deux, on ne saurait pas pourquoi un matériel est exclu alors qu'on n'a
+ * rien coché dessus.
+ */
+router.get('/materiel-implantable/objects', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const { category_id } = req.query;
+    if (!category_id) {
+      return res.status(400).json({ success: false, message: 'Catégorie requise' });
+    }
+    const objets = await objetsImplantablesDeLaCategorie(req, String(category_id));
+    if (objets === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+    res.json({ success: true, data: objets });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /materiel-implantable/search - Chercher un matériel dans tout le parc.
+ *
+ * Trente catégories et soixante sous-catégories rendent le déroulement branche
+ * par branche impraticable. La réponse porte le rattachement de chaque matériel
+ * pour que l'écran n'ouvre que les branches concernées.
+ */
+router.get('/materiel-implantable/search', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const objets = await rechercherObjetsImplantables(req, String(req.query.q || ''));
+    if (objets === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+    res.json({ success: true, data: objets });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /materiel-implantable/:niveau/:id - Régler un niveau.
+ *
+ * Une catégorie ne peut pas hériter : c'est elle la valeur de référence, et lui
+ * permettre `null` laisserait la résolution sans point de départ.
+ */
+router.put('/materiel-implantable/:niveau/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const TABLES: Record<string, string> = {
+      category: 'categories',
+      subcategory: 'subcategories',
+      object: 'objects',
+    };
+    const table = TABLES[req.params.niveau];
+    if (!table) {
+      return res.status(400).json({
+        success: false,
+        message: 'Niveau inconnu (attendu : category, subcategory ou object)',
+      });
+    }
+
+    const valeur = lireDisponibilite(req.body.available);
+    if (table === 'categories' && valeur === null) {
+      return res.status(400).json({
+        success: false,
+        message: "Une catégorie ne peut pas hériter : c'est elle qui donne le ton",
+      });
+    }
+
+    const resultat = await db.execute(
+      `UPDATE ${table} SET available_for_green_spaces = ? WHERE id = ?`,
+      [versColonne(valeur), req.params.id]
+    );
+    if (resultat.changes === 0) {
+      return res.status(404).json({ success: false, message: 'Élément non trouvé' });
+    }
+
+    await logService.info(
+      'other',
+      `Disponibilité espaces verts modifiée (${req.params.niveau} ${req.params.id})`,
+      { available: valeur },
+      { userId: req.user?.userId }
+    );
+
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ======================== REMPLACEMENT D'ÉLÉMENTS (HISTORIQUE) ========================
 
 // POST /elements/:elementId/replace - Remplacer un élément en archivant l'ancien
@@ -689,7 +812,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     const {
       name, description, address, latitude, longitude,
       area_m2, space_type, soil_type, status,
-      image, plan_image, custom_fields
+      image, plan_image, custom_fields,
+      plan_scale_metres, plan_ratio, plan_scale_points
     } = req.body;
 
     const now = new Date().toISOString();
@@ -697,7 +821,8 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       `UPDATE green_spaces SET name = ?, description = ?, address = ?,
         latitude = ?, longitude = ?, area_m2 = ?, space_type = ?,
         soil_type = ?, status = ?, image = ?, plan_image = ?,
-        custom_fields = ?, updated_at = ?
+        custom_fields = ?, plan_scale_metres = ?, plan_ratio = ?,
+        plan_scale_points = ?, updated_at = ?
        WHERE id = ?`,
       [
         name || existing.name, description ?? existing.description,
@@ -707,6 +832,14 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
         status ?? existing.status, image ?? existing.image,
         plan_image ?? existing.plan_image,
         custom_fields ? JSON.stringify(custom_fields) : existing.custom_fields,
+        // Le calibrage s'efface volontairement en envoyant `null` : un plan
+        // remplacé garderait sinon l'échelle de l'ancien, et toutes les surfaces
+        // calculées deviendraient fausses sans que rien ne le dise.
+        fusionner(nombreOuNull(plan_scale_metres), existing.plan_scale_metres),
+        fusionner(nombreOuNull(plan_ratio), existing.plan_ratio),
+        plan_scale_points !== undefined
+          ? (plan_scale_points ? JSON.stringify(plan_scale_points) : null)
+          : existing.plan_scale_points,
         now, req.params.id
       ]
     );
@@ -811,8 +944,14 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
         object_id, label, code, element_type, description, image,
         pos_x, pos_y, quantity, purchase_price, cost_source, maintenance_notes,
         species, planting_date, last_maintenance_date, next_maintenance_date,
-        condition_state, custom_fields, area_m2, zone_points, latitude, longitude
+        condition_state, custom_fields, area_m2, area_source, exclude_from_costs,
+        zone_points, latitude, longitude
       } = req.body;
+
+      const zone = lireZone(zone_points);
+      if (zone.etat === 'refusee') {
+        return res.status(400).json({ success: false, message: REFUS_ZONE });
+      }
 
       const now = new Date().toISOString();
       const result = await db.execute(
@@ -820,8 +959,9 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
           element_type, description, image, pos_x, pos_y, quantity,
           purchase_price, cost_source, maintenance_notes, species, planting_date,
           last_maintenance_date, next_maintenance_date, condition_state,
-          custom_fields, area_m2, zone_points, latitude, longitude, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          custom_fields, area_m2, area_source, exclude_from_costs,
+          zone_points, latitude, longitude, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           req.params.id, object_id || null, label, code || '',
           element_type || 'autre', description || '', image || '',
@@ -834,9 +974,13 @@ router.post('/:id/elements', authenticateToken, requireSupervisor,
           last_maintenance_date || null, next_maintenance_date || null,
           condition_state || 'bon',
           custom_fields ? JSON.stringify(custom_fields) : '{}',
-          area_m2 || null,
-          zone_points ? JSON.stringify(zone_points) : null,
-          latitude || null, longitude || null,
+          nombreOuNull(area_m2),
+          // 'calcule' : la surface suit le polygone. 'saisi' : elle a été tapée
+          // et ne doit plus bouger, même si l'on déplace un sommet ensuite.
+          area_source === 'calcule' ? 'calcule' : 'saisi',
+          exclude_from_costs ? 1 : 0,
+          zone.etat === 'valide' ? JSON.stringify(zone.points) : null,
+          nombreOuNull(latitude), nombreOuNull(longitude),
           now, now
         ]
       );
@@ -905,7 +1049,8 @@ router.post('/:id/implantations', authenticateToken, requireSupervisor, async (r
     const objets = await db.query(
       `SELECT o.id, o.name, o.reference, o.image, o.description, o.purchase_price,
               o.unit_cost, o.custom_fields,
-              ${expressionNature()} as nature
+              ${expressionNature()} as nature,
+              ${expressionImplantable()} as implantable
        FROM objects o
        ${jointuresPrestation()}
        WHERE o.id IN (${identifiants.map(() => '?').join(', ')})${filtre.sql}`,
@@ -939,6 +1084,14 @@ router.post('/:id/implantations', authenticateToken, requireSupervisor, async (r
         refuses.push({ object_id: ligne.object_id, motif: REFUS_PORTEE });
         continue;
       }
+      // Le réglage du module l'emporte sur une sélection périmée : un onglet
+      // resté ouvert depuis qu'un administrateur a fermé la catégorie proposerait
+      // encore le matériel, et l'écran ne dirait pas pourquoi la pose échoue.
+      if (!objet.implantable) {
+        refuses.push({ object_id: ligne.object_id, motif: `« ${objet.name} » : ${REFUS_IMPLANTATION}` });
+        continue;
+      }
+
       // Une prestation — un raccordement électrique, une vacation d'agent — n'a
       // ni quantité en terre ni emplacement : elle ne se plante pas.
       if (objet.nature === 'prestation') {
@@ -966,8 +1119,8 @@ router.post('/:id/implantations', authenticateToken, requireSupervisor, async (r
         `INSERT INTO green_space_elements (green_space_id, object_id, label, code,
           element_type, description, image, quantity, purchase_price, cost_source,
           species, planting_date, condition_state, group_id, custom_fields,
-          maintenance_notes, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          maintenance_notes, pos_x, pos_y, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           req.params.id, objet.id,
           texte(ligne.label) || objet.name,
@@ -984,6 +1137,9 @@ router.post('/:id/implantations', authenticateToken, requireSupervisor, async (r
           groupe,
           ligne.custom_fields ? JSON.stringify(ligne.custom_fields) : '{}',
           '',
+          // Posé depuis le plan : les lignes arrivent avec leur emplacement, et
+          // il n'y a plus à les retrouver une à une dans la liste « à poser ».
+          nombreOuNull(ligne.pos_x), nombreOuNull(ligne.pos_y),
           now, now,
         ]
       );
@@ -1064,11 +1220,17 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
       object_id, label, code, element_type, description, image,
       pos_x, pos_y, quantity, purchase_price, maintenance_notes,
       species, planting_date, last_maintenance_date, next_maintenance_date,
-      condition_state, custom_fields, area_m2, zone_points, latitude, longitude
+      condition_state, custom_fields, area_m2, area_source, exclude_from_costs,
+      zone_points, latitude, longitude
     } = req.body;
 
     // Corriger un prix à la main, c'est dire que la facture ne disait pas ce
     // que le parc affichait : la ligne cesse alors de se réclamer du parc.
+    const zone = lireZone(zone_points);
+    if (zone.etat === 'refusee') {
+      return res.status(400).json({ success: false, message: REFUS_ZONE });
+    }
+
     const prixCorrige = purchase_price !== undefined
       && nombreOuNull(purchase_price) !== (existing.purchase_price === null ? null : Number(existing.purchase_price));
 
@@ -1080,14 +1242,17 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         purchase_price = ?, cost_source = ?, maintenance_notes = ?,
         species = ?, planting_date = ?,
         last_maintenance_date = ?, next_maintenance_date = ?,
-        condition_state = ?, custom_fields = ?, area_m2 = ?, zone_points = ?,
+        condition_state = ?, custom_fields = ?, area_m2 = ?, area_source = ?,
+        exclude_from_costs = ?, zone_points = ?,
         latitude = ?, longitude = ?, updated_at = ?
        WHERE id = ?`,
       [
         object_id ?? existing.object_id, label ?? existing.label,
         code ?? existing.code, element_type ?? existing.element_type,
         description ?? existing.description, image ?? existing.image,
-        pos_x ?? existing.pos_x, pos_y ?? existing.pos_y,
+        // `fusionner` et non `??` : le client envoie `null` pour retirer du
+        // plan, et `??` gardait alors l'ancienne position.
+        fusionner(nombreOuNull(pos_x), existing.pos_x), fusionner(nombreOuNull(pos_y), existing.pos_y),
         quantity ?? existing.quantity,
         purchase_price !== undefined ? nombreOuNull(purchase_price) : existing.purchase_price,
         prixCorrige ? 'saisi' : (existing.cost_source || 'saisi'),
@@ -1097,9 +1262,20 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         next_maintenance_date ?? existing.next_maintenance_date,
         condition_state ?? existing.condition_state,
         custom_fields ? JSON.stringify(custom_fields) : existing.custom_fields,
-        area_m2 ?? existing.area_m2,
-        zone_points !== undefined ? (zone_points ? JSON.stringify(zone_points) : null) : existing.zone_points,
-        latitude ?? existing.latitude, longitude ?? existing.longitude,
+        fusionner(nombreOuNull(area_m2), existing.area_m2),
+        // Une surface corrigée à la main ne doit plus jamais être recalculée :
+        // c'est le métré qui fait foi, pas le tracé approximatif du plan.
+        area_source === undefined
+          ? existing.area_source || 'saisi'
+          : area_source === 'calcule' ? 'calcule' : 'saisi',
+        exclude_from_costs === undefined
+          ? (existing.exclude_from_costs ? 1 : 0)
+          : (exclude_from_costs ? 1 : 0),
+        zone.etat === 'absente'
+          ? existing.zone_points
+          : zone.etat === 'valide' ? JSON.stringify(zone.points) : null,
+        fusionner(nombreOuNull(latitude), existing.latitude),
+        fusionner(nombreOuNull(longitude), existing.longitude),
         now, req.params.elementId
       ]
     );
@@ -1140,12 +1316,20 @@ router.delete('/elements/:elementId', authenticateToken, requireSupervisor, asyn
 router.post('/:id/annotations', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { element_id, pos_x, pos_y, label, icon, color } = req.body;
-    const now = new Date().toISOString();
 
+    // Ces deux nombres partaient en base sans le moindre contrôle. Une position
+    // hors du plan y reste : le repère devient invisible, et rien ne permet de
+    // le rattraper puisqu'on ne peut plus cliquer dessus.
+    const position = positionValide(pos_x, pos_y);
+    if (!position) {
+      return res.status(400).json({ success: false, message: REFUS_POSITION });
+    }
+
+    const now = new Date().toISOString();
     const result = await db.execute(
       `INSERT INTO green_space_annotations (green_space_id, element_id, pos_x, pos_y, label, icon, color, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.params.id, element_id || null, pos_x, pos_y, label || '', icon || 'circle', color || '#22c55e', now]
+      [req.params.id, element_id || null, position.x, position.y, label || '', icon || 'circle', color || '#22c55e', now]
     );
 
     const created = await db.queryOne('SELECT * FROM green_space_annotations WHERE id = ?', [result.lastInsertRowid]);
@@ -1155,14 +1339,41 @@ router.post('/:id/annotations', authenticateToken, requireSupervisor, async (req
   }
 });
 
-// PUT /annotations/:annotationId - Modifier une annotation
+/**
+ * PUT /annotations/:annotationId - Modifier une annotation.
+ *
+ * Modification partielle, et non remplacement : renommer un repère n'envoie que
+ * son libellé, et l'écriture précédente en profitait pour vider sa position, son
+ * icône et sa couleur. C'est d'ailleurs pourquoi il n'y avait aucun renommage
+ * dans l'interface — corriger une faute imposait de supprimer et de recréer.
+ */
 router.put('/annotations/:annotationId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
+    const existing = await db.queryOne('SELECT * FROM green_space_annotations WHERE id = ?', [req.params.annotationId]);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Repère non trouvé' });
+    }
+
     const { pos_x, pos_y, label, icon, color } = req.body;
-    const now = new Date().toISOString();
+
+    const deplace = pos_x !== undefined || pos_y !== undefined;
+    const position = deplace
+      ? positionValide(pos_x ?? existing.pos_x, pos_y ?? existing.pos_y)
+      : { x: Number(existing.pos_x), y: Number(existing.pos_y) };
+    if (!position) {
+      return res.status(400).json({ success: false, message: REFUS_POSITION });
+    }
+
     await db.execute(
       `UPDATE green_space_annotations SET pos_x = ?, pos_y = ?, label = ?, icon = ?, color = ? WHERE id = ?`,
-      [pos_x, pos_y, label, icon, color, req.params.annotationId]
+      [
+        position.x,
+        position.y,
+        label ?? existing.label,
+        icon ?? existing.icon,
+        color ?? existing.color,
+        req.params.annotationId,
+      ]
     );
     const updated = await db.queryOne('SELECT * FROM green_space_annotations WHERE id = ?', [req.params.annotationId]);
     res.json({ success: true, data: updated });
@@ -1345,7 +1556,14 @@ router.get('/parc/catalogue', authenticateToken, async (req: AuthRequest, res: R
       return res.json({ success: true, data: [] });
     }
 
-    const conditions: string[] = [`${expressionNature()} != 'prestation'`];
+    // Deux filtres qui se cumulent et ne disent pas la même chose : la portée
+    // (plus bas) dit ce que ce compte a le droit de voir, ce réglage-ci dit ce
+    // que le module accepte de planter. Un jardinier n'a pas à chercher « gazon »
+    // au milieu des barrières Vauban et des radars pédagogiques.
+    const conditions: string[] = [
+      `${expressionNature()} != 'prestation'`,
+      `${expressionImplantable()} = 1`,
+    ];
     const params: any[] = [];
 
     if (q && String(q).trim() !== '') {
@@ -1438,12 +1656,16 @@ router.post('/:id/groups', authenticateToken, requireSupervisor, async (req: Aut
   try {
     const { name, group_type, description, color, icon, area_m2, zone_points } = req.body;
     if (!name) return res.status(400).json({ success: false, message: 'Le nom est requis' });
+    const zone = lireZone(zone_points);
+    if (zone.etat === 'refusee') {
+      return res.status(400).json({ success: false, message: REFUS_ZONE });
+    }
     const now = new Date().toISOString();
 
     const result = await db.execute(
       `INSERT INTO green_space_groups (green_space_id, name, group_type, description, color, icon, area_m2, zone_points, created_at, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.params.id, name, group_type || 'massif', description || '', color || '#8b5cf6', icon || 'layers', area_m2 || null, zone_points ? JSON.stringify(zone_points) : null, now, now]
+      [req.params.id, name, group_type || 'massif', description || '', color || '#8b5cf6', icon || 'layers', nombreOuNull(area_m2), zone.etat === 'valide' ? JSON.stringify(zone.points) : null, now, now]
     );
 
     const created = await db.queryOne('SELECT * FROM green_space_groups WHERE id = ?', [result.lastInsertRowid]);
@@ -1456,11 +1678,40 @@ router.post('/:id/groups', authenticateToken, requireSupervisor, async (req: Aut
 // PUT /groups/:groupId - Modifier un groupe
 router.put('/groups/:groupId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
+    const existing = await db.queryOne('SELECT * FROM green_space_groups WHERE id = ?', [req.params.groupId]);
+    if (!existing) {
+      return res.status(404).json({ success: false, message: 'Groupe non trouvé' });
+    }
+
     const { name, group_type, description, color, icon, pos_x, pos_y, area_m2, zone_points } = req.body;
+
+    const zone = lireZone(zone_points);
+    if (zone.etat === 'refusee') {
+      return res.status(400).json({ success: false, message: REFUS_ZONE });
+    }
+
+    // Modification partielle, et non remplacement : déplacer le repère d'un
+    // groupe n'envoie que `pos_x` et `pos_y`, et l'écriture précédente en
+    // profitait pour remettre `zone_points` et `area_m2` à NULL — le polygone
+    // patiemment dessiné disparaissait au premier déplacement du marqueur.
     const now = new Date().toISOString();
     await db.execute(
       `UPDATE green_space_groups SET name = ?, group_type = ?, description = ?, color = ?, icon = ?, pos_x = ?, pos_y = ?, area_m2 = ?, zone_points = ?, updated_at = ? WHERE id = ?`,
-      [name, group_type, description || '', color || '#8b5cf6', icon || 'layers', pos_x ?? null, pos_y ?? null, area_m2 ?? null, zone_points !== undefined ? (zone_points ? JSON.stringify(zone_points) : null) : null, now, req.params.groupId]
+      [
+        name ?? existing.name,
+        group_type ?? existing.group_type,
+        description ?? existing.description ?? '',
+        color ?? existing.color ?? '#8b5cf6',
+        icon ?? existing.icon ?? 'layers',
+        fusionner(nombreOuNull(pos_x), existing.pos_x),
+        fusionner(nombreOuNull(pos_y), existing.pos_y),
+        fusionner(nombreOuNull(area_m2), existing.area_m2),
+        zone.etat === 'absente'
+          ? existing.zone_points
+          : zone.etat === 'valide' ? JSON.stringify(zone.points) : null,
+        now,
+        req.params.groupId,
+      ]
     );
     const updated = await db.queryOne('SELECT * FROM green_space_groups WHERE id = ?', [req.params.groupId]);
     res.json({ success: true, data: updated });
@@ -1798,14 +2049,18 @@ router.post('/:id/clone', authenticateToken, requireSupervisor, async (req: Auth
     const cloneResult = await db.execute(
       `INSERT INTO green_spaces (name, description, address, latitude, longitude,
         area_m2, space_type, soil_type, status, image, plan_image, custom_fields,
+        plan_scale_metres, plan_ratio, plan_scale_points,
         cloned_from_id, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         cloneName, source.description, source.address,
         source.latitude, source.longitude,
         source.area_m2, source.space_type, source.soil_type,
         status || 'projet', source.image, source.plan_image,
         source.custom_fields,
+        // Le clone reprend le même plan : il doit reprendre son échelle, sinon
+        // les surfaces recopiées ne correspondraient plus à rien de mesurable.
+        source.plan_scale_metres, source.plan_ratio, source.plan_scale_points,
         source.id, req.user!.userId, now, now
       ]
     );
@@ -1824,19 +2079,24 @@ router.post('/:id/clone', authenticateToken, requireSupervisor, async (req: Auth
         const elResult = await db.execute(
           `INSERT INTO green_space_elements (green_space_id, object_id, label, code,
             element_type, description, image, pos_x, pos_y, quantity,
-            purchase_price, maintenance_notes, species, planting_date,
+            purchase_price, cost_source, maintenance_notes, species, planting_date,
             last_maintenance_date, next_maintenance_date, condition_state,
-            custom_fields, area_m2, zone_points, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            custom_fields, area_m2, area_source, exclude_from_costs,
+            zone_points, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             newSpaceId, el.object_id, el.label, el.code,
             el.element_type, el.description, el.image,
             el.pos_x, el.pos_y, el.quantity,
-            el.purchase_price, el.maintenance_notes,
+            // `cost_source` manquait : un clone présentait comme saisi à la main
+            // un prix pourtant repris du parc, et la lecture des coûts changeait
+            // de sens d'une copie à l'autre.
+            el.purchase_price, el.cost_source || 'saisi', el.maintenance_notes,
             el.species, el.planting_date,
             el.last_maintenance_date, el.next_maintenance_date,
             el.condition_state, el.custom_fields || '{}',
-            el.area_m2, el.zone_points, now, now
+            el.area_m2, el.area_source || 'saisi', el.exclude_from_costs ? 1 : 0,
+            el.zone_points, now, now
           ]
         );
         elementIdMap[el.id] = Number(elResult.lastInsertRowid);

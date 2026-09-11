@@ -187,9 +187,14 @@ passage la permission de renommer le véhicule.
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
 - 💶 **Prix figé à la pose** : repris du parc ou corrigé selon la facture. Mettre à jour un tarif ne réévalue **jamais** ce qui a déjà été planté — c'est ce qui permet de dire ce qu'un massif a réellement coûté, des années après
 - 📊 **Coûts par groupe, variété, type et année** : ce qu'a coûté *cette* jardinière, ce que pèsent les rosiers tous massifs confondus, ce qu'a coûté le fleurissement d'une saison. Et sur l'ensemble des espaces, un total **par nature de lieu** — ronds-points, allées, parcs. Les lignes sans prix sont comptées à part, jamais chiffrées à zéro
-- 🗺️ **Plan interactif** : Upload du plan, placement de repères par clic avec drag & drop, popup persistant, labels visibles
+- 🗺️ **Plan qui se manipule à la main** : on attrape un repère et on le pose, la molette zoome là où l'on pointe, le glisser déplace la vue. Quatre outils nommés — déplacer, poser, dessiner, mesurer — et une ligne d'aide qui dit ce que le prochain clic va faire. `Ctrl+Z`, `Échap`, `Suppr` et les flèches font ce qu'on attend
+- 📐 **Zones que l'on retouche** : un sommet se déplace, un point clair au milieu d'un côté en insère un, `Alt`+clic en retire un, le glisser de l'intérieur pousse la zone entière. On referme en revenant sur le premier point, par un double-clic ou par `Entrée`
+- 📏 **Plan calibré, surfaces calculées** : tracez une longueur que vous connaissez — une façade, un terrain —, donnez-la en mètres, et **chaque zone affiche sa surface toute seule**, réglette d'échelle à l'appui. Facultatif : une surface se saisit toujours à la main, et une valeur corrigée ainsi n'est jamais réécrite par un sommet déplacé ensuite
+- 🧱 **Matériau et coût d'une zone** : gazon, enrobé, écorce se choisissent dans le parc ; la surface devient la quantité, le prix au m² est figé à la pose, et le coût se lit par type, par variété et par année comme le reste. Une case « ne pas compter dans les coûts » permet de tracer ce qui était déjà là sans lui inventer un prix — ces lignes sont comptées à part, jamais fondues dans un total
+- ➕ **On crée depuis le plan** : implanter depuis le parc, ajouter un élément libre, poser un élément déjà saisi ou un simple repère, tous à l'endroit désigné. « Ajouter un banc là où je pointe » demandait deux onglets et trois écrans
+- 🎛️ **Panneau, calques et légende** : la liste de ce qui est sur le plan et de ce qui ne l'est pas encore, avec recherche et œil pour masquer ; éléments, groupes, repères, zones et étiquettes s'affichent ou se cachent
+- 🔒 **Quel parc est proposé aux espaces verts** : réglable par l'administrateur, par catégorie, sous-catégorie ou matériel — un jardinier n'a pas à chercher « gazon » au milieu des barrières Vauban et des radars pédagogiques
 - 🌿 **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec état de santé et fiche détaillée
-- 📐 **Zones polygonales** : Dessin de zones par clics successifs avec couleur et opacité
 - 📦 **Groupes de composition** : Regroupement logique d'éléments avec couleur et description
 - 🔧 **Entretiens** : Historique complet avec type, intervenant, durée, coût, éléments concernés, documents joints
 - 📄 **Documents** : Upload, catégorisation par type, liaison aux éléments
@@ -842,10 +847,16 @@ POST   /api/green-spaces/:id/implantations # Poser plusieurs matériels d'un cou
 GET    /api/green-spaces/couts             # Synthèse : par espace, par nature de lieu, par variété, par année
 GET    /api/green-spaces/:id/couts         # Détail d'un espace : par groupe, type, variété, année
 
-# Annotations
-POST   /api/green-spaces/:id/annotations   # Ajouter une annotation
-PUT    /api/green-spaces/annotations/:aid  # Modifier une annotation
-DELETE /api/green-spaces/annotations/:aid  # Supprimer une annotation
+# Annotations (repères du plan)
+POST   /api/green-spaces/:id/annotations   # Ajouter un repère
+PUT    /api/green-spaces/annotations/:aid  # Modifier un repère (partiel : ce qu'on n'envoie pas ne bouge pas)
+DELETE /api/green-spaces/annotations/:aid  # Supprimer un repère
+
+# Matériel implantable — ce que le parc propose aux espaces verts
+GET    /api/green-spaces/materiel-implantable/tree     # Arbre des catégories, avec leur réglage
+GET    /api/green-spaces/materiel-implantable/objects  # Matériels d'une catégorie (?category_id=)
+GET    /api/green-spaces/materiel-implantable/search   # Chercher dans tout le parc (?q=)
+PUT    /api/green-spaces/materiel-implantable/:niveau/:id  # Régler category | subcategory | object
 
 # Groupes
 POST   /api/green-spaces/:id/groups        # Ajouter un groupe

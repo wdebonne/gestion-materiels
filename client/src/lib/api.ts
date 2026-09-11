@@ -1258,6 +1258,80 @@ export const materielPretableApi = {
     api.put<{ success: boolean }>(`/manifestations/availability/${niveau}/${id}`, { available }),
 }
 
+/**
+ * Quel matériel du parc peut être implanté dans un espace vert.
+ *
+ * Même règle et mêmes formes que le prêt, sur une autre colonne : le gazon et
+ * l'enrobé se posent, les barrières Vauban et les radars pédagogiques non. Les
+ * lignes portent `available_for_green_spaces` (le choix fait à ce niveau) et
+ * `implantable` (ce qui s'applique une fois la résolution faite).
+ */
+export const materielImplantableApi = {
+  getTree: () =>
+    api.get<{ success: boolean; data: CategorieReglee[] }>('/green-spaces/materiel-implantable/tree'),
+  getObjects: (categoryId: number) =>
+    api.get<{ success: boolean; data: ObjetRegle[] }>(
+      `/green-spaces/materiel-implantable/objects?category_id=${categoryId}`
+    ),
+  rechercher: (terme: string) =>
+    api.get<{ success: boolean; data: ObjetRegleTrouve[] }>(
+      `/green-spaces/materiel-implantable/search?q=${encodeURIComponent(terme)}`
+    ),
+  regler: (niveau: 'category' | 'subcategory' | 'object', id: number, available: Disponibilite) =>
+    api.put<{ success: boolean }>(`/green-spaces/materiel-implantable/${niveau}/${id}`, { available }),
+}
+
+/**
+ * Les mêmes lignes, vues sans savoir de quel module il s'agit.
+ *
+ * L'écran de réglage est le même pour le prêt et pour l'implantation ; seule la
+ * colonne change de nom. Ces types-ci le disent : le réglage et le résultat
+ * effectif se lisent par leur clé, que l'appelant fournit.
+ */
+export interface SousCategorieReglee {
+  id: number
+  category_id: number
+  name: string
+  objets: number
+  [colonne: string]: any
+}
+
+export interface CategorieReglee {
+  id: number
+  name: string
+  objets_directs: number
+  subcategories: SousCategorieReglee[]
+  [colonne: string]: any
+}
+
+export interface ObjetRegle {
+  id: number
+  name: string
+  reference: string | null
+  serial_number: string | null
+  subcategory_id: number | null
+  subcategory_name: string | null
+  [colonne: string]: any
+}
+
+export interface ObjetRegleTrouve extends ObjetRegle {
+  /** `null` pour un matériel qui n'est rattaché à aucune catégorie. */
+  category_id: number | null
+  category_name: string | null
+}
+
+/** Les quatre appels d'un écran de réglage, quel que soit le module. */
+export interface ApiReglageParc {
+  getTree(): Promise<{ data: { data: CategorieReglee[] } }>
+  getObjects(categoryId: number): Promise<{ data: { data: ObjetRegle[] } }>
+  rechercher(terme: string): Promise<{ data: { data: ObjetRegleTrouve[] } }>
+  regler(
+    niveau: 'category' | 'subcategory' | 'object',
+    id: number,
+    available: Disponibilite
+  ): Promise<unknown>
+}
+
 // ======================== PIÈCES JOINTES ========================
 
 export interface TypeDocument {

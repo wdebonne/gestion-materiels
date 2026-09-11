@@ -7,6 +7,61 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Espaces verts — le plan annoté se manipule enfin à la main
+
+> Le plan était un formulaire déguisé en plan. Rien ne s'y saisissait : déplacer un repère demandait d'appuyer sur « Déplacer », de lire une bannière, puis de cliquer ailleurs ; une zone ne se dessinait qu'après avoir créé *puis* posé un élément autre part, et une fois tracée elle ne se retouchait plus — on l'effaçait et on recommençait. Un jardinier qui veut bouger un banc de dix centimètres ne le fait pas. Trois défauts s'y ajoutaient, dont un qui rendait l'outil faux : les coordonnées d'un clic étaient divisées **deux fois** par le zoom, et à 200 % tout se posait au quart de la distance visée.
+
+#### Ajouté
+
+- **On attrape un repère et on le pose.** Élément, groupe ou repère libre se déplacent au glisser, à la souris comme au doigt. La position part au relâchement et s'affiche sans attendre le serveur, qui n'a plus à recharger l'espace entier — entretiens, documents et archives compris — pour deux nombres à virgule. Les flèches du clavier ajustent au dixième de pourcent, `Maj` pour aller plus vite
+- **Quatre outils nommés** — déplacer la vue, poser, dessiner une zone, mesurer — à la place de trois modes implicites qu'aucun bouton n'annonçait. Une ligne d'aide dit à chaque instant ce que le prochain clic va faire
+- **Les zones se retouchent.** Un sommet se déplace, un point clair au milieu d'un côté en insère un, `Alt`+clic en retire un, et le glisser de l'intérieur pousse la zone entière. `Ctrl+Z` revient en arrière autant de fois qu'il le faut, `Échap` abandonne. Le contour se referme en revenant sur son premier point, par un double-clic ou par `Entrée`
+- **On dessine une zone sans rien créer d'abord.** L'outil est dans la barre ; c'est à la fermeture du contour qu'on dit à quoi il appartient — un matériau du parc, un élément existant, un groupe
+- **Le plan se calibre.** On trace une longueur qu'on connaît — une façade, la largeur d'un terrain — on la donne en mètres, et **chaque zone affiche sa surface toute seule**. Une réglette d'échelle apparaît sur le plan et dans le PDF. Le calibrage reste facultatif : une surface se saisit toujours à la main pour un rendu rapide, et une valeur corrigée ainsi ne sera **jamais** réécrite par un sommet qu'on déplace ensuite (`area_source`)
+- **Une zone porte un matériau et un coût.** Gazon, enrobé, écorce se choisissent dans le parc ; la surface devient la quantité, le prix au mètre carré est figé à la pose comme le reste, et le coût se lit dans l'onglet Coûts par type, par variété et par année sans une ligne de SQL nouvelle. La fenêtre annonce le montant pendant qu'on saisit
+- **Case « ne pas compter dans les coûts »**, pour tracer la pelouse qui était déjà là sans lui inventer un prix. Ces lignes sont **comptées à part** (`hors_couts`) et jamais fondues dans un total : un montant seul se lirait comme complet alors qu'il ne l'est pas
+- **On crée depuis le plan.** « Ajouter un banc là où je pointe » demandait deux onglets et trois écrans ; le panneau de pose offre l'implantation depuis le parc, l'élément libre, la pose d'un élément déjà saisi et le repère simple, tous à l'endroit désigné
+- **Un repère se renomme**, et choisit sa couleur. L'icône et la couleur existaient en base et dans l'API depuis toujours, sans aucune interface : corriger une faute imposait de supprimer le repère et de le recréer, donc à côté
+- **Panneau latéral** listant ce qui est sur le plan et ce qui ne l'est pas encore, avec recherche, œil pour masquer, et le détail de la sélection — dont les actions ont enfin une place fixe, au lieu d'une bulle qui grossissait avec le zoom et sortait du cadre près d'un bord
+- **Calques et légende** : éléments, groupes, repères, zones, étiquettes s'affichent ou se masquent ; la légende annonce les types présents, les zones et leur surface totale
+- **Réglages → Espaces verts → matériel implantable.** Le catalogue d'implantation proposait tout le parc : un jardinier venu poser trente rosiers y trouvait les barrières Vauban des manifestations et les radars pédagogiques de la police municipale. Même règle que le prêt — trois niveaux, le plus précis l'emporte, `NULL` veut dire « hérite » — sur une colonne propre aux espaces verts. Le réglage **s'ajoute** à la portée par catégorie du compte : il dit ce que le module propose, elle dit ce que la personne a le droit de voir
+- **Aide de l'écran** (`?`), comme sur les autres écrans, plutôt que des infobulles invisibles au doigt
+
+#### Corrigé
+
+- **Tout se posait à côté dès qu'on avait zoomé.** `getBoundingClientRect()` rend la boîte **après** transformation : le rapport calculé tenait déjà compte du zoom, et la division supplémentaire plaçait un clic central à 25 % à l'échelle 2. Chaque pose, chaque déplacement, chaque sommet de zone était touché — et rien ne le signalait, puisque le repère apparaissait bien, ailleurs
+- **Le plan sautait entre deux clics.** La ligne d'aide changeait de hauteur au premier sommet d'un tracé, décalant le plan de quelques dizaines de pixels : le sommet suivant se posait à côté de l'endroit visé, et tout contour finissait bancal. Sa hauteur est réservée
+- **« Retirer du plan » ne faisait rien.** Le client envoyait `pos_x: null`, le serveur écrivait `pos_x ?? ancienne_position` : `null` y perdait toujours. Ne **pas parler** d'un champ et demander à l'**effacer** sont deux intentions différentes, et une seule fonction les distingue désormais partout où `NULL` veut dire quelque chose — position, zone, coordonnées, surface
+- **Déplacer un groupe effaçait sa zone.** La modification d'un groupe était un remplacement : déplacer son repère n'envoyait que deux coordonnées, et le polygone patiemment dessiné repartait à `NULL` sans un mot
+- **Une zone dessinée disparaissait du plan.** Un contour sans point n'était nulle part : ni sur le plan, ni dans la liste des éléments posés — mais bien dans celle « à poser », ce qui laissait croire que le tracé n'avait pas été enregistré. Une zone **est** une présence : son marqueur se pose au centre de son contour
+- **Une pelouse s'annonçait sous le nom d'un banc.** Le détail « par variété » devait ranger une implantation libre sous son propre libellé ; toutes partageaient en fait la clé `null`, donc un seul tas, nommé par la première ligne rencontrée. Une zone de 9 474 € figurait ainsi sous « Banc du kiosque »
+- **Neuf conteneurs du plan étaient écrasés en carrés de 44 × 44 pixels**, séquelle d'un remplacement global de `p-3` par une classe de cible tactile : les sections de la fenêtre de pose et les deux bandeaux d'état s'y repliaient
+- **Un type de groupe créé par la commune s'affichait sans nom ni couleur** sur le plan, dans le PDF et dans les archives : l'onglet Éléments lisait la table, ces trois-là lisaient une liste écrite en dur — divergente, de surcroît, dans le PDF
+- **Un compte sans droit d'écriture voyait toutes les commandes d'édition** et récoltait des refus silencieux : le serveur exige d'être superviseur, l'interface le dit maintenant en n'affichant rien
+- **Un clic sur une zone de groupe ne sélectionnait rien**, quand le même geste sur une zone d'élément sélectionnait : deux gestes identiques, deux réponses différentes
+- **Aucune coordonnée n'était vérifiée.** Positions et polygones partaient en base tels quels : une valeur hors du plan y restait, et le repère devenait introuvable puisqu'on ne pouvait plus cliquer dessus. Un polygone est désormais borné à 500 sommets — au-delà ce n'est plus un massif mais un tracé importé par erreur, et l'affichage s'en ressentait à chaque ouverture de la fiche
+- **Un clone perdait la provenance de ses prix** : `cost_source` n'était pas recopié, et une copie présentait comme saisi à la main un prix pourtant repris du parc
+- **Les étiquettes du plan mesuraient 7 pixels et ne grandissaient pas** avec le zoom : c'est le plan qui grossissait, pas le texte. Elles gardent leur taille à l'écran et portent la surface de leur zone
+
+#### Modifié
+
+- **Le zoom suit le curseur.** Il s'ancrait en haut à gauche, donc grossir chassait de l'écran ce qu'on regardait, et il fallait rattraper aux barres de défilement. La molette zoome là où l'on pointe, le glisser déplace la vue, « Ajuster » ramène le plan entier dans le cadre
+- **Le plan est dessiné par un seul composant.** Il l'était à quatre endroits — l'onglet, l'export PDF, la vue d'une archive, la comparaison de deux versions — avec des tailles de pastille, des icônes et des épaisseurs de trait qui avaient divergé : le PDF ne ressemblait pas à l'écran, et toute nouveauté était à écrire quatre fois
+- **Le marqueur d'un élément porte l'émoji de son type** plutôt que les deux premières lettres de son code : sur un plan, on reconnaît un arbre bien avant de lire « AR »
+- **L'écran de réglage du matériel prêtable et celui du matériel implantable sont le même composant**, à la colonne et aux mots près. Le serveur suit : une seule écriture de la règle des trois états, pour deux modules
+
+#### Base de données
+
+- Migration `016_plan_annote` : `plan_scale_metres`, `plan_ratio` et `plan_scale_points` sur `green_spaces` (le calibrage) ; `area_source` et `exclude_from_costs` sur `green_space_elements` ; `available_for_green_spaces` sur `categories`, `subcategories` et `objects` ; index manquants sur `green_space_annotations` et `green_space_groups`
+- **Pourquoi trois colonnes pour une échelle :** le plan se lit en pourcentages de largeur *et* de hauteur, et l'image est étirée par l'affichage. Un pourcent vertical ne mesure donc pas comme un pourcent horizontal ; le rapport de l'image rétablit la métrique sans qu'il faille recharger l'image — ce que ni le serveur ni l'export PDF ne peuvent faire. Le segment tracé est conservé pour corriger un calibrage plutôt que le refaire
+
+#### API
+
+- `GET /api/green-spaces/materiel-implantable/tree` · `/objects` · `/search` et `PUT /api/green-spaces/materiel-implantable/:niveau/:id` — le réglage, aux trois niveaux
+- `POST /api/green-spaces/:id/implantations` accepte `pos_x` / `pos_y` par ligne : posé depuis le plan, le matériel arrive à sa place
+- `PUT /api/green-spaces/:id` accepte le calibrage ; `POST` et `PUT` d'un élément acceptent `area_source` et `exclude_from_costs`
+- `PUT /api/green-spaces/annotations/:id` devient une modification partielle : renommer un repère n'efface plus sa position, son icône et sa couleur
+
 ### Espaces verts — on garnit depuis le parc, et le coût ne bouge plus
 
 > Les éléments d'un espace vert se saisissaient à la main dans une fenêtre qui ignorait le parc : on retapait « Rosier Pierre de Ronsard », son espèce, son image et son prix, alors que tout cela était déjà sur sa fiche. Deux saisies pour une chose, et la seconde ne ressemblait jamais tout à fait à la première : « rosier », « Rosier PdR » et « rosiers rouges » devenaient trois lignes, donc trois coûts, et plus aucun total ne voulait dire quoi que ce soit.

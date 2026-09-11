@@ -62,6 +62,7 @@ export default function ImplantationDepuisParc({
   spaceId,
   groups,
   groupeInitial,
+  positionInitiale,
   onClose,
   onSaved,
 }: {
@@ -69,6 +70,14 @@ export default function ImplantationDepuisParc({
   groups: Array<{ id: number; name: string; group_type?: string }>
   /** Jardinière depuis laquelle on a ouvert la fenêtre, s'il y en a une. */
   groupeInitial?: number | null
+  /**
+   * Endroit désigné sur le plan, quand la fenêtre s'ouvre depuis là.
+   *
+   * Les lignes posées ensemble le sont au même endroit — c'est bien ce qu'est
+   * une jardinière —, très légèrement étalées pour rester saisissables une à
+   * une. On les écarte ensuite à la souris si le massif s'étale vraiment.
+   */
+  positionInitiale?: { x: number; y: number } | null
   onClose: () => void
   onSaved: () => void
 }) {
@@ -160,9 +169,15 @@ export default function ImplantationDepuisParc({
 
       const reponse = await api.post(`/green-spaces/${spaceId}/implantations`, {
         group_id: groupId,
-        lignes: lignes.map((ligne) => ({
+        lignes: lignes.map((ligne, index) => ({
           object_id: ligne.object_id,
           quantity: ligne.quantite,
+          ...(positionInitiale
+            ? {
+                pos_x: Math.min(100, positionInitiale.x + (index % 4) * 1.2),
+                pos_y: Math.min(100, positionInitiale.y + Math.floor(index / 4) * 1.2),
+              }
+            : {}),
           // Une chaîne vide veut dire « pas de prix connu » : l'envoyer telle
           // quelle laisse le serveur reprendre celui du parc, ce qui n'est pas
           // la même chose que de figer zéro.

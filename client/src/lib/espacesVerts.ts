@@ -95,3 +95,44 @@ export const euros = (montant: number | null | undefined): string =>
     currency: 'EUR',
     maximumFractionDigits: Number.isInteger(Number(montant ?? 0)) ? 0 : 2,
   }).format(Number(montant ?? 0))
+
+/** Un type de groupe de composition : massif, haie composée, jardinière… */
+export interface TypeGroupe {
+  value: string
+  label: string
+  icon: string
+  color: string
+}
+
+/**
+ * Repli des types de groupes, quand la table n'a pas encore été garnie.
+ *
+ * L'admin peut en créer d'autres (`/green-spaces/group-types`) : cette liste
+ * n'est qu'un point de départ, jamais la référence. Passer par
+ * `useTypesGroupes()` plutôt que par cette constante, sinon un type créé par la
+ * commune s'affiche sans libellé ni couleur.
+ */
+export const GROUP_TYPES: TypeGroupe[] = [
+  { value: 'massif', label: 'Massif floral', icon: '🌺', color: '#ec4899' },
+  { value: 'haie', label: 'Haie composée', icon: '🌲', color: '#15803d' },
+  { value: 'bosquet', label: 'Bosquet', icon: '🌳', color: '#16a34a' },
+  { value: 'rocaille', label: 'Rocaille', icon: '🪨', color: '#78716c' },
+  { value: 'jardiniere', label: 'Jardinière', icon: '🌷', color: '#f472b6' },
+  { value: 'plate_bande', label: 'Plate-bande', icon: '🌸', color: '#a855f7' },
+  { value: 'mixed_border', label: 'Mixed-border', icon: '🌼', color: '#f59e0b' },
+  { value: 'autre', label: 'Autre', icon: '📍', color: '#6b7280' },
+]
+
+/**
+ * Chemin d'une image servie par l'application.
+ *
+ * Les chemins arrivent sous trois formes selon leur âge — URL complète, chemin
+ * absolu, simple nom de fichier — et concaténer aveuglément donnait des
+ * `/uploads//uploads/...` qui ne chargent rien.
+ */
+export function getImageUrl(path: string | null | undefined): string {
+  if (!path) return ''
+  if (path.startsWith('http://') || path.startsWith('https://')) return path
+  if (path.startsWith('/')) return path
+  return `/uploads/${path}`
+}

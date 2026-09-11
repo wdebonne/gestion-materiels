@@ -44,3 +44,19 @@ export function nombreOuNull(valeur: unknown): number | null {
   const nombre = Number(valeur);
   return Number.isFinite(nombre) ? nombre : null;
 }
+
+/**
+ * Ce que devient une colonne lors d'une modification partielle.
+ *
+ * `recu ?? existant` confond deux intentions que le client distingue pourtant :
+ * ne **pas** parler d'un champ (`undefined` — on le garde) et demander à
+ * l'**effacer** (`null` — on le vide). Retirer un élément du plan envoyait
+ * `pos_x: null` et repartait avec l'ancienne position ; le bouton « Retirer »
+ * ne faisait rien, sans erreur ni message.
+ *
+ * À réserver aux colonnes où `NULL` veut dire quelque chose — position, zone,
+ * coordonnées, surface. Pour un libellé, la chaîne vide dit déjà « rien ».
+ */
+export function fusionner<T>(recu: T | null | undefined, existant: T | null): T | null {
+  return recu === undefined ? existant : recu;
+}

@@ -69,6 +69,7 @@ beforeAll(() => {
       label VARCHAR(255), element_type VARCHAR(100), group_id INTEGER,
       quantity INTEGER DEFAULT 1, purchase_price DECIMAL(10,2),
       cost_source VARCHAR(20) DEFAULT 'saisi', planting_date DATE,
+      exclude_from_costs INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT '2026-01-15 09:00:00'
     );
   `);
@@ -89,26 +90,26 @@ beforeAll(() => {
 
   const poser = base.prepare(`
     INSERT INTO green_space_elements
-      (green_space_id, object_id, label, element_type, group_id, quantity, purchase_price, cost_source, planting_date)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (green_space_id, object_id, label, element_type, group_id, quantity, purchase_price, cost_source, planting_date, exclude_from_costs)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, 0))
   `);
 
   // La jardinière du perron mêle deux variétés à deux prix : c'est le cas qui
   // justifie le groupe, et celui qu'aucun total par espace ne sait rendre.
-  poser.run(MAIRIE, ROSIER, 'Rosiers du perron', 'fleur', JARDINIERE, 10, 2.5, 'parc', '2025-04-10');
-  poser.run(MAIRIE, TULIPE, 'Tulipes du perron', 'fleur', JARDINIERE, 40, 0.6, 'saisi', '2025-10-02');
+  poser.run(MAIRIE, ROSIER, 'Rosiers du perron', 'fleur', JARDINIERE, 10, 2.5, 'parc', '2025-04-10', 0);
+  poser.run(MAIRIE, TULIPE, 'Tulipes du perron', 'fleur', JARDINIERE, 40, 0.6, 'saisi', '2025-10-02', 0);
 
   // Hors groupe, la même variété reposée l'année suivante — plus chère.
-  poser.run(MAIRIE, ROSIER, 'Rosiers de l’allée', 'fleur', null, 6, 4, 'parc', '2026-03-20');
+  poser.run(MAIRIE, ROSIER, 'Rosiers de l’allée', 'fleur', null, 6, 4, 'parc', '2026-03-20', 0);
 
   // Du mobilier, à l'exemplaire.
-  poser.run(MAIRIE, BANC, 'Banc n°3', 'banc', null, 1, 320, 'parc', '2026-03-20');
+  poser.run(MAIRIE, BANC, 'Banc n°3', 'banc', null, 1, 320, 'parc', '2026-03-20', 0);
 
   // Une ligne sans prix : elle existe, elle ne coûte rien de connu.
-  poser.run(MAIRIE, null, 'Chêne centenaire', 'arbre', null, 1, null, 'saisi', null);
+  poser.run(MAIRIE, null, 'Chêne centenaire', 'arbre', null, 1, null, 'saisi', null, 0);
 
   // Un autre espace, pour que la synthèse ait de quoi distinguer.
-  poser.run(ROND_POINT, ROSIER, 'Rosiers du rond-point', 'fleur', null, 20, 2.5, 'parc', '2025-04-10');
+  poser.run(ROND_POINT, ROSIER, 'Rosiers du rond-point', 'fleur', null, 20, 2.5, 'parc', '2025-04-10', 0);
 });
 
 describe('coût d’un espace vert', () => {
@@ -235,5 +236,110 @@ describe('prix unitaire repris du parc', () => {
   it('ne figer aucun prix vaut mieux qu’en inventer un', () => {
     expect(prixUnitaireDuParc({ unit_cost: 0, purchase_price: 0 })).toBeNull();
     expect(prixUnitaireDuParc({})).toBeNull();
+  });
+});
+
+describe('une zone qu’on trace sans la chiffrer', () => {
+  // La pelouse qui était là avant nous : 1 200 m² qu'on tond, qu'on trace sur
+  // le plan, et pour lesquels il n'existe aucune facture. L'obliger à porter un
+  // prix produirait un budget faux ; la laisser sans surface la ferait
+  // disparaître de l'entretien.
+  const PELOUSE_EXISTANTE = 3;
+
+  beforeAll(() => {
+    base.exec(`INSERT INTO green_spaces (id, name, space_type, status)
+               VALUES (${PELOUSE_EXISTANTE}, 'Square du Souvenir', 'square', 'actif')`);
+    const poser = base.prepare(`
+      INSERT INTO green_space_elements
+        (green_space_id, object_id, label, element_type, group_id, quantity, purchase_price, cost_source, planting_date, exclude_from_costs)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    // Une pelouse de 1 200 m² à 4 €/m² — un prix que le parc connaît, mais que
+    // personne n'a payé pour celle-ci : elle est écartée des coûts.
+    poser.run(PELOUSE_EXISTANTE, null, 'Pelouse existante', 'pelouse', null, 1200, 4, 'saisi', null, 1);
+    // Et un massif refait cette année, lui bien facturé.
+    poser.run(PELOUSE_EXISTANTE, ROSIER, 'Massif de l’entrée', 'fleur', null, 10, 2.5, 'parc', '2026-04-01', 0);
+  });
+
+  it('ne la fait pas entrer dans le total', async () => {
+    const cout = await coutEspace(PELOUSE_EXISTANTE);
+    // 1 200 × 4 = 4 800 € qui ne doivent apparaître nulle part.
+    expect(cout.total).toBe(25);
+  });
+
+  it('la compte à part, pour qu’un total ne se lise pas comme complet', async () => {
+    const cout = await coutEspace(PELOUSE_EXISTANTE);
+    expect(cout.hors_couts).toBe(1);
+    expect(cout.lignes).toBe(2);
+  });
+
+  it('ne la confond pas avec une ligne dont le prix manque', async () => {
+    // Elle n'a pas de prix *manquant*, elle n'en a pas *par décision*. Les
+    // confondre gonflerait l'avertissement au point qu'on cesserait de le lire.
+    const cout = await coutEspace(PELOUSE_EXISTANTE);
+    expect(cout.sans_prix).toBe(0);
+  });
+
+  it('la laisse visible dans le détail par type, à zéro', async () => {
+    const cout = await coutEspace(PELOUSE_EXISTANTE);
+    const pelouse = cout.par_type.find((l) => l.cle === 'pelouse');
+    expect(pelouse).toBeDefined();
+    expect(pelouse!.cout).toBe(0);
+    expect(pelouse!.hors_couts).toBe(1);
+    // La surface reste comptée : c'est ce qu'on tond.
+    expect(pelouse!.quantite).toBe(1200);
+  });
+
+  it('l’écarte aussi de la synthèse sur tous les espaces', async () => {
+    const synthese = await syntheseCouts({ espaceIds: [PELOUSE_EXISTANTE] });
+    expect(synthese.total).toBe(25);
+    expect(synthese.hors_couts).toBe(1);
+    expect(synthese.sans_prix).toBe(0);
+  });
+});
+
+describe('lignes sans matériel du parc, par variété', () => {
+  // L'intention était écrite depuis le début : « une implantation libre se range
+  // sous son propre libellé plutôt que dans un fourre-tout ». Le code faisait
+  // l'inverse — toutes partageaient la clé `null` — et le tas prenait le nom de
+  // la première ligne rencontrée. Sur un espace mêlant une pelouse chiffrée au
+  // mètre carré et un banc, la pelouse s'annonçait sous le nom du banc.
+  const LIBRE = 4;
+
+  beforeAll(() => {
+    base.exec(`INSERT INTO green_spaces (id, name, space_type, status)
+               VALUES (${LIBRE}, 'Place du Marché', 'place', 'actif')`);
+    const poser = base.prepare(`
+      INSERT INTO green_space_elements
+        (green_space_id, object_id, label, element_type, group_id, quantity, purchase_price, cost_source, planting_date, exclude_from_costs)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    poser.run(LIBRE, null, 'Banc de la halle', 'banc', null, 1, 300, 'saisi', '2026-02-01', 0);
+    poser.run(LIBRE, null, 'Pelouse ouest', 'pelouse', null, 500, 4, 'saisi', '2026-02-01', 0);
+    poser.run(LIBRE, null, 'Pelouse ouest', 'pelouse', null, 100, 4, 'saisi', '2026-03-01', 0);
+  });
+
+  it('ne range pas une pelouse sous le nom d’un banc', async () => {
+    const cout = await coutEspace(LIBRE);
+    const banc = cout.par_variete.find((l) => l.libelle === 'Banc de la halle');
+    expect(banc!.cout).toBe(300);
+    expect(banc!.lignes).toBe(1);
+  });
+
+  it('totalise deux poses du même libellé', async () => {
+    // 500 m² puis 100 m², à 4 € : c'est la même pelouse, agrandie.
+    const cout = await coutEspace(LIBRE);
+    const pelouse = cout.par_variete.find((l) => l.libelle === 'Pelouse ouest');
+    expect(pelouse!.cout).toBe(2400);
+    expect(pelouse!.lignes).toBe(2);
+    expect(pelouse!.quantite).toBe(600);
+  });
+
+  it('rend autant de lignes que de libellés distincts', async () => {
+    const cout = await coutEspace(LIBRE);
+    expect(cout.par_variete.map((l) => l.libelle).sort()).toEqual([
+      'Banc de la halle',
+      'Pelouse ouest',
+    ]);
   });
 });

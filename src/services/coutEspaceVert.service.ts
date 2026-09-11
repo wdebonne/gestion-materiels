@@ -38,10 +38,31 @@ import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
  * du coût finiraient par diverger, et deux écrans donneraient deux totaux pour
  * la même jardinière. Suppose l'alias `gse` sur `green_space_elements`.
  */
-export const COUT_IMPLANTATION = `(COALESCE(gse.quantity, 1) * COALESCE(gse.purchase_price, 0))`;
+export const COUT_IMPLANTATION =
+  `(CASE WHEN gse.exclude_from_costs = 1 THEN 0
+         ELSE COALESCE(gse.quantity, 1) * COALESCE(gse.purchase_price, 0) END)`;
 
-/** Une ligne sans prix saisi : comptée, jamais chiffrée. */
-const SANS_PRIX = `CASE WHEN gse.purchase_price IS NULL OR gse.purchase_price = 0 THEN 1 ELSE 0 END`;
+/**
+ * Une ligne écartée des coûts : dessinée sur le plan, jamais chiffrée.
+ *
+ * La pelouse qui était là avant nous n'a pas de facture. L'obliger à porter un
+ * prix pour figurer sur le plan produirait un budget faux ; la laisser sans
+ * surface la ferait disparaître de l'entretien. On la trace, on la mesure, et
+ * on la compte à part.
+ */
+const HORS_COUTS = `CASE WHEN gse.exclude_from_costs = 1 THEN 1 ELSE 0 END`;
+
+/**
+ * Une ligne sans prix saisi : comptée, jamais chiffrée.
+ *
+ * Une ligne volontairement écartée n'en fait pas partie : elle n'a pas de prix
+ * *manquant*, elle n'en a pas *par décision*, et les confondre gonflerait
+ * l'avertissement au point qu'on cesserait de le lire.
+ */
+const SANS_PRIX =
+  `CASE WHEN gse.exclude_from_costs = 1 THEN 0
+        WHEN gse.purchase_price IS NULL OR gse.purchase_price = 0 THEN 1
+        ELSE 0 END`;
 
 /**
  * L'année d'une implantation : celle de la pose, à défaut celle de la saisie.
@@ -64,6 +85,8 @@ export interface LigneCout {
   cout: number;
   /** Lignes sans prix saisi, exclues du coût et signalées comme telles. */
   sans_prix: number;
+  /** Lignes volontairement écartées des coûts. */
+  hors_couts: number;
 }
 
 export interface CoutEspace {
@@ -72,6 +95,7 @@ export interface CoutEspace {
   quantite: number;
   lignes: number;
   sans_prix: number;
+  hors_couts: number;
   par_groupe: LigneCout[];
   par_type: LigneCout[];
   par_variete: LigneCout[];
@@ -83,6 +107,7 @@ export interface SyntheseCouts {
   quantite: number;
   lignes: number;
   sans_prix: number;
+  hors_couts: number;
   par_espace: LigneCout[];
   par_type_espace: LigneCout[];
   par_type_element: LigneCout[];
@@ -103,6 +128,7 @@ interface ImplantationBrute {
   object_name: string | null;
   label: string;
   annee: string | null;
+  exclude_from_costs: number | null;
 }
 
 /** Quantité d'une ligne : jamais négative, et une pose vaut au moins un. */
@@ -112,6 +138,14 @@ const quantiteDe = (ligne: { quantity?: number | null }): number =>
 /** Prix figé d'une ligne, ou zéro quand il n'a pas été saisi. */
 const prixDe = (ligne: { purchase_price?: number | null }): number =>
   Number(ligne.purchase_price ?? 0) || 0;
+
+/** Cette ligne a-t-elle été volontairement écartée des coûts ? */
+const horsCouts = (ligne: { exclude_from_costs?: number | null }): boolean =>
+  Boolean(ligne.exclude_from_costs);
+
+/** Ce que pèse une ligne : rien du tout si on a demandé à ne pas la chiffrer. */
+const coutDe = (ligne: ImplantationBrute): number =>
+  horsCouts(ligne) ? 0 : quantiteDe(ligne) * prixDe(ligne);
 
 /**
  * Regroupe des implantations sur un axe.
@@ -135,15 +169,14 @@ function regrouper(
       lignes: 0,
       cout: 0,
       sans_prix: 0,
+      hors_couts: 0,
     };
 
-    const quantite = quantiteDe(ligne);
-    const prix = prixDe(ligne);
-
-    agregat.quantite += quantite;
+    agregat.quantite += quantiteDe(ligne);
     agregat.lignes += 1;
-    agregat.cout += quantite * prix;
-    if (prix <= 0) agregat.sans_prix += 1;
+    agregat.cout += coutDe(ligne);
+    if (horsCouts(ligne)) agregat.hors_couts += 1;
+    else if (prixDe(ligne) <= 0) agregat.sans_prix += 1;
 
     parCle.set(index, agregat);
   }
@@ -159,6 +192,7 @@ const trier = (lignes: LigneCout[]): LigneCout[] =>
 async function implantationsDe(greenSpaceId: number | string): Promise<ImplantationBrute[]> {
   return db.query(
     `SELECT gse.id, gse.green_space_id, gse.quantity, gse.purchase_price,
+            gse.exclude_from_costs,
             gse.element_type, gse.group_id, gse.object_id, gse.label,
             g.name as group_name, o.name as object_name,
             ${ANNEE} as annee
@@ -181,10 +215,11 @@ export async function coutEspace(greenSpaceId: number | string): Promise<CoutEsp
 
   return {
     green_space_id: Number(greenSpaceId),
-    total: arrondi(lignes.reduce((somme, l) => somme + quantiteDe(l) * prixDe(l), 0)),
+    total: arrondi(lignes.reduce((somme, l) => somme + coutDe(l), 0)),
     quantite: lignes.reduce((somme, l) => somme + quantiteDe(l), 0),
     lignes: lignes.length,
-    sans_prix: lignes.filter((l) => prixDe(l) <= 0).length,
+    sans_prix: lignes.filter((l) => !horsCouts(l) && prixDe(l) <= 0).length,
+    hors_couts: lignes.filter(horsCouts).length,
 
     // Une jardinière porte un nom ; ce qui n'est dans aucun groupe reste
     // visible sous « Hors groupe », sans quoi le détail ne totaliserait plus
@@ -198,10 +233,16 @@ export async function coutEspace(greenSpaceId: number | string): Promise<CoutEsp
       libelle: l.element_type || 'autre',
     })),
     // La variété, c'est le matériel du parc. Une implantation libre — un arbre
-    // centenaire que personne n'a acheté — n'en a pas, et se range sous son
-    // propre libellé plutôt que dans un fourre-tout.
+    // centenaire que personne n'a acheté, une pelouse qui était déjà là — n'en a
+    // pas, et se range sous son **propre** libellé.
+    //
+    // C'était l'intention, pas le résultat : toutes les lignes sans matériel du
+    // parc partageaient la clé `null`, donc un seul et même groupe, et c'est le
+    // libellé de la première qui nommait le tas. Une pelouse de 9 474 € finissait
+    // annoncée sous « Banc du kiosque ». Le libellé sert donc de clé à défaut de
+    // matériel — deux « Pelouse nord » se totalisent, un banc reste un banc.
     par_variete: regrouper(lignes, (l) => ({
-      cle: l.object_id,
+      cle: l.object_id ?? `libre:${(l.label || '').trim().toLowerCase()}`,
       libelle: l.object_name || l.label || 'Sans matériel du parc',
     })),
     par_annee: regrouper(lignes, (l) => ({
@@ -227,6 +268,7 @@ export async function syntheseCouts(options?: {
     quantite: 0,
     lignes: 0,
     sans_prix: 0,
+    hors_couts: 0,
     par_espace: [],
     par_type_espace: [],
     par_type_element: [],
@@ -245,7 +287,8 @@ export async function syntheseCouts(options?: {
            COALESCE(SUM(COALESCE(gse.quantity, 1)), 0) as quantite,
            COUNT(*) as lignes,
            COALESCE(SUM(${COUT_IMPLANTATION}), 0) as cout,
-           COALESCE(SUM(${SANS_PRIX}), 0) as sans_prix
+           COALESCE(SUM(${SANS_PRIX}), 0) as sans_prix,
+           COALESCE(SUM(${HORS_COUTS}), 0) as hors_couts
     FROM green_space_elements gse
     ${jointures}
     WHERE 1 = 1${restriction}
@@ -276,7 +319,8 @@ export async function syntheseCouts(options?: {
         `SELECT COALESCE(SUM(${COUT_IMPLANTATION}), 0) as total,
                 COALESCE(SUM(COALESCE(gse.quantity, 1)), 0) as quantite,
                 COUNT(*) as lignes,
-                COALESCE(SUM(${SANS_PRIX}), 0) as sans_prix
+                COALESCE(SUM(${SANS_PRIX}), 0) as sans_prix,
+                COALESCE(SUM(${HORS_COUTS}), 0) as hors_couts
          FROM green_space_elements gse
          WHERE 1 = 1${restriction}`,
         params
@@ -288,6 +332,7 @@ export async function syntheseCouts(options?: {
     quantite: Number(totaux?.quantite ?? 0),
     lignes: Number(totaux?.lignes ?? 0),
     sans_prix: Number(totaux?.sans_prix ?? 0),
+    hors_couts: Number(totaux?.hors_couts ?? 0),
     par_espace: normaliser(parEspace, 'Espace supprimé'),
     par_type_espace: normaliser(parTypeEspace, 'Sans type'),
     par_type_element: normaliser(parTypeElement, 'autre'),
@@ -309,6 +354,7 @@ function normaliser(lignes: any[], libelleParDefaut: string): LigneCout[] {
       lignes: Number(ligne.lignes ?? 0),
       cout: arrondi(Number(ligne.cout ?? 0)),
       sans_prix: Number(ligne.sans_prix ?? 0),
+      hors_couts: Number(ligne.hors_couts ?? 0),
     }))
   );
 }
