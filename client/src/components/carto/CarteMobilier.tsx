@@ -3,8 +3,8 @@ import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from '
 import L from 'leaflet'
 import type { Map as CarteLeaflet } from 'leaflet'
 import { Crosshair, Layers, Maximize2 } from 'lucide-react'
-import type { FondCarto, MobilierUrbain } from '@/lib/api'
-import { alerteDe, familleExemplaire, nomComplet } from '@/lib/mobilierUrbain'
+import type { FondCarto, Implantation } from '@/lib/api'
+import { alerteDe, familleExemplaire, nomComplet, precision } from '@/lib/mobilierUrbain'
 import 'leaflet/dist/leaflet.css'
 
 /**
@@ -29,12 +29,13 @@ import 'leaflet/dist/leaflet.css'
  */
 
 export interface Props {
-  items: MobilierUrbain[]
+  items: Implantation[]
   fonds: FondCarto[]
   cleFond: string
   onFond: (cle: string) => void
-  selectionId?: number | null
-  onSelection?: (item: MobilierUrbain) => void
+  /** La clé de l'implantation choisie : `voirie-12`, `espace_vert-45`. */
+  selectionCle?: string | null
+  onSelection?: (item: Implantation) => void
   /** En pose, le prochain clic vaut une position — et le curseur le dit. */
   modePose?: boolean
   onPointPose?: (lat: number, lng: number) => void
@@ -63,12 +64,24 @@ const ZOOM_SANS_RIEN = 6
  * son propre centre — et la pastille d'alerte déborde volontairement du cercle
  * pour rester lisible à côté d'un voisin.
  */
-function icone(item: MobilierUrbain, selectionne: boolean): L.DivIcon {
+function icone(item: Implantation, selectionne: boolean): L.DivIcon {
   const famille = familleExemplaire(item)
   const alerte = alerteDe(item)
   const opacite = item.status === 'depose' ? 0.45 : 1
   const bordure = selectionne ? '#111827' : '#ffffff'
   const epaisseur = selectionne ? 3 : 2
+
+  /*
+    Une position approchée se voit.
+
+    Un élément de parc sans plan capturé ni relevé de terrain retombe sur le
+    marqueur de son parc : il est « quelque part par là », à cent mètres près.
+    Le dessiner comme les autres enverrait quelqu'un chercher un banc à
+    l'endroit exact du point. Le trait pointillé dit « approximatif » sans
+    avoir à cliquer.
+  */
+  const sure = precision(item.precision_position).sure
+  const trait = sure ? 'solid' : 'dashed'
 
   const pastille = alerte
     ? `<span style="position:absolute;top:-2px;right:-2px;width:12px;height:12px;border-radius:9999px;
@@ -78,7 +91,7 @@ function icone(item: MobilierUrbain, selectionne: boolean): L.DivIcon {
   const html = `
     <div style="position:relative;width:30px;height:38px;opacity:${opacite}">
       <div style="position:absolute;left:0;top:0;width:30px;height:30px;border-radius:9999px;
-                  background:${famille.couleur};border:${epaisseur}px solid ${bordure};
+                  background:${famille.couleur};border:${epaisseur}px ${trait} ${bordure};
                   box-shadow:0 1px 4px rgba(0,0,0,.35);display:flex;align-items:center;
                   justify-content:center;font-size:15px;line-height:1">${famille.icone}</div>
       <div style="position:absolute;left:11px;top:27px;width:0;height:0;
@@ -153,16 +166,15 @@ function Pilote({
  * recadrer à chaque fois annulerait le zoom qu'on venait de faire pour
  * travailler. Le bouton de la barre sert à y revenir volontairement.
  */
-function CadrageInitial({ items }: { items: MobilierUrbain[] }) {
+function CadrageInitial({ points }: { points: Array<[number, number]> }) {
   const carte = useMap()
   const dejaFait = useRef(false)
 
   useEffect(() => {
-    if (dejaFait.current || items.length === 0) return
+    if (dejaFait.current || points.length === 0) return
     dejaFait.current = true
-    const points = items.map((i) => [Number(i.latitude), Number(i.longitude)] as [number, number])
     carte.fitBounds(L.latLngBounds(points).pad(0.15), { maxZoom: 18 })
-  }, [items, carte])
+  }, [points, carte])
 
   return null
 }
@@ -172,7 +184,7 @@ export default function CarteMobilier({
   fonds,
   cleFond,
   onFond,
-  selectionId,
+  selectionCle,
   onSelection,
   modePose,
   onPointPose,
@@ -185,28 +197,44 @@ export default function CarteMobilier({
   const carteRef = useRef<CarteLeaflet | null>(null)
   const fond = fonds.find((f) => f.cle === cleFond) ?? fonds[0] ?? null
 
+  /*
+    Ce que la carte peut réellement montrer.
+
+    Une implantation sans position existe — un élément saisi dans un parc dont
+    le plan n'a jamais été capturé — mais elle n'a pas de point. La lister est
+    honnête, la placer au hasard ne l'est pas. Elle reste donc dans le panneau
+    latéral, et sort d'ici.
+  */
+  const places = useMemo(
+    () => items.filter((i) => i.latitude !== null && i.longitude !== null),
+    [items]
+  )
+  const points = useMemo(
+    () => places.map((i) => [Number(i.latitude), Number(i.longitude)] as [number, number]),
+    [places]
+  )
+
   // Un point posé hors du cadre visible n'existe pas pour celui qui regarde :
   // la sélection venue de la liste amène la carte à lui.
   useEffect(() => {
-    if (!selectionId || !carteRef.current) return
-    const cible = items.find((i) => i.id === selectionId)
+    if (!selectionCle || !carteRef.current) return
+    const cible = places.find((i) => i.cle === selectionCle)
     if (!cible) return
     carteRef.current.setView(
       [Number(cible.latitude), Number(cible.longitude)],
       Math.max(carteRef.current.getZoom(), 18),
       { animate: true }
     )
-  }, [selectionId, items])
+  }, [selectionCle, places])
 
   const centre = useMemo<[number, number]>(() => {
-    if (items.length > 0) return [Number(items[0].latitude), Number(items[0].longitude)]
+    if (points.length > 0) return points[0]
     if (maPosition) return [maPosition.lat, maPosition.lng]
     return CENTRE_DEFAUT
-  }, [items, maPosition])
+  }, [points, maPosition])
 
   const cadrerSurLePose = () => {
-    if (!carteRef.current || items.length === 0) return
-    const points = items.map((i) => [Number(i.latitude), Number(i.longitude)] as [number, number])
+    if (!carteRef.current || points.length === 0) return
     carteRef.current.fitBounds(L.latLngBounds(points).pad(0.15), { maxZoom: 18 })
   }
 
@@ -248,7 +276,7 @@ export default function CarteMobilier({
         <button
           type="button"
           onClick={cadrerSurLePose}
-          disabled={items.length === 0}
+          disabled={points.length === 0}
           title="Cadrer sur le mobilier affiché"
           aria-label="Cadrer sur le mobilier affiché"
           className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 bg-white text-gray-700 shadow-sm hover:bg-gray-100 disabled:opacity-40 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
@@ -272,7 +300,7 @@ export default function CarteMobilier({
       <div ref={captureRef} className="h-full w-full overflow-hidden rounded-lg">
         <MapContainer
           center={centre}
-          zoom={items.length > 0 ? 15 : ZOOM_SANS_RIEN}
+          zoom={points.length > 0 ? 15 : ZOOM_SANS_RIEN}
           style={{ height: '100%', width: '100%', cursor: modePose ? 'crosshair' : '' }}
           scrollWheelZoom
         >
@@ -283,7 +311,7 @@ export default function CarteMobilier({
             modePose={modePose}
             onPointPose={onPointPose}
           />
-          <CadrageInitial items={items} />
+          <CadrageInitial points={points} />
 
           {fond && (
             <TileLayer
@@ -295,16 +323,16 @@ export default function CarteMobilier({
             />
           )}
 
-          {items.map((item) => (
+          {places.map((item) => (
             <Marker
-              key={item.id}
+              key={item.cle}
               position={[Number(item.latitude), Number(item.longitude)]}
-              icon={icone(item, item.id === selectionId)}
+              icon={icone(item, item.cle === selectionCle)}
               eventHandlers={{ click: () => onSelection?.(item) }}
             >
               <Tooltip direction="top" opacity={0.95}>
                 <span className="font-medium">{nomComplet(item)}</span>
-                {item.street ? <span className="block text-xs">{item.street}</span> : null}
+                <span className="block text-xs">{item.street || item.lieu}</span>
               </Tooltip>
             </Marker>
           ))}
@@ -327,7 +355,7 @@ export default function CarteMobilier({
 
       {/* La légende ne liste que ce qui est réellement affiché : une légende de
           seize familles pour une carte qui n'en montre trois est du bruit. */}
-      <LegendeFamilles items={items} />
+      <LegendeFamilles items={places} />
 
       {fonds.length === 0 && (
         <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
@@ -342,7 +370,7 @@ export default function CarteMobilier({
 }
 
 /** Les familles présentes sur la carte, et elles seules. */
-function LegendeFamilles({ items }: { items: MobilierUrbain[] }) {
+function LegendeFamilles({ items }: { items: Implantation[] }) {
   const familles = useMemo(() => {
     const vues = new Map<string, { icone: string; libelle: string; couleur: string; n: number }>()
     for (const item of items) {

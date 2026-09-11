@@ -7,6 +7,102 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Un banc est un banc, qu'il soit sur un trottoir ou dans un parc
+
+> La cartographie ne montrait que la voirie, les espaces verts ne montraient que
+> leurs parcs. Or le même modèle vit des deux côtés : un banc acheté en série est
+> scellé rue de la Gare **et** posé dans le square, des fleurs sont plantées dans
+> un massif **et** dans une jardinière sur un îlot de parking. Chercher « où sont
+> mes bancs, lesquels sont à repeindre » demandait donc d'ouvrir deux modules, de
+> tenir deux comptes, et de conclure faux — « il m'en reste trois » quand il y en
+> a vingt-six.
+>
+> Quant aux fleurs de la grand-rue, elles n'avaient nulle part où aller : créer
+> un « espace vert » de 0,4 m², avec plan, contour et superficie, pour un bac
+> suspendu à un lampadaire, personne ne le fait.
+
+#### Ajouté
+
+- **La cartographie montre les deux gisements.** Les éléments des espaces verts
+  apparaissent sur la carte communale à côté du mobilier de voirie, avec le même
+  pictogramme, la même recherche, les mêmes filtres et le même export. Un
+  sélecteur **« Partout / Voie publique / Espaces verts »** restreint quand on
+  prépare une tournée ; le défaut montre tout, parce que c'est la question qu'on
+  se pose
+- **Les éléments posés sur un plan capturé sont enfin situés sur le globe.** Le
+  cadrage mémorisé à la capture dit à quel morceau de terrain les pourcentages du
+  plan correspondent : un arbre pointé sur le plan du parc tombe au bon endroit
+  sur la carte de la commune, au mètre près. Vérifié au sept-millionième de degré
+  contre un calcul indépendant
+- **La carte dit ce qu'elle ne sait pas.** Un élément sans plan capturé ni relevé
+  de terrain retombe sur le marqueur de son parc — « quelque part dans ce
+  parc » — et son marqueur est tracé en **pointillés**, sa fiche annonce
+  « position approchée ». Le compte des implantations que la carte ne peut pas
+  montrer est affiché en haut de l'écran : mieux vaut l'annoncer que laisser
+  quelqu'un compter les points et trouver le compte faux
+- **L'onglet d'une fiche matériel s'appelle désormais « Implantations »**, et il
+  les compte toutes : « 5 implantations — 3 sur la voie publique, 2 dans les
+  espaces verts ». C'est ce qu'on venait chercher
+- **Chaque ligne renvoie là où elle vit.** Un mobilier de voirie s'ouvre dans la
+  carte ; un élément de parc ouvre **la fiche de son espace vert**, directement
+  sur le bon parc. La carte montre et nomme ; elle ne propose pas un second
+  formulaire de modification, qui ferait deux vérités pour la même ligne — le
+  plan, les zones, les surfaces, les coûts figés et les saisons ne sont connus
+  que là-bas
+- **L'historique est unifié lui aussi** : les interventions de voirie et les
+  entretiens d'espace vert rattachés à un élément se lisent au même endroit, et
+  partent ensemble dans le PDF
+- **Une jardinière hors espace vert porte ses plantations.** « Dans une
+  jardinière déjà posée » est un troisième chemin de pose, à côté du GPS et du
+  clic sur la carte : le bac est un mobilier comme un autre, ce qu'il contient
+  aussi, avec une **quantité** — douze géraniums sont une ligne, pas douze. Le
+  contenu prend la position et l'adresse du contenant, le suit quand on le
+  déplace, et part avec lui quand on le retire
+- **Le catalogue de pose compte les deux gisements** : « déjà posé 20 fois sur la
+  voie publique, 3 fois en espaces verts » répond du même coup à « l'ai-je déjà
+  créé ? »
+- **L'export PDF gagne un regroupement « par lieu »** et une colonne « Lieu », et
+  son en-tête annonce la répartition — « 17 implantations · 12 voie publique, 5
+  espaces verts »
+- **Cinq familles végétales** sur la carte — arbre, arbuste/haie, fleurs/massif,
+  pelouse, revêtement — sans quoi tout un parc s'affichait en « Autre mobilier »
+  là où la carte est la plus dense
+
+#### Modifié
+
+- **« À remplacer » rejoint les états du mobilier de voirie**, pour coller à ceux
+  des espaces verts. Deux vocabulaires voisins mais différents donnaient un
+  filtre « mauvais état » qui ne ramenait que la moitié du parc, sans le dire
+- **Les filtres ne sont plus écrits en SQL** mais appliqués sur les lignes
+  normalisées, en un seul endroit. Deux requêtes portant les mêmes quinze
+  critères sur deux schémas divergeaient au premier critère ajouté, et l'export
+  ne disait plus la même chose que la carte qu'on venait de regarder
+- **« Rue » et « zone » ne concernent que la voie publique**, et l'écran le dit :
+  un élément de parc n'a pas de rue, il a un parc. Le regroupement « par rue » de
+  l'export range d'ailleurs les éléments de parc sous le nom de leur espace, et
+  non sous « rue non renseignée » — un oubli et une question sans objet ne sont
+  pas la même absence
+- **La fiche d'un espace vert s'ouvre depuis un lien** (`/espaces-verts?espace=…`),
+  au lieu d'obliger à le retrouver dans la liste
+
+#### Vérifié
+
+- Cinq implantations du même modèle de banc — trois rue de la Gare, deux dans le
+  square — listées ensemble depuis la fiche du matériel comme depuis la carte
+- Deux bancs posés sur le plan d'un parc capturé : coordonnées calculées
+  identiques, à la septième décimale, à un calcul mené hors de l'application
+- Le même parc sans cadrage : les deux bancs retombent sur sa position, annoncés
+  comme approchés
+- Une jardinière posée sur un parking, douze géraniums dedans : rue et adresse
+  héritées, position suivie lors du déplacement du bac, déplacement d'une fleur
+  seule refusé en disant pourquoi, et pose dans une fleur refusée également
+- Un entretien d'espace vert rattaché à un banc du square remonte dans son
+  historique et dans l'export
+- « Autour de moi » à 400 m : sept implantations des deux gisements, triées par
+  distance
+- Filtre « état : mauvais ou à remplacer » : un banc de parc et un banc de rue,
+  côte à côte
+
 ### La cartographie cesse de demander vingt-trois bancs identiques
 
 > Un banc, un candélabre, une corbeille s'achètent **en série** et se posent

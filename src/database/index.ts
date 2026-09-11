@@ -1368,6 +1368,10 @@ class DatabaseManager {
         numero INTEGER NOT NULL DEFAULT 1,
         label VARCHAR(255) NOT NULL DEFAULT '',
         code VARCHAR(100) DEFAULT '',
+        -- Une jardinière hors espace vert porte ses plantations : le contenu
+        -- a la position de son contenant, et disparaît avec lui.
+        parent_id INTEGER,
+        quantity INTEGER DEFAULT 1,
         latitude DECIMAL(10,8) NOT NULL,
         longitude DECIMAL(11,8) NOT NULL,
         position_source VARCHAR(20) DEFAULT 'carte',
@@ -1387,6 +1391,7 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE,
+        FOREIGN KEY (parent_id) REFERENCES street_furniture(id) ON DELETE CASCADE,
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
       )`,
 
@@ -1525,6 +1530,8 @@ class DatabaseManager {
       ['idx_street_furniture_status', 'street_furniture', 'status'],
       // Les échéances sont balayées d'un bloc pour teinter les retards.
       ['idx_street_furniture_next', 'street_furniture', 'next_intervention_date'],
+      // « Que contient cette jardinière ? » se pose à chaque ouverture de fiche.
+      ['idx_street_furniture_parent', 'street_furniture', 'parent_id'],
       ['idx_sf_interventions_item', 'street_furniture_interventions', 'item_id, performed_on'],
     ];
 

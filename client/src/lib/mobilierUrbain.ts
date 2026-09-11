@@ -55,7 +55,13 @@ export const STATUTS: Terme[] = [
   },
 ]
 
-/** L'état physique, qui décide de ce qu'on va programmer. */
+/**
+ * L'état physique, qui décide de ce qu'on va programmer.
+ *
+ * La même liste que les espaces verts, « à remplacer » compris : la carte
+ * montre les deux, et deux vocabulaires voisins mais différents donneraient un
+ * filtre « mauvais état » ne ramenant que la moitié du parc, sans le dire.
+ */
 export const ETATS: Terme[] = [
   {
     valeur: 'neuf',
@@ -81,7 +87,50 @@ export const ETATS: Terme[] = [
     couleur: '#f97316',
     pastille: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
   },
+  {
+    valeur: 'remplacer',
+    libelle: 'À remplacer',
+    couleur: '#dc2626',
+    pastille: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
+  },
 ]
+
+/**
+ * D'où vient l'implantation : le trottoir ou le parc.
+ *
+ * Ce n'est pas un détail d'affichage. C'est ce qui décide où l'on va quand on
+ * ouvre une ligne — la fiche de la carte pour la voirie, celle de l'espace
+ * vert pour un parc, qui seule connaît le plan, les surfaces et les saisons.
+ */
+export const SOURCES: Array<{ valeur: string; libelle: string; court: string; icone: string }> = [
+  { valeur: 'voirie', libelle: 'Voie publique', court: 'Voirie', icone: '🛣️' },
+  { valeur: 'espace_vert', libelle: 'Espaces verts', court: 'Parcs', icone: '🌳' },
+]
+
+export const source = (valeur?: string | null) =>
+  SOURCES.find((s) => s.valeur === valeur) ?? SOURCES[0]
+
+/**
+ * À quel point on sait où se trouve une implantation.
+ *
+ * Une carte qui affiche tout au même titre ment. Un élément de parc sans plan
+ * capturé ni relevé de terrain se retrouve sur le marqueur de son parc : il
+ * est « quelque part par là », à cent mètres près, et l'écran doit le dire —
+ * sinon quelqu'un partira chercher un banc à l'endroit exact du point.
+ */
+export const PRECISIONS: Record<string, { libelle: string; court: string; sure: boolean }> = {
+  exacte: { libelle: 'Position relevée', court: 'Exacte', sure: true },
+  plan: { libelle: 'Position lue sur le plan du parc', court: 'Plan', sure: true },
+  espace: {
+    libelle: 'Position approchée : quelque part dans cet espace vert',
+    court: 'Approchée',
+    sure: false,
+  },
+  inconnue: { libelle: 'Position inconnue', court: 'Inconnue', sure: false },
+}
+
+export const precision = (valeur?: string | null) =>
+  PRECISIONS[valeur ?? ''] ?? PRECISIONS.inconnue
 
 /** D'où vient le point posé sur la carte. */
 export const SOURCES_POSITION: Array<{ valeur: string; libelle: string; court: string }> = [
@@ -137,6 +186,14 @@ export interface Famille {
 }
 
 export const FAMILLES: Famille[] = [
+  // Les végétaux d'abord : depuis que la carte montre aussi les espaces verts,
+  // ils y sont majoritaires, et les voir tous en « Autre mobilier » rendrait
+  // la carte d'une commune illisible là où elle est la plus dense.
+  { valeur: 'arbre', libelle: 'Arbre', icone: '🌳', couleur: '#15803d' },
+  { valeur: 'arbuste', libelle: 'Arbuste / haie', icone: '🌲', couleur: '#22c55e' },
+  { valeur: 'fleur', libelle: 'Fleurs / massif', icone: '🌸', couleur: '#f472b6' },
+  { valeur: 'pelouse', libelle: 'Pelouse / couvre-sol', icone: '🟩', couleur: '#86efac' },
+  { valeur: 'revetement', libelle: 'Revêtement / allée', icone: '🛤️', couleur: '#a3a3a3' },
   { valeur: 'eclairage', libelle: 'Éclairage public', icone: '💡', couleur: '#eab308' },
   { valeur: 'banc', libelle: 'Banc / assise', icone: '🪑', couleur: '#a16207' },
   { valeur: 'corbeille', libelle: 'Corbeille / conteneur', icone: '🗑️', couleur: '#0891b2' },
@@ -179,6 +236,17 @@ const INDICES: Array<[RegExp, string]> = [
   [/sanitaire|toilette|wc\b|urinoir|douche|fontaine +[àa] +eau +potable/i, 'proprete'],
   [/coffret|armoire|regard|avaloir|grille +d.eau|bouche +[àa] +cl[ée]|tampon|borne +de +recharge|prise +guirlande/i, 'reseau'],
   [/statue|sculpture|œuvre|oeuvre|monument|st[èe]le|fresque|calvaire/i, 'patrimoine'],
+  // Le végétal en dernier : ses mots sont les plus courants et les plus
+  // ambigus — « bac à fleurs » est un bac, « borne fontaine » une fontaine.
+  // Ce qui n'a pas été reconnu plus haut peut l'être ici sans risque.
+  [/gazon|pelouse|engazon|couvre.?sol|prairie/i, 'pelouse'],
+  [/enrob[ée]|bitume|gravillon|[ée]corce|paillage|sabl[eé]|stabilis[ée]|dallage|pav[ée]/i, 'revetement'],
+  [/haie|charmille|troène|laurier|arbuste|buisson/i, 'arbuste'],
+  [/arbre|sujet|essence|tilleul|platane|[ée]rable|ch[êe]ne|cerisier|bouleau/i, 'arbre'],
+  [
+    /fleur|floral|massif|bulbe|viv(a|)ce|annuelle|plante|rosier|gramin[ée]e|g[ée]ranium|p[ée]tunia|tulipe|impatiens/i,
+    'fleur',
+  ],
 ]
 
 /**

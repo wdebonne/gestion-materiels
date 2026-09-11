@@ -8,10 +8,16 @@ import {
   Pencil,
   Search,
   Sparkles,
+  Sprout,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { Modal, ModalBody, ModalFooter, Button, Spinner } from '@/components/ui'
-import { mobilierUrbainApi, type ModelePosable, type MobilierUrbain } from '@/lib/api'
+import {
+  mobilierUrbainApi,
+  type Implantation,
+  type ModelePosable,
+  type MobilierUrbain,
+} from '@/lib/api'
 import { ETATS, STATUTS, familleDe } from '@/lib/mobilierUrbain'
 import { releverAdresse } from '@/lib/geocodage'
 import { useGeolocation, formatCoord } from '@/lib/useGeolocation'
@@ -41,6 +47,15 @@ export interface PositionPose {
   lng: number
   source: 'carte' | 'gps' | 'saisie'
   accuracy?: number | null
+  /**
+   * Le contenant, quand on pose **dedans** plutôt qu'à côté.
+   *
+   * Une jardinière sur un îlot de parking n'est pas un espace vert : lui créer
+   * une fiche de parc de 0,4 m² avec un plan et un contour serait absurde. Elle
+   * est un mobilier comme un autre, et ce qu'elle porte l'est aussi — à ceci
+   * près que le contenu n'a pas de position à lui : il est là où est le bac.
+   */
+  contenant?: { id: number; label: string } | null
 }
 
 interface Props {
@@ -244,6 +259,7 @@ function ChoixPosition({
 }) {
   const { getPosition, loading, error, supported } = useGeolocation()
   const [saisie, setSaisie] = useState(false)
+  const [dansUnContenant, setDansUnContenant] = useState(false)
   const [lat, setLat] = useState('')
   const [lng, setLng] = useState('')
 
@@ -303,6 +319,37 @@ function ChoixPosition({
           </button>
         </div>
 
+        {/*
+          Le troisième chemin : dedans.
+
+          Des fleurs se posent dans une jardinière, et cette jardinière est
+          souvent sur un parking ou un trottoir — pas dans un parc. Leur demander
+          une position à elles n'aurait pas de sens : elles sont là où est le bac,
+          et elles partent avec lui.
+        */}
+        <button
+          type="button"
+          onClick={() => setDansUnContenant(true)}
+          className="mt-3 flex min-h-[56px] w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-pink-400 px-4 text-pink-700 transition-colors hover:bg-pink-50 dark:border-pink-500 dark:text-pink-400 dark:hover:bg-pink-900/20"
+        >
+          <Sprout className="h-5 w-5" />
+          <span className="text-sm font-semibold">Dans une jardinière déjà posée</span>
+        </button>
+
+        {dansUnContenant && (
+          <ChoixContenant
+            onChoisir={(item) =>
+              onPosition({
+                lat: Number(item.latitude),
+                lng: Number(item.longitude),
+                source: 'carte',
+                contenant: { id: item.id, label: item.label },
+              })
+            }
+            onFermer={() => setDansUnContenant(false)}
+          />
+        )}
+
         {error && <p className="mt-3 text-sm text-red-600 dark:text-red-400">{error}</p>}
         {!supported && !error && (
           <p className="mt-3 text-sm text-gray-600 dark:text-gray-400">
@@ -361,6 +408,165 @@ function ChoixPosition({
   )
 }
 
+/**
+ * Dans quoi poser.
+ *
+ * Ne propose que ce qui peut réellement contenir : du mobilier de voie
+ * publique, et **pas** ce qui est déjà dans un contenant. Une fleur dans une
+ * jardinière ne porte rien à son tour ; autoriser la chaîne obligerait à gérer
+ * des profondeurs et des cycles pour un besoin que personne n'a exprimé.
+ *
+ * Les éléments d'espaces verts en sont absents aussi : un parc a déjà ses
+ * groupes de composition — massifs, haies, jardinières — et c'est là-bas qu'on
+ * y plante, avec le plan sous les yeux.
+ */
+function ChoixContenant({
+  onChoisir,
+  onFermer,
+}: {
+  onChoisir: (item: Implantation) => void
+  onFermer: () => void
+}) {
+  const [recherche, setRecherche] = useState('')
+
+  const { data: candidats = [], isLoading } = useQuery({
+    queryKey: ['mobilier-contenants'],
+    queryFn: async () =>
+      (await mobilierUrbainApi.lister({ source: 'voirie', limit: '2000' })).data.data,
+  })
+
+  /*
+    Les jardinières d'abord, le reste ensuite.
+
+    Techniquement, n'importe quel mobilier peut porter quelque chose, et
+    interdire par famille se retournerait contre l'usage : une vasque, un massif
+    en bac, une corbeille plantée sont des contenants que la devinette ne
+    reconnaîtrait pas toujours. Mais proposer un candélabre au même rang qu'un
+    bac fait chercher dans une liste où presque rien ne convient. D'où un ordre
+    plutôt qu'un filtre : l'évident en tête, l'inhabituel accessible.
+  */
+  const proposables = useMemo(() => {
+    const terme = recherche.trim().toLowerCase()
+    const retenus = candidats
+      .filter((item) => !item.contenant)
+      .filter((item) =>
+        !terme
+          ? true
+          : [item.label, item.code, item.street, item.address, item.object_name]
+              .filter(Boolean)
+              .join(' ')
+              .toLowerCase()
+              .includes(terme)
+      )
+
+    const estBac = (item: Implantation) =>
+      familleDe(item.object_name, item.subcategory_name, item.category_name).valeur ===
+      'jardiniere'
+
+    return {
+      evidents: retenus.filter(estBac),
+      autres: retenus.filter((item) => !estBac(item)),
+    }
+  }, [candidats, recherche])
+
+  return (
+    <div className="mt-3 rounded-lg border border-pink-200 bg-pink-50/60 p-3 dark:border-pink-800 dark:bg-pink-900/10">
+      <div className="mb-2 flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <input
+            type="search"
+            autoFocus
+            value={recherche}
+            onChange={(e) => setRecherche(e.target.value)}
+            placeholder="Jardinière, bac, vasque…"
+            className={`${CHAMP} pl-9`}
+          />
+        </div>
+        <Button variant="secondary" onClick={onFermer}>
+          Annuler
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-6">
+          <Spinner />
+        </div>
+      ) : proposables.evidents.length + proposables.autres.length === 0 ? (
+        <p className="py-6 text-center text-sm text-gray-600 dark:text-gray-300">
+          Aucun mobilier ne peut servir de contenant.
+          <br />
+          <span className="text-xs text-gray-500 dark:text-gray-400">
+            Posez d’abord la jardinière sur la carte, puis ce qu’elle contient.
+          </span>
+        </p>
+      ) : (
+        <div className="max-h-56 space-y-3 overflow-y-auto pr-1">
+          <ListeContenants
+            titre="Jardinières et bacs"
+            items={proposables.evidents}
+            onChoisir={onChoisir}
+          />
+          <ListeContenants
+            titre="Autres mobiliers"
+            items={proposables.autres}
+            onChoisir={onChoisir}
+          />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** Une tranche de la liste des contenants, absente si elle n'a rien à montrer. */
+function ListeContenants({
+  titre,
+  items,
+  onChoisir,
+}: {
+  titre: string
+  items: Implantation[]
+  onChoisir: (item: Implantation) => void
+}) {
+  if (items.length === 0) return null
+  return (
+    <div>
+      <h5 className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+        {titre}
+      </h5>
+      <ul className="space-y-1.5">
+        {items.map((item) => {
+          const famille = familleDe(item.object_name, item.subcategory_name, item.category_name)
+          return (
+            <li key={item.cle}>
+              <button
+                type="button"
+                onClick={() => onChoisir(item)}
+                className="flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-white p-2 text-left transition-colors hover:border-pink-400 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-pink-500"
+              >
+                <span
+                  className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-base"
+                  style={{ background: `${famille.couleur}22` }}
+                >
+                  {famille.icone}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {item.label}
+                  </span>
+                  <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                    {item.street || item.address || item.object_name}
+                  </span>
+                </span>
+              </button>
+            </li>
+          )
+        })}
+      </ul>
+    </div>
+  )
+}
+
 // ------------------------------------------------------------- 3. le reste
 
 function Details({
@@ -378,6 +584,7 @@ function Details({
 }) {
   const queryClient = useQueryClient()
   const numero = modele.poses + 1
+  const contenant = position.contenant ?? null
   const [form, setForm] = useState({
     label: `${modele.name} ${numero}`,
     code: '',
@@ -388,8 +595,9 @@ function Details({
     condition_state: 'neuf',
     installed_on: new Date().toISOString().slice(0, 10),
     notes: '',
+    quantity: '1',
   })
-  const [adresseEnCours, setAdresseEnCours] = useState(true)
+  const [adresseEnCours, setAdresseEnCours] = useState(!contenant)
 
   /**
    * L'adresse, la rue et le quartier se lisent du point.
@@ -399,6 +607,10 @@ function Details({
    * peut nommer la voie d'en face, et c'est l'agent qui sait.
    */
   useEffect(() => {
+    // Le contenu hérite de l'adresse de son contenant : la jardinière est rue
+    // de la Gare, ses fleurs aussi. Interroger Nominatim douze fois pour
+    // retrouver la même réponse serait douze appels pour rien.
+    if (contenant) return
     let vivant = true
     setAdresseEnCours(true)
     releverAdresse(position.lat, position.lng)
@@ -417,12 +629,14 @@ function Details({
     return () => {
       vivant = false
     }
-  }, [position.lat, position.lng])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position.lat, position.lng, contenant])
 
   const poser = useMutation({
     mutationFn: async (encore: boolean) => {
       const reponse = await mobilierUrbainApi.poser({
         object_id: modele.id,
+        parent_id: contenant?.id ?? null,
         latitude: position.lat,
         longitude: position.lng,
         position_source: position.source,
@@ -468,13 +682,20 @@ function Details({
             <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
               {modele.name}
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              <MapPin className="mr-1 inline h-3 w-3" />
-              {formatCoord(position.lat)}, {formatCoord(position.lng)}
-              {position.source === 'gps' && position.accuracy
-                ? ` · relevé à ±${Math.round(position.accuracy)} m`
-                : ''}
-            </p>
+            {contenant ? (
+              <p className="text-xs text-pink-700 dark:text-pink-400">
+                <Sprout className="mr-1 inline h-3 w-3" />
+                Dans « {contenant.label} » — même position, même adresse
+              </p>
+            ) : (
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                <MapPin className="mr-1 inline h-3 w-3" />
+                {formatCoord(position.lat)}, {formatCoord(position.lng)}
+                {position.source === 'gps' && position.accuracy
+                  ? ` · relevé à ±${Math.round(position.accuracy)} m`
+                  : ''}
+              </p>
+            )}
           </div>
           <span className="flex-shrink-0 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-semibold text-primary-700 dark:bg-primary-900/40 dark:text-primary-300">
             n° {numero}
@@ -502,33 +723,46 @@ function Details({
             <input type="date" {...champ('installed_on')} className={CHAMP} />
           </div>
 
-          <div className="sm:col-span-2">
-            <label className={LIBELLE}>
-              Adresse
-              {adresseEnCours && (
-                <span className="ml-1.5 inline-flex items-center gap-1 font-normal text-gray-400">
-                  <Sparkles className="h-3 w-3" />
-                  lecture de la carte…
-                </span>
-              )}
-            </label>
-            <input type="text" {...champ('address')} className={CHAMP} />
-          </div>
+          {/* On ne plante pas un géranium : dans un bac, c'est une quantité.
+              Hors contenant, un exemplaire vaut un — c'est tout son intérêt. */}
+          {contenant && (
+            <div>
+              <label className={LIBELLE}>Quantité</label>
+              <input type="number" min="1" step="1" {...champ('quantity')} className={CHAMP} />
+            </div>
+          )}
 
-          <div>
-            <label className={LIBELLE}>Rue</label>
-            <input type="text" {...champ('street')} className={CHAMP} />
-          </div>
+          {!contenant && (
+            <>
+              <div className="sm:col-span-2">
+                <label className={LIBELLE}>
+                  Adresse
+                  {adresseEnCours && (
+                    <span className="ml-1.5 inline-flex items-center gap-1 font-normal text-gray-400">
+                      <Sparkles className="h-3 w-3" />
+                      lecture de la carte…
+                    </span>
+                  )}
+                </label>
+                <input type="text" {...champ('address')} className={CHAMP} />
+              </div>
 
-          <div>
-            <label className={LIBELLE}>Zone / secteur</label>
-            <input
-              type="text"
-              {...champ('sector')}
-              placeholder="Quartier, tournée…"
-              className={CHAMP}
-            />
-          </div>
+              <div>
+                <label className={LIBELLE}>Rue</label>
+                <input type="text" {...champ('street')} className={CHAMP} />
+              </div>
+
+              <div>
+                <label className={LIBELLE}>Zone / secteur</label>
+                <input
+                  type="text"
+                  {...champ('sector')}
+                  placeholder="Quartier, tournée…"
+                  className={CHAMP}
+                />
+              </div>
+            </>
+          )}
 
           <div>
             <label className={LIBELLE}>Statut</label>

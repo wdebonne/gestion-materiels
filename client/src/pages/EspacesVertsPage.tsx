@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
@@ -240,6 +241,7 @@ export default function EspacesVertsPage() {
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [selectedSpace, setSelectedSpace] = useState<GreenSpace | null>(null)
+  const [parametres, setParametres] = useSearchParams()
   const [showForm, setShowForm] = useState(false)
   const [editingSpace, setEditingSpace] = useState<GreenSpace | null>(null)
   const [activeTab, setActiveTab] = useState<'elements' | 'couts' | 'plan' | 'saisons' | 'documents' | 'carte' | 'entretien' | 'archives'>('elements')
@@ -284,6 +286,30 @@ export default function EspacesVertsPage() {
     queryKey: ['green-spaces', search, typeFilter],
     queryFn: () => api.get('/green-spaces', { params: { search: search || undefined, space_type: typeFilter || undefined } }).then(r => r.data.data)
   })
+
+  /*
+    « Ouvrir dans l'espace vert », depuis la cartographie.
+
+    La carte montre désormais les éléments des parcs au milieu du mobilier de
+    voirie — un banc est un banc. Mais elle ne les modifie pas : leur fiche
+    d'espace vert sait des choses qu'elle ignore, le plan, les surfaces, les
+    coûts figés, les saisons. Elle y renvoie donc, et ce lien doit tomber sur
+    l'espace concerné plutôt que sur la liste, où il resterait à le retrouver.
+
+    Le paramètre est consommé une fois : sans cela, refermer la fiche qu'on
+    vient d'ouvrir la rouvrirait aussitôt.
+  */
+  const espaceDemande = parametres.get('espace')
+  useEffect(() => {
+    if (!espaceDemande) return
+    const trouve = (spaces as GreenSpace[]).find((e) => String(e.id) === espaceDemande)
+    if (!trouve) return
+    setSelectedSpace(trouve)
+    const suivants = new URLSearchParams(parametres)
+    suivants.delete('espace')
+    setParametres(suivants, { replace: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [espaceDemande, spaces])
 
   // Détail de l'espace sélectionné
   const { data: spaceDetail } = useQuery({

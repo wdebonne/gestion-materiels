@@ -5,12 +5,13 @@ import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import { Modal, ModalBody, ModalFooter, Button, Spinner } from '@/components/ui'
-import { mobilierUrbainApi, type FiltresMobilier, type MobilierUrbain } from '@/lib/api'
+import { mobilierUrbainApi, type FiltresMobilier, type Implantation } from '@/lib/api'
 import {
   etat,
   familleExemplaire,
   jour,
   nomComplet,
+  source as gisement,
   statut,
   typeIntervention,
 } from '@/lib/mobilierUrbain'
@@ -46,12 +47,25 @@ interface Props {
   onFermer: () => void
 }
 
-type Regroupement = 'aucun' | 'object' | 'category' | 'street' | 'sector' | 'status' | 'condition'
+type Regroupement =
+  | 'aucun'
+  | 'object'
+  | 'category'
+  | 'lieu'
+  | 'street'
+  | 'sector'
+  | 'status'
+  | 'condition'
 
 const REGROUPEMENTS: Array<{ valeur: Regroupement; libelle: string; aide: string }> = [
   { valeur: 'aucun', libelle: 'Aucun', aide: 'Une seule liste, par matériel puis par numéro' },
   { valeur: 'object', libelle: 'Par matériel', aide: 'Tous les candélabres, puis tous les bancs' },
   { valeur: 'category', libelle: 'Par catégorie', aide: 'Le classement du parc' },
+  {
+    valeur: 'lieu',
+    libelle: 'Par lieu',
+    aide: 'La voie publique, puis chaque espace vert',
+  },
   { valeur: 'street', libelle: 'Par rue', aide: 'La tournée, rue après rue' },
   { valeur: 'sector', libelle: 'Par zone / secteur', aide: 'Le découpage en quartiers' },
   { valeur: 'status', libelle: 'Par statut', aide: 'En service, hors service, déposé' },
@@ -63,7 +77,7 @@ interface Colonne {
   clef: string
   titre: string
   poids: number
-  lire: (item: MobilierUrbain) => string
+  lire: (item: Implantation) => string
   /** Alignée à droite : les nombres et les dates se lisent par leur fin. */
   droite?: boolean
 }
@@ -74,6 +88,7 @@ const COLONNES: Colonne[] = [
   { clef: 'object', titre: 'Matériel', poids: 1.8, lire: (i) => i.object_name ?? '' },
   { clef: 'category', titre: 'Catégorie', poids: 1.4, lire: (i) => i.category_name ?? '' },
   { clef: 'code', titre: 'Inventaire', poids: 1, lire: (i) => i.code ?? '' },
+  { clef: 'lieu', titre: 'Lieu', poids: 1.8, lire: (i) => i.lieu ?? '' },
   { clef: 'street', titre: 'Rue', poids: 2, lire: (i) => i.street ?? '' },
   { clef: 'address', titre: 'Adresse', poids: 2.6, lire: (i) => i.address ?? '' },
   { clef: 'sector', titre: 'Zone', poids: 1.2, lire: (i) => i.sector ?? '' },
@@ -104,7 +119,7 @@ const COLONNES: Colonne[] = [
 ]
 
 /** Ce qu'un document d'entretien montre quand on ne lui a rien dit. */
-const COLONNES_PAR_DEFAUT = ['numero', 'label', 'street', 'status', 'condition', 'last', 'next']
+const COLONNES_PAR_DEFAUT = ['label', 'lieu', 'street', 'condition', 'last', 'next']
 
 export default function ExportMobilierPDF({ filtres, carteRef, onFermer }: Props) {
   const [titre, setTitre] = useState('Mobilier de voie publique')
@@ -172,8 +187,11 @@ export default function ExportMobilierPDF({ filtres, carteRef, onFermer }: Props
       pdf.text(titre || 'Mobilier de voie publique', marge, 11)
       pdf.setFont('helvetica', 'normal')
       pdf.setFontSize(9)
+      const voirie = lignes.filter((l) => l.source === 'voirie').length
+      const parcs = lignes.length - voirie
       const resume = [
-        `${lignes.length} mobilier${lignes.length > 1 ? 's' : ''}`,
+        `${lignes.length} implantation${lignes.length > 1 ? 's' : ''}`,
+        parcs > 0 && voirie > 0 ? `${voirie} en voirie, ${parcs} en espaces verts` : null,
         toutLeParc ? 'Inventaire complet' : 'Sélection filtrée',
         REGROUPEMENTS.find((r) => r.valeur === regroupement)?.libelle,
       ]
@@ -393,8 +411,10 @@ export default function ExportMobilierPDF({ filtres, carteRef, onFermer }: Props
               </div>
               <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
                 <FileText className="mr-1 inline h-4 w-4" />
-                {lignes.length} mobilier{lignes.length > 1 ? 's' : ''} sera
-                {lignes.length > 1 ? 'ont' : ''} listé{lignes.length > 1 ? 's' : ''}.
+                {lignes.length} implantation{lignes.length > 1 ? 's' : ''} ser
+                {lignes.length > 1 ? 'ont' : 'a'} listée{lignes.length > 1 ? 's' : ''}
+                {' — '}
+                {SOURCES_COMPTEES(lignes)}.
               </p>
             </Section>
 
@@ -512,7 +532,7 @@ export default function ExportMobilierPDF({ filtres, carteRef, onFermer }: Props
 
 interface Groupe {
   titre: string
-  lignes: MobilierUrbain[]
+  lignes: Implantation[]
 }
 
 /**
@@ -522,19 +542,26 @@ interface Groupe {
  * doit remonter le mauvais en premier, sans quoi le document commence par ce
  * qui va bien et enterre ce qui compte en dernière page.
  */
-function regrouper(lignes: MobilierUrbain[], regroupement: Regroupement): Groupe[] {
+function regrouper(lignes: Implantation[], regroupement: Regroupement): Groupe[] {
   if (regroupement === 'aucun') {
     return lignes.length > 0 ? [{ titre: 'Inventaire', lignes }] : []
   }
 
-  const clefDe = (item: MobilierUrbain): string => {
+  const clefDe = (item: Implantation): string => {
     switch (regroupement) {
       case 'object':
         return item.object_name ?? 'Sans matériel'
       case 'category':
         return item.category_name ?? 'Sans catégorie'
+      case 'lieu':
+        return item.lieu || 'Lieu non renseigné'
       case 'street':
-        return item.street || 'Rue non renseignée'
+        // Un élément d'espace vert n'a pas de rue : il a un parc. Le ranger
+        // sous « Rue non renseignée » mélangerait deux absences qui n'ont rien
+        // à voir — l'une est un oubli, l'autre n'a pas de sens.
+        return item.source === 'espace_vert'
+          ? item.lieu || 'Espace vert'
+          : item.street || 'Rue non renseignée'
       case 'sector':
         return item.sector || 'Zone non renseignée'
       case 'status':
@@ -546,7 +573,7 @@ function regrouper(lignes: MobilierUrbain[], regroupement: Regroupement): Groupe
     }
   }
 
-  const paquets = new Map<string, MobilierUrbain[]>()
+  const paquets = new Map<string, Implantation[]>()
   for (const ligne of lignes) {
     const clef = clefDe(ligne)
     if (!paquets.has(clef)) paquets.set(clef, [])
@@ -694,4 +721,17 @@ function Case({
 }
 
 /** Gardé pour que la famille d'un mobilier reste lisible si le tableau l'ajoute. */
-export const familleLisible = (item: MobilierUrbain): string => familleExemplaire(item).libelle
+export const familleLisible = (item: Implantation): string => familleExemplaire(item).libelle
+
+/** « 12 en voirie, 4 en espaces verts » — ce que le document va couvrir. */
+function SOURCES_COMPTEES(lignes: Implantation[]): string {
+  const parGisement = new Map<string, number>()
+  for (const ligne of lignes) {
+    parGisement.set(ligne.source, (parGisement.get(ligne.source) ?? 0) + 1)
+  }
+  return (
+    [...parGisement.entries()]
+      .map(([cle, n]) => `${n} ${gisement(cle).libelle.toLowerCase()}`)
+      .join(', ') || 'aucune'
+  )
+}
