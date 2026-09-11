@@ -7,6 +7,30 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Espaces verts — le plan se fabrique depuis la carte, déjà à l'échelle
+
+> Pour annoter un parc, il fallait d'abord se procurer une image ailleurs :
+> trouver une vue aérienne, la capturer à l'écran, la recadrer, l'envoyer en
+> pièce jointe, puis tracer un segment sur une longueur qu'on croyait connaître
+> pour donner l'échelle. Cinq étapes, dont deux qu'un jardinier n'a aucune
+> raison de savoir faire — et un calibrage à la main qui se répercutait sur
+> toutes les surfaces et donc sur tous les coûts.
+
+#### Ajouté
+
+- **« Créer le plan depuis la carte ».** On cadre le parc sur une carte affichée dans l'application, on clique, le plan est fabriqué. Trois fonds au choix : la **photo aérienne IGN** — la seule qui montre les allées, les massifs et les arbres —, le **plan IGN v2** et **OpenStreetMap**. Aucune clé ni compte tiers : les tuiles IGN sont diffusées sous licence ouverte par la Géoplateforme, OpenStreetMap sous ODbL, et la source est **gravée dans l'image** pour qu'elle suive le plan en PDF, en archive et en pièce jointe
+- **L'échelle est calculée, plus jamais mesurée.** En projection Web Mercator, la taille d'un pixel ne dépend que du zoom et de la latitude : `156 543,034 × cos(latitude) / 2^zoom`. Le plan sort donc calibré, et les surfaces de zones se calculent dès le premier affichage. L'écran de calibrage reste, pour corriger ou pour une image chargée à la main
+- **Le contour du parc est proposé depuis OpenStreetMap.** Celui d'un parc communal y est souvent déjà relevé, au mètre près et par quelqu'un qui était sur place. Après la capture, les contours connus sous le cadre sont affichés — nom, nature, surface, forme dessinée sur le plan — et celui qu'on retient repart par le chemin habituel d'une zone tracée à la main : même fenêtre, même rattachement possible à un matériau du parc. Un contour qui dépasse du cadre est signalé plutôt que proposé : sa surface serait tronquée, donc fausse, et un coût faux ne se voit pas
+- **Une recherche d'adresse** dans la fenêtre de capture, pour l'espace vert dont la position n'a pas encore été relevée. « Modifiez l'espace vert pour ajouter latitude et longitude » était un cul-de-sac pour qui voulait seulement son plan
+
+#### Détails d'implémentation
+
+- L'assemblage des tuiles est fait **par le serveur**, avec `sharp`. Composer des tuiles dans un `<canvas>` depuis le navigateur « souille » le canvas dès qu'une tuile vient d'un autre domaine, et l'image ne peut plus être relue. Le serveur n'a pas cette limite, garde les tuiles en cache trente jours pour ne pas les redemander, et annonce une identité aux fournisseurs
+- Le nombre de tuiles téléchargées d'un coup est plafonné à 90 : la politique d'usage d'OpenStreetMap tolère l'usage occasionnel et refuse le moissonnage
+- Les **limites du serveur sont publiées** avec la liste des fonds, et le client choisit sa finesse en fonction d'elles. Recopiées dans le navigateur, elles auraient divergé — et la divergence se serait manifestée par un refus après le clic, que personne n'aurait pu relier à la largeur de sa fenêtre
+- Un service d'annuaire indisponible et une zone sans donnée **ne se disent pas pareil** : « OpenStreetMap n'a pas répondu » invite à réessayer, « aucun contour ici » invite à tracer soi-même. Les confondre ferait retracer à la main un contour qui existe
+
+
 ### Plan annoté — « Poser » pose, et « Déplacer » rejoint les autres actions
 
 > « Poser » dans la liste des éléments en attente n'armait que le mode : le clic

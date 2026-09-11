@@ -42,3 +42,21 @@ export interface SelectionPlan {
   type: 'element' | 'group' | 'annotation'
   id: number
 }
+
+/**
+ * Un contour qu'OpenStreetMap connaît à l'endroit capturé.
+ *
+ * Proposé, jamais posé d'office : la donnée est contribuée par des bénévoles,
+ * elle peut dater ou désigner le parc voisin. C'est un point de départ qui
+ * évite de retracer à la souris un contour déjà relevé sur place.
+ */
+export interface ContourPropose {
+  /** Nom porté par OpenStreetMap, souvent vide. */
+  nom: string
+  /** Ce que la donnée dit de l'endroit : « parc », « pelouse », « aire de jeux »… */
+  nature: string
+  points: PointPlan[]
+  surface_m2: number | null
+  /** Le contour sort du cadre : sa surface serait tronquée, donc fausse. */
+  deborde: boolean
+}

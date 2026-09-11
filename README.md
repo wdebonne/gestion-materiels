@@ -188,9 +188,11 @@ passage la permission de renommer le véhicule.
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
 - 💶 **Prix figé à la pose** : repris du parc ou corrigé selon la facture. Mettre à jour un tarif ne réévalue **jamais** ce qui a déjà été planté — c'est ce qui permet de dire ce qu'un massif a réellement coûté, des années après
 - 📊 **Coûts par groupe, variété, type et année** : ce qu'a coûté *cette* jardinière, ce que pèsent les rosiers tous massifs confondus, ce qu'a coûté le fleurissement d'une saison. Et sur l'ensemble des espaces, un total **par nature de lieu** — ronds-points, allées, parcs. Les lignes sans prix sont comptées à part, jamais chiffrées à zéro
+- 🛰️ **Le plan se fabrique depuis la carte** : plus besoin de trouver une image ailleurs, ni de la calibrer. On cadre le parc sur une **photo aérienne** — ou sur le plan IGN, ou sur OpenStreetMap —, on clique « Utiliser cette vue », et le plan arrive **déjà à l'échelle**. Aucune clé ni compte tiers : tuiles IGN sous licence ouverte et OpenStreetMap, source gravée sur l'image. Une recherche d'adresse dépanne quand l'espace vert n'a pas encore de position
+- 🧭 **Contour du parc récupéré d'OpenStreetMap** : le contour d'un parc communal y est souvent déjà relevé, au mètre près et par quelqu'un qui était sur place. Il est **proposé** après la capture, forme affichée sur le plan et surface calculée, jamais posé d'office — on le retient, on le retouche sommet par sommet, ou on le refuse. Un contour qui dépasse du cadre est signalé comme tel : sa surface serait tronquée, donc fausse
 - 🗺️ **Plan qui se manipule à la main** : on attrape un repère et on le pose, la molette zoome là où l'on pointe, le glisser déplace la vue. Quatre outils nommés — déplacer, poser, dessiner, mesurer — et une ligne d'aide qui dit ce que le prochain clic va faire. `Ctrl+Z`, `Échap`, `Suppr` et les flèches font ce qu'on attend
 - 📐 **Zones que l'on retouche** : un sommet se déplace, un point clair au milieu d'un côté en insère un, `Alt`+clic en retire un, le glisser de l'intérieur pousse la zone entière. On referme en revenant sur le premier point, par un double-clic ou par `Entrée`
-- 📏 **Plan calibré, surfaces calculées** : tracez une longueur que vous connaissez — une façade, un terrain —, donnez-la en mètres, et **chaque zone affiche sa surface toute seule**, réglette d'échelle à l'appui. Facultatif : une surface se saisit toujours à la main, et une valeur corrigée ainsi n'est jamais réécrite par un sommet déplacé ensuite
+- 📏 **Plan calibré, surfaces calculées** : un plan **capturé depuis la carte** est calibré d'office — la taille d'un pixel se déduit du zoom et de la latitude, il n'y a rien à mesurer. Sur une image chargée à la main, tracez une longueur que vous connaissez — une façade, un terrain — et donnez-la en mètres. Dans les deux cas, **chaque zone affiche ensuite sa surface toute seule**, réglette d'échelle à l'appui. Facultatif : une surface se saisit toujours à la main, et une valeur corrigée ainsi n'est jamais réécrite par un sommet déplacé ensuite
 - 🧱 **Matériau et coût d'une zone** : gazon, enrobé, écorce se choisissent dans le parc ; la surface devient la quantité, le prix au m² est figé à la pose, et le coût se lit par type, par variété et par année comme le reste. Une case « ne pas compter dans les coûts » permet de tracer ce qui était déjà là sans lui inventer un prix — ces lignes sont comptées à part, jamais fondues dans un total
 - ➕ **On crée depuis le plan** : implanter depuis le parc, ajouter un élément libre, poser un élément déjà saisi ou un simple repère, tous à l'endroit désigné. « Ajouter un banc là où je pointe » demandait deux onglets et trois écrans
 - 🎛️ **Panneau, calques et légende** : la liste de ce qui est sur le plan et de ce qui ne l'est pas encore, avec recherche et œil pour masquer ; éléments, groupes, repères, zones et étiquettes s'affichent ou se cachent
@@ -505,6 +507,7 @@ gestion-materiels/
 │   ├── apiTokens.test.ts  # Portée des tokens API
 │   ├── migrations.test.ts # Système de migration
 │   ├── geometriePlan.test.ts  # Aires, échelle, sommets du plan annoté
+│   ├── captureCarte.test.ts   # Échelle déduite de la carte, bornes du cadrage
 │   ├── coutEspaceVert.test.ts # Prix figé, lignes sans prix, zones hors coûts
 │   ├── materielPretable.test.ts / materielEspaceVert.test.ts # Trois états du parc
 │   ├── manifestation*.test.ts # Approbations, stock, sorties, réception, export
@@ -1092,6 +1095,7 @@ npm run test:run      # Exécution unique
 > | `materielPretable.test.ts`, `materielEspaceVert.test.ts` | Les trois états du parc — oui, non, hérite — et le fait que les deux modules ne se confondent pas |
 > | `coutEspaceVert.test.ts` | Prix figé à la pose, lignes sans prix comptées à part, zones écartées des coûts |
 > | `geometriePlan.test.ts` | Aires du plan annoté : un pourcent vertical ne mesure pas comme un pourcent horizontal, et l'oublier double la surface |
+> | `captureCarte.test.ts` | Échelle d'un plan capturé : elle est calculée et non relevée, donc une formule fausse passerait inaperçue jusqu'à la commande d'enrobé |
 > | `manifestationApprobations.test.ts` | Qui approuve quoi, dans quel ordre, et ce que change une délégation |
 > | `batchQuery.test.ts` | Chargement groupé : regroupement, découpage en tranches |
 > | `settingsColumns.test.ts` | Aucune requête n'interroge `settings` avec de mauvais noms de colonnes |
