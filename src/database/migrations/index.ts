@@ -14,6 +14,7 @@ import materielEnLot from './012_materiel_en_lot';
 import coutManifestation from './013_cout_manifestation';
 import compteursEtEnergie from './014_compteurs_et_energie';
 import implantationDepuisLeParc from './015_implantation_depuis_le_parc';
+import planAnnote from './016_plan_annote';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -40,6 +41,7 @@ export const MIGRATIONS: readonly Migration[] = [
   coutManifestation,
   compteursEtEnergie,
   implantationDepuisLeParc,
+  planAnnote,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

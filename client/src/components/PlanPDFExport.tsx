@@ -3,69 +3,18 @@ import { Download, Loader2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
+import { ELEMENT_TYPES, CONDITION_STATES } from '@/lib/espacesVerts'
+import { useTypesGroupes } from '@/lib/useTypesGroupes'
+import { formaterSurface } from '@/components/plan/geometrie'
+import PlanCanvas, { positionSurPlan } from '@/components/plan/PlanCanvas'
 
 interface PlanPDFExportProps {
   space: any
   onClose: () => void
 }
 
-const ELEMENT_TYPES = [
-  { value: 'arbre', label: 'Arbre', icon: '🌳', color: '#16a34a' },
-  { value: 'arbuste', label: 'Arbuste', icon: '🌿', color: '#22c55e' },
-  { value: 'fleur', label: 'Massif floral', icon: '🌺', color: '#ec4899' },
-  { value: 'pelouse', label: 'Pelouse', icon: '🟢', color: '#86efac' },
-  { value: 'haie', label: 'Haie', icon: '🌲', color: '#15803d' },
-  { value: 'mobilier_urbain', label: 'Mobilier urbain', icon: '🪑', color: '#78716c' },
-  { value: 'banc', label: 'Banc', icon: '🪑', color: '#a16207' },
-  { value: 'poubelle', label: 'Poubelle / Corbeille', icon: '🗑️', color: '#6b7280' },
-  { value: 'bac_fleurs', label: 'Bac à fleurs', icon: '🌷', color: '#f472b6' },
-  { value: 'eclairage', label: 'Éclairage', icon: '💡', color: '#eab308' },
-  { value: 'fontaine', label: 'Fontaine / Bassin', icon: '⛲', color: '#3b82f6' },
-  { value: 'cloture', label: 'Clôture / Barrière', icon: '🚧', color: '#d97706' },
-  { value: 'jeux', label: 'Jeux enfants', icon: '🎠', color: '#8b5cf6' },
-  { value: 'allee', label: 'Allée / Chemin', icon: '🛤️', color: '#a3a3a3' },
-  { value: 'panneau', label: 'Panneau / Signalétique', icon: '🪧', color: '#0ea5e9' },
-  { value: 'arrosage', label: 'Système d\'arrosage', icon: '💧', color: '#06b6d4' },
-  { value: 'statue', label: 'Statue / Œuvre d\'art', icon: '🗿', color: '#737373' },
-  { value: 'autre', label: 'Autre', icon: '📌', color: '#6b7280' },
-]
-
-const GROUP_TYPES = [
-  { value: 'massif', label: 'Massif', color: '#ec4899' },
-  { value: 'bosquet', label: 'Bosquet', color: '#16a34a' },
-  { value: 'rocaille', label: 'Rocaille', color: '#78716c' },
-  { value: 'plate_bande', label: 'Plate-bande', color: '#f59e0b' },
-  { value: 'verger', label: 'Verger', color: '#22c55e' },
-  { value: 'zone_ombre', label: 'Zone ombragée', color: '#6366f1' },
-  { value: 'zone_humide', label: 'Zone humide', color: '#06b6d4' },
-  { value: 'autre', label: 'Autre', color: '#8b5cf6' },
-]
-
-const CONDITION_STATES = [
-  { value: 'neuf', label: 'Neuf' },
-  { value: 'bon', label: 'Bon état' },
-  { value: 'moyen', label: 'Moyen' },
-  { value: 'mauvais', label: 'Mauvais' },
-  { value: 'remplacer', label: 'À remplacer' },
-]
-
-function getImageUrl(path: string): string {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  if (path.startsWith('/uploads/')) return path
-  if (path.startsWith('/')) return path
-  return `/uploads/${path}`
-}
-
-function parseZonePoints(zp: string | null | undefined): { x: number; y: number }[] {
-  if (!zp) return []
-  try {
-    const parsed = typeof zp === 'string' ? JSON.parse(zp) : zp
-    return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
-}
-
 export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
+  const { typeGroupe } = useTypesGroupes()
   const [isGenerating, setIsGenerating] = useState(false)
   const [includeElements, setIncludeElements] = useState(true)
   const [includeGroups, setIncludeGroups] = useState(true)
@@ -78,8 +27,11 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
   const groups = space.groups || []
   const annotations = space.annotations || []
 
-  const placedElements = elements.filter((el: any) => el.pos_x != null && el.pos_y != null)
-  const placedGroups = groups.filter((g: any) => g.pos_x != null && g.pos_y != null)
+  // « Sur le plan » veut dire posé **ou** dessiné : une pelouse tracée n'a pas
+  // de point, et le PDF l'oubliait — plan et tableau ne disaient pas la même
+  // chose sur la même page.
+  const placedElements = elements.filter((el: any) => positionSurPlan(el) !== null)
+  const placedGroups = groups.filter((g: any) => positionSurPlan(g) !== null)
 
   const generatePDF = async () => {
     setIsGenerating(true)
@@ -98,7 +50,12 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
       pdf.text(`Plan annoté — ${space.name}`, margin, 12)
       pdf.setFontSize(9)
       pdf.setFont('helvetica', 'normal')
-      pdf.text(`${space.address || 'Adresse non renseignée'} | Type : ${space.space_type} | Surface : ${space.area_m2 || '?'} m²`, margin, 19)
+      // L'échelle est écrite noir sur blanc : un plan imprimé se mesure à la
+      // règle, et une surface annoncée sans échelle ne se vérifie pas.
+      const echelle = Number(space.plan_scale_metres) > 0
+        ? ` | Échelle : 1 % ≈ ${Number(space.plan_scale_metres).toFixed(2).replace('.', ',')} m`
+        : ' | Plan non calibré'
+      pdf.text(`${space.address || 'Adresse non renseignée'} | Type : ${space.space_type} | Surface : ${space.area_m2 || '?'} m²${echelle}`, margin, 19)
       pdf.text(`Généré le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}`, margin, 25)
 
       let yPos = 32
@@ -139,7 +96,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
       if (includeLegend) {
         const usedTypes = ELEMENT_TYPES.filter(t => placedElements.some((el: any) => el.element_type === t.value))
         const usedGroupTypes = placedGroups.map((g: any) => {
-          const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
+          const typeInfo = typeGroupe(g.group_type)
           return { name: g.name, color: g.color || typeInfo?.color || '#8b5cf6' }
         })
 
@@ -259,7 +216,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
             pdf.text((typeInfo?.label || '').substring(0, 25), dMargin + 110, dy)
             pdf.text((el.species || '-').substring(0, 25), dMargin + 160, dy)
             pdf.text(condLabel.substring(0, 15), dMargin + 215, dy)
-            pdf.text(el.area_m2 ? `${el.area_m2} m²` : '-', dMargin + 250, dy)
+            pdf.text(el.area_m2 ? formaterSurface(Number(el.area_m2)) : '-', dMargin + 250, dy)
 
             pdf.setDrawColor(229, 231, 235)
             pdf.line(dMargin, dy + 2, dPageW - dMargin, dy + 2)
@@ -279,7 +236,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
 
           for (const g of placedGroups) {
             checkPage(15)
-            const typeInfo = GROUP_TYPES.find((t: any) => t.value === g.group_type)
+            const typeInfo = typeGroupe(g.group_type)
             const groupElements = elements.filter((el: any) => el.group_id === g.id)
             pdf.setFontSize(9)
             pdf.setFont('helvetica', 'bold')
@@ -297,7 +254,7 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
             pdf.setFont('helvetica', 'normal')
             pdf.setTextColor(107, 114, 128)
             if (g.area_m2) {
-              pdf.text(`Surface : ${g.area_m2} m²`, dMargin + 7, dy)
+              pdf.text(`Surface : ${formaterSurface(Number(g.area_m2))}`, dMargin + 7, dy)
               dy += 4
             }
             if (groupElements.length > 0) {
@@ -407,114 +364,25 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
             </label>
           </div>
 
-          {/* Aperçu du plan rendu en off-screen */}
+          {/*
+            Aperçu — et source de la capture.
+
+            Ce plan était redessiné ici à la main, avec ses propres tailles de
+            pastille, ses propres icônes (« ◆ » pour un groupe, un émoji pour un
+            repère) et des traits quatre fois plus fins qu'à l'écran : le PDF ne
+            ressemblait pas à ce qu'on avait sous les yeux. Il passe par le même
+            composant que l'onglet, et ne peut plus en diverger.
+          */}
           <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden bg-white" style={{ maxHeight: '400px', overflow: 'auto' }}>
-            <div ref={renderRef} style={{ position: 'relative', display: 'inline-block', width: '100%', backgroundColor: '#ffffff' }}>
-              <img
-                src={getImageUrl(space.plan_image)}
-                alt="Plan"
-                style={{ width: '100%', display: 'block' }}
-                crossOrigin="anonymous"
+            <div ref={renderRef} style={{ backgroundColor: '#ffffff' }}>
+              <PlanCanvas
+                planImage={space.plan_image}
+                elements={includeElements ? elements : []}
+                groups={includeGroups ? groups : []}
+                annotations={includeAnnotations ? annotations : []}
+                typeGroupe={typeGroupe}
+                compact
               />
-              {/* SVG zones */}
-              <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-                {includeElements && elements.filter((el: any) => el.zone_points).map((el: any) => {
-                  const pts = parseZonePoints(el.zone_points)
-                  if (pts.length < 3) return null
-                  const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-                  const color = typeInfo?.color || '#22c55e'
-                  const pointsStr = pts.map((p: any) => `${p.x},${p.y}`).join(' ')
-                  return (
-                    <polygon key={`z-el-${el.id}`} points={pointsStr} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.7} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                  )
-                })}
-                {includeGroups && groups.filter((g: any) => g.zone_points).map((g: any) => {
-                  const pts = parseZonePoints(g.zone_points)
-                  if (pts.length < 3) return null
-                  const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-                  const color = g.color || typeInfo?.color || '#8b5cf6'
-                  const pointsStr = pts.map((p: any) => `${p.x},${p.y}`).join(' ')
-                  return (
-                    <polygon key={`z-grp-${g.id}`} points={pointsStr} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={0.5} strokeOpacity={0.8} strokeLinejoin="round" strokeDasharray="6 3" vectorEffect="non-scaling-stroke" />
-                  )
-                })}
-              </svg>
-              {/* Markers éléments */}
-              {includeElements && placedElements.map((el: any) => {
-                const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-                return (
-                  <div key={`el-${el.id}`} style={{
-                    position: 'absolute', left: `${el.pos_x}%`, top: `${el.pos_y}%`,
-                    transform: 'translate(-50%, -50%)',
-                  }}>
-                    <div style={{
-                      width: 20, height: 20, borderRadius: '50%', border: '2px solid white',
-                      backgroundColor: typeInfo?.color || '#22c55e',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                    }}>
-                      <span style={{ color: 'white', fontSize: 7, fontWeight: 'bold' }}>{el.code ? el.code.substring(0, 2) : ''}</span>
-                    </div>
-                    {/* Label */}
-                    <div style={{
-                      position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                      marginTop: 2, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 3,
-                      padding: '1px 4px', fontSize: 7, whiteSpace: 'nowrap', color: '#1e293b',
-                      border: '1px solid #e5e7eb', fontWeight: 600,
-                    }}>
-                      {el.code || el.label}
-                    </div>
-                  </div>
-                )
-              })}
-              {/* Markers groupes */}
-              {includeGroups && placedGroups.map((g: any) => {
-                const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-                return (
-                  <div key={`grp-${g.id}`} style={{
-                    position: 'absolute', left: `${g.pos_x}%`, top: `${g.pos_y}%`,
-                    transform: 'translate(-50%, -50%)',
-                  }}>
-                    <div style={{
-                      width: 24, height: 24, borderRadius: 4, border: '2px solid white',
-                      backgroundColor: g.color || typeInfo?.color || '#8b5cf6',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                      fontSize: 10, color: 'white',
-                    }}>◆</div>
-                    <div style={{
-                      position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                      marginTop: 2, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 3,
-                      padding: '1px 4px', fontSize: 7, whiteSpace: 'nowrap', color: '#1e293b',
-                      border: '1px solid #e5e7eb', fontWeight: 600,
-                    }}>
-                      {g.name}
-                    </div>
-                  </div>
-                )
-              })}
-              {/* Markers annotations */}
-              {includeAnnotations && annotations.map((ann: any) => (
-                <div key={`ann-${ann.id}`} style={{
-                  position: 'absolute', left: `${ann.pos_x}%`, top: `${ann.pos_y}%`,
-                  transform: 'translate(-50%, -50%)',
-                }}>
-                  <div style={{
-                    width: 16, height: 16, borderRadius: '50%', border: '2px solid white',
-                    backgroundColor: ann.color, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 2px 4px rgba(0,0,0,0.3)',
-                    fontSize: 8, color: 'white',
-                  }}>📍</div>
-                  <div style={{
-                    position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)',
-                    marginTop: 2, backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 3,
-                    padding: '1px 4px', fontSize: 7, whiteSpace: 'nowrap', color: '#1e293b',
-                    border: '1px solid #e5e7eb',
-                  }}>
-                    {ann.label}
-                  </div>
-                </div>
-              ))}
             </div>
           </div>
         </div>

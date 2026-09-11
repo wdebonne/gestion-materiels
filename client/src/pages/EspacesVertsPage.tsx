@@ -1,12 +1,12 @@
-import { useState, useRef } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
   FileText, X, Eye,
   Download, Image, Tag, Ruler, CloudSun,
-  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, GripVertical, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
+  Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
   Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight,
-  Navigation, Globe, Hash, Leaf, Euro, RefreshCw, Package
+  Navigation, Globe, Hash, Leaf, Euro, RefreshCw, Package, EyeOff
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -16,25 +16,32 @@ import Can from '@/components/Can'
 import { useAuthStore } from '@/stores/auth.store'
 import LocationPicker from '@/components/ui/LocationPicker'
 import toast from 'react-hot-toast'
-import { useConfirm } from '@/components/ui'
+import { Button, IconButton, Input, Modal, ModalBody, ModalFooter, useConfirm } from '@/components/ui'
 import HelpSheet from '@/components/HelpSheet'
 import ImplantationDepuisParc from '@/components/ImplantationDepuisParc'
-import { ELEMENT_TYPES, CONDITION_STATES, typeElement, euros } from '@/lib/espacesVerts'
+import { ELEMENT_TYPES, CONDITION_STATES, typeElement, deviner, euros, getImageUrl } from '@/lib/espacesVerts'
+import { useTypesGroupes } from '@/lib/useTypesGroupes'
+import { usePermissions } from '@/lib/permissions'
+import { getErrorMessage } from '@/lib/errors'
+import PlanCanvas, { positionSurPlan, type CalquesPlan } from '@/components/plan/PlanCanvas'
+import { usePlanViewport } from '@/components/plan/usePlanViewport'
+import type { EchellePlan, OutilPlan, PointPlan, SelectionPlan } from '@/components/plan/types'
+import {
+  aireEnM2,
+  borner,
+  deplacerZone,
+  echelleDepuisCalibrage,
+  formaterSurface,
+  insererSommet,
+  parseZonePoints,
+  retirerSommet,
+} from '@/components/plan/geometrie'
 
-/** Normalise un chemin d'image : évite le doublon /uploads//uploads/... */
 /**
  * Clé Google Maps, fournie par la configuration du déploiement.
  * Vide par défaut : les vues Street View sont alors simplement masquées.
  */
 const GOOGLE_MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_KEY || ''
-
-function getImageUrl(path: string): string {
-  if (!path) return ''
-  if (path.startsWith('http://') || path.startsWith('https://')) return path
-  if (path.startsWith('/uploads/')) return path
-  if (path.startsWith('/')) return path
-  return `/uploads/${path}`
-}
 
 // ======================== TYPES ========================
 
@@ -51,6 +58,12 @@ interface GreenSpace {
   status: string
   image: string
   plan_image: string
+  /** Mètres que vaut un pourcent de **largeur** du plan, une fois calibré. */
+  plan_scale_metres?: number | null
+  /** Hauteur divisée par largeur de l'image : un pourcent vertical ne vaut pas un pourcent horizontal. */
+  plan_ratio?: number | null
+  /** Le segment tracé au calibrage, pour pouvoir le corriger plutôt que le refaire. */
+  plan_scale_points?: string | null
   custom_fields: string
   cloned_from_id?: number | null
   element_count?: number
@@ -99,6 +112,10 @@ interface GreenSpaceElement {
   reference?: string
   group_id?: number | null
   area_m2?: number | null
+  /** 'calcule' : la surface suit le tracé. 'saisi' : elle a été corrigée et ne bouge plus. */
+  area_source?: 'calcule' | 'saisi'
+  /** Tracée sur le plan, volontairement absente des totaux : la pelouse d'avant nous. */
+  exclude_from_costs?: boolean | number
   zone_points?: string | null
   latitude?: number | null
   longitude?: number | null
@@ -208,25 +225,7 @@ const SEASONS_LIST = [
   { value: 'hiver', label: 'Hiver', icon: '❄️', color: 'bg-blue-50 border-blue-200 dark:bg-blue-950 dark:border-blue-800' },
 ]
 
-const GROUP_TYPES = [
-  { value: 'massif', label: 'Massif floral', icon: '🌺', color: '#ec4899' },
-  { value: 'haie', label: 'Haie composée', icon: '🌲', color: '#15803d' },
-  { value: 'bosquet', label: 'Bosquet', icon: '🌳', color: '#16a34a' },
-  { value: 'rocaille', label: 'Rocaille', icon: '🪨', color: '#78716c' },
-  { value: 'jardiniere', label: 'Jardinière', icon: '🌷', color: '#f472b6' },
-  { value: 'plate_bande', label: 'Plate-bande', icon: '🌸', color: '#a855f7' },
-  { value: 'mixed_border', label: 'Mixed-border', icon: '🌼', color: '#f59e0b' },
-  { value: 'autre', label: 'Autre', icon: '📍', color: '#6b7280' },
-]
 
-/** Parse zone_points from JSON string (shared helper) */
-function parseZonePoints(zp: string | null | undefined): { x: number; y: number }[] {
-  if (!zp) return []
-  try {
-    const parsed = typeof zp === 'string' ? JSON.parse(zp) : zp
-    return Array.isArray(parsed) ? parsed : []
-  } catch { return [] }
-}
 
 // ======================== COMPOSANT PRINCIPAL ========================
 
@@ -238,7 +237,7 @@ export default function EspacesVertsPage() {
   const [selectedSpace, setSelectedSpace] = useState<GreenSpace | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [editingSpace, setEditingSpace] = useState<GreenSpace | null>(null)
-  const [activeTab, setActiveTab] = useState<'elements' | 'couts' | 'plan' | 'saisons' | 'documents' | 'carte' | 'entretien'>('elements')
+  const [activeTab, setActiveTab] = useState<'elements' | 'couts' | 'plan' | 'saisons' | 'documents' | 'carte' | 'entretien' | 'archives'>('elements')
   const [expanded, setExpanded] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
 
@@ -1107,12 +1106,8 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   /** Groupe dans lequel on est en train d'implanter du matériel du parc. */
   const [implantationGroupe, setImplantationGroupe] = useState<number | null>(null)
 
-  // Types de groupes dynamiques depuis la BDD
-  const { data: dynamicGroupTypes = [] } = useQuery({
-    queryKey: ['green-space-group-types'],
-    queryFn: () => api.get('/green-spaces/group-types').then(r => r.data.data)
-  })
-  const activeGroupTypes = (dynamicGroupTypes as any[]).filter((t: any) => !t.disabled)
+  // Types de groupes tels que la commune les a réglés (repli sur la constante).
+  const { types: activeGroupTypes, typeGroupe } = useTypesGroupes()
 
   // Form state
   const [gName, setGName] = useState('')
@@ -1184,7 +1179,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
   }
 
   const handleSaveGroup = () => {
-    const data = { name: gName, group_type: gType, description: gDesc, color: gColor, icon: activeGroupTypes.find((t: any) => t.value === gType)?.icon || 'layers', area_m2: gArea ? parseFloat(gArea) : null }
+    const data = { name: gName, group_type: gType, description: gDesc, color: gColor, icon: activeGroupTypes.find((t) => t.value === gType)?.icon || 'layers', area_m2: gArea ? parseFloat(gArea) : null }
     if (editingGroup) {
       updateGroupMutation.mutate({ id: editingGroup.id, ...data, pos_x: editingGroup.pos_x, pos_y: editingGroup.pos_y })
     } else {
@@ -1257,7 +1252,7 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
       </div>
 
       {groups.map(g => {
-        const typeInfo = activeGroupTypes.find((t: any) => t.value === g.group_type) || GROUP_TYPES.find(t => t.value === g.group_type)
+        const typeInfo = typeGroupe(g.group_type)
         const groupElements = elements.filter(el => el.group_id === g.id)
         const isExpanded = expandedGroups.has(g.id)
         // Ce que cette jardinière a coûté : c'est la question qui justifie le
@@ -1361,10 +1356,10 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Type</label>
                   <select
                     value={gType}
-                    onChange={e => { setGType(e.target.value); setGColor(activeGroupTypes.find((t: any) => t.value === e.target.value)?.color || '#8b5cf6') }}
+                    onChange={e => { setGType(e.target.value); setGColor(activeGroupTypes.find((t) => t.value === e.target.value)?.color || '#8b5cf6') }}
                     className="w-full px-3 py-2 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
                   >
-                    {(activeGroupTypes.length > 0 ? activeGroupTypes : GROUP_TYPES).map((t: any) => (
+                    {activeGroupTypes.map((t) => (
                       <option key={t.value} value={t.value}>{t.icon} {t.label}</option>
                     ))}
                   </select>
@@ -1504,775 +1499,1955 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
 
 // ======================== ONGLET PLAN ANNOTÉ ========================
 
-function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
-  const canvasRef = useRef<HTMLDivElement>(null)
-  const [zoom, setZoom] = useState(1)
-  const [addingAnnotation, setAddingAnnotation] = useState(false)
-  const [selectedAnnotation, setSelectedAnnotation] = useState<Annotation | null>(null)
-  const [selectedMarker, setSelectedMarker] = useState<{ type: 'element' | 'group' | 'annotation'; id: number } | null>(null)
-  const [editingPlanElement, setEditingPlanElement] = useState<GreenSpaceElement | null>(null)
-  const [showPDFExport, setShowPDFExport] = useState(false)
-  const [clickPos, setClickPos] = useState<{ x: number; y: number } | null>(null)
-  const [freeLabel, setFreeLabel] = useState('')
-  const [dragging, setDragging] = useState<{ type: 'element' | 'annotation' | 'group'; id: number } | null>(null)
+/** Ce qu'un déplacement de repère envoie au serveur. */
+interface DeplacementRepere {
+  id: number
+  x: number
+  y: number
+}
 
-  // Zone drawing state
-  const [drawingZone, setDrawingZone] = useState<{ type: 'element' | 'group'; id: number } | null>(null)
-  const [zonePoints, setZonePoints] = useState<{ x: number; y: number }[]>([])
+/**
+ * Déplacer un repère sans faire clignoter le plan.
+ *
+ * Recharger tout l'espace — éléments, entretiens, documents, archives — pour
+ * deux flottants faisait revenir le repère à son ancienne place le temps de la
+ * réponse, puis sauter à la nouvelle. La position est donc écrite dans le cache
+ * avant l'aller-retour, et remise comme avant si le serveur refuse.
+ */
+function useDeplacementPlan(
+  queryClient: any,
+  spaceId: number,
+  requete: (v: DeplacementRepere) => Promise<unknown>,
+  applique: (espace: any, v: DeplacementRepere) => any,
+  surFin: () => void
+) {
+  return useMutation({
+    mutationFn: requete,
+    onMutate: async (variables: DeplacementRepere) => {
+      // Une requête en vol écraserait la position qu'on vient d'écrire.
+      await queryClient.cancelQueries({ queryKey: ['green-space', spaceId] })
+      const precedent = queryClient.getQueryData(['green-space', spaceId])
+      queryClient.setQueryData(['green-space', spaceId], (ancien: any) =>
+        ancien ? applique(ancien, variables) : ancien
+      )
+      return { precedent }
+    },
+    onError: (erreur: any, _variables, contexte: any) => {
+      if (contexte?.precedent) queryClient.setQueryData(['green-space', spaceId], contexte.precedent)
+      // Définir `onError` désactive le message d'erreur global : sans cette
+      // ligne, le repère reviendrait à sa place sans que rien ne l'explique.
+      toast.error(getErrorMessage(erreur))
+    },
+    onSettled: surFin,
+  })
+}
+
+/**
+ * Le plan annoté : poser, déplacer, tracer, mesurer.
+ *
+ * L'écran était un formulaire déguisé en plan. Rien ne se manipulait
+ * directement : « Déplacer » armait un mode, affichait une bannière, et
+ * attendait un second clic ; une zone ne se dessinait qu'après avoir créé puis
+ * posé un élément ailleurs, et une fois tracée elle ne se retouchait plus — on
+ * l'effaçait et on recommençait. Un jardinier qui veut bouger un banc de dix
+ * centimètres ne le fait pas.
+ *
+ * Trois principes, maintenant :
+ *
+ * - **Ce qu'on voit se saisit.** Un repère se glisse, un sommet se déplace, une
+ *   zone entière se pousse. Les gestes sont écrits en Pointer Events : ils
+ *   valent à la souris comme au doigt.
+ * - **L'outil actif est visible.** Quatre outils nommés remplacent trois
+ *   booléens implicites, et une ligne d'aide dit à chaque instant ce que le
+ *   prochain clic va faire.
+ * - **Ce qu'on ne peut pas faire ne s'affiche pas.** Le serveur exige d'être
+ *   superviseur pour écrire ; l'interface proposait tout à tout le monde et
+ *   récoltait des 403 silencieux.
+ */
+function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const { typeGroupe } = useTypesGroupes()
+  const confirmer = useConfirm()
+  const { canManage } = usePermissions()
+  const vue = usePlanViewport()
+
+  const [outil, setOutil] = useState<OutilPlan>('main')
+  const [selection, setSelection] = useState<SelectionPlan | null>(null)
+  const [panneauOuvert, setPanneauOuvert] = useState(true)
+  const [calques, setCalques] = useState<CalquesPlan>({
+    elements: true, groupes: true, annotations: true, zones: true, etiquettes: true,
+  })
+  const [masques, setMasques] = useState<Set<string>>(new Set())
+
+  /** Tracé en cours : création d'une zone, ou retouche d'une zone existante. */
+  const [trace, setTrace] = useState<{ cible: SelectionPlan | null; points: PointPlan[] } | null>(null)
+  const [historique, setHistorique] = useState<PointPlan[][]>([])
+  /** Position du curseur, pour montrer le segment qui vient. */
+  const [survol, setSurvol] = useState<PointPlan | null>(null)
+
+  /** Repère en cours de glissement : sa position tant que le serveur n'a pas répondu. */
+  const [apercu, setApercu] = useState<{ cible: SelectionPlan; point: PointPlan } | null>(null)
+
+  const [creation, setCreation] = useState<PointPlan | null>(null)
+  const [mesure, setMesure] = useState<{ a: PointPlan; b: PointPlan | null } | null>(null)
+  const [zoneAQualifier, setZoneAQualifier] = useState<PointPlan[] | null>(null)
+  const [elementEnEdition, setElementEnEdition] = useState<GreenSpaceElement | null>(null)
+  const [nouvelElement, setNouvelElement] = useState<PointPlan | null>(null)
+  const [implantation, setImplantation] = useState<PointPlan | null>(null)
+  const [exportPDF, setExportPDF] = useState(false)
 
   const annotations = space.annotations || []
   const elements = space.elements || []
   const groups = space.groups || []
-  const unplacedElements = elements.filter(el => el.pos_x == null || el.pos_y == null)
-  const unplacedGroups = groups.filter(g => g.pos_x == null || g.pos_y == null)
+  // « À poser » veut dire « nulle part sur le plan ». Une pelouse dessinée n'a
+  // pas de point mais un contour : elle y est déjà, et la proposer à poser
+  // laissait croire que le tracé n'avait pas été enregistré.
+  const aPoser = elements.filter(el => positionSurPlan(el) === null)
+  const groupesAPoser = groups.filter(g => positionSurPlan(g) === null)
 
-  const addAnnotationMutation = useMutation({
+  /**
+   * L'échelle du plan, quand elle a été relevée.
+   *
+   * Le rapport de l'image est enregistré au calibrage : le relire à chaque
+   * chargement suffirait à l'écran, mais pas à l'export PDF ni au serveur, qui
+   * n'ouvrent jamais l'image.
+   */
+  const echelle: EchellePlan | null = space.plan_scale_metres && space.plan_ratio
+    ? { metresParPourcent: Number(space.plan_scale_metres), ratio: Number(space.plan_ratio) }
+    : null
+
+  /** Rapport de l'image réellement chargée, pour calibrer sans rien supposer. */
+  const ratioRef = useRef<number>(Number(space.plan_ratio) || 1)
+
+  const rafraichir = () => {
+    queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
+    queryClient.invalidateQueries({ queryKey: ['green-space-couts', space.id] })
+  }
+
+  const deplacerElement = useDeplacementPlan(
+    queryClient, space.id,
+    ({ id, x, y }) => api.put(`/green-spaces/elements/${id}`, { pos_x: x, pos_y: y }),
+    (espace, { id, x, y }) => ({
+      ...espace,
+      elements: (espace.elements || []).map((el: any) => (el.id === id ? { ...el, pos_x: x, pos_y: y } : el)),
+    }),
+    () => setApercu(null)
+  )
+
+  const deplacerGroupe = useDeplacementPlan(
+    queryClient, space.id,
+    ({ id, x, y }) => api.put(`/green-spaces/groups/${id}`, { pos_x: x, pos_y: y }),
+    (espace, { id, x, y }) => ({
+      ...espace,
+      groups: (espace.groups || []).map((g: any) => (g.id === id ? { ...g, pos_x: x, pos_y: y } : g)),
+    }),
+    () => setApercu(null)
+  )
+
+  const deplacerAnnotation = useDeplacementPlan(
+    queryClient, space.id,
+    ({ id, x, y }) => api.put(`/green-spaces/annotations/${id}`, { pos_x: x, pos_y: y }),
+    (espace, { id, x, y }) => ({
+      ...espace,
+      annotations: (espace.annotations || []).map((a: any) => (a.id === id ? { ...a, pos_x: x, pos_y: y } : a)),
+    }),
+    () => setApercu(null)
+  )
+
+  const poserElement = useMutation({
+    meta: { successMessage: 'Élément posé sur le plan' },
+    mutationFn: ({ id, x, y }: { id: number; x: number; y: number }) =>
+      api.put(`/green-spaces/elements/${id}`, { pos_x: x, pos_y: y }),
+    onSuccess: () => { rafraichir(); setCreation(null) },
+  })
+
+  const poserGroupe = useMutation({
+    meta: { successMessage: 'Groupe posé sur le plan' },
+    mutationFn: ({ id, x, y }: { id: number; x: number; y: number }) =>
+      api.put(`/green-spaces/groups/${id}`, { pos_x: x, pos_y: y }),
+    onSuccess: () => { rafraichir(); setCreation(null) },
+  })
+
+  const retirerDuPlan = useMutation({
+    meta: { successMessage: 'Retiré du plan' },
+    mutationFn: (cible: SelectionPlan) =>
+      cible.type === 'element'
+        ? api.put(`/green-spaces/elements/${cible.id}`, { pos_x: null, pos_y: null })
+        : api.put(`/green-spaces/groups/${cible.id}`, { pos_x: null, pos_y: null }),
+    onSuccess: () => { rafraichir(); setSelection(null) },
+  })
+
+  const ajouterRepere = useMutation({
     meta: { successMessage: 'Repère ajouté' },
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/annotations`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setAddingAnnotation(false)
-      setClickPos(null)
-      setFreeLabel('')
-    }
+    onSuccess: () => { rafraichir(); setCreation(null) },
   })
 
-  const updateElementPosMutation = useMutation({
-    mutationFn: ({ elementId, pos_x, pos_y }: { elementId: number; pos_x: number; pos_y: number }) =>
-      api.put(`/green-spaces/elements/${elementId}`, { pos_x, pos_y }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setAddingAnnotation(false)
-      setClickPos(null)
-    }
+  const modifierRepere = useMutation({
+    meta: { successMessage: 'Repère modifié' },
+    mutationFn: ({ id, ...champs }: any) => api.put(`/green-spaces/annotations/${id}`, champs),
+    onSuccess: rafraichir,
   })
 
-  const updateAnnotationPosMutation = useMutation({
-    mutationFn: ({ annotationId, pos_x, pos_y, label, icon, color }: { annotationId: number; pos_x: number; pos_y: number; label: string; icon: string; color: string }) =>
-      api.put(`/green-spaces/annotations/${annotationId}`, { pos_x, pos_y, label, icon, color }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setDragging(null)
-    }
-  })
-
-  const updateGroupPosMutation = useMutation({
-    mutationFn: ({ groupId, pos_x, pos_y }: { groupId: number; pos_x: number; pos_y: number }) => {
-      const g = groups.find(gr => gr.id === groupId)
-      return api.put(`/green-spaces/groups/${groupId}`, {
-        name: g?.name, group_type: g?.group_type, description: g?.description, color: g?.color, icon: g?.icon, pos_x, pos_y
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setAddingAnnotation(false)
-      setClickPos(null)
-      setDragging(null)
-    }
-  })
-
-  const saveElementZoneMutation = useMutation({
-    meta: { successMessage: 'Zone enregistrée' },
-    mutationFn: ({ elementId, zone_points }: { elementId: number; zone_points: { x: number; y: number }[] }) =>
-      api.put(`/green-spaces/elements/${elementId}`, { zone_points }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setDrawingZone(null)
-      setZonePoints([])
-    }
-  })
-
-  const saveGroupZoneMutation = useMutation({
-    meta: { successMessage: 'Zone enregistrée' },
-    mutationFn: ({ groupId, zone_points }: { groupId: number; zone_points: { x: number; y: number }[] }) => {
-      const g = groups.find(gr => gr.id === groupId)
-      return api.put(`/green-spaces/groups/${groupId}`, {
-        name: g?.name, group_type: g?.group_type, description: g?.description, color: g?.color, icon: g?.icon,
-        pos_x: g?.pos_x, pos_y: g?.pos_y, zone_points
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setDrawingZone(null)
-      setZonePoints([])
-    }
-  })
-
-  const deleteAnnotationMutation = useMutation({
+  const supprimerRepere = useMutation({
     meta: { successMessage: 'Repère supprimé' },
     mutationFn: (id: number) => api.delete(`/green-spaces/annotations/${id}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setSelectedAnnotation(null)
-      setSelectedMarker(null)
-    }
+    onSuccess: () => { rafraichir(); setSelection(null) },
   })
 
-  const unplaceElementMutation = useMutation({
-    meta: { successMessage: 'Élément retiré du plan' },
-    mutationFn: (elementId: number) => api.put(`/green-spaces/elements/${elementId}`, { pos_x: null, pos_y: null }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setSelectedMarker(null)
-    }
-  })
-
-  const unplaceGroupMutation = useMutation({
-    meta: { successMessage: 'Groupe retiré du plan' },
-    mutationFn: (groupId: number) => {
-      const g = groups.find(gr => gr.id === groupId)
-      return api.put(`/green-spaces/groups/${groupId}`, {
-        name: g?.name, group_type: g?.group_type, description: g?.description, color: g?.color, icon: g?.icon, pos_x: null, pos_y: null
-      })
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-      setSelectedMarker(null)
-    }
-  })
-
-  const handlePlanClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!canvasRef.current) return
-    const rect = canvasRef.current.getBoundingClientRect()
-    const x = ((e.clientX - rect.left) / rect.width * 100) / zoom
-    const y = ((e.clientY - rect.top) / rect.height * 100) / zoom
-
-    // Mode dessin de zone : ajout d'un point au polygone
-    if (drawingZone) {
-      setZonePoints(prev => [...prev, { x, y }])
-      return
-    }
-
-    // Si on est en train de déplacer un repère
-    if (dragging) {
-      if (dragging.type === 'element') {
-        updateElementPosMutation.mutate({ elementId: dragging.id, pos_x: x, pos_y: y })
-      } else if (dragging.type === 'group') {
-        updateGroupPosMutation.mutate({ groupId: dragging.id, pos_x: x, pos_y: y })
-      } else {
-        const ann = annotations.find(a => a.id === dragging.id)
-        if (ann) {
-          updateAnnotationPosMutation.mutate({ annotationId: ann.id, pos_x: x, pos_y: y, label: ann.label, icon: ann.icon, color: ann.color })
-        }
+  const enregistrerZone = useMutation({
+    meta: { successMessage: 'Zone enregistrée' },
+    mutationFn: ({ cible, points, surface }: { cible: SelectionPlan; points: PointPlan[] | null; surface?: number | null }) => {
+      const corps: any = { zone_points: points }
+      if (surface !== undefined) {
+        corps.area_m2 = surface
+        corps.area_source = 'calcule'
       }
+      return cible.type === 'element'
+        ? api.put(`/green-spaces/elements/${cible.id}`, corps)
+        : api.put(`/green-spaces/groups/${cible.id}`, corps)
+    },
+    onSuccess: () => { rafraichir(); setTrace(null); setHistorique([]) },
+  })
+
+  const creerZone = useMutation({
+    meta: { successMessage: 'Zone créée' },
+    mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/elements`, data),
+    onSuccess: () => { rafraichir(); setZoneAQualifier(null); setTrace(null); setHistorique([]) },
+  })
+
+  const enregistrerCalibrage = useMutation({
+    meta: { successMessage: 'Échelle du plan enregistrée' },
+    mutationFn: (corps: any) => api.put(`/green-spaces/${space.id}`, corps),
+    onSuccess: () => { rafraichir(); setMesure(null); setOutil('main') },
+  })
+
+  // ---------------------------------------------------------------- géométrie
+
+  /** Surface réelle d'un polygone, `null` tant que le plan n'est pas calibré. */
+  const surfaceDe = (points: PointPlan[]) => aireEnM2(points, echelle)
+
+  const pointsDe = (cible: SelectionPlan): PointPlan[] => {
+    if (cible.type === 'element') return parseZonePoints(elements.find(e => e.id === cible.id)?.zone_points)
+    if (cible.type === 'group') return parseZonePoints(groups.find(g => g.id === cible.id)?.zone_points)
+    return []
+  }
+
+  /** Mémorise l'état du tracé avant de le changer, pour que Ctrl+Z ait prise. */
+  const modifierTrace = (points: PointPlan[]) => {
+    setTrace(t => {
+      if (!t) return t
+      setHistorique(h => [...h.slice(-49), t.points])
+      return { ...t, points }
+    })
+  }
+
+  const annulerDernierGeste = () => {
+    setHistorique(h => {
+      if (h.length === 0) return h
+      const dernier = h[h.length - 1]
+      setTrace(t => (t ? { ...t, points: dernier } : t))
+      return h.slice(0, -1)
+    })
+  }
+
+  // ------------------------------------------------------------ interactions
+
+  const surClicPlan = (e: React.MouseEvent) => {
+    // Un glisser de plan finit par un clic : on ne veut pas qu'il pose un point.
+    if (vue.enDeplacement) return
+    const point = vue.versPourcent(e)
+
+    if (trace) {
+      // Refermer en revenant sur le premier sommet, comme dans tous les outils
+      // de dessin : deux pourcents de tolérance, assez pour viser à la souris.
+      if (trace.points.length >= 3 && distance(point, trace.points[0]) < 2) {
+        terminerTrace()
+        return
+      }
+      modifierTrace([...trace.points, point])
       return
     }
 
-    if (!addingAnnotation) {
-      setSelectedMarker(null)
+    if (outil === 'mesure') {
+      if (!mesure) setMesure({ a: point, b: null })
+      else if (!mesure.b) setMesure({ ...mesure, b: point })
       return
     }
-    setClickPos({ x, y })
-    setFreeLabel('')
-  }
 
-  const handlePlaceElement = (el: GreenSpaceElement) => {
-    if (!clickPos) return
-    updateElementPosMutation.mutate({ elementId: el.id, pos_x: clickPos.x, pos_y: clickPos.y })
-  }
-
-  const handlePlaceGroup = (g: CompositionGroup) => {
-    if (!clickPos) return
-    updateGroupPosMutation.mutate({ groupId: g.id, pos_x: clickPos.x, pos_y: clickPos.y })
-  }
-
-  const handleAddFreeAnnotation = () => {
-    if (!clickPos || !freeLabel.trim()) return
-    addAnnotationMutation.mutate({ pos_x: clickPos.x, pos_y: clickPos.y, label: freeLabel.trim(), icon: 'circle', color: '#22c55e' })
-  }
-
-  const startDrawingZone = (type: 'element' | 'group', id: number) => {
-    setDrawingZone({ type, id })
-    setZonePoints([])
-    setAddingAnnotation(false)
-    setDragging(null)
-    setClickPos(null)
-  }
-
-  const finishDrawingZone = () => {
-    if (!drawingZone || zonePoints.length < 3) return
-    if (drawingZone.type === 'element') {
-      saveElementZoneMutation.mutate({ elementId: drawingZone.id, zone_points: zonePoints })
-    } else {
-      saveGroupZoneMutation.mutate({ groupId: drawingZone.id, zone_points: zonePoints })
+    if (outil === 'repere') {
+      setCreation(point)
+      return
     }
+
+    setSelection(null)
   }
 
-  const cancelDrawingZone = () => {
-    setDrawingZone(null)
-    setZonePoints([])
-  }
+  /** Démarre le glissement d'un repère, ou laisse passer au panoramique. */
+  const glisserMarqueur = (cible: SelectionPlan, e: React.PointerEvent) => {
+    if (!canManage || outil !== 'main' || e.button !== 0) return
+    e.stopPropagation()
+    const depart = { x: e.clientX, y: e.clientY }
+    let aBouge = false
+    let dernier: PointPlan | null = null
 
-  const removeLastZonePoint = () => {
-    setZonePoints(prev => prev.slice(0, -1))
-  }
-
-  const clearZone = (type: 'element' | 'group', id: number) => {
-    if (type === 'element') {
-      saveElementZoneMutation.mutate({ elementId: id, zone_points: [] })
-    } else {
-      saveGroupZoneMutation.mutate({ groupId: id, zone_points: [] })
+    const surMouvement = (ev: PointerEvent) => {
+      // Quelques pixels de tolérance : sans eux, tout clic un peu tremblant
+      // déplacerait le repère au lieu de le sélectionner.
+      if (!aBouge && Math.hypot(ev.clientX - depart.x, ev.clientY - depart.y) < 4) return
+      aBouge = true
+      dernier = vue.versPourcent(ev)
+      setApercu({ cible, point: dernier })
     }
+    const surFin = () => {
+      window.removeEventListener('pointermove', surMouvement)
+      window.removeEventListener('pointerup', surFin)
+      window.removeEventListener('pointercancel', surFin)
+      if (!aBouge || !dernier) { setApercu(null); return }
+      const corps = { id: cible.id, x: dernier.x, y: dernier.y }
+      if (cible.type === 'element') deplacerElement.mutate(corps)
+      else if (cible.type === 'group') deplacerGroupe.mutate(corps)
+      else deplacerAnnotation.mutate(corps)
+    }
+    window.addEventListener('pointermove', surMouvement)
+    window.addEventListener('pointerup', surFin)
+    window.addEventListener('pointercancel', surFin)
   }
+
+  /** Glissement d'un sommet du tracé en cours. */
+  const glisserSommet = (index: number, e: React.PointerEvent) => {
+    if (!trace || e.button !== 0) return
+    e.stopPropagation()
+    const depart = trace.points
+    setHistorique(h => [...h.slice(-49), depart])
+    const surMouvement = (ev: PointerEvent) => {
+      const point = vue.versPourcent(ev)
+      setTrace(t => (t ? { ...t, points: t.points.map((p, i) => (i === index ? point : p)) } : t))
+    }
+    const surFin = () => {
+      window.removeEventListener('pointermove', surMouvement)
+      window.removeEventListener('pointerup', surFin)
+    }
+    window.addEventListener('pointermove', surMouvement)
+    window.addEventListener('pointerup', surFin)
+  }
+
+  /** Glissement de la zone entière, par son intérieur. */
+  const glisserZone = (e: React.PointerEvent) => {
+    if (!trace || e.button !== 0) return
+    e.stopPropagation()
+    const depart = { x: e.clientX, y: e.clientY }
+    const origine = trace.points
+    setHistorique(h => [...h.slice(-49), origine])
+    const surMouvement = (ev: PointerEvent) => {
+      const delta = vue.deltaEnPourcent(ev.clientX - depart.x, ev.clientY - depart.y)
+      setTrace(t => (t ? { ...t, points: deplacerZone(origine, delta.x, delta.y) } : t))
+    }
+    const surFin = () => {
+      window.removeEventListener('pointermove', surMouvement)
+      window.removeEventListener('pointerup', surFin)
+    }
+    window.addEventListener('pointermove', surMouvement)
+    window.addEventListener('pointerup', surFin)
+  }
+
+  const commencerZone = (cible: SelectionPlan | null) => {
+    setOutil('zone')
+    setHistorique([])
+    setTrace({ cible, points: cible ? pointsDe(cible) : [] })
+  }
+
+  const terminerTrace = () => {
+    if (!trace || trace.points.length < 3) return
+    if (trace.cible) {
+      const surface = surfaceDe(trace.points)
+      enregistrerZone.mutate({
+        cible: trace.cible,
+        points: trace.points,
+        // Une surface calculée ne s'écrit que si le plan est calibré : sans
+        // échelle, on n'a rien de mieux à proposer que ce qui est déjà saisi.
+        surface: surface === null ? undefined : Math.round(surface * 100) / 100,
+      })
+      setOutil('main')
+      return
+    }
+    setZoneAQualifier(trace.points)
+  }
+
+  const abandonner = () => {
+    if (trace) { setTrace(null); setHistorique([]); setOutil('main'); return }
+    if (mesure) { setMesure(null); return }
+    if (creation) { setCreation(null); return }
+    if (outil !== 'main') { setOutil('main'); return }
+    setSelection(null)
+  }
+
+  const supprimerSelection = async () => {
+    if (!selection || !canManage) return
+    if (selection.type === 'annotation') {
+      const repere = annotations.find(a => a.id === selection.id)
+      if (await confirmer({
+        title: `Supprimer le repère « ${repere?.label || 'sans libellé'} » ?`,
+        message: "Le repère disparaît du plan. Il ne porte aucun élément : rien d'autre n'est perdu.",
+      })) supprimerRepere.mutate(selection.id)
+      return
+    }
+    // Un élément ou un groupe ne se supprime pas depuis le plan : on l'en
+    // retire. Effacer la fiche d'un banc parce qu'on déplaçait son repère
+    // emporterait son historique d'entretien et son coût.
+    retirerDuPlan.mutate(selection)
+  }
+
+  const decalerSelection = (dx: number, dy: number) => {
+    if (!selection || !canManage) return
+    const source =
+      selection.type === 'element' ? elements.find(e => e.id === selection.id)
+      : selection.type === 'group' ? groups.find(g => g.id === selection.id)
+      : annotations.find(a => a.id === selection.id)
+    if (!source || source.pos_x == null || source.pos_y == null) return
+    const corps = {
+      id: selection.id,
+      x: borner(Number(source.pos_x) + dx),
+      y: borner(Number(source.pos_y) + dy),
+    }
+    if (selection.type === 'element') deplacerElement.mutate(corps)
+    else if (selection.type === 'group') deplacerGroupe.mutate(corps)
+    else deplacerAnnotation.mutate(corps)
+  }
+
+  // Raccourcis clavier. Ignorés dès qu'une saisie a le focus : `Suppr` dans un
+  // champ de libellé ne doit pas retirer le repère qu'on est en train de nommer.
+  useEffect(() => {
+    const surTouche = (e: KeyboardEvent) => {
+      const cible = e.target as HTMLElement | null
+      if (cible && ['INPUT', 'TEXTAREA', 'SELECT'].includes(cible.tagName)) return
+      if (e.key === 'Escape') { abandonner(); return }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); annulerDernierGeste(); return }
+      if (e.key === 'Enter' && trace) { e.preventDefault(); terminerTrace(); return }
+      if (e.key === 'Delete' || e.key === 'Backspace') { supprimerSelection(); return }
+      if (e.key === '+' || e.key === '=') { vue.zoomer(1.25); return }
+      if (e.key === '-') { vue.zoomer(0.8); return }
+      if (e.key === '0') { vue.reinitialiser(); return }
+      if (e.key.startsWith('Arrow') && selection) {
+        e.preventDefault()
+        const pas = e.shiftKey ? 1 : 0.2
+        if (e.key === 'ArrowLeft') decalerSelection(-pas, 0)
+        if (e.key === 'ArrowRight') decalerSelection(pas, 0)
+        if (e.key === 'ArrowUp') decalerSelection(0, -pas)
+        if (e.key === 'ArrowDown') decalerSelection(0, pas)
+      }
+    }
+    window.addEventListener('keydown', surTouche)
+    return () => window.removeEventListener('keydown', surTouche)
+  })
+
+  const basculerVisibilite = (cle: string) =>
+    setMasques(precedent => {
+      const suivant = new Set(precedent)
+      if (suivant.has(cle)) suivant.delete(cle)
+      else suivant.add(cle)
+      return suivant
+    })
+
+  // Le glissement en cours prime sur ce que dit le serveur : sans cela le
+  // repère resterait figé à son ancienne place jusqu'à la réponse.
+  const avecApercu = <T extends { id: number; pos_x?: number | null; pos_y?: number | null }>(
+    liste: T[], type: SelectionPlan['type']
+  ): T[] =>
+    apercu && apercu.cible.type === type
+      ? liste.map(o => (o.id === apercu.cible.id ? { ...o, pos_x: apercu.point.x, pos_y: apercu.point.y } : o))
+      : liste
+
+  // La zone en cours de tracé remplace celle enregistrée : on retouche ce qu'on
+  // voit, et non une copie qui se superposerait à l'ancienne.
+  const sansZoneEnCours = <T extends { id: number; zone_points?: string | null }>(
+    liste: T[], type: SelectionPlan['type']
+  ): T[] =>
+    trace?.cible?.type === type
+      ? liste.map(o => (o.id === trace.cible!.id ? { ...o, zone_points: null } : o))
+      : liste
 
   if (!space.plan_image) {
     return (
       <div className="text-center py-12 text-gray-500 dark:text-gray-400">
         <Image className="h-12 w-12 mx-auto mb-3 opacity-50" />
         <p>Aucun plan n'a été chargé pour cet espace vert.</p>
-        <p className="text-sm mt-2">Ajoutez une image de plan dans les paramètres de l'espace vert pour pouvoir annoter les emplacements.</p>
+        <p className="text-sm mt-2">
+          Ajoutez une image de plan dans les paramètres de l'espace vert pour pouvoir l'annoter.
+        </p>
+      </div>
+    )
+  }
+
+  const surfaceEnCours = trace && trace.points.length >= 3 ? surfaceDe(trace.points) : null
+
+  return (
+    <div className="space-y-3">
+      <BarreOutilsPlan
+        outil={outil}
+        surOutil={(o) => {
+          setOutil(o)
+          setTrace(null)
+          setMesure(null)
+          setCreation(null)
+          if (o === 'zone') commencerZone(null)
+        }}
+        peutModifier={canManage}
+        zoom={vue.zoom}
+        surZoom={vue.zoomer}
+        surAjuster={vue.ajuster}
+        surReinitialiser={vue.reinitialiser}
+        calques={calques}
+        surCalques={setCalques}
+        panneauOuvert={panneauOuvert}
+        surPanneau={() => setPanneauOuvert(o => !o)}
+        surPDF={() => setExportPDF(true)}
+      />
+
+      {/*
+        Hauteur réservée : la ligne d'état change de contenu au premier clic
+        d'un tracé, et sa hauteur avec. Le plan se décalait alors de quelques
+        dizaines de pixels **entre deux clics**, et le sommet suivant se posait
+        à côté de l'endroit visé — le défaut se voyait à peine et rendait tout
+        contour bancal.
+      */}
+      <div className="min-h-[68px] flex items-center">
+      <LigneEtat
+        outil={outil}
+        trace={trace}
+        mesure={mesure}
+        echelle={echelle}
+        surface={surfaceEnCours}
+        peutModifier={canManage}
+        peutAnnuler={historique.length > 0}
+        surTerminer={terminerTrace}
+        surAnnulerPoint={annulerDernierGeste}
+        surAbandon={abandonner}
+        surCalibrer={() => { setOutil('mesure'); setMesure(null) }}
+      />
+      </div>
+
+      <div className="flex gap-3 items-start">
+        <div
+          ref={vue.cadreRef}
+          className={`relative flex-1 overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-900 ${
+            vue.enDeplacement ? 'cursor-grabbing'
+              : outil === 'main' ? 'cursor-grab'
+              : 'cursor-crosshair'
+          }`}
+          style={{ height: 'min(70vh, 640px)' }}
+          onPointerDown={(e) => {
+            // Bouton du milieu : panoramique quel que soit l'outil, pour ne pas
+            // avoir à repasser par la barre au milieu d'un tracé.
+            if (e.button === 1 || (outil === 'main' && e.button === 0)) vue.commencerDeplacement(e)
+          }}
+          onPointerMove={(e) => { if (trace) setSurvol(vue.versPourcent(e)) }}
+          onPointerLeave={() => setSurvol(null)}
+          onClick={surClicPlan}
+          onDoubleClick={() => { if (trace) terminerTrace() }}
+        >
+          <div ref={vue.contenuRef} className="absolute top-0 left-0" style={vue.styleContenu}>
+            <PlanCanvas
+              planImage={space.plan_image}
+              elements={sansZoneEnCours(avecApercu(elements, 'element'), 'element')}
+              groups={sansZoneEnCours(avecApercu(groups, 'group'), 'group')}
+              annotations={avecApercu(annotations, 'annotation') as any}
+              typeGroupe={typeGroupe}
+              selection={selection}
+              calques={calques}
+              masques={masques}
+              zoom={vue.zoom}
+              onSelect={trace ? undefined : setSelection}
+              onMarqueurPointerDown={glisserMarqueur}
+              onImageLoad={(ratio) => { ratioRef.current = ratio }}
+            >
+              {trace && (
+                <TraceEnCours
+                  points={trace.points}
+                  survol={survol}
+                  zoom={vue.zoom}
+                  surSommet={glisserSommet}
+                  surInterieur={glisserZone}
+                  surInsertion={(index) => modifierTrace(insererSommet(trace.points, index))}
+                  surRetrait={(index) => modifierTrace(retirerSommet(trace.points, index))}
+                />
+              )}
+              {mesure && <SegmentMesure a={mesure.a} b={mesure.b || survol} zoom={vue.zoom} />}
+            </PlanCanvas>
+          </div>
+
+          {echelle && <ReglettePlan echelle={echelle} zoom={vue.zoom} largeur={vue.largeurBase} />}
+        </div>
+
+        {panneauOuvert && (
+          <PanneauPlan
+            elements={elements}
+            groups={groups}
+            annotations={annotations}
+            aPoser={aPoser}
+            groupesAPoser={groupesAPoser}
+            typeGroupe={typeGroupe}
+            selection={selection}
+            surSelection={setSelection}
+            masques={masques}
+            surVisibilite={basculerVisibilite}
+            peutModifier={canManage}
+            echelle={echelle}
+            surRetouche={commencerZone}
+            surRetirer={(cible) => retirerDuPlan.mutate(cible)}
+            surModifier={(el) => setElementEnEdition(el)}
+            surRenommer={(id, champs) => modifierRepere.mutate({ id, ...champs })}
+            surSupprimerRepere={supprimerSelection}
+            surPoser={(cible) => { setOutil('repere'); setCreation(null); setSelection(cible) }}
+          />
+        )}
+      </div>
+
+      <LegendePlan
+        elements={elements.filter(el => positionSurPlan(el) !== null)}
+        groups={groups}
+        typeGroupe={typeGroupe}
+        echelle={echelle}
+      />
+
+      {creation && canManage && (
+        <PanneauCreation
+          position={creation}
+          aPoser={aPoser}
+          groupesAPoser={groupesAPoser}
+          typeGroupe={typeGroupe}
+          enCours={poserElement.isPending || poserGroupe.isPending || ajouterRepere.isPending}
+          onFermer={() => setCreation(null)}
+          onPoserElement={(id) => poserElement.mutate({ id, x: creation.x, y: creation.y })}
+          onPoserGroupe={(id) => poserGroupe.mutate({ id, x: creation.x, y: creation.y })}
+          onRepere={(champs) => ajouterRepere.mutate({ pos_x: creation.x, pos_y: creation.y, ...champs })}
+          onElementLibre={() => { setNouvelElement(creation); setCreation(null) }}
+          onDepuisParc={() => { setImplantation(creation); setCreation(null) }}
+        />
+      )}
+
+      {mesure?.b && (
+        <ModaleCalibrage
+          a={mesure.a}
+          b={mesure.b}
+          ratio={ratioRef.current}
+          echelle={echelle}
+          enCours={enregistrerCalibrage.isPending}
+          onFermer={() => setMesure(null)}
+          onValider={(metres) => {
+            const calcul = echelleDepuisCalibrage({ a: mesure.a, b: mesure.b!, metres }, ratioRef.current)
+            if (!calcul) { toast.error('Le segment est trop court pour donner une échelle fiable'); return }
+            enregistrerCalibrage.mutate({
+              plan_scale_metres: calcul.metresParPourcent,
+              plan_ratio: calcul.ratio,
+              plan_scale_points: { a: mesure.a, b: mesure.b, metres },
+            })
+          }}
+          onEffacer={() =>
+            enregistrerCalibrage.mutate({
+              plan_scale_metres: null, plan_ratio: null, plan_scale_points: null,
+            })
+          }
+        />
+      )}
+
+      {zoneAQualifier && (
+        <ModaleZone
+          points={zoneAQualifier}
+          surfaceCalculee={surfaceDe(zoneAQualifier)}
+          elements={elements}
+          groups={groups}
+          typeGroupe={typeGroupe}
+          enCours={creerZone.isPending || enregistrerZone.isPending}
+          onFermer={() => { setZoneAQualifier(null); setTrace(null); setOutil('main') }}
+          onRattacher={(cible, surface) => {
+            enregistrerZone.mutate({ cible, points: zoneAQualifier, surface })
+            setZoneAQualifier(null)
+            setOutil('main')
+          }}
+          onCreer={(corps) => {
+            creerZone.mutate({ ...corps, zone_points: zoneAQualifier })
+            setOutil('main')
+          }}
+        />
+      )}
+
+      {nouvelElement && (
+        <ElementFormModal
+          spaceId={space.id}
+          element={null}
+          positionInitiale={nouvelElement}
+          onClose={() => setNouvelElement(null)}
+          onSaved={() => { setNouvelElement(null); rafraichir() }}
+        />
+      )}
+
+      {implantation && (
+        <ImplantationDepuisParc
+          spaceId={space.id}
+          groups={groups}
+          positionInitiale={implantation}
+          onClose={() => setImplantation(null)}
+          onSaved={() => { setImplantation(null); rafraichir() }}
+        />
+      )}
+
+      {elementEnEdition && (
+        <ElementFormModal
+          spaceId={space.id}
+          element={elementEnEdition}
+          onClose={() => setElementEnEdition(null)}
+          onSaved={() => { setElementEnEdition(null); rafraichir() }}
+        />
+      )}
+
+      {exportPDF && <PlanPDFExport space={space} onClose={() => setExportPDF(false)} />}
+    </div>
+  )
+}
+
+/** Distance entre deux points du plan, en pourcents. */
+const distance = (a: PointPlan, b: PointPlan) => Math.hypot(a.x - b.x, a.y - b.y)
+
+// ---------------------------------------------------------------- barre d'outils
+
+function BarreOutilsPlan({
+  outil, surOutil, peutModifier, zoom, surZoom, surAjuster, surReinitialiser,
+  calques, surCalques, panneauOuvert, surPanneau, surPDF,
+}: {
+  outil: OutilPlan
+  surOutil: (o: OutilPlan) => void
+  peutModifier: boolean
+  zoom: number
+  surZoom: (facteur: number) => void
+  surAjuster: () => void
+  surReinitialiser: () => void
+  calques: CalquesPlan
+  surCalques: (c: CalquesPlan) => void
+  panneauOuvert: boolean
+  surPanneau: () => void
+  surPDF: () => void
+}) {
+  const OUTILS: Array<{ cle: OutilPlan; libelle: string; icone: any; gere: boolean }> = [
+    { cle: 'main', libelle: 'Déplacer la vue', icone: Move, gere: false },
+    { cle: 'repere', libelle: 'Poser', icone: MapPin, gere: true },
+    { cle: 'zone', libelle: 'Dessiner une zone', icone: Pentagon, gere: true },
+    { cle: 'mesure', libelle: 'Mesurer / calibrer', icone: Ruler, gere: true },
+  ]
+
+  const CALQUES: Array<{ cle: keyof CalquesPlan; libelle: string }> = [
+    { cle: 'elements', libelle: 'Éléments' },
+    { cle: 'groupes', libelle: 'Groupes' },
+    { cle: 'annotations', libelle: 'Repères' },
+    { cle: 'zones', libelle: 'Zones' },
+    { cle: 'etiquettes', libelle: 'Étiquettes' },
+  ]
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2">
+      {/* Outils */}
+      <div className="inline-flex items-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5">
+        {OUTILS.filter(o => !o.gere || peutModifier).map(o => (
+          <button
+            key={o.cle}
+            type="button"
+            onClick={() => surOutil(o.cle)}
+            aria-pressed={outil === o.cle}
+            title={o.libelle}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-sm rounded-md transition-colors min-h-[38px] ${
+              outil === o.cle
+                ? 'bg-green-600 text-white'
+                : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            }`}
+          >
+            <o.icone className="h-4 w-4" />
+            <span className="hidden lg:inline">{o.libelle}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Affichage */}
+      <div className="flex items-center gap-1">
+        <IconButton label="Réduire le zoom" icon={<ZoomOut className="h-4 w-4" />} onClick={() => surZoom(0.8)} />
+        <span className="text-sm text-gray-500 w-12 text-center tabular-nums">{Math.round(zoom * 100)} %</span>
+        <IconButton label="Agrandir le zoom" icon={<ZoomIn className="h-4 w-4" />} onClick={() => surZoom(1.25)} />
+        <IconButton label="Ajuster le plan au cadre" icon={<Maximize2 className="h-4 w-4" />} onClick={surAjuster} />
+        <button
+          type="button"
+          onClick={surReinitialiser}
+          className="px-2 py-1.5 text-xs rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 min-h-[38px]"
+          title="Revenir à 100 %, sans décalage"
+        >
+          100 %
+        </button>
+
+        <div className="ml-1 inline-flex items-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5">
+          {CALQUES.map(c => (
+            <button
+              key={c.cle}
+              type="button"
+              onClick={() => surCalques({ ...calques, [c.cle]: !calques[c.cle] })}
+              aria-pressed={calques[c.cle]}
+              title={`${calques[c.cle] ? 'Masquer' : 'Afficher'} : ${c.libelle}`}
+              className={`px-2 py-1 text-xs rounded transition-colors ${
+                calques[c.cle]
+                  ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100'
+                  : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              {c.libelle}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center gap-1">
+        <IconButton
+          label={panneauOuvert ? 'Masquer la liste' : 'Afficher la liste'}
+          icon={panneauOuvert ? <ChevronRight className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
+          onClick={surPanneau}
+        />
+        <IconButton label="Exporter le plan en PDF" icon={<Download className="h-4 w-4" />} onClick={surPDF} />
+        <HelpSheet
+          titre="Le plan annoté"
+          points={[
+            "Choisissez un outil : la main déplace la vue, « Poser » ajoute un élément ou un repère, « Dessiner une zone » trace un contour, « Mesurer » donne l'échelle du plan.",
+            'Attrapez un repère à la souris pour le déplacer : il se pose là où vous lâchez. Les flèches du clavier l’ajustent au dixième de pourcent, Maj pour aller plus vite.',
+            'Une zone se dessine en cliquant chaque sommet. Revenez sur le premier point, double-cliquez ou tapez Entrée pour la refermer ; Ctrl+Z revient en arrière, Échap abandonne.',
+            'Mesurez une longueur que vous connaissez — une façade, un terrain — et donnez-la en mètres : toutes les zones affichent ensuite leur surface toutes seules.',
+            'Une zone peut porter un matériau du parc — gazon, enrobé — et son coût suit la surface. Cochez « ne pas compter » pour tracer ce qui était déjà là.',
+          ]}
+        />
+      </div>
+    </div>
+  )
+}
+
+// -------------------------------------------------------------- ligne d'état
+
+function LigneEtat({
+  outil, trace, mesure, echelle, surface, peutModifier, peutAnnuler,
+  surTerminer, surAnnulerPoint, surAbandon, surCalibrer,
+}: {
+  outil: OutilPlan
+  trace: { cible: SelectionPlan | null; points: PointPlan[] } | null
+  mesure: { a: PointPlan; b: PointPlan | null } | null
+  echelle: EchellePlan | null
+  surface: number | null
+  peutModifier: boolean
+  peutAnnuler: boolean
+  surTerminer: () => void
+  surAnnulerPoint: () => void
+  surAbandon: () => void
+  surCalibrer: () => void
+}) {
+  if (trace) {
+    return (
+      <div className="w-full flex flex-wrap items-center justify-between gap-2 p-3 rounded-lg bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700">
+        <p className="text-sm text-purple-700 dark:text-purple-300 flex items-center gap-2">
+          <Pentagon className="h-4 w-4 flex-shrink-0" />
+          <span>
+            {trace.points.length} sommet{trace.points.length > 1 ? 's' : ''}
+            {surface !== null && <> · <strong>{formaterSurface(surface)}</strong></>}
+            {' — '}
+            {trace.points.length < 3
+              ? 'cliquez pour poser les sommets (3 minimum)'
+              : 'revenez sur le premier point ou tapez Entrée pour refermer · glissez un sommet pour le corriger'}
+          </span>
+        </p>
+        <div className="flex items-center gap-1.5">
+          <Button size="sm" variant="ghost" onClick={surAnnulerPoint} disabled={!peutAnnuler}>Annuler (Ctrl+Z)</Button>
+          <Button size="sm" variant="ghost" onClick={surAbandon}>Abandonner</Button>
+          <Button size="sm" onClick={surTerminer} disabled={trace.points.length < 3}>Terminer</Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (outil === 'mesure') {
+    return (
+      <div className="w-full p-3 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700">
+        <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
+          <Ruler className="h-4 w-4 flex-shrink-0" />
+          {!mesure
+            ? 'Cliquez au début d’une longueur que vous connaissez : une façade, un terrain, un côté de bâtiment.'
+            : 'Cliquez à l’autre extrémité, puis donnez la longueur réelle en mètres.'}
+        </p>
+      </div>
+    )
+  }
+
+  if (outil === 'repere') {
+    return (
+      <div className="w-full p-3 rounded-lg bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700">
+        <p className="text-sm text-green-700 dark:text-green-300 flex items-center gap-2">
+          <MapPin className="h-4 w-4 flex-shrink-0" />
+          Cliquez à l’endroit voulu sur le plan : vous choisirez ensuite quoi y poser.
+        </p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-3">
-      {/* Barre de dessin de zone en cours */}
-      {drawingZone && (
-        <div className="flex items-center justify-between h-11 w-11 flex items-center justify-center bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg">
-          <p className="text-sm text-purple-700 dark:text-purple-300 flex items-center gap-2">
-            <Pentagon className="h-4 w-4" />
-            Dessin de zone : {zonePoints.length} point{zonePoints.length > 1 ? 's' : ''} — Cliquez pour ajouter des points (min. 3)
-          </p>
-          <div className="flex items-center gap-2">
-            {zonePoints.length > 0 && (
-              <button
-                onClick={removeLastZonePoint}
-                className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-200"
-              >
-                Annuler dernier
-              </button>
-            )}
-            <button
-              onClick={finishDrawingZone}
-              disabled={zonePoints.length < 3}
-              className="text-sm px-3 py-1 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50"
-            >
-              Valider ({zonePoints.length}/3+)
-            </button>
-            <button
-              onClick={cancelDrawingZone}
-              className="text-sm text-purple-600 hover:text-purple-800 dark:text-purple-400 dark:hover:text-purple-200 flex items-center gap-1"
-            >
-              <X className="h-4 w-4" /> Annuler
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Barre de déplacement en cours */}
-      {dragging && (
-        <div className="flex items-center justify-between h-11 w-11 flex items-center justify-center bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-700 rounded-lg">
-          <p className="text-sm text-blue-700 dark:text-blue-300 flex items-center gap-2">
-            <Move className="h-4 w-4" />
-            Cliquez sur le plan pour déplacer le repère
-          </p>
-          <button
-            onClick={() => setDragging(null)}
-            className="text-sm text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-200 flex items-center gap-1"
-          >
-            <X className="h-4 w-4" /> Annuler
-          </button>
-        </div>
-      )}
-
-      {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => setZoom(z => Math.max(0.5, z - 0.25))}
-            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 touch-target"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </button>
-          <span className="text-sm text-gray-500">{Math.round(zoom * 100)}%</span>
-          <button
-            onClick={() => setZoom(z => Math.min(3, z + 0.25))}
-            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 touch-target"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setZoom(1)}
-            className="p-1.5 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs px-2 touch-target"
-          >
-            Reset
-          </button>
-        </div>
-        <button
-          onClick={() => { setAddingAnnotation(!addingAnnotation); setDragging(null) }}
-          className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg transition-colors ${
-            addingAnnotation
-              ? 'bg-green-600 text-white'
-              : 'bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
-          }`}
-        >
-          <MapPin className="h-4 w-4" />
-          {addingAnnotation ? 'Cliquez sur le plan...' : 'Ajouter un repère'}
-        </button>
-        <button
-          onClick={() => setShowPDFExport(true)}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 min-h-[44px]"
-        >
-          <Download className="h-4 w-4" />
-          PDF
-        </button>
-      </div>
-
-      {/* Plan avec annotations */}
-      <div className="relative overflow-auto border border-gray-200 dark:border-gray-700 rounded-xl bg-gray-100 dark:bg-gray-900" style={{ maxHeight: 'calc(100vh - 220px)' }}>
-        <div
-          ref={canvasRef}
-          className={`relative ${addingAnnotation || dragging || drawingZone ? 'cursor-crosshair' : 'cursor-default'}`}
-          onClick={handlePlanClick}
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'top left', transition: 'transform 0.2s' }}
-        >
-          <img src={getImageUrl(space.plan_image)} alt="Plan" className="w-full" />
-
-          {/* SVG overlay pour les zones (polygones) */}
-          <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 1 }} viewBox="0 0 100 100" preserveAspectRatio="none">
-            {/* Zones des éléments */}
-            {elements.filter(el => el.zone_points).map(el => {
-              const pts = parseZonePoints(el.zone_points)
-              if (pts.length < 3) return null
-              const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-              const color = typeInfo?.color || '#22c55e'
-              const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
-              return (
-                <polygon
-                  key={`zone-el-${el.id}`}
-                  points={pointsStr}
-                  fill={color}
-                  fillOpacity={0.25}
-                  stroke={color}
-                  strokeWidth={2}
-                  strokeOpacity={0.7}
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                  className="pointer-events-auto cursor-pointer"
-                  onClick={(e) => { e.stopPropagation(); setSelectedMarker({ type: 'element', id: el.id }) }}
-                >
-                  <title>{el.label}{el.area_m2 ? ` (${el.area_m2} m²)` : ''}</title>
-                </polygon>
-              )
-            })}
-            {/* Zones des groupes */}
-            {groups.filter(g => g.zone_points).map(g => {
-              const pts = parseZonePoints(g.zone_points)
-              if (pts.length < 3) return null
-              const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-              const color = g.color || typeInfo?.color || '#8b5cf6'
-              const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
-              return (
-                <polygon
-                  key={`zone-grp-${g.id}`}
-                  points={pointsStr}
-                  fill={color}
-                  fillOpacity={0.2}
-                  stroke={color}
-                  strokeWidth={2}
-                  strokeOpacity={0.8}
-                  strokeLinejoin="round"
-                  vectorEffect="non-scaling-stroke"
-                  strokeDasharray="6 3"
-                  className="pointer-events-auto cursor-pointer"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <title>{g.name}{g.area_m2 ? ` (${g.area_m2} m²)` : ''}</title>
-                </polygon>
-              )
-            })}
-            {/* Zone en cours de dessin */}
-            {drawingZone && zonePoints.length > 0 && (
-              <>
-                {zonePoints.length >= 3 && (
-                  <polygon
-                    points={zonePoints.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="#8b5cf6"
-                    fillOpacity={0.15}
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    strokeDasharray="6 3"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                )}
-                {zonePoints.length >= 2 && zonePoints.length < 3 && (
-                  <polyline
-                    points={zonePoints.map(p => `${p.x},${p.y}`).join(' ')}
-                    fill="none"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    strokeDasharray="6 3"
-                    strokeLinejoin="round"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                )}
-                {zonePoints.map((pt, i) => (
-                  <circle
-                    key={i}
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={0.5}
-                    fill="#8b5cf6"
-                    stroke="white"
-                    strokeWidth={2}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
-              </>
-            )}
-          </svg>
-
-          {/* Annotations des éléments positionnés */}
-          {elements.filter(el => el.pos_x != null && el.pos_y != null).map(el => {
-            const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-            const isSelected = selectedMarker?.type === 'element' && selectedMarker.id === el.id
-            const isDraggingThis = dragging?.type === 'element' && dragging.id === el.id
-            return (
-              <div
-                key={`el-${el.id}`}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 ${isDraggingThis ? 'opacity-50' : ''}`}
-                style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%`, zIndex: isSelected ? 50 : 10 }}
-              >
-                <div
-                  className={`w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center text-xs cursor-pointer transition-transform ${isSelected ? 'scale-150 ring-2 ring-blue-400' : 'hover:scale-125'}`}
-                  style={{ backgroundColor: typeInfo?.color || '#22c55e' }}
-                  title={`${el.code || el.label}`}
-                  onClick={(e) => { e.stopPropagation(); setSelectedMarker(isSelected ? null : { type: 'element', id: el.id }) }}
-                >
-                  <span className="text-white text-[8px] font-bold">{el.code ? el.code.substring(0, 2) : ''}</span>
-                </div>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200/70 dark:border-gray-600/70 pointer-events-none select-none" style={{ fontSize: '7px', whiteSpace: 'nowrap', lineHeight: '12px', color: '#1e293b' }}>
-                  {el.code || el.label}
-                </div>
-                {isSelected && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 h-11 w-11 flex items-center justify-center z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                      <p className="text-xs font-semibold text-gray-900 dark:text-white">{el.label}</p>
-                      <button onClick={() => setSelectedMarker(null)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
-                    </div>
-                    {el.code && <p className="text-xs text-gray-500 font-mono">{el.code}</p>}
-                    {el.species && <p className="text-xs text-green-600 italic">{el.species}</p>}
-                    <p className="text-xs text-gray-600">{typeInfo?.label} • {CONDITION_STATES.find(c => c.value === el.condition_state)?.label}</p>
-                    {el.area_m2 && <p className="text-xs text-gray-600">{el.area_m2} m²</p>}
-                    <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => { setSelectedMarker(null); setDragging({ type: 'element', id: el.id }) }}
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                      >
-                        <GripVertical className="h-3 w-3" /> Déplacer
-                      </button>
-                      {parseZonePoints(el.zone_points).length > 0 ? (
-                        <button
-                          onClick={() => { clearZone('element', el.id); setSelectedMarker(null) }}
-                          className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                        >
-                          <X className="h-3 w-3" /> Zone
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => { startDrawingZone('element', el.id); setSelectedMarker(null) }}
-                          className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400"
-                        >
-                          <Pentagon className="h-3 w-3" /> Zone
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { setEditingPlanElement(el); setSelectedMarker(null) }}
-                        className="flex items-center gap-1 text-xs text-green-600 hover:text-green-800 dark:text-green-400"
-                      >
-                        <Edit3 className="h-3 w-3" /> Modifier
-                      </button>
-                      <button
-                        onClick={() => { unplaceElementMutation.mutate(el.id) }}
-                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="h-3 w-3" /> Retirer
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-
-          {/* Annotations manuelles */}
-          {annotations.map(ann => {
-            const isDraggingThis = dragging?.type === 'annotation' && dragging.id === ann.id
-            const isSelected = selectedMarker?.type === 'annotation' && selectedMarker.id === ann.id
-            return (
-              <div
-                key={`ann-${ann.id}`}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 cursor-pointer ${isDraggingThis ? 'opacity-50' : ''}`}
-                style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%`, zIndex: isSelected ? 50 : 10 }}
-              >
-                <div
-                  className={`w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center transition-transform ${isSelected ? 'scale-150 ring-2 ring-blue-400' : 'hover:scale-125'}`}
-                  style={{ backgroundColor: ann.color }}
-                  onClick={(e) => { e.stopPropagation(); setSelectedMarker(isSelected ? null : { type: 'annotation', id: ann.id }); setSelectedAnnotation(ann) }}
-                >
-                  <MapPin className="h-3 w-3 text-white" />
-                </div>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200/70 dark:border-gray-600/70 pointer-events-none select-none" style={{ fontSize: '7px', whiteSpace: 'nowrap', lineHeight: '12px', color: '#1e293b' }}>
-                  {ann.label}
-                </div>
-                {isSelected && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 h-11 w-11 flex items-center justify-center z-50 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                      <p className="text-xs font-semibold text-gray-900 dark:text-white">{ann.label}</p>
-                      <button onClick={() => setSelectedMarker(null)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
-                    </div>
-                    <p className="text-xs text-gray-600">Position : {ann.pos_x.toFixed(1)}%, {ann.pos_y.toFixed(1)}%</p>
-                    <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex items-center gap-2">
-                      <button
-                        onClick={() => { setSelectedMarker(null); setDragging({ type: 'annotation', id: ann.id }) }}
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                      >
-                        <GripVertical className="h-3 w-3" /> Déplacer
-                      </button>
-                      <button
-                        onClick={() => { deleteAnnotationMutation.mutate(ann.id) }}
-                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="h-3 w-3" /> Supprimer
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-
-          {/* Groupes de composition positionnés */}
-          {groups.filter(g => g.pos_x != null && g.pos_y != null).map(g => {
-            const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-            const groupElements = elements.filter(el => el.group_id === g.id)
-            const isDraggingThis = dragging?.type === 'group' && dragging.id === g.id
-            const isSelected = selectedMarker?.type === 'group' && selectedMarker.id === g.id
-            return (
-              <div
-                key={`grp-${g.id}`}
-                className={`absolute transform -translate-x-1/2 -translate-y-1/2 ${isDraggingThis ? 'opacity-50' : ''}`}
-                style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%`, zIndex: isSelected ? 50 : 10 }}
-              >
-                <div
-                  className={`w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center text-sm cursor-pointer transition-transform ${isSelected ? 'scale-125 ring-2 ring-blue-400' : 'hover:scale-125'}`}
-                  style={{ backgroundColor: g.color || typeInfo?.color || '#8b5cf6' }}
-                  title={g.name}
-                  onClick={(e) => { e.stopPropagation(); setSelectedMarker(isSelected ? null : { type: 'group', id: g.id }) }}
-                >
-                  <Layers className="h-4 w-4 text-white" />
-                </div>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200/70 dark:border-gray-600/70 pointer-events-none select-none" style={{ fontSize: '7px', whiteSpace: 'nowrap', lineHeight: '12px', color: '#1e293b' }}>
-                  {g.name}
-                </div>
-                {isSelected && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 bg-white dark:bg-gray-800 rounded-lg shadow-xl border border-gray-200 dark:border-gray-600 h-11 w-11 flex items-center justify-center z-50 whitespace-nowrap min-w-[120px]" onClick={(e) => e.stopPropagation()}>
-                    <div className="flex items-center justify-between gap-3 mb-1">
-                      <p className="text-xs font-semibold text-gray-900 dark:text-white">{g.name}</p>
-                      <button onClick={() => setSelectedMarker(null)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-3 w-3" /></button>
-                    </div>
-                    <p className="text-xs text-gray-500">{typeInfo?.label} • {groupElements.length} élém.</p>
-                    {g.area_m2 && <p className="text-xs text-gray-600">{g.area_m2} m²</p>}
-                    {groupElements.slice(0, 4).map(el => (
-                      <p key={el.id} className="text-xs text-gray-600 truncate">• {el.label}</p>
-                    ))}
-                    {groupElements.length > 4 && <p className="text-xs text-gray-600">+ {groupElements.length - 4} autres</p>}
-                    <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-700 flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={() => { setSelectedMarker(null); setDragging({ type: 'group', id: g.id }) }}
-                        className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400"
-                      >
-                        <GripVertical className="h-3 w-3" /> Déplacer
-                      </button>
-                      {parseZonePoints(g.zone_points).length > 0 ? (
-                        <button
-                          onClick={() => { clearZone('group', g.id); setSelectedMarker(null) }}
-                          className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                        >
-                          <X className="h-3 w-3" /> Zone
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => { startDrawingZone('group', g.id); setSelectedMarker(null) }}
-                          className="flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 dark:text-purple-400"
-                        >
-                          <Pentagon className="h-3 w-3" /> Zone
-                        </button>
-                      )}
-                      <button
-                        onClick={() => { unplaceGroupMutation.mutate(g.id) }}
-                        className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="h-3 w-3" /> Retirer
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      </div>
-      {clickPos && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setClickPos(null)}>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-80 max-h-[28rem] overflow-hidden" onClick={e => e.stopPropagation()}>
-            <div className="p-3 border-b border-gray-200 dark:border-gray-700">
-              <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-                <MapPin className="h-4 w-4 text-green-600" />
-                Placer sur le plan
-              </h4>
-              <p className="text-xs text-gray-500 mt-0.5">
-                Position : {clickPos.x.toFixed(1)}%, {clickPos.y.toFixed(1)}%
-              </p>
-            </div>
-
-            {unplacedGroups.length > 0 && (
-              <div className="h-11 w-11 flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1 flex items-center gap-1"><Layers className="h-3 w-3" /> Groupes</p>
-                <div className="max-h-28 overflow-y-auto space-y-1">
-                  {unplacedGroups.map(g => {
-                    const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-                    const cnt = elements.filter(el => el.group_id === g.id).length
-                    return (
-                      <button
-                        key={g.id}
-                        onClick={() => handlePlaceGroup(g)}
-                        disabled={updateGroupPosMutation.isPending}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-left transition-colors min-h-[44px]"
-                      >
-                        <span className="w-3 h-3 rounded flex-shrink-0 flex items-center justify-center" style={{ backgroundColor: g.color || typeInfo?.color }}>
-                          <Layers className="h-2 w-2 text-white" />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-gray-900 dark:text-white truncate">{g.name}</p>
-                          <p className="text-xs text-gray-500 truncate">{typeInfo?.label} • {cnt} élém.</p>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            {unplacedElements.length > 0 && (
-              <div className="h-11 w-11 flex items-center justify-center border-b border-gray-200 dark:border-gray-700">
-                <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1">Éléments liés</p>
-                <div className="max-h-40 overflow-y-auto space-y-1">
-                  {unplacedElements.map(el => {
-                    const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-                    return (
-                      <button
-                        key={el.id}
-                        onClick={() => handlePlaceElement(el)}
-                        disabled={updateElementPosMutation.isPending}
-                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-left transition-colors min-h-[44px]"
-                      >
-                        <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: typeInfo?.color || '#22c55e' }} />
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm text-gray-900 dark:text-white truncate">{el.label}</p>
-                          <p className="text-xs text-gray-500 truncate">
-                            {el.code && <span className="font-mono mr-1">{el.code}</span>}
-                            {typeInfo?.label}{el.species ? ` • ${el.species}` : ''}
-                          </p>
-                        </div>
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
-
-            <div className="h-11 w-11 flex items-center justify-center">
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 px-1 mb-1">Annotation libre</p>
-              <div className="flex gap-1">
-                <input
-                  type="text"
-                  value={freeLabel}
-                  onChange={e => setFreeLabel(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && handleAddFreeAnnotation()}
-                  placeholder="Libellé..."
-                  className="flex-1 text-sm px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white min-h-[44px]"
-                  autoFocus
-                />
-                <button
-                  onClick={handleAddFreeAnnotation}
-                  disabled={!freeLabel.trim() || addAnnotationMutation.isPending}
-                  className="px-2 py-1.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 min-h-[44px]"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-
-            <div className="h-11 w-11 flex items-center justify-center border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => setClickPos(null)}
-                className="w-full text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 py-1"
-              >
-                Annuler
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Détail annotation sélectionnée */}
-      {selectedAnnotation && (
-        <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg border border-gray-200 dark:border-gray-600">
-          <div>
-            <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedAnnotation.label}</p>
-            <p className="text-xs text-gray-500">Position : {selectedAnnotation.pos_x.toFixed(1)}%, {selectedAnnotation.pos_y.toFixed(1)}%</p>
-          </div>
-          <button
-            onClick={() => deleteAnnotationMutation.mutate(selectedAnnotation.id)}
-            className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/50 rounded touch-target"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Légende */}
-      <div className="flex flex-wrap gap-2 text-xs">
-        {ELEMENT_TYPES.filter(t => elements.some(el => el.element_type === t.value && el.pos_x != null)).map(t => (
-          <span key={t.value} className="flex items-center gap-1 px-2 py-1 rounded bg-gray-100 dark:bg-gray-700">
-            <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: t.color }} />
-            {t.label}
-          </span>
-        ))}
-        {groups.filter(g => g.pos_x != null).map(g => {
-          const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-          return (
-            <span key={`grp-${g.id}`} className="flex items-center gap-1 px-2 py-1 rounded bg-gray-100 dark:bg-gray-700">
-              <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: g.color || typeInfo?.color }} />
-              {g.name}
-            </span>
-          )
-        })}
-      </div>
-
-      {/* Modal d'édition d'élément depuis le plan */}
-      {editingPlanElement && (
-        <ElementFormModal
-          spaceId={space.id}
-          element={editingPlanElement}
-          onClose={() => setEditingPlanElement(null)}
-          onSaved={() => {
-            setEditingPlanElement(null)
-            queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
-          }}
-        />
-      )}
-
-      {/* Export PDF du plan */}
-      {showPDFExport && (
-        <PlanPDFExport space={space} onClose={() => setShowPDFExport(false)} />
+    <div className="w-full flex flex-wrap items-center justify-between gap-2 text-sm text-gray-500 dark:text-gray-400">
+      <span className="flex items-center gap-2">
+        <Move className="h-4 w-4 flex-shrink-0" />
+        Glissez pour déplacer la vue, la molette pour zoomer. Attrapez un repère pour le déplacer.
+      </span>
+      {peutModifier && (
+        <span className="flex items-center gap-2">
+          {echelle ? (
+            <>
+              <Ruler className="h-4 w-4 text-green-600" />
+              Échelle : 1 % ≈ {echelle.metresParPourcent.toFixed(2).replace('.', ',')} m
+              <Button size="sm" variant="ghost" onClick={surCalibrer}>Recalibrer</Button>
+            </>
+          ) : (
+            <>
+              <span className="text-amber-600 dark:text-amber-400">
+                Plan non calibré : les surfaces restent à saisir à la main.
+              </span>
+              <Button size="sm" variant="ghost" onClick={surCalibrer}>Calibrer</Button>
+            </>
+          )}
+        </span>
       )}
     </div>
   )
 }
+
+// ----------------------------------------------------- couche d'édition du plan
+
+function TraceEnCours({ points, survol, zoom, surSommet, surInterieur, surInsertion, surRetrait }: {
+  points: PointPlan[]
+  survol: PointPlan | null
+  zoom: number
+  surSommet: (index: number, e: React.PointerEvent) => void
+  surInterieur: (e: React.PointerEvent) => void
+  surInsertion: (index: number) => void
+  surRetrait: (index: number) => void
+}) {
+  const chaine = points.map(p => `${p.x},${p.y}`).join(' ')
+  // Les poignées gardent leur taille à l'écran : à 300 %, des sommets grossis
+  // trois fois recouvriraient le tracé qu'ils servent à corriger.
+  const rayon = 1.1 / zoom
+
+  return (
+    <>
+      <svg
+        className="absolute inset-0 w-full h-full"
+        style={{ zIndex: 30 }}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+      >
+        {points.length >= 3 ? (
+          <polygon
+            points={chaine}
+            fill="#8b5cf6"
+            fillOpacity={0.2}
+            stroke="#8b5cf6"
+            strokeWidth={2}
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+            className="pointer-events-auto cursor-move"
+            onPointerDown={surInterieur}
+          />
+        ) : points.length === 2 ? (
+          <polyline
+            points={chaine}
+            fill="none"
+            stroke="#8b5cf6"
+            strokeWidth={2}
+            vectorEffect="non-scaling-stroke"
+            className="pointer-events-none"
+          />
+        ) : null}
+
+        {/* Le côté qui vient, sous le curseur : sans lui on pose les sommets à
+            l'aveugle et le contour ne ressemble à rien. */}
+        {survol && points.length > 0 && (
+          <line
+            x1={points[points.length - 1].x} y1={points[points.length - 1].y}
+            x2={survol.x} y2={survol.y}
+            stroke="#8b5cf6" strokeWidth={1.5} strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke" className="pointer-events-none"
+          />
+        )}
+      </svg>
+
+      {/* Point clair au milieu de chaque côté : le cliquer y ajoute un sommet. */}
+      {points.length >= 3 && points.map((p, i) => {
+        const suivant = points[(i + 1) % points.length]
+        return (
+          <button
+            key={`ajout-${i}`}
+            type="button"
+            aria-label={`Ajouter un sommet sur le côté ${i + 1}`}
+            title="Ajouter un sommet ici"
+            className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-white border-2 border-purple-400 opacity-60 hover:opacity-100 hover:scale-125 transition"
+            style={{
+              left: `${(p.x + suivant.x) / 2}%`,
+              top: `${(p.y + suivant.y) / 2}%`,
+              width: `${12 / zoom}px`,
+              height: `${12 / zoom}px`,
+              zIndex: 31,
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); surInsertion(i) }}
+          />
+        )
+      })}
+
+      {points.map((p, i) => (
+        <div
+          key={`sommet-${i}`}
+          role="button"
+          tabIndex={-1}
+          aria-label={`Sommet ${i + 1} — glisser pour déplacer, Alt+clic pour retirer`}
+          title={i === 0 ? 'Premier sommet — revenez ici pour refermer' : 'Glisser pour déplacer · Alt+clic pour retirer'}
+          className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 cursor-move ${
+            i === 0 ? 'bg-purple-600 border-white' : 'bg-white border-purple-600'
+          }`}
+          style={{
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            width: `${rayon * 2 * 8}px`,
+            height: `${rayon * 2 * 8}px`,
+            zIndex: 32,
+          }}
+          onPointerDown={(e) => { if (!e.altKey) surSommet(i, e) }}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (e.altKey) surRetrait(i)
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
+function SegmentMesure({ a, b, zoom }: { a: PointPlan; b: PointPlan | null; zoom: number }) {
+  return (
+    <>
+      <svg className="absolute inset-0 w-full h-full pointer-events-none" style={{ zIndex: 30 }} viewBox="0 0 100 100" preserveAspectRatio="none">
+        {b && (
+          <line
+            x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+            stroke="#2563eb" strokeWidth={2} vectorEffect="non-scaling-stroke"
+          />
+        )}
+      </svg>
+      {[a, b].filter(Boolean).map((p, i) => (
+        <div
+          key={i}
+          className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-600 border-2 border-white"
+          style={{ left: `${p!.x}%`, top: `${p!.y}%`, width: `${14 / zoom}px`, height: `${14 / zoom}px`, zIndex: 31 }}
+        />
+      ))}
+    </>
+  )
+}
+
+/**
+ * Réglette d'échelle, dans le coin du plan.
+ *
+ * Une surface annoncée en mètres carrés se vérifie d'un coup d'œil quand une
+ * barre dit ce que vaut une distance ; sans elle, il faut croire le chiffre.
+ */
+function ReglettePlan({ echelle, zoom, largeur }: { echelle: EchellePlan; zoom: number; largeur: number }) {
+  if (!largeur) return null
+  // On cherche une longueur ronde — 1, 2, 5, 10, 20, 50 m… — qui tienne dans
+  // une centaine de pixels : une réglette de « 37 m » ne se lit pas.
+  const metresParPixel = echelle.metresParPourcent / ((largeur * zoom) / 100)
+  const brut = metresParPixel * 120
+  const puissance = Math.pow(10, Math.floor(Math.log10(brut)))
+  const rond = [1, 2, 5, 10].map(m => m * puissance).find(m => m >= brut) ?? puissance * 10
+  const pixels = rond / metresParPixel
+  if (!Number.isFinite(pixels) || pixels < 20) return null
+
+  return (
+    <div className="absolute bottom-3 left-3 pointer-events-none select-none">
+      <div className="px-2 py-1 rounded bg-white/85 dark:bg-gray-900/85 shadow-sm">
+        <div className="h-1.5 border-l-2 border-r-2 border-b-2 border-gray-700 dark:border-gray-200" style={{ width: `${pixels}px` }} />
+        <span className="block text-[11px] text-gray-700 dark:text-gray-200 text-center mt-0.5">
+          {rond >= 1 ? `${rond} m` : `${rond * 100} cm`}
+        </span>
+      </div>
+    </div>
+  )
+}
+
+// ------------------------------------------------------- panneau latéral
+
+/**
+ * La liste de ce qui est sur le plan, et de ce qui n'y est pas encore.
+ *
+ * Les éléments à poser n'étaient atteignables qu'en cliquant au hasard sur le
+ * fond du plan, ce qui ouvrait une fenêtre où ils figuraient : rien ne le
+ * laissait deviner. Ils sont ici, en tête, avec ce qu'il faut pour les poser.
+ */
+function PanneauPlan({
+  elements, groups, annotations, aPoser, groupesAPoser, typeGroupe,
+  selection, surSelection, masques, surVisibilite, peutModifier, echelle,
+  surRetouche, surRetirer, surModifier, surRenommer, surSupprimerRepere, surPoser,
+}: {
+  elements: GreenSpaceElement[]
+  groups: CompositionGroup[]
+  annotations: Annotation[]
+  aPoser: GreenSpaceElement[]
+  groupesAPoser: CompositionGroup[]
+  typeGroupe: (v?: string | null) => { label: string; icon: string; color: string }
+  selection: SelectionPlan | null
+  surSelection: (s: SelectionPlan | null) => void
+  masques: Set<string>
+  surVisibilite: (cle: string) => void
+  peutModifier: boolean
+  echelle: EchellePlan | null
+  surRetouche: (cible: SelectionPlan) => void
+  surRetirer: (cible: SelectionPlan) => void
+  surModifier: (el: GreenSpaceElement) => void
+  surRenommer: (id: number, champs: any) => void
+  surSupprimerRepere: () => void
+  surPoser: (cible: SelectionPlan) => void
+}) {
+  const [recherche, setRecherche] = useState('')
+  const correspond = (texte: string | null | undefined) =>
+    !recherche || (texte || '').toLowerCase().includes(recherche.toLowerCase())
+
+  const poses = elements.filter(
+    el => positionSurPlan(el) !== null && (correspond(el.label) || correspond(el.code))
+  )
+  const groupesPoses = groups.filter(g => positionSurPlan(g) !== null)
+  const reperesVus = annotations.filter(a => correspond(a.label))
+
+  const selectionne = (type: SelectionPlan['type'], id: number) =>
+    selection?.type === type && selection.id === id
+
+  return (
+    <aside className="w-72 flex-shrink-0 space-y-3 max-h-[min(70vh,640px)] overflow-y-auto pr-1">
+      <Input
+        placeholder="Rechercher sur le plan..."
+        value={recherche}
+        onChange={(e) => setRecherche(e.target.value)}
+        icon={<Search className="w-4 h-4" />}
+        size="sm"
+      />
+
+      {selection && (
+        <DetailSelection
+          selection={selection}
+          elements={elements}
+          groups={groups}
+          annotations={annotations}
+          typeGroupe={typeGroupe}
+          echelle={echelle}
+          peutModifier={peutModifier}
+          surRetouche={surRetouche}
+          surRetirer={surRetirer}
+          surModifier={surModifier}
+          surRenommer={surRenommer}
+          surSupprimerRepere={surSupprimerRepere}
+        />
+      )}
+
+      {peutModifier && (aPoser.length > 0 || groupesAPoser.length > 0) && (
+        <Section titre={`À poser (${aPoser.length + groupesAPoser.length})`} accent>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+            Ces éléments existent mais ne sont pas encore sur le plan.
+          </p>
+          {aPoser.filter(el => correspond(el.label) || correspond(el.code)).map(el => (
+            <button
+              key={`ap-${el.id}`}
+              type="button"
+              onClick={() => surPoser({ type: 'element', id: el.id })}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/30 text-left transition-colors"
+            >
+              <span className="text-sm">{typeElement(el.element_type).icon}</span>
+              <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200">
+                {el.label || el.code}
+              </span>
+              <span className="text-xs text-green-700 dark:text-green-400">Poser</span>
+            </button>
+          ))}
+          {groupesAPoser.map(g => (
+            <button
+              key={`apg-${g.id}`}
+              type="button"
+              onClick={() => surPoser({ type: 'group', id: g.id })}
+              className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-left transition-colors"
+            >
+              <Layers className="h-3.5 w-3.5" style={{ color: g.color || typeGroupe(g.group_type).color }} />
+              <span className="min-w-0 flex-1 truncate text-sm text-gray-800 dark:text-gray-200">{g.name}</span>
+              <span className="text-xs text-purple-700 dark:text-purple-400">Poser</span>
+            </button>
+          ))}
+        </Section>
+      )}
+
+      <Section titre={`Éléments (${poses.length})`}>
+        {poses.length === 0 && <p className="text-xs text-gray-500 dark:text-gray-400">Aucun élément sur le plan.</p>}
+        {poses.map(el => (
+          <LignePanneau
+            key={`p-${el.id}`}
+            icone={<span className="text-sm">{typeElement(el.element_type).icon}</span>}
+            titre={el.label || el.code || 'Sans libellé'}
+            detail={[
+              typeElement(el.element_type).label,
+              el.area_m2 ? formaterSurface(Number(el.area_m2)) : null,
+              parseZonePoints(el.zone_points).length >= 3 ? 'zone tracée' : null,
+            ].filter(Boolean).join(' · ')}
+            actif={selectionne('element', el.id)}
+            masque={masques.has(`element:${el.id}`)}
+            surClic={() => surSelection(selectionne('element', el.id) ? null : { type: 'element', id: el.id })}
+            surVisibilite={() => surVisibilite(`element:${el.id}`)}
+          />
+        ))}
+      </Section>
+
+      {groupesPoses.length > 0 && (
+        <Section titre={`Groupes (${groupesPoses.length})`}>
+          {groupesPoses.map(g => (
+            <LignePanneau
+              key={`pg-${g.id}`}
+              icone={<Layers className="h-3.5 w-3.5" style={{ color: g.color || typeGroupe(g.group_type).color }} />}
+              titre={g.name}
+              detail={[
+                typeGroupe(g.group_type).label,
+                g.area_m2 ? formaterSurface(Number(g.area_m2)) : null,
+              ].filter(Boolean).join(' · ')}
+              actif={selectionne('group', g.id)}
+              masque={masques.has(`group:${g.id}`)}
+              surClic={() => surSelection(selectionne('group', g.id) ? null : { type: 'group', id: g.id })}
+              surVisibilite={() => surVisibilite(`group:${g.id}`)}
+            />
+          ))}
+        </Section>
+      )}
+
+      {reperesVus.length > 0 && (
+        <Section titre={`Repères (${reperesVus.length})`}>
+          {reperesVus.map(a => (
+            <LignePanneau
+              key={`r-${a.id}`}
+              icone={
+                <span
+                  className="inline-block w-3 h-3 rounded-full border border-white"
+                  style={{ backgroundColor: a.color || '#22c55e' }}
+                />
+              }
+              titre={a.label || 'Sans libellé'}
+              detail={`${Number(a.pos_x).toFixed(1)} %, ${Number(a.pos_y).toFixed(1)} %`}
+              actif={selectionne('annotation', a.id)}
+              masque={masques.has(`annotation:${a.id}`)}
+              surClic={() => surSelection(selectionne('annotation', a.id) ? null : { type: 'annotation', id: a.id })}
+              surVisibilite={() => surVisibilite(`annotation:${a.id}`)}
+            />
+          ))}
+        </Section>
+      )}
+    </aside>
+  )
+}
+
+function Section({ titre, accent, children }: { titre: string; accent?: boolean; children: ReactNode }) {
+  return (
+    <div className={`rounded-lg border p-2 ${
+      accent
+        ? 'border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10'
+        : 'border-gray-200 dark:border-gray-700'
+    }`}>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 px-1 mb-1">
+        {titre}
+      </h4>
+      <div className="space-y-0.5">{children}</div>
+    </div>
+  )
+}
+
+function LignePanneau({ icone, titre, detail, actif, masque, surClic, surVisibilite }: {
+  icone: ReactNode
+  titre: string
+  detail: string
+  actif: boolean
+  masque: boolean
+  surClic: () => void
+  surVisibilite: () => void
+}) {
+  return (
+    <div className={`flex items-center gap-1 rounded-lg transition-colors ${
+      actif ? 'bg-blue-50 dark:bg-blue-900/30 ring-1 ring-blue-300 dark:ring-blue-700' : 'hover:bg-gray-50 dark:hover:bg-gray-700/40'
+    }`}>
+      <button
+        type="button"
+        onClick={surClic}
+        className={`flex items-center gap-2 min-w-0 flex-1 px-2 py-1.5 text-left ${masque ? 'opacity-40' : ''}`}
+      >
+        <span className="flex-shrink-0">{icone}</span>
+        <span className="min-w-0">
+          <span className="block truncate text-sm text-gray-800 dark:text-gray-200">{titre}</span>
+          {detail && <span className="block truncate text-xs text-gray-500 dark:text-gray-400">{detail}</span>}
+        </span>
+      </button>
+      <button
+        type="button"
+        onClick={surVisibilite}
+        aria-label={masque ? `Afficher ${titre}` : `Masquer ${titre}`}
+        title={masque ? 'Afficher sur le plan' : 'Masquer sur le plan'}
+        className="p-1.5 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+      >
+        {masque ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+      </button>
+    </div>
+  )
+}
+
+/**
+ * Ce qui est sélectionné, et ce qu'on peut en faire.
+ *
+ * Les actions vivaient dans une bulle collée au repère, qui grandissait avec le
+ * zoom et sortait du cadre dès qu'on travaillait près d'un bord. Ici, elles ont
+ * une place fixe et de la lumière.
+ */
+function DetailSelection({
+  selection, elements, groups, annotations, typeGroupe, echelle, peutModifier,
+  surRetouche, surRetirer, surModifier, surRenommer, surSupprimerRepere,
+}: {
+  selection: SelectionPlan
+  elements: GreenSpaceElement[]
+  groups: CompositionGroup[]
+  annotations: Annotation[]
+  typeGroupe: (v?: string | null) => { label: string; icon: string; color: string }
+  echelle: EchellePlan | null
+  peutModifier: boolean
+  surRetouche: (cible: SelectionPlan) => void
+  surRetirer: (cible: SelectionPlan) => void
+  surModifier: (el: GreenSpaceElement) => void
+  surRenommer: (id: number, champs: any) => void
+  surSupprimerRepere: () => void
+}) {
+  const element = selection.type === 'element' ? elements.find(e => e.id === selection.id) : undefined
+  const groupe = selection.type === 'group' ? groups.find(g => g.id === selection.id) : undefined
+  const repere = selection.type === 'annotation' ? annotations.find(a => a.id === selection.id) : undefined
+
+  const [libelle, setLibelle] = useState(repere?.label || '')
+  const [couleur, setCouleur] = useState(repere?.color || '#22c55e')
+  useEffect(() => {
+    setLibelle(repere?.label || '')
+    setCouleur(repere?.color || '#22c55e')
+  }, [repere?.id, repere?.label, repere?.color])
+
+  if (element) {
+    const zone = parseZonePoints(element.zone_points)
+    return (
+      <Section titre="Sélection">
+        <p className="px-1 text-sm font-medium text-gray-900 dark:text-white">{element.label || element.code}</p>
+        <p className="px-1 text-xs text-gray-500 dark:text-gray-400">
+          {typeElement(element.element_type).label}
+          {element.species && ` · ${element.species}`}
+          {element.area_m2 ? ` · ${formaterSurface(Number(element.area_m2))}` : ''}
+          {element.exclude_from_costs ? ' · hors coûts' : ''}
+        </p>
+        {peutModifier && (
+          <div className="flex flex-wrap gap-1 pt-2">
+            <Button size="sm" variant="secondary" onClick={() => surRetouche(selection)}>
+              {zone.length >= 3 ? 'Retoucher la zone' : 'Dessiner une zone'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => surModifier(element)}>Modifier</Button>
+            <Button size="sm" variant="ghost" onClick={() => surRetirer(selection)}>Retirer du plan</Button>
+          </div>
+        )}
+        {!echelle && zone.length >= 3 && (
+          <p className="px-1 pt-2 text-xs text-amber-600 dark:text-amber-400">
+            Calibrez le plan pour que cette zone donne sa surface toute seule.
+          </p>
+        )}
+      </Section>
+    )
+  }
+
+  if (groupe) {
+    const zone = parseZonePoints(groupe.zone_points)
+    const membres = elements.filter(el => el.group_id === groupe.id)
+    return (
+      <Section titre="Sélection">
+        <p className="px-1 text-sm font-medium text-gray-900 dark:text-white">{groupe.name}</p>
+        <p className="px-1 text-xs text-gray-500 dark:text-gray-400">
+          {typeGroupe(groupe.group_type).label} · {membres.length} élément{membres.length > 1 ? 's' : ''}
+          {groupe.area_m2 ? ` · ${formaterSurface(Number(groupe.area_m2))}` : ''}
+        </p>
+        {peutModifier && (
+          <div className="flex flex-wrap gap-1 pt-2">
+            <Button size="sm" variant="secondary" onClick={() => surRetouche(selection)}>
+              {zone.length >= 3 ? 'Retoucher la zone' : 'Dessiner une zone'}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => surRetirer(selection)}>Retirer du plan</Button>
+          </div>
+        )}
+      </Section>
+    )
+  }
+
+  if (repere) {
+    const modifie = libelle !== (repere.label || '') || couleur !== (repere.color || '#22c55e')
+    return (
+      <Section titre="Repère">
+        {peutModifier ? (
+          <div className="space-y-2">
+            {/* Un repère n'avait aucun renommage : corriger une faute imposait
+                de le supprimer et de le recréer ailleurs, donc à côté. */}
+            <Input
+              value={libelle}
+              onChange={(e) => setLibelle(e.target.value)}
+              placeholder="Libellé du repère"
+              size="sm"
+            />
+            <div className="flex items-center gap-2">
+              <input
+                type="color"
+                value={couleur}
+                onChange={(e) => setCouleur(e.target.value)}
+                aria-label="Couleur du repère"
+                title="Couleur du repère"
+                className="h-8 w-10 rounded border border-gray-300 dark:border-gray-600 bg-transparent"
+              />
+              <Button
+                size="sm"
+                disabled={!modifie}
+                onClick={() => surRenommer(repere.id, { label: libelle.trim(), color: couleur })}
+              >
+                Enregistrer
+              </Button>
+              <Button size="sm" variant="danger" onClick={surSupprimerRepere}>Supprimer</Button>
+            </div>
+          </div>
+        ) : (
+          <p className="px-1 text-sm text-gray-800 dark:text-gray-200">{repere.label || 'Sans libellé'}</p>
+        )}
+      </Section>
+    )
+  }
+
+  return null
+}
+
+// -------------------------------------------------------------- légende
+
+function LegendePlan({ elements, groups, typeGroupe, echelle }: {
+  elements: GreenSpaceElement[]
+  groups: CompositionGroup[]
+  typeGroupe: (v?: string | null) => { label: string; icon: string; color: string }
+  echelle: EchellePlan | null
+}) {
+  const types = [...new Set(elements.map(el => el.element_type))]
+  const zones = [
+    ...elements.filter(el => parseZonePoints(el.zone_points).length >= 3),
+    ...groups.filter(g => parseZonePoints(g.zone_points).length >= 3),
+  ]
+  const totalSurface = zones.reduce((somme, o: any) => somme + (Number(o.area_m2) || 0), 0)
+
+  if (types.length === 0 && zones.length === 0) return null
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-xs">
+      {types.map(t => (
+        <span key={t} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+          <span className="w-3 h-3 rounded-full border border-white" style={{ backgroundColor: typeElement(t).color }} />
+          {typeElement(t).icon} {typeElement(t).label}
+        </span>
+      ))}
+      {groups.filter(g => parseZonePoints(g.zone_points).length >= 3).map(g => (
+        <span key={`lg-${g.id}`} className="flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
+          <span
+            className="w-3 h-3 rounded border-2 border-dashed"
+            style={{ borderColor: g.color || typeGroupe(g.group_type).color }}
+          />
+          {g.name}
+        </span>
+      ))}
+      {zones.length > 0 && (
+        <span className="text-gray-500 dark:text-gray-400">
+          {zones.length} zone{zones.length > 1 ? 's' : ''}
+          {totalSurface > 0 && <> · {formaterSurface(totalSurface)} au total</>}
+          {!echelle && ' · surfaces saisies à la main'}
+        </span>
+      )}
+    </div>
+  )
+}
+
+// --------------------------------------------------- panneau de création
+
+/**
+ * Ce qu'on peut poser à l'endroit qu'on vient de désigner.
+ *
+ * L'ancienne fenêtre ne proposait que des éléments déjà saisis ailleurs :
+ * « ajouter un banc là où je pointe » demandait deux onglets et trois écrans.
+ */
+function PanneauCreation({
+  position, aPoser, groupesAPoser, typeGroupe, enCours,
+  onFermer, onPoserElement, onPoserGroupe, onRepere, onElementLibre, onDepuisParc,
+}: {
+  position: PointPlan
+  aPoser: GreenSpaceElement[]
+  groupesAPoser: CompositionGroup[]
+  typeGroupe: (v?: string | null) => { label: string; icon: string; color: string }
+  enCours: boolean
+  onFermer: () => void
+  onPoserElement: (id: number) => void
+  onPoserGroupe: (id: number) => void
+  onRepere: (champs: { label: string; color: string; icon: string }) => void
+  onElementLibre: () => void
+  onDepuisParc: () => void
+}) {
+  const [recherche, setRecherche] = useState('')
+  const [libelle, setLibelle] = useState('')
+  const [couleur, setCouleur] = useState('#22c55e')
+
+  const correspond = (texte: string | null | undefined) =>
+    !recherche || (texte || '').toLowerCase().includes(recherche.toLowerCase())
+  const elementsVus = aPoser.filter(el => correspond(el.label) || correspond(el.code))
+  const groupesVus = groupesAPoser.filter(g => correspond(g.name))
+
+  return (
+    <Modal isOpen onClose={onFermer} title="Poser sur le plan" size="md">
+      <ModalBody>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Emplacement choisi : {position.x.toFixed(1)} %, {position.y.toFixed(1)} % du plan.
+        </p>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-5">
+          <Button variant="primary" icon={<Package className="h-4 w-4" />} onClick={onDepuisParc}>
+            Implanter depuis le parc
+          </Button>
+          <Button variant="outline" icon={<Plus className="h-4 w-4" />} onClick={onElementLibre}>
+            Élément libre ici
+          </Button>
+        </div>
+
+        <div className="space-y-2 mb-5">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+            Repère simple
+          </h4>
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Une étiquette sur le plan, sans fiche ni coût : un accès, un point d'eau, un rappel.
+          </p>
+          <div className="flex gap-2">
+            <Input
+              value={libelle}
+              onChange={(e) => setLibelle(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && libelle.trim()) {
+                  onRepere({ label: libelle.trim(), color: couleur, icon: 'circle' })
+                }
+              }}
+              placeholder="Libellé du repère..."
+              className="flex-1"
+              autoFocus
+            />
+            <input
+              type="color"
+              value={couleur}
+              onChange={(e) => setCouleur(e.target.value)}
+              aria-label="Couleur du repère"
+              title="Couleur du repère"
+              className="h-11 w-12 rounded-lg border border-gray-300 dark:border-gray-600 bg-transparent"
+            />
+            <Button
+              disabled={!libelle.trim() || enCours}
+              onClick={() => onRepere({ label: libelle.trim(), color: couleur, icon: 'circle' })}
+            >
+              Poser
+            </Button>
+          </div>
+        </div>
+
+        {(aPoser.length > 0 || groupesAPoser.length > 0) && (
+          <div className="space-y-2">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              Poser un élément déjà saisi
+            </h4>
+            <Input
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              placeholder="Rechercher..."
+              icon={<Search className="w-4 h-4" />}
+              size="sm"
+            />
+            <div className="max-h-56 overflow-y-auto space-y-0.5">
+              {groupesVus.map(g => (
+                <button
+                  key={`c-g-${g.id}`}
+                  type="button"
+                  disabled={enCours}
+                  onClick={() => onPoserGroupe(g.id)}
+                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-purple-50 dark:hover:bg-purple-900/30 text-left transition-colors disabled:opacity-50"
+                >
+                  <Layers className="h-4 w-4 flex-shrink-0" style={{ color: g.color || typeGroupe(g.group_type).color }} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-gray-900 dark:text-white">{g.name}</span>
+                    <span className="block text-xs text-gray-500">{typeGroupe(g.group_type).label}</span>
+                  </span>
+                </button>
+              ))}
+              {elementsVus.map(el => (
+                <button
+                  key={`c-e-${el.id}`}
+                  type="button"
+                  disabled={enCours}
+                  onClick={() => onPoserElement(el.id)}
+                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-green-50 dark:hover:bg-green-900/30 text-left transition-colors disabled:opacity-50"
+                >
+                  <span className="text-base flex-shrink-0">{typeElement(el.element_type).icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-gray-900 dark:text-white">{el.label || el.code}</span>
+                    <span className="block text-xs text-gray-500">
+                      {typeElement(el.element_type).label}
+                      {el.species && ` · ${el.species}`}
+                    </span>
+                  </span>
+                </button>
+              ))}
+              {elementsVus.length === 0 && groupesVus.length === 0 && (
+                <p className="text-sm text-gray-500 dark:text-gray-400 px-2 py-3">
+                  Rien à poser qui corresponde.
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onFermer}>Annuler</Button>
+      </ModalFooter>
+    </Modal>
+  )
+}
+
+// ------------------------------------------------------ calibrage du plan
+
+function ModaleCalibrage({ a, b, ratio, echelle, enCours, onFermer, onValider, onEffacer }: {
+  a: PointPlan
+  b: PointPlan
+  ratio: number
+  echelle: EchellePlan | null
+  enCours: boolean
+  onFermer: () => void
+  onValider: (metres: number) => void
+  onEffacer: () => void
+}) {
+  const [saisie, setSaisie] = useState('')
+  const metres = parseFloat(saisie.replace(',', '.'))
+  const valide = Number.isFinite(metres) && metres > 0
+  const apercu = valide ? echelleDepuisCalibrage({ a, b, metres }, ratio) : null
+
+  return (
+    <Modal isOpen onClose={onFermer} title="Donner l’échelle du plan" size="sm">
+      <ModalBody>
+        <p className="text-sm text-gray-600 dark:text-gray-300 mb-3">
+          Quelle est la <strong>longueur réelle</strong> du segment que vous venez de tracer ?
+        </p>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Prenez une longueur que vous connaissez avec certitude : une façade, la largeur d’un
+          terrain, un côté de bâtiment. Plus le segment est long, plus toutes les surfaces qui en
+          découleront seront justes.
+        </p>
+        <Input
+          label="Longueur en mètres"
+          type="number"
+          min="0.1"
+          step="0.1"
+          value={saisie}
+          onChange={(e) => setSaisie(e.target.value)}
+          placeholder="25"
+          autoFocus
+        />
+        {apercu && (
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+            Un pourcent de largeur vaudra {apercu.metresParPourcent.toFixed(2).replace('.', ',')} m.
+            Les zones déjà tracées afficheront leur surface au prochain enregistrement ; celles dont
+            la surface a été saisie à la main gardent la valeur saisie.
+          </p>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        {echelle && (
+          <Button variant="ghost" onClick={onEffacer} disabled={enCours}>
+            Effacer l’échelle
+          </Button>
+        )}
+        <Button variant="ghost" onClick={onFermer}>Annuler</Button>
+        <Button onClick={() => onValider(metres)} disabled={!valide || enCours} loading={enCours}>
+          Enregistrer l’échelle
+        </Button>
+      </ModalFooter>
+    </Modal>
+  )
+}
+
+// ------------------------------------------------- qualification d'une zone
+
+/**
+ * À qui revient la zone qu'on vient de tracer, et ce qu'elle coûte.
+ *
+ * Une zone de matériau **est** un élément : `quantity` porte les mètres carrés,
+ * `purchase_price` le prix du mètre carré figé à la pose. Le coût se lit alors
+ * dans l'onglet Coûts par type, par variété et par année, sans une ligne de SQL
+ * nouvelle — et sans inventer une table de plus.
+ */
+function ModaleZone({
+  points, surfaceCalculee, elements, groups, typeGroupe, enCours, onFermer, onRattacher, onCreer,
+}: {
+  points: PointPlan[]
+  surfaceCalculee: number | null
+  elements: GreenSpaceElement[]
+  groups: CompositionGroup[]
+  typeGroupe: (v?: string | null) => { label: string; icon: string; color: string }
+  enCours: boolean
+  onFermer: () => void
+  onRattacher: (cible: SelectionPlan, surface: number | null) => void
+  onCreer: (corps: any) => void
+}) {
+  const [onglet, setOnglet] = useState<'materiau' | 'existant'>('materiau')
+  const [surface, setSurface] = useState(
+    surfaceCalculee === null ? '' : String(Math.round(surfaceCalculee * 100) / 100)
+  )
+  const [horsCouts, setHorsCouts] = useState(false)
+  const [recherche, setRecherche] = useState('')
+  const [materiau, setMateriau] = useState<any | null>(null)
+  const [libelle, setLibelle] = useState('')
+  const [prix, setPrix] = useState('')
+
+  const surfaceNombre = parseFloat(surface.replace(',', '.'))
+  const surfaceValide = Number.isFinite(surfaceNombre) && surfaceNombre > 0
+  /** Saisie modifiée à la main : la surface cesse de suivre le tracé. */
+  const surfaceSaisieAMain =
+    surfaceCalculee === null || Math.abs(surfaceNombre - surfaceCalculee) > 0.01
+
+  const { data: catalogue = [], isFetching } = useQuery<any[]>({
+    queryKey: ['gs-materiaux-zone', recherche],
+    queryFn: () =>
+      api.get('/green-spaces/parc/catalogue', { params: { q: recherche || undefined } })
+        .then(r => r.data.data ?? []),
+    enabled: onglet === 'materiau',
+  })
+
+  const choisir = (m: any) => {
+    setMateriau(m)
+    setLibelle(m.name)
+    setPrix(m.prix_unitaire != null ? String(m.prix_unitaire) : '')
+  }
+
+  const enregistrerMateriau = () => {
+    if (!surfaceValide) return
+    const prixNombre = parseFloat(prix.replace(',', '.'))
+    onCreer({
+      object_id: materiau?.id ?? null,
+      label: libelle.trim() || materiau?.name || 'Zone',
+      code: materiau?.reference || '',
+      element_type: materiau ? deviner(materiau.category_name, materiau.subcategory_name, materiau.name) : 'pelouse',
+      // La quantité **est** la surface : c'est ce qui fait que le coût d'une
+      // pelouse se lit comme celui de dix rosiers, sans calcul à part.
+      quantity: surfaceNombre,
+      purchase_price: Number.isFinite(prixNombre) && prixNombre > 0 ? prixNombre : null,
+      cost_source: materiau && String(prix) === String(materiau.prix_unitaire) ? 'parc' : 'saisi',
+      area_m2: surfaceNombre,
+      area_source: surfaceSaisieAMain ? 'saisi' : 'calcule',
+      exclude_from_costs: horsCouts,
+      condition_state: 'neuf',
+      planting_date: new Date().toISOString().slice(0, 10),
+    })
+  }
+
+  const zonesPossibles = [
+    ...elements.map(el => ({
+      cible: { type: 'element' as const, id: el.id },
+      nom: el.label || el.code,
+      detail: typeElement(el.element_type).label,
+      dejaUneZone: parseZonePoints(el.zone_points).length >= 3,
+    })),
+    ...groups.map(g => ({
+      cible: { type: 'group' as const, id: g.id },
+      nom: g.name,
+      detail: typeGroupe(g.group_type).label,
+      dejaUneZone: parseZonePoints(g.zone_points).length >= 3,
+    })),
+  ].filter(o => !recherche || (o.nom || '').toLowerCase().includes(recherche.toLowerCase()))
+
+  return (
+    <Modal isOpen onClose={onFermer} title="La zone que vous venez de tracer" size="lg">
+      <ModalBody>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <div>
+            <Input
+              label="Surface (m²)"
+              type="number"
+              min="0"
+              step="0.1"
+              value={surface}
+              onChange={(e) => setSurface(e.target.value)}
+              hint={
+                surfaceCalculee === null
+                  ? `${points.length} sommets — calibrez le plan pour obtenir la surface automatiquement`
+                  : surfaceSaisieAMain
+                  ? `Corrigée à la main (le tracé donne ${formaterSurface(surfaceCalculee)})`
+                  : 'Calculée depuis le tracé'
+              }
+            />
+          </div>
+          <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 sm:pt-7">
+            <input
+              type="checkbox"
+              checked={horsCouts}
+              onChange={(e) => setHorsCouts(e.target.checked)}
+              className="mt-0.5 h-4 w-4 rounded border-gray-300"
+            />
+            <span>
+              Ne pas compter dans les coûts
+              <span className="block text-xs text-gray-500 dark:text-gray-400">
+                Pour ce qui était déjà là et n’a jamais été facturé : la surface reste, le prix
+                n’est pas inventé.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        <div className="inline-flex items-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 mb-4">
+          {[
+            { cle: 'materiau' as const, libelle: 'Nouveau — matériau du parc' },
+            { cle: 'existant' as const, libelle: 'Rattacher à un élément' },
+          ].map(o => (
+            <button
+              key={o.cle}
+              type="button"
+              onClick={() => { setOnglet(o.cle); setRecherche('') }}
+              className={`px-3 py-1.5 text-sm rounded-md transition-colors ${
+                onglet === o.cle
+                  ? 'bg-green-600 text-white'
+                  : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+              }`}
+            >
+              {o.libelle}
+            </button>
+          ))}
+        </div>
+
+        {onglet === 'materiau' ? (
+          <div className="space-y-3">
+            <Input
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              placeholder="Gazon, enrobé, écorce, gravier..."
+              icon={<Search className="w-4 h-4" />}
+              hint="Le parc ne propose ici que ce que l’administrateur a ouvert aux espaces verts."
+            />
+            <div className="max-h-52 overflow-y-auto space-y-0.5 border border-gray-200 dark:border-gray-700 rounded-lg p-1">
+              {isFetching && <p className="text-sm text-gray-500 px-2 py-3">Recherche...</p>}
+              {!isFetching && catalogue.length === 0 && (
+                <p className="text-sm text-gray-500 px-2 py-3">
+                  Aucun matériel ne correspond. Vous pouvez enregistrer la zone sans matériau.
+                </p>
+              )}
+              {catalogue.map((m: any) => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => choisir(m)}
+                  className={`w-full flex items-center gap-2 px-2 py-2 rounded-lg text-left transition-colors ${
+                    materiau?.id === m.id
+                      ? 'bg-green-100 dark:bg-green-900/40'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-700/50'
+                  }`}
+                >
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-gray-900 dark:text-white">{m.name}</span>
+                    <span className="block text-xs text-gray-500">
+                      {[m.category_name, m.subcategory_name].filter(Boolean).join(' › ')}
+                    </span>
+                  </span>
+                  {m.prix_unitaire != null && (
+                    <span className="text-xs text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                      {euros(m.prix_unitaire)} / unité
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Input
+                label="Libellé de la zone"
+                value={libelle}
+                onChange={(e) => setLibelle(e.target.value)}
+                placeholder="Pelouse du fond"
+              />
+              <Input
+                label="Prix au m²"
+                type="number"
+                min="0"
+                step="0.01"
+                value={prix}
+                onChange={(e) => setPrix(e.target.value)}
+                disabled={horsCouts}
+                hint={
+                  horsCouts
+                    ? 'Zone écartée des coûts'
+                    : surfaceValide && parseFloat(prix.replace(',', '.')) > 0
+                    ? `Soit ${euros(surfaceNombre * parseFloat(prix.replace(',', '.')))} pour cette zone`
+                    : 'Laissez vide si le prix n’est pas connu'
+                }
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <Input
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              placeholder="Rechercher un élément ou un groupe..."
+              icon={<Search className="w-4 h-4" />}
+            />
+            <div className="max-h-64 overflow-y-auto space-y-0.5 border border-gray-200 dark:border-gray-700 rounded-lg p-1">
+              {zonesPossibles.length === 0 && (
+                <p className="text-sm text-gray-500 px-2 py-3">Rien qui corresponde.</p>
+              )}
+              {zonesPossibles.map(o => (
+                <button
+                  key={`${o.cible.type}-${o.cible.id}`}
+                  type="button"
+                  disabled={enCours}
+                  onClick={() => onRattacher(o.cible, surfaceValide ? surfaceNombre : null)}
+                  className="w-full flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 text-left transition-colors disabled:opacity-50"
+                >
+                  {o.cible.type === 'group'
+                    ? <Layers className="h-4 w-4 text-purple-500 flex-shrink-0" />
+                    : <Tag className="h-4 w-4 text-green-600 flex-shrink-0" />}
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm text-gray-900 dark:text-white">{o.nom}</span>
+                    <span className="block text-xs text-gray-500">{o.detail}</span>
+                  </span>
+                  {o.dejaUneZone && (
+                    <span className="text-xs text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                      remplace sa zone
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </ModalBody>
+      <ModalFooter>
+        <Button variant="ghost" onClick={onFermer}>Abandonner la zone</Button>
+        {onglet === 'materiau' && (
+          <Button onClick={enregistrerMateriau} disabled={!surfaceValide || enCours} loading={enCours}>
+            Créer la zone
+          </Button>
+        )}
+      </ModalFooter>
+    </Modal>
+  )
+}
+
 
 // ======================== ONGLET CARTE (Google Maps) ========================
 
@@ -3826,6 +5001,7 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
 // ======================== ONGLET ARCHIVES ========================
 
 function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
+  const { typeGroupe } = useTypesGroupes()
   const [selectedSnapshotId, setSelectedSnapshotId] = useState<number | null>(null)
   const [compareMode, setCompareMode] = useState(false)
   const [showCreateSnapshot, setShowCreateSnapshot] = useState(false)
@@ -4041,71 +5217,21 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
 
                 {/* Plan archivé avec repères, zones et annotations */}
                 {snapshotDetail.plan_image && (
-                  <div className="relative bg-gray-100 dark:bg-gray-900" style={{ minHeight: '250px' }}>
-                    <img
-                      src={getImageUrl(snapshotDetail.plan_image)}
-                      alt="Plan archivé"
-                      className="w-full object-contain"
-                      style={{ maxHeight: '400px' }}
+                  <div className="bg-gray-100 dark:bg-gray-900 overflow-auto" style={{ maxHeight: '400px' }}>
+                    {/*
+                      Le plan d'une archive passe par le même composant que
+                      l'onglet : sinon un instantané se relit avec les
+                      conventions du jour où l'on a recopié le rendu, et non
+                      avec celles du plan qu'il archive.
+                    */}
+                    <PlanCanvas
+                      planImage={snapshotDetail.plan_image}
+                      elements={snapshotDetail.elements_data || []}
+                      groups={snapshotDetail.groups_data || []}
+                      annotations={snapshotDetail.annotations_data || []}
+                      typeGroupe={typeGroupe}
+                      compact
                     />
-                    {/* SVG zones polygones */}
-                    <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-                      {(snapshotDetail.elements_data || []).filter((el: any) => el.zone_points).map((el: any, i: number) => {
-                        const pts = parseZonePoints(el.zone_points)
-                        if (pts.length < 3) return null
-                        const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-                        const color = typeInfo?.color || '#22c55e'
-                        const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
-                        return <polygon key={`sz-el-${i}`} points={pointsStr} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.7} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                      })}
-                      {(snapshotDetail.groups_data || []).filter((g: any) => g.zone_points).map((g: any, i: number) => {
-                        const pts = parseZonePoints(g.zone_points)
-                        if (pts.length < 3) return null
-                        const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-                        const color = g.color || typeInfo?.color || '#8b5cf6'
-                        const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
-                        return <polygon key={`sz-grp-${i}`} points={pointsStr} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={0.5} strokeOpacity={0.8} strokeLinejoin="round" strokeDasharray="6 3" vectorEffect="non-scaling-stroke" />
-                      })}
-                    </svg>
-                    {/* Markers éléments */}
-                    {(snapshotDetail.elements_data || []).filter((el: any) => el.pos_x != null && el.pos_y != null).map((el: any, i: number) => {
-                      const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-                      return (
-                        <div key={`sel-${i}`} className="absolute" style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
-                          <div className="w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: typeInfo?.color || '#22c55e' }}>
-                            <span className="text-white font-bold" style={{ fontSize: '7px' }}>{el.code ? el.code.substring(0, 2) : ''}</span>
-                          </div>
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
-                            {el.code || el.label}
-                          </div>
-                        </div>
-                      )
-                    })}
-                    {/* Markers annotations */}
-                    {(snapshotDetail.annotations_data || []).filter((ann: any) => ann.pos_x != null && ann.pos_y != null).map((ann: any, i: number) => (
-                      <div key={`sann-${i}`} className="absolute" style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
-                        <div className="w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center" style={{ backgroundColor: ann.color || '#22c55e' }}>
-                          <MapPin className="h-3 w-3 text-white" />
-                        </div>
-                        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px' }}>
-                          {ann.label}
-                        </div>
-                      </div>
-                    ))}
-                    {/* Markers groupes */}
-                    {(snapshotDetail.groups_data || []).filter((g: any) => g.pos_x != null && g.pos_y != null).map((g: any, i: number) => {
-                      const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-                      return (
-                        <div key={`sgrp-${i}`} className="absolute" style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
-                          <div className="w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: g.color || typeInfo?.color || '#8b5cf6' }}>
-                            <Layers className="h-4 w-4 text-white" />
-                          </div>
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
-                            {g.name}
-                          </div>
-                        </div>
-                      )
-                    })}
                   </div>
                 )}
 
@@ -4161,73 +5287,19 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
                     <p className="text-xs text-green-600 dark:text-green-400">Statut : {space.status}</p>
                   </div>
 
-                  {/* Plan actuel avec repères, zones et annotations */}
+                  {/* Plan actuel — même rendu que l'archive d'en face, sans
+                      quoi la comparaison porterait autant sur les conventions
+                      de dessin que sur ce qui a réellement changé. */}
                   {space.plan_image && (
-                    <div className="relative bg-gray-100 dark:bg-gray-900" style={{ minHeight: '250px' }}>
-                      <img
-                        src={getImageUrl(space.plan_image)}
-                        alt="Plan actuel"
-                        className="w-full object-contain"
-                        style={{ maxHeight: '400px' }}
+                    <div className="bg-gray-100 dark:bg-gray-900 overflow-auto" style={{ maxHeight: '400px' }}>
+                      <PlanCanvas
+                        planImage={space.plan_image}
+                        elements={space.elements || []}
+                        groups={space.groups || []}
+                        annotations={space.annotations || []}
+                        typeGroupe={typeGroupe}
+                        compact
                       />
-                      {/* SVG zones polygones */}
-                      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none' }}>
-                        {(space.elements || []).filter(el => el.zone_points).map(el => {
-                          const pts = parseZonePoints(el.zone_points)
-                          if (pts.length < 3) return null
-                          const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-                          const color = typeInfo?.color || '#22c55e'
-                          const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
-                          return <polygon key={`cz-el-${el.id}`} points={pointsStr} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.7} strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                        })}
-                        {(space.groups || []).filter(g => g.zone_points).map(g => {
-                          const pts = parseZonePoints(g.zone_points)
-                          if (pts.length < 3) return null
-                          const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-                          const color = g.color || typeInfo?.color || '#8b5cf6'
-                          const pointsStr = pts.map(p => `${p.x},${p.y}`).join(' ')
-                          return <polygon key={`cz-grp-${g.id}`} points={pointsStr} fill={color} fillOpacity={0.2} stroke={color} strokeWidth={0.5} strokeOpacity={0.8} strokeLinejoin="round" strokeDasharray="6 3" vectorEffect="non-scaling-stroke" />
-                        })}
-                      </svg>
-                      {/* Markers éléments */}
-                      {(space.elements || []).filter(el => el.pos_x != null && el.pos_y != null).map(el => {
-                        const typeInfo = ELEMENT_TYPES.find(t => t.value === el.element_type)
-                        return (
-                          <div key={`cel-${el.id}`} className="absolute" style={{ left: `${el.pos_x}%`, top: `${el.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
-                            <div className="w-6 h-6 rounded-full border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: typeInfo?.color || '#22c55e' }}>
-                              <span className="text-white font-bold" style={{ fontSize: '7px' }}>{el.code ? el.code.substring(0, 2) : ''}</span>
-                            </div>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
-                              {el.code || el.label}
-                            </div>
-                          </div>
-                        )
-                      })}
-                      {/* Markers annotations */}
-                      {(space.annotations || []).filter(ann => ann.pos_x != null && ann.pos_y != null).map((ann, i) => (
-                        <div key={`cann-${i}`} className="absolute" style={{ left: `${ann.pos_x}%`, top: `${ann.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
-                          <div className="w-5 h-5 rounded-full border-2 border-white shadow-md flex items-center justify-center" style={{ backgroundColor: ann.color || '#22c55e' }}>
-                            <MapPin className="h-3 w-3 text-white" />
-                          </div>
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px' }}>
-                            {ann.label}
-                          </div>
-                        </div>
-                      ))}
-                      {/* Markers groupes */}
-                      {(space.groups || []).filter(g => g.pos_x != null && g.pos_y != null).map(g => {
-                        const typeInfo = GROUP_TYPES.find(t => t.value === g.group_type)
-                        return (
-                          <div key={`cgrp-${g.id}`} className="absolute" style={{ left: `${g.pos_x}%`, top: `${g.pos_y}%`, transform: 'translate(-50%, -50%)' }}>
-                            <div className="w-8 h-8 rounded-lg border-2 border-white shadow-lg flex items-center justify-center" style={{ backgroundColor: g.color || typeInfo?.color || '#8b5cf6' }}>
-                              <Layers className="h-4 w-4 text-white" />
-                            </div>
-                            <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 bg-white/90 dark:bg-gray-800/90 rounded px-1 border border-gray-200 dark:border-gray-600 whitespace-nowrap" style={{ fontSize: '7px', fontWeight: 600 }}>
-                              {g.name}
-                            </div>
-                          </div>
-                        )
-                      })}
                     </div>
                   )}
 
@@ -4754,8 +5826,14 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace
 
 // ======================== MODAL FORMULAIRE ÉLÉMENT ========================
 
-function ElementFormModal({ spaceId, element, onClose, onSaved }: {
-  spaceId: number, element: GreenSpaceElement | null, onClose: () => void, onSaved: () => void
+function ElementFormModal({ spaceId, element, positionInitiale, onClose, onSaved }: {
+  spaceId: number
+  element: GreenSpaceElement | null
+  /** Endroit désigné sur le plan : l'élément naît posé, plutôt qu'à retrouver
+   *  ensuite dans la liste « à poser ». */
+  positionInitiale?: { x: number; y: number } | null
+  onClose: () => void
+  onSaved: () => void
 }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
@@ -4764,8 +5842,8 @@ function ElementFormModal({ spaceId, element, onClose, onSaved }: {
     element_type: element?.element_type || 'arbre',
     description: element?.description || '',
     image: element?.image || '',
-    pos_x: element?.pos_x?.toString() || '',
-    pos_y: element?.pos_y?.toString() || '',
+    pos_x: element?.pos_x?.toString() ?? (positionInitiale ? positionInitiale.x.toFixed(2) : ''),
+    pos_y: element?.pos_y?.toString() ?? (positionInitiale ? positionInitiale.y.toFixed(2) : ''),
     quantity: element?.quantity?.toString() || '1',
     purchase_price: element?.purchase_price?.toString() || '',
     cost_source: element?.cost_source || 'saisi',

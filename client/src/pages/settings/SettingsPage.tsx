@@ -11,7 +11,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, CalendarDays, Bell
+  ShieldCheck, CalendarDays, Bell, TreePine
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -80,6 +80,12 @@ const settingsNavItems = [
     to: '/settings/manifestations', 
     icon: CalendarDays, 
     label: 'Manifestations',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/espaces-verts', 
+    icon: TreePine, 
+    label: 'Espaces verts',
     adminOnly: true
   },
   { 
