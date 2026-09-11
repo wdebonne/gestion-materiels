@@ -235,7 +235,7 @@ passage la permission de renommer le véhicule.
 - 🔗 **Onglet « Implantations » sur la fiche d'un matériel** : « 5 implantations — 3 sur la voie publique, 2 dans les espaces verts », avec l'état et le dernier entretien de chacune. Chaque ligne renvoie là où elle vit — la carte pour la voirie, la fiche du parc pour un espace vert, ouverte directement sur le bon parc
 - 🔒 **Quel parc se pose sur la voie publique** : réglable par l'administrateur depuis **Paramètres → Cartographie**, par catégorie, sous-catégorie ou matériel — même mécanique que le prêt en manifestation et l'implantation en espace vert, **le réglage le plus précis l'emporte**. Les prestations sont exclues d'office : elles ne se scellent pas dans un trottoir
 - 🗃️ **« Déposé » plutôt que supprimé** : un candélabre retiré sort de la carte et garde son historique — « qu'y avait-il à cet angle avant ? » ne doit pas rester sans réponse
-- ✍️ **On lit partout, on écrit là où ça vit** : la cartographie ne modifie pas un élément d'espace vert. Sa fiche de parc connaît son plan, ses zones, ses surfaces, ses coûts figés à la pose et ses saisons ; offrir ici un second formulaire ferait deux vérités pour la même ligne
+- ✍️ **On lit partout, on écrit là où ça vit** — à une exception près, et elle se justifie seule : **consigner un entretien** sur un élément de parc se fait depuis la carte, parce que c'est le geste de terrain. Il est rangé là où le module des espaces verts le range — un chantier du parc rattaché à ce seul élément —, apparaît donc aussi dans son onglet Entretien et pose son rendez-vous au calendrier. Le reste — libellé, position, surfaces, coûts figés, saisons — ne se modifie que dans la fiche du parc, qui seule les connaît
 
 ### Plugins intégrés
 - ⛽ **Carburant / Recharges** : Suivi des consommations et coûts, gestion des stations et des bornes, filtrage avancé, pièces jointes (PDF/images). Le module **s'adapte à ce que consomme le matériel** (voir ci-dessous)
@@ -966,7 +966,8 @@ Toutes les lectures appliquent la portée par catégorie du compte ; toutes les
 GET    /api/mobilier-urbain                # Implantations, filtrées (voir ci-dessous)
 GET    /api/mobilier-urbain/export         # Les mêmes lignes (?avec_interventions=1) pour le PDF
 GET    /api/mobilier-urbain/objets/:objectId # Toutes les implantations d'un modèle, où qu'elles soient
-GET    /api/mobilier-urbain/element/:eid   # Un élément d'espace vert vu de la carte (lecture seule)
+GET    /api/mobilier-urbain/element/:eid   # Un élément d'espace vert vu de la carte
+POST   /api/mobilier-urbain/element/:eid/interventions  # Consigner un entretien dessus (geste de terrain)
 GET    /api/mobilier-urbain/stats          # Total, voirie, espaces verts, modèles, rues, à reprendre,
                                            #   en retard, et ce que la carte ne peut pas montrer
 GET    /api/mobilier-urbain/facettes       # Rues, zones, modèles, catégories et espaces verts, avec effectifs

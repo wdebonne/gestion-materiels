@@ -1809,11 +1809,36 @@ export const mobilierUrbainApi = {
       `/mobilier-urbain/objets/${objectId}`
     ),
 
-  /** Un élément d'espace vert, vu depuis la carte : en lecture seule. */
+  /** Un élément d'espace vert, vu depuis la carte : en lecture, sauf l'entretien. */
   detailElement: (elementId: number) =>
-    api.get<{ success: boolean; data: Implantation }>(
-      `/mobilier-urbain/element/${elementId}`
+    api.get<{ success: boolean; data: Implantation }>(`/mobilier-urbain/element/${elementId}`),
+
+  /**
+   * Consigner un entretien sur un élément d'espace vert, depuis la carte.
+   *
+   * La seule écriture que la cartographie s'autorise sur un parc, et c'est le
+   * geste de terrain : noter devant le banc du square qu'il vient d'être
+   * repeint. L'entretien est rangé là où le module des espaces verts le range,
+   * et apparaît donc aussi dans l'onglet Entretien du parc.
+   */
+  ajouterEntretienElement: (elementId: number, corps: Record<string, unknown>) =>
+    api.post<{ success: boolean; data: unknown }>(
+      `/mobilier-urbain/element/${elementId}/interventions`,
+      corps
     ),
+
+  /**
+   * Les natures d'entretien que la commune a configurées pour ses espaces verts.
+   *
+   * Celles du module des espaces verts, et non les onze du mobilier de voirie :
+   * l'entretien part dans leur table, et y inscrire un type qu'ils ne
+   * connaissent pas casserait leurs propres libellés et leurs filtres.
+   */
+  typesEntretienEspaceVert: () =>
+    api.get<{
+      success: boolean
+      data: Array<{ id: number; value: string; label: string; icon: string; disabled: number }>
+    }>('/green-spaces/custom-maintenance-types'),
 
   catalogue: (q?: string) =>
     api.get<{ success: boolean; data: ModelePosable[] }>(

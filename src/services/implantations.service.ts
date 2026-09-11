@@ -588,7 +588,11 @@ export async function historiques(lignes: Implantation[]): Promise<void> {
     const entretiens = await db.query(
       `SELECT gme.element_id, gm.id, gm.maintenance_type as intervention_type,
               gm.performed_date as performed_on, gm.next_maintenance_date as next_date,
-              COALESCE(gm.title, gm.description) as description,
+              -- NULLIF avant COALESCE : le titre d'un entretien vaut la chaîne
+              -- vide et non NULL quand il n'a pas été rempli, et COALESCE
+              -- retenait donc ce vide plutôt que la description. L'historique
+              -- affichait une ligne sans texte.
+              COALESCE(NULLIF(gm.title, ''), gm.description) as description,
               gm.cost, gm.performed_by
        FROM green_space_maintenance_elements gme
        JOIN green_space_maintenances gm ON gm.id = gme.maintenance_id

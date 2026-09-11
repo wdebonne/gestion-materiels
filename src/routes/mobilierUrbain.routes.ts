@@ -7,7 +7,7 @@ import {
   requireSupervisor,
 } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
-import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
+import { filtreObjets, filtreObjetsLies, REFUS_PORTEE } from '../middleware/objectScope';
 import { lireDisponibilite, versColonne } from '../services/disponibiliteParc.service';
 import {
   arbrePosable,
@@ -42,6 +42,10 @@ import {
   type Implantation,
 } from '../services/implantations.service';
 import { FONDS } from '../services/captureCarte.service';
+import {
+  consignerEntretien,
+  REFUS_TYPE_ENTRETIEN,
+} from '../services/entretienEspaceVert.service';
 import { dateOuNull, fusionner, nombreOuNull } from '../utils/valeursSql';
 
 /**
@@ -61,6 +65,13 @@ import { dateOuNull, fusionner, nombreOuNull } from '../utils/valeursSql';
  * deux fois. Les routes d'écriture ne touchent que la voie publique : un arbre
  * se modifie dans la fiche de son espace vert, où l'on voit son plan, ses
  * voisins, ses coûts et ses saisons.
+ *
+ * **Une seule exception, et elle se justifie seule** : consigner un entretien
+ * sur un élément d'espace vert (`POST /element/:id/interventions`). C'est le
+ * geste de terrain — noter devant le banc du square qu'il vient d'être repeint
+ * —, et l'envoyer rouvrir le module des espaces verts pour cela garantit qu'il
+ * ne sera pas fait. L'entretien est écrit là où le module le range, un chantier
+ * de l'espace rattaché à ce seul élément : une mémoire, deux portes d'entrée.
  */
 
 const router = Router();
@@ -487,6 +498,92 @@ router.get('/element/:elementId', authenticateToken, async (req: AuthRequest, re
 
     await historiques([element]);
     res.json({ success: true, data: element });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /element/:elementId/interventions - Consigner un entretien sur un
+ * élément d'espace vert, depuis la carte.
+ *
+ * La seule écriture que la cartographie s'autorise sur un espace vert, et elle
+ * se justifie seule : c'est le geste de terrain. Quelqu'un qui passe devant le
+ * banc du square doit pouvoir noter qu'il vient d'être repeint sans rouvrir le
+ * module des espaces verts, retrouver le parc, ouvrir l'onglet Entretien et
+ * cocher l'élément dans une liste de trois cents.
+ *
+ * Tout le reste — le libellé, la position, les surfaces, les coûts figés, les
+ * saisons — reste modifiable dans la fiche du parc, et là seulement : ce sont
+ * des choses que la carte ne montre pas et ne saurait pas arbitrer.
+ *
+ * L'entretien est écrit **là où le module des espaces verts le range** : un
+ * chantier de l'espace, rattaché à ce seul élément. Il apparaît donc aussi dans
+ * l'onglet Entretien du parc, ce qui est exactement ce qu'on veut — une seule
+ * mémoire, deux portes d'entrée.
+ */
+router.post('/element/:elementId/interventions', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+  try {
+    // `filtreObjetsLies` et non `filtreObjets` : un élément peut n'être rattaché
+    // à aucun matériel du parc — un arbre existant, saisi à la main — et le
+    // filtrer par la catégorie d'un matériel absent le rendrait introuvable.
+    const portee = await filtreObjetsLies(req, 'o', 'gse.object_id');
+    if (portee === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    const element = await db.queryOne(
+      `SELECT gse.id, gse.green_space_id, gse.label, gse.condition_state,
+              gs.name as espace_nom
+       FROM green_space_elements gse
+       JOIN green_spaces gs ON gs.id = gse.green_space_id
+       LEFT JOIN objects o ON o.id = gse.object_id
+       WHERE gse.id = ?${portee.sql}`,
+      [req.params.elementId, ...portee.params]
+    );
+    if (!element) {
+      return res.status(404).json({ success: false, message: 'Élément non trouvé' });
+    }
+
+    const nature = texte(req.body.maintenance_type) || texte(req.body.intervention_type);
+    if (!nature) {
+      return res.status(400).json({ success: false, message: REFUS_TYPE_ENTRETIEN });
+    }
+
+    const entretien = await consignerEntretien(
+      element.green_space_id,
+      {
+        ...req.body,
+        maintenance_type: nature,
+        // Le chantier ne touche que cet élément-là : c'est ce qui distingue la
+        // saisie de terrain de la tonte de tout un parc.
+        element_ids: [Number(element.id)],
+      },
+      req.user?.userId
+    );
+
+    // L'entretien dit souvent l'état dans lequel il laisse l'élément : un banc
+    // repeint est « bon », et aller le retaper dans la fiche du parc est un
+    // geste que personne ne fait.
+    if (req.body.condition_state !== undefined) {
+      await db.execute(
+        'UPDATE green_space_elements SET condition_state = ?, updated_at = ? WHERE id = ?',
+        [
+          termeValide(ETATS, req.body.condition_state, element.condition_state),
+          new Date().toISOString(),
+          element.id,
+        ]
+      );
+    }
+
+    await logService.info(
+      'other',
+      `Entretien consigné depuis la carte sur « ${element.label} » (${element.espace_nom})`,
+      { elementId: element.id, greenSpaceId: element.green_space_id, type: nature },
+      { userId: req.user!.userId }
+    );
+
+    res.status(201).json({ success: true, data: entretien });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

@@ -7,6 +7,62 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Consigner un entretien de parc depuis la carte
+
+> La carte montrait les éléments des espaces verts mais ne les touchait pas :
+> pour noter qu'un banc du square venait d'être repeint, il fallait quitter la
+> cartographie, ouvrir le module des espaces verts, retrouver le parc, ouvrir son
+> onglet Entretien et cocher l'élément dans une liste de trois cents. Personne ne
+> le fait — surtout pas debout devant le banc.
+
+#### Ajouté
+
+- **« Ajouter » sur l'historique d'un élément de parc**, directement dans la
+  fiche que la carte ouvre : nature, date, ce qui a été fait, intervenant, coût,
+  **état après intervention** et prochaine échéance. L'état et les dates de
+  l'élément suivent tout seuls
+- **Les natures proposées sont celles des espaces verts**, celles que
+  l'administrateur a réglées — et non les onze du mobilier de voirie. L'entretien
+  part dans leur table : y inscrire « peinture » quand la commune a configuré
+  « reprise de peinture » ferait deux types pour la même chose dans leurs propres
+  écrans. Une nature absente de la liste reste saisissable, comme dans la fiche
+  d'un espace vert
+- **Une seule mémoire, deux portes d'entrée** : l'entretien saisi depuis la carte
+  est un chantier de l'espace rattaché à ce seul élément. Il apparaît donc aussi
+  dans l'onglet Entretien du parc, pose son rendez-vous au calendrier, et entre
+  dans les coûts comme n'importe quel autre
+
+#### Modifié
+
+- **La carte s'autorise désormais une écriture sur les espaces verts**, et une
+  seule : l'entretien. Le libellé, la position, les surfaces, les coûts figés à
+  la pose et les saisons restent modifiables dans la fiche du parc, et là
+  seulement — ce sont des choses que la carte ne montre pas et ne saurait pas
+  arbitrer
+- **Le corps du geste a été sorti de la route des espaces verts** vers
+  `entretienEspaceVert.service`, que les deux écrans appellent. Le recopier
+  aurait fait deux écritures de la même chose, et la seconde aurait oublié, au
+  premier ajout, la recopie des dates sur l'élément ou le rendez-vous au
+  calendrier
+
+#### Corrigé
+
+- **L'historique d'un élément de parc affichait des lignes sans texte.** Le titre
+  d'un entretien vaut la chaîne vide et non `NULL` quand il n'a pas été rempli :
+  le `COALESCE` retenait donc ce vide plutôt que la description, et l'entretien
+  s'affichait réduit à sa date et à sa nature
+
+#### Vérifié
+
+- Un entretien consigné depuis la carte sur un banc du square : état passé de
+  « mauvais » à « bon », dernière et prochaine échéances reportées sur l'élément,
+  rendez-vous créé au calendrier
+- Le même entretien relu dans l'onglet Entretien du parc, à côté de ceux saisis
+  par le module lui-même
+- La route d'origine des espaces verts inchangée après extraction : même
+  enregistrement, mêmes liaisons, même événement de calendrier
+- Type d'entretien manquant : refusé des deux côtés, avec le même message
+
 ### Un banc est un banc, qu'il soit sur un trottoir ou dans un parc
 
 > La cartographie ne montrait que la voirie, les espaces verts ne montraient que
