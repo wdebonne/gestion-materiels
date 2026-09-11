@@ -36,6 +36,8 @@ export type CleFond = 'photo' | 'plan-ign' | 'osm';
 export interface FondCarte {
   cle: CleFond;
   libelle: string;
+  /** Deux ou trois lettres, pour la barre du plan où la place est comptée. */
+  court: string;
   description: string;
   /** Modèle d'URL de tuile, au format Leaflet : `{z}`, `{x}`, `{y}`. */
   modele: string;
@@ -60,6 +62,7 @@ export const FONDS: FondCarte[] = [
   {
     cle: 'photo',
     libelle: 'Photo aérienne',
+    court: 'Photo',
     description: 'Vue du ciel : allées, massifs et arbres visibles. Le meilleur fond pour un parc.',
     modele: 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
       + '&LAYER=ORTHOIMAGERY.ORTHOPHOTOS&STYLE=normal&TILEMATRIXSET=PM'
@@ -71,6 +74,7 @@ export const FONDS: FondCarte[] = [
   {
     cle: 'plan-ign',
     libelle: 'Plan IGN',
+    court: 'Plan',
     description: 'Carte dessinée officielle : bâtiments, voirie et limites de parcelles.',
     modele: 'https://data.geopf.fr/wmts?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0'
       + '&LAYER=GEOGRAPHICALGRIDSYSTEMS.PLANIGNV2&STYLE=normal&TILEMATRIXSET=PM'
@@ -82,6 +86,7 @@ export const FONDS: FondCarte[] = [
   {
     cle: 'osm',
     libelle: 'OpenStreetMap',
+    court: 'OSM',
     description: 'La carte déjà utilisée ailleurs dans l’application. Lisible, mais pauvre à l’échelle d’un massif.',
     modele: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
     attribution: '© les contributeurs OpenStreetMap',
@@ -230,6 +235,134 @@ function fenetreDe(cadrage: Cadrage): Fenetre {
     largeur: cadrage.largeur,
     hauteur: cadrage.hauteur,
     zoom: cadrage.zoom,
+  };
+}
+
+/** Le cadrage relu depuis la colonne `plan_capture`, ou `null`. */
+export function cadrageEnregistre(brut: unknown): (Cadrage & { fond: string }) | null {
+  if (!brut) return null;
+  try {
+    const lu = typeof brut === 'string' ? JSON.parse(brut) : brut;
+    const cadrage = lireCadrage(lu);
+    if (!cadrage) return null;
+    const f = fond(String((lu as any)?.fond ?? ''));
+    return { ...cadrage, fond: f ? f.cle : FONDS[0].cle };
+  } catch {
+    return null;
+  }
+}
+
+// ------------------------------------------------- d'un cadrage à un autre
+
+/**
+ * Retraduit un point du plan quand le cadre change.
+ *
+ * C'est la pièce qui permet de recadrer ou de changer de fond sans rien
+ * casser. Les coordonnées du plan sont des **pourcentages de l'image** : elles
+ * ne veulent rien dire hors du cadre qui les a vues naître. Remplacer l'image
+ * sans les retraduire ne déplace pas seulement les repères à l'écran — cela
+ * change la surface des zones, donc les quantités, donc les coûts, et rien ne
+ * le signale.
+ *
+ * Les deux cadrages désignent le même globe : il suffit de repasser par les
+ * pixels du monde, en ramenant l'ancien zoom au nouveau.
+ */
+export function transposer(point: PointPlan, avant: Cadrage, apres: Cadrage): PointPlan {
+  const a = fenetreDe(avant);
+  const b = fenetreDe(apres);
+  const facteur = 2 ** (apres.zoom - avant.zoom);
+  const x = ((a.gauche + (point.x / 100) * a.largeur) * facteur - b.gauche) / b.largeur;
+  const y = ((a.haut + (point.y / 100) * a.hauteur) * facteur - b.haut) / b.hauteur;
+  return { x: x * 100, y: y * 100 };
+}
+
+/**
+ * Le point retombe-t-il dans le nouveau cadre ?
+ *
+ * Une marge d'un dixième de pourcent absorbe les arrondis successifs — le
+ * cadrage vient d'une carte affichée au pixel près, et un sommet posé
+ * exactement sur le bord ne doit pas être déclaré dehors pour un millième.
+ */
+function dansLeCadre(point: PointPlan): boolean {
+  return point.x >= -0.1 && point.x <= 100.1 && point.y >= -0.1 && point.y <= 100.1;
+}
+
+/** Ce qu'un objet du plan occupe : un point posé, un contour, ou les deux. */
+export interface ObjetDuPlan {
+  pos_x?: number | null;
+  pos_y?: number | null;
+  zone_points?: string | null;
+}
+
+/**
+ * Ce que devient un objet du plan après recadrage.
+ *
+ * `sort` veut dire que le nouveau cadre l'ampute : un repère hors champ, ou un
+ * contour dont un seul sommet dépasse. Un contour tronqué est le cas le plus
+ * grave et le plus discret — il garderait une forme plausible avec une surface
+ * fausse — c'est pourquoi il vaut refus et non rognage.
+ */
+export interface ObjetTranspose {
+  pos: PointPlan | null;
+  zone: PointPlan[] | null;
+  sort: boolean;
+}
+
+export function transposerObjet(
+  objet: ObjetDuPlan,
+  avant: Cadrage,
+  apres: Cadrage
+): ObjetTranspose {
+  let sort = false;
+
+  let pos: PointPlan | null = null;
+  if (objet.pos_x !== null && objet.pos_x !== undefined && objet.pos_y !== null && objet.pos_y !== undefined) {
+    pos = transposer({ x: Number(objet.pos_x), y: Number(objet.pos_y) }, avant, apres);
+    if (!dansLeCadre(pos)) sort = true;
+  }
+
+  let zone: PointPlan[] | null = null;
+  const sommets = lireSommets(objet.zone_points);
+  if (sommets.length >= 3) {
+    zone = sommets.map((p) => transposer(p, avant, apres));
+    if (zone.some((p) => !dansLeCadre(p))) sort = true;
+  }
+
+  return { pos, zone, sort };
+}
+
+/** Lecture tolérante des sommets stockés, comme ailleurs dans le plan. */
+function lireSommets(brut: string | null | undefined): PointPlan[] {
+  if (!brut) return [];
+  try {
+    const lu = typeof brut === 'string' ? JSON.parse(brut) : brut;
+    if (!Array.isArray(lu)) return [];
+    return lu
+      .filter((p) => p && Number.isFinite(Number(p.x)) && Number.isFinite(Number(p.y)))
+      .map((p) => ({ x: Number(p.x), y: Number(p.y) }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Ramène un point transposé dans les bornes du plan, et l'arrondit.
+ *
+ * Le bornage n'est appliqué qu'à ce qui est déjà reconnu comme entrant : le
+ * refus a lieu avant, et ceci ne corrige que le dixième de pourcent de
+ * tolérance, qu'un `CHECK` de base ou la relecture côté client refuseraient.
+ *
+ * L'arrondi, lui, empêche le bruit flottant de s'installer : une transposition
+ * rend `55.00000000000001` là où `55` était attendu, et ces décimales
+ * s'accumulent d'un recadrage à l'autre en allongeant le JSON pour rien. Six
+ * décimales valent un millionième de plan, très au-delà de ce qu'un écran ou
+ * une imprimante distinguent.
+ */
+export function bornerPoint(point: PointPlan): PointPlan {
+  const arrondir = (valeur: number) => Math.round(valeur * 1e6) / 1e6;
+  return {
+    x: arrondir(Math.min(100, Math.max(0, point.x))),
+    y: arrondir(Math.min(100, Math.max(0, point.y))),
   };
 }
 

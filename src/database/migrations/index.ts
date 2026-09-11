@@ -15,6 +15,7 @@ import coutManifestation from './013_cout_manifestation';
 import compteursEtEnergie from './014_compteurs_et_energie';
 import implantationDepuisLeParc from './015_implantation_depuis_le_parc';
 import planAnnote from './016_plan_annote';
+import cadrageDuPlan from './017_cadrage_du_plan';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -42,6 +43,7 @@ export const MIGRATIONS: readonly Migration[] = [
   compteursEtEnergie,
   implantationDepuisLeParc,
   planAnnote,
+  cadrageDuPlan,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

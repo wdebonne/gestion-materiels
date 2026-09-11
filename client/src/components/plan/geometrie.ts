@@ -170,3 +170,60 @@ export function formaterSurface(m2: number | null | undefined): string {
     maximumFractionDigits: decimales,
   })} m²`
 }
+
+/**
+ * L'emprise de tout ce qui est posé sur le plan, en pourcentages.
+ *
+ * Sert à cadrer la vue sur ce qui compte. Une capture prend le format de la
+ * carte affichée — très allongé sur un écran large — et un massif de six cents
+ * mètres carrés s'y retrouve perdu au milieu de six cents mètres de ville :
+ * sans ce calcul, il faut zoomer à la main à chaque ouverture de la fiche.
+ *
+ * Rend `null` quand rien n'est posé : il n'y a alors pas d'emprise, et cadrer
+ * sur le vide donnerait un zoom absurde.
+ */
+export function empriseDuPose(objets: Array<{
+  pos_x?: number | null
+  pos_y?: number | null
+  zone_points?: string | null
+}>): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  const retenir = (p: PointPlan) => {
+    minX = Math.min(minX, p.x)
+    minY = Math.min(minY, p.y)
+    maxX = Math.max(maxX, p.x)
+    maxY = Math.max(maxY, p.y)
+  }
+
+  for (const objet of objets) {
+    // Les deux comptent, et pas l'un ou l'autre : une zone porte son contour et
+    // peut aussi porter un point, et c'est le contour qui dit son étendue.
+    const points = parseZonePoints(objet.zone_points)
+    points.forEach(retenir)
+    if (objet.pos_x !== null && objet.pos_x !== undefined && objet.pos_y !== null && objet.pos_y !== undefined) {
+      retenir({ x: Number(objet.pos_x), y: Number(objet.pos_y) })
+    }
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null
+
+  // Un plan qui ne porte qu'un seul repère n'a pas d'emprise : lui en donner une
+  // évite un zoom infini, et montre son voisinage plutôt que le pixel exact.
+  const MINIMUM = 6
+  if (maxX - minX < MINIMUM) {
+    const centre = (minX + maxX) / 2
+    minX = centre - MINIMUM / 2
+    maxX = centre + MINIMUM / 2
+  }
+  if (maxY - minY < MINIMUM) {
+    const centre = (minY + maxY) / 2
+    minY = centre - MINIMUM / 2
+    maxY = centre + MINIMUM / 2
+  }
+
+  return { minX, minY, maxX, maxY }
+}

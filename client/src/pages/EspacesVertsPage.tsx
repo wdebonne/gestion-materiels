@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
@@ -6,7 +6,7 @@ import {
   Download, Image, Tag, Ruler, CloudSun,
   Landmark, Move, ZoomIn, ZoomOut, Maximize2, Minimize2, Layers, ChevronDown, ChevronRight, Pentagon, Wrench, Calendar, Check,
   Settings, Upload, Loader2, Paperclip, Link2, Copy, Archive, History, Camera, ArrowLeftRight,
-  Navigation, Globe, Hash, Leaf, Euro, RefreshCw, Package, EyeOff
+  Navigation, Globe, Hash, Leaf, Euro, RefreshCw, Package, EyeOff, Crosshair
 } from 'lucide-react'
 import api from '@/lib/api'
 import { formatDate } from '@/lib/utils'
@@ -26,13 +26,14 @@ import { getErrorMessage } from '@/lib/errors'
 import PlanCanvas, { positionSurPlan, type CalquesPlan } from '@/components/plan/PlanCanvas'
 import { usePlanViewport } from '@/components/plan/usePlanViewport'
 import type { ContourPropose, EchellePlan, OutilPlan, PointPlan, SelectionPlan } from '@/components/plan/types'
-import CaptureCarte, { chercherContours, type ResultatCapture } from '@/components/plan/CaptureCarte'
+import CaptureCarte, { chercherContours, useFondsPlan, type CadragePlan, type ResultatCapture } from '@/components/plan/CaptureCarte'
 import ContoursProposes from '@/components/plan/ContoursProposes'
 import {
   aireEnM2,
   borner,
   deplacerZone,
   echelleDepuisCalibrage,
+  empriseDuPose,
   formaterSurface,
   insererSommet,
   parseZonePoints,
@@ -64,6 +65,8 @@ interface GreenSpace {
   plan_scale_metres?: number | null
   /** Hauteur divisée par largeur de l'image : un pourcent vertical ne vaut pas un pourcent horizontal. */
   plan_ratio?: number | null
+  /** Le cadrage de la capture, quand le plan vient de la carte : `{lat,lng,zoom,largeur,hauteur,fond}`. */
+  plan_capture?: string | null
   /** Le segment tracé au calibrage, pour pouvoir le corriger plutôt que le refaire. */
   plan_scale_points?: string | null
   custom_fields: string
@@ -1610,6 +1613,37 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
   const annotations = space.annotations || []
   const elements = space.elements || []
   const groups = space.groups || []
+
+  /**
+   * Le cadrage de la carte d'où vient le plan, quand il en vient.
+   *
+   * Sa présence est ce qui distingue un plan capturé d'une image chargée à la
+   * main : elle seule permet de changer de fond ou de recadrer sans déplacer
+   * ce qui est posé dessus.
+   */
+  const cadrageCapture = useMemo((): CadragePlan | null => {
+    if (!space.plan_capture) return null
+    try {
+      const lu = typeof space.plan_capture === 'string' ? JSON.parse(space.plan_capture) : space.plan_capture
+      return Number.isFinite(Number(lu?.lat)) && Number.isFinite(Number(lu?.zoom)) ? lu : null
+    } catch {
+      return null
+    }
+  }, [space.plan_capture])
+
+  /*
+    La *même* requête que la fenêtre de capture, et pas seulement la même clé :
+    c'est le hook qui la décrit, une fois. Deux définitions sous une même clé
+    laissaient la première arrivée décider de la forme, et la seconde lisait à
+    côté.
+  */
+  const fondsDisponibles = useFondsPlan().data?.fonds ?? []
+
+  /** L'emprise de tout ce qui est posé, pour pouvoir cadrer dessus. */
+  const emprise = useMemo(
+    () => empriseDuPose([...elements, ...groups, ...annotations]),
+    [elements, groups, annotations]
+  )
   // « À poser » veut dire « nulle part sur le plan ». Une pelouse dessinée n'a
   // pas de point mais un contour : elle y est déjà, et la proposer à poser
   // laissait croire que le tracé n'avait pas été enregistré.
@@ -1629,6 +1663,27 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
 
   /** Rapport de l'image réellement chargée, pour calibrer sans rien supposer. */
   const ratioRef = useRef<number>(Number(space.plan_ratio) || 1)
+
+  /**
+   * Cadre la vue sur ce qui est posé, ou à défaut sur le plan entier.
+   *
+   * Appelé à l'ouverture et par le bouton de la barre. Le cadrage a besoin des
+   * dimensions réelles du contenu, donc de l'image chargée : d'où l'appel
+   * depuis `onImageLoad` et non depuis un effet de montage.
+   */
+  const cadrerSurLePose = () => {
+    if (emprise) vue.cadrerSur(emprise)
+    else vue.ajuster()
+  }
+
+  /**
+   * Le plan déjà cadré automatiquement, pour ne le faire qu'une fois par image.
+   *
+   * Sans ce garde-fou, chaque rechargement de la fiche — il y en a un après
+   * chaque pose, chaque déplacement, chaque tracé — ramènerait la vue au
+   * cadrage d'origine et annulerait le zoom que l'utilisateur venait de faire.
+   */
+  const planDejaCadre = useRef<string | null>(null)
 
   const rafraichir = () => {
     queryClient.invalidateQueries({ queryKey: ['green-space', space.id] })
@@ -1725,6 +1780,32 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
     meta: { successMessage: 'Zone créée' },
     mutationFn: (data: any) => api.post(`/green-spaces/${space.id}/elements`, data),
     onSuccess: () => { rafraichir(); setZoneAQualifier(null); setTrace(null); setHistorique([]) },
+  })
+
+  /**
+   * Changer de fond sans rien déplacer.
+   *
+   * On recapture **exactement le même cadre** avec une autre imagerie : le
+   * serveur retraduit les coordonnées d'un cadrage à l'autre, et comme les deux
+   * sont identiques la transformation ne bouge rien. C'est ce qui permet de
+   * passer de la photo aérienne au plan IGN sans perdre un seul repère.
+   */
+  const changerDeFond = useMutation({
+    meta: { successMessage: 'Fond de plan changé' },
+    mutationFn: (fond: string) => {
+      if (!cadrageCapture) throw new Error('Ce plan ne vient pas de la carte')
+      return api.post(`/green-spaces/${space.id}/plan/capture`, { ...cadrageCapture, fond })
+    },
+    onSuccess: (reponse: any) => {
+      /*
+        Le nouveau plan couvre exactement le même terrain : la vue en place
+        reste juste. On marque l'image comme déjà cadrée **avant** qu'elle ne
+        se charge, sinon le cadrage automatique se rejoue et ramène à l'emprise
+        du posé quelqu'un qui regardait volontairement ailleurs.
+      */
+      planDejaCadre.current = reponse?.data?.data?.espace?.plan_image ?? null
+      rafraichir()
+    },
   })
 
   const enregistrerCalibrage = useMutation({
@@ -2024,7 +2105,18 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
    * s'affiche sans l'attendre.
    */
   const apresCapture = async (resultat: ResultatCapture) => {
+    /*
+      Un recadrage n'est pas une création : le plan existait, le contour a déjà
+      été proposé une fois et accepté ou refusé. Reposer la question à chaque
+      ajustement est du bruit — et un cadre resserré fait justement dépasser les
+      contours du parc, si bien que la fenêtre revenait pour ne proposer que des
+      surfaces tronquées.
+    */
+    const premierPlan = !cadrageCapture
     setCaptureOuverte(false)
+    // Le plan change de cadre : la vue en place ne veut plus rien dire, et le
+    // cadrage automatique doit se rejouer sur la nouvelle image.
+    planDejaCadre.current = null
     rafraichir()
     if (resultat.trous > 0) {
       toast(
@@ -2033,6 +2125,8 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
         { icon: '⚠️' }
       )
     }
+
+    if (!premierPlan) return
 
     const recherche = await chercherContours(space.id, resultat.cadrage)
     if (recherche.etat === 'indisponible') {
@@ -2051,6 +2145,8 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
       longitude={space.longitude}
       adresse={space.address}
       planExistant={Boolean(space.plan_image)}
+      cadrageActuel={cadrageCapture}
+      empriseContenu={emprise}
       onFermer={() => setCaptureOuverte(false)}
       onCapture={apresCapture}
     />
@@ -2133,6 +2229,12 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
         surPanneau={() => setPanneauOuvert(o => !o)}
         surPDF={() => setExportPDF(true)}
         surCapture={canManage ? () => setCaptureOuverte(true) : undefined}
+        surCadrer={cadrerSurLePose}
+        aDuContenu={emprise !== null}
+        fonds={fondsDisponibles}
+        fondActuel={cadrageCapture?.fond ?? null}
+        surFond={canManage && cadrageCapture ? (f) => changerDeFond.mutate(f) : undefined}
+        fondEnCours={changerDeFond.isPending}
       />
 
       {/*
@@ -2191,7 +2293,16 @@ function PlanAnnotationTab({ space, queryClient }: { space: GreenSpace, queryCli
               zoom={vue.zoom}
               onSelect={trace ? undefined : setSelection}
               onMarqueurPointerDown={glisserMarqueur}
-              onImageLoad={(ratio) => { ratioRef.current = ratio }}
+              onImageLoad={(ratio) => {
+                ratioRef.current = ratio
+                if (planDejaCadre.current !== space.plan_image) {
+                  planDejaCadre.current = space.plan_image
+                  // Le cadre du plan vient d'être mesuré par le navigateur ;
+                  // laisser passer une image évite de calculer sur une hauteur
+                  // encore nulle.
+                  requestAnimationFrame(cadrerSurLePose)
+                }
+              }}
             >
               {trace && (
                 <TraceEnCours
@@ -2350,6 +2461,7 @@ const distance = (a: PointPlan, b: PointPlan) => Math.hypot(a.x - b.x, a.y - b.y
 function BarreOutilsPlan({
   outil, surOutil, peutModifier, zoom, surZoom, surAjuster, surReinitialiser,
   calques, surCalques, panneauOuvert, surPanneau, surPDF, surCapture,
+  surCadrer, aDuContenu, fonds, fondActuel, surFond, fondEnCours,
 }: {
   outil: OutilPlan
   surOutil: (o: OutilPlan) => void
@@ -2365,6 +2477,16 @@ function BarreOutilsPlan({
   surPDF: () => void
   /** Absent pour qui ne peut pas écrire : refaire le plan est un geste de superviseur. */
   surCapture?: () => void
+  /** Ramène la vue sur ce qui est posé — le geste qu'on faisait à la molette. */
+  surCadrer: () => void
+  aDuContenu: boolean
+  /** Les fonds proposés par le serveur, décrits une seule fois là-bas. */
+  fonds: Array<{ cle: string; court: string; libelle: string }>
+  /** Fond du plan capturé, `null` pour une image chargée à la main. */
+  fondActuel: string | null
+  /** Absent quand le plan ne vient pas de la carte : il n'y a alors pas de fond à changer. */
+  surFond?: (cle: string) => void
+  fondEnCours: boolean
 }) {
   const OUTILS: Array<{ cle: OutilPlan; libelle: string; icone: any; gere: boolean }> = [
     { cle: 'main', libelle: 'Déplacer la vue', icone: Move, gere: false },
@@ -2410,6 +2532,18 @@ function BarreOutilsPlan({
         <span className="text-sm text-gray-500 w-12 text-center tabular-nums">{Math.round(zoom * 100)} %</span>
         <IconButton label="Agrandir le zoom" icon={<ZoomIn className="h-4 w-4" />} onClick={() => surZoom(1.25)} />
         <IconButton label="Ajuster le plan au cadre" icon={<Maximize2 className="h-4 w-4" />} onClick={surAjuster} />
+        {/*
+          Le geste que tout le monde faisait à la molette : un massif capturé au
+          milieu d'un quartier tient dans un centième de l'image, et il fallait
+          zoomer à 300 % à chaque ouverture pour le voir.
+        */}
+        {aDuContenu && (
+          <IconButton
+            label="Cadrer sur ce qui est posé"
+            icon={<Crosshair className="h-4 w-4" />}
+            onClick={surCadrer}
+          />
+        )}
         <button
           type="button"
           onClick={surReinitialiser}
@@ -2446,10 +2580,37 @@ function BarreOutilsPlan({
           icon={panneauOuvert ? <ChevronRight className="h-4 w-4" /> : <Layers className="h-4 w-4" />}
           onClick={surPanneau}
         />
+        {/*
+          Changer de fond recapture le **même cadre** avec une autre imagerie :
+          rien ne bouge, ni les repères, ni les zones, ni les surfaces. D'où sa
+          place parmi les actions et non parmi les calques, qui eux s'allument
+          instantanément sans rien réécrire.
+        */}
+        {surFond && fonds.length > 1 && (
+          <div className="inline-flex items-center gap-0.5 rounded-lg border border-gray-200 dark:border-gray-700 p-0.5">
+            {fonds.map(f => (
+              <button
+                key={f.cle}
+                type="button"
+                onClick={() => { if (f.cle !== fondActuel) surFond(f.cle) }}
+                disabled={fondEnCours}
+                aria-pressed={f.cle === fondActuel}
+                title={`Fond du plan : ${f.libelle}`}
+                className={`px-2 py-1 text-xs rounded transition-colors disabled:opacity-50 ${
+                  f.cle === fondActuel
+                    ? 'bg-gray-200 text-gray-800 dark:bg-gray-600 dark:text-gray-100'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700'
+                }`}
+              >
+                {f.court}
+              </button>
+            ))}
+          </div>
+        )}
         <IconButton label="Exporter le plan en PDF" icon={<Download className="h-4 w-4" />} onClick={surPDF} />
         {surCapture && (
           <IconButton
-            label="Refaire le plan depuis la carte"
+            label="Recadrer ou refaire le plan depuis la carte"
             icon={<Camera className="h-4 w-4" />}
             onClick={surCapture}
           />

@@ -60,3 +60,26 @@ export function nombreOuNull(valeur: unknown): number | null {
 export function fusionner<T>(recu: T | null | undefined, existant: T | null): T | null {
   return recu === undefined ? existant : recu;
 }
+
+/**
+ * Une colonne numérique lors d'une modification partielle.
+ *
+ * À utiliser **à la place** de `fusionner(nombreOuNull(x), existant)`, qui a
+ * l'air correct et ne l'est pas : `nombreOuNull` traduit aussi bien
+ * « non mentionné » (`undefined`) que « vidé » (`''`, `null`) par un même
+ * `null`, si bien que `fusionner` reçoit toujours `null` et n'a plus rien à
+ * distinguer. Les deux fonctions se neutralisaient, et la seconde effaçait
+ * précisément ce que la première existait pour préserver.
+ *
+ * Ce que cela coûtait, en vrai : faire glisser un massif sur le plan envoie
+ * `{pos_x, pos_y}` et rien d'autre — sa surface partait à `NULL` au passage,
+ * donc sa quantité et son coût. Modifier l'adresse d'un espace vert effaçait le
+ * calibrage de son plan, et toutes les surfaces cessaient de se calculer. Aucun
+ * message, aucune trace : un chiffre juste devenait un vide.
+ *
+ * L'effacement volontaire reste possible et se dit comme avant, en envoyant
+ * `null` — c'est ce que fait « Retirer du plan ».
+ */
+export function nombreFusionne(recu: unknown, existant: number | null): number | null {
+  return recu === undefined ? existant : nombreOuNull(recu);
+}

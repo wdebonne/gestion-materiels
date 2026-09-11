@@ -22,7 +22,7 @@ import {
 } from '../services/coutEspaceVert.service';
 import { expressionNature } from '../services/lotParc.service';
 import { jointuresPrestation } from '../services/prestationParc.service';
-import { dateOuNull, fusionner, nombreOuNull } from '../utils/valeursSql';
+import { dateOuNull, fusionner, nombreFusionne, nombreOuNull } from '../utils/valeursSql';
 import {
   lireZone,
   positionValide,
@@ -30,14 +30,18 @@ import {
   REFUS_ZONE,
 } from '../services/geometriePlan.service';
 import {
+  bornerPoint,
+  cadrageEnregistre,
   capturer as capturerPlan,
   contoursDuCadre,
   fond as fondCarte,
   lireCadrage,
+  transposerObjet,
   FONDS,
   LIMITES,
   REFUS_CADRAGE,
   REFUS_FOND,
+  type Cadrage as CadrageCapture,
 } from '../services/captureCarte.service';
 import { exportLimiter } from '../middleware/rateLimiter.middleware';
 import path from 'path';
@@ -828,13 +832,29 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       plan_scale_metres, plan_ratio, plan_scale_points
     } = req.body;
 
+    /*
+      Une image de plan réellement remplacée emmène tout ce qui la décrivait.
+
+      C'est la crainte qui avait motivé l'effacement d'origine, et elle est
+      juste : garder l'échelle de l'ancienne image rendrait toutes les surfaces
+      fausses sans que rien ne le dise. Mais l'effacement était déclenché par
+      « le champ n'est pas mentionné », ce qui arrive à *chaque* modification —
+      corriger une adresse suffisait à décalibrer le plan. La condition est
+      maintenant celle qu'on voulait vraiment : l'image a changé.
+
+      Le cadrage part avec : il décrivait où regardait la capture, et une image
+      envoyée à la main ne regarde nulle part.
+    */
+    const planRemplace =
+      plan_image !== undefined && String(plan_image ?? '') !== String(existing.plan_image ?? '');
+
     const now = new Date().toISOString();
     await db.execute(
       `UPDATE green_spaces SET name = ?, description = ?, address = ?,
         latitude = ?, longitude = ?, area_m2 = ?, space_type = ?,
         soil_type = ?, status = ?, image = ?, plan_image = ?,
         custom_fields = ?, plan_scale_metres = ?, plan_ratio = ?,
-        plan_scale_points = ?, updated_at = ?
+        plan_scale_points = ?, plan_capture = ?, updated_at = ?
        WHERE id = ?`,
       [
         name || existing.name, description ?? existing.description,
@@ -844,14 +864,16 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
         status ?? existing.status, image ?? existing.image,
         plan_image ?? existing.plan_image,
         custom_fields ? JSON.stringify(custom_fields) : existing.custom_fields,
-        // Le calibrage s'efface volontairement en envoyant `null` : un plan
-        // remplacé garderait sinon l'échelle de l'ancien, et toutes les surfaces
-        // calculées deviendraient fausses sans que rien ne le dise.
-        fusionner(nombreOuNull(plan_scale_metres), existing.plan_scale_metres),
-        fusionner(nombreOuNull(plan_ratio), existing.plan_ratio),
-        plan_scale_points !== undefined
+        // Le calibrage s'efface aussi sur demande explicite — `null` reçu —,
+        // ce dont se sert le bouton « Effacer le calibrage ».
+        planRemplace ? null : nombreFusionne(plan_scale_metres, existing.plan_scale_metres),
+        planRemplace ? null : nombreFusionne(plan_ratio, existing.plan_ratio),
+        planRemplace
+          ? null
+          : plan_scale_points !== undefined
           ? (plan_scale_points ? JSON.stringify(plan_scale_points) : null)
           : existing.plan_scale_points,
+        planRemplace ? null : existing.plan_capture,
         now, req.params.id
       ]
     );
@@ -1264,7 +1286,7 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         description ?? existing.description, image ?? existing.image,
         // `fusionner` et non `??` : le client envoie `null` pour retirer du
         // plan, et `??` gardait alors l'ancienne position.
-        fusionner(nombreOuNull(pos_x), existing.pos_x), fusionner(nombreOuNull(pos_y), existing.pos_y),
+        nombreFusionne(pos_x, existing.pos_x), nombreFusionne(pos_y, existing.pos_y),
         quantity ?? existing.quantity,
         purchase_price !== undefined ? nombreOuNull(purchase_price) : existing.purchase_price,
         prixCorrige ? 'saisi' : (existing.cost_source || 'saisi'),
@@ -1274,7 +1296,7 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         next_maintenance_date ?? existing.next_maintenance_date,
         condition_state ?? existing.condition_state,
         custom_fields ? JSON.stringify(custom_fields) : existing.custom_fields,
-        fusionner(nombreOuNull(area_m2), existing.area_m2),
+        nombreFusionne(area_m2, existing.area_m2),
         // Une surface corrigée à la main ne doit plus jamais être recalculée :
         // c'est le métré qui fait foi, pas le tracé approximatif du plan.
         area_source === undefined
@@ -1286,8 +1308,8 @@ router.put('/elements/:elementId', authenticateToken, requireSupervisor, async (
         zone.etat === 'absente'
           ? existing.zone_points
           : zone.etat === 'valide' ? JSON.stringify(zone.points) : null,
-        fusionner(nombreOuNull(latitude), existing.latitude),
-        fusionner(nombreOuNull(longitude), existing.longitude),
+        nombreFusionne(latitude, existing.latitude),
+        nombreFusionne(longitude, existing.longitude),
         now, req.params.elementId
       ]
     );
@@ -1406,6 +1428,96 @@ router.delete('/annotations/:annotationId', authenticateToken, requireSupervisor
 
 // ======================== PLAN CAPTURÉ DEPUIS LA CARTE ========================
 
+/** Les trois familles d'objets qui se posent sur un plan, et leur table. */
+const POSES_SUR_LE_PLAN = [
+  { table: 'green_space_elements', libelle: 'label', zones: true },
+  { table: 'green_space_groups', libelle: 'name', zones: true },
+  { table: 'green_space_annotations', libelle: 'label', zones: false },
+] as const;
+
+/**
+ * Ce qu'un nouveau cadrage couperait.
+ *
+ * Un recadrage plus serré est le geste le plus naturel du monde — on vient de
+ * capturer six cents mètres de ville pour un massif de six cents mètres carrés.
+ * Mais rogner un contour lui laisserait une forme plausible et une surface
+ * fausse, qui repartirait aussitôt en quantité puis en coût, sans que rien ne
+ * l'annonce. Le refus est donc préférable au rognage : on élargit le cadre, ou
+ * on retire l'objet du plan d'abord.
+ */
+async function cequiSeraitAmpute(
+  espaceId: string,
+  avant: CadrageCapture,
+  apres: CadrageCapture
+): Promise<string[]> {
+  const dehors: string[] = [];
+
+  for (const famille of POSES_SUR_LE_PLAN) {
+    const colonnes = famille.zones
+      ? `${famille.libelle} AS nom, pos_x, pos_y, zone_points`
+      : `${famille.libelle} AS nom, pos_x, pos_y`;
+    const lignes = await db.query(
+      `SELECT ${colonnes} FROM ${famille.table} WHERE green_space_id = ?`,
+      [espaceId]
+    );
+    for (const ligne of lignes) {
+      if (transposerObjet(ligne, avant, apres).sort) {
+        dehors.push(String(ligne.nom || 'Sans nom'));
+      }
+    }
+  }
+
+  return dehors;
+}
+
+/**
+ * Replace sur le nouveau cadre tout ce qui était posé sur l'ancien.
+ *
+ * Rend le nombre d'objets touchés, pour le dire au journal et à l'utilisateur.
+ * N'est appelée qu'après `cequiSeraitAmpute` : ici, tout rentre.
+ */
+async function deplacerLePose(
+  espaceId: string,
+  avant: CadrageCapture,
+  apres: CadrageCapture
+): Promise<number> {
+  let touches = 0;
+
+  for (const famille of POSES_SUR_LE_PLAN) {
+    const colonnes = famille.zones ? 'id, pos_x, pos_y, zone_points' : 'id, pos_x, pos_y';
+    const lignes = await db.query(
+      `SELECT ${colonnes} FROM ${famille.table} WHERE green_space_id = ?`,
+      [espaceId]
+    );
+
+    for (const ligne of lignes) {
+      const { pos, zone } = transposerObjet(ligne, avant, apres);
+      if (!pos && !zone) continue;
+
+      const borne = pos ? bornerPoint(pos) : null;
+      if (famille.zones) {
+        await db.execute(
+          `UPDATE ${famille.table} SET pos_x = ?, pos_y = ?, zone_points = ? WHERE id = ?`,
+          [
+            borne ? borne.x : null,
+            borne ? borne.y : null,
+            zone ? JSON.stringify(zone.map(bornerPoint)) : ligne.zone_points ?? null,
+            ligne.id,
+          ]
+        );
+      } else {
+        await db.execute(
+          `UPDATE ${famille.table} SET pos_x = ?, pos_y = ? WHERE id = ?`,
+          [borne ? borne.x : null, borne ? borne.y : null, ligne.id]
+        );
+      }
+      touches++;
+    }
+  }
+
+  return touches;
+}
+
 /**
  * GET /plan/fonds - Les fonds de carte disponibles.
  *
@@ -1424,6 +1536,7 @@ router.get('/plan/fonds', authenticateToken, async (_req: AuthRequest, res: Resp
       fonds: FONDS.map((f) => ({
         cle: f.cle,
         libelle: f.libelle,
+        court: f.court,
         description: f.description,
         modele: f.modele,
         attribution: f.attribution,
@@ -1470,23 +1583,56 @@ router.post('/:id/plan/capture', authenticateToken, requireSupervisor, exportLim
       });
     }
 
+    /*
+      Le cadrage du plan qu'on remplace, quand il venait lui aussi d'une
+      capture. C'est lui qui permet de retraduire tout ce qui est posé : sans
+      lui — plan chargé à la main, ou capturé avant que le cadrage ne soit
+      mémorisé — il n'y a rien à retraduire et les pourcentages sont conservés
+      tels quels, faute de mieux.
+    */
+    const ancien = cadrageEnregistre(espace.plan_capture);
+
+    // Le contrôle a lieu **avant** de télécharger la moindre tuile : refuser
+    // après trois secondes d'assemblage ferait payer l'attente pour rien.
+    const ampute = ancien ? await cequiSeraitAmpute(req.params.id, ancien, cadrage) : [];
+    if (ampute.length > 0) {
+      return res.status(409).json({
+        success: false,
+        message:
+          'Ce cadrage couperait ce qui est déjà posé sur le plan. Élargissez-le, ' +
+          'ou retirez ces objets du plan avant de recadrer.',
+        data: { ampute },
+      });
+    }
+
     const capture = await capturerPlan(cadrage, choix, path.join(__dirname, '../../uploads'));
 
     const now = new Date().toISOString();
     await db.execute(
       `UPDATE green_spaces SET plan_image = ?, plan_scale_metres = ?, plan_ratio = ?,
-        plan_scale_points = NULL, updated_at = ? WHERE id = ?`,
-      [capture.url, capture.metresParPourcent, capture.ratio, now, req.params.id]
+        plan_scale_points = NULL, plan_capture = ?, updated_at = ? WHERE id = ?`,
+      [
+        capture.url, capture.metresParPourcent, capture.ratio,
+        JSON.stringify({ ...cadrage, fond: choix.cle }),
+        now, req.params.id,
+      ]
     );
+
+    // Le déplacement vient après l'écriture du plan : si le serveur tombe entre
+    // les deux, on se retrouve avec un plan neuf et des coordonnées anciennes,
+    // ce qui se voit et se rattrape. L'inverse laisserait des coordonnées
+    // déplacées sur l'ancienne image, ce qui ne se voit pas.
+    const deplaces = ancien ? await deplacerLePose(req.params.id, ancien, cadrage) : 0;
 
     await logService.info(
       'other',
-      `Plan capturé depuis la carte (${choix.libelle}) : ${espace.name}`,
+      `Plan capturé depuis la carte (${choix.libelle}) : ${espace.name}`
+        + (deplaces > 0 ? ` — ${deplaces} objet(s) replacés sur le nouveau cadre` : ''),
       { userId: req.user!.userId }
     );
 
     const updated = await db.queryOne('SELECT * FROM green_spaces WHERE id = ?', [req.params.id]);
-    res.json({ success: true, data: { espace: updated, capture } });
+    res.json({ success: true, data: { espace: updated, capture, deplaces } });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1823,9 +1969,9 @@ router.put('/groups/:groupId', authenticateToken, requireSupervisor, async (req:
         description ?? existing.description ?? '',
         color ?? existing.color ?? '#8b5cf6',
         icon ?? existing.icon ?? 'layers',
-        fusionner(nombreOuNull(pos_x), existing.pos_x),
-        fusionner(nombreOuNull(pos_y), existing.pos_y),
-        fusionner(nombreOuNull(area_m2), existing.area_m2),
+        nombreFusionne(pos_x, existing.pos_x),
+        nombreFusionne(pos_y, existing.pos_y),
+        nombreFusionne(area_m2, existing.area_m2),
         zone.etat === 'absente'
           ? existing.zone_points
           : zone.etat === 'valide' ? JSON.stringify(zone.points) : null,

@@ -21,6 +21,14 @@ import type { PointPlan } from './types'
 const ZOOM_MIN = 0.25
 const ZOOM_MAX = 6
 
+/** Une portion rectangulaire du plan, en pourcentages de chaque axe. */
+export interface BoitePlan {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+}
+
 export interface PlanViewport {
   /** À poser sur le cadre qui rogne — c'est lui qui capte molette et glisser. */
   cadreRef: React.RefObject<HTMLDivElement>
@@ -41,6 +49,15 @@ export interface PlanViewport {
   definirZoom: (valeur: number) => void
   /** Ramène le plan entier dans le cadre. */
   ajuster: () => void
+  /**
+   * Cadre sur une portion du plan, donnée en pourcentages.
+   *
+   * Ce qu'on veut voir occupe rarement tout le plan : un massif de six cents
+   * mètres carrés capturé au milieu de six cents mètres de ville tient dans un
+   * centième de l'image, et il fallait zoomer à trois cents pour cent à chaque
+   * ouverture de la fiche pour distinguer quoi que ce soit.
+   */
+  cadrerSur: (boite: BoitePlan, margeRelative?: number) => void
   /** Retour à 100 %, sans décalage. */
   reinitialiser: () => void
   /** À brancher sur le cadre pour démarrer un panoramique. */
@@ -155,6 +172,41 @@ export function usePlanViewport(): PlanViewport {
     setDecalage({ x: (cadre.clientWidth - contenu.offsetWidth * echelle) / 2, y: 0 })
   }, [])
 
+  const cadrerSur = useCallback((boite: BoitePlan, margeRelative = 0.12) => {
+    const cadre = cadreRef.current
+    const contenu = contenuRef.current
+    if (!cadre || !contenu) return
+
+    const largeurContenu = contenu.offsetWidth
+    const hauteurContenu = contenu.offsetHeight
+    if (!largeurContenu || !hauteurContenu) return
+
+    // La boîte est décrite en pourcentages de chaque axe ; le contenu, lui, est
+    // en pixels et n'est pas carré. Les deux conversions ne sont pas la même.
+    const largeurBoite = ((boite.maxX - boite.minX) / 100) * largeurContenu
+    const hauteurBoite = ((boite.maxY - boite.minY) / 100) * hauteurContenu
+    if (largeurBoite <= 0 || hauteurBoite <= 0) return
+
+    // Une marge relative plutôt qu'un nombre de pixels : sinon un petit massif
+    // se retrouve collé aux bords et un grand parc flotte au milieu.
+    const marge = 1 + Math.max(0, margeRelative) * 2
+    const echelle = Math.min(
+      ZOOM_MAX,
+      Math.max(
+        ZOOM_MIN,
+        Math.min(cadre.clientWidth / (largeurBoite * marge), cadre.clientHeight / (hauteurBoite * marge))
+      )
+    )
+
+    const centreX = ((boite.minX + boite.maxX) / 200) * largeurContenu
+    const centreY = ((boite.minY + boite.maxY) / 200) * hauteurContenu
+    setZoom(echelle)
+    setDecalage({
+      x: cadre.clientWidth / 2 - centreX * echelle,
+      y: cadre.clientHeight / 2 - centreY * echelle,
+    })
+  }, [])
+
   // La molette est écoutée à la main, en non-passif : React pose ses écouteurs
   // en passif et `preventDefault()` y est ignoré — la page entière défilerait
   // pendant qu'on zoome.
@@ -251,6 +303,7 @@ export function usePlanViewport(): PlanViewport {
     zoomerVers,
     definirZoom,
     ajuster,
+    cadrerSur,
     reinitialiser,
     commencerDeplacement,
     largeurBase,

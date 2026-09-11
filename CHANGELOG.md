@@ -7,6 +7,30 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Le plan se recadre, change de fond, et cesse d'effacer ce qu'on ne lui demande pas
+
+> Une capture prend le format de la carte affichée, c'est-à-dire très allongé
+> sur un écran large. Un massif de six cents mètres carrés se retrouvait perdu
+> au milieu de six cents mètres de ville, et il fallait zoomer à 300 % à chaque
+> ouverture de la fiche pour voir quelque chose. Recapturer plus serré était
+> possible, mais déplaçait tout ce qui était posé ; changer de fond obligeait à
+> retrouver le même endroit à la main, et le cadre obtenu ne retombait jamais
+> exactement au même endroit.
+
+#### Ajouté
+
+- **La vue s'ouvre sur ce qui est posé.** Le plan se cadre tout seul sur l'emprise des repères et des zones à l'ouverture de la fiche, et un bouton de la barre y revient après avoir exploré ailleurs. Le cadrage ne se rejoue qu'une fois par image : sans ce garde-fou, chaque pose et chaque tracé — qui rechargent la fiche — annuleraient le zoom qu'on venait de faire
+- **Trois boutons de fond dans la barre du plan** — Photo, Plan, OSM. Ils rejouent la **même vue** avec une autre imagerie ; repères, zones, surfaces et échelle sont conservés au millimètre, et la vue en place ne bouge pas
+- **« Recadrer le plan »**, qui rouvre la carte sur le cadrage actuel avec un bouton « Cadrer sur le posé ». Tout ce qui est sur le plan est **replacé au même endroit sur le terrain**, et les surfaces sont inchangées — vérifié : un contour de 1 209,33 m² vaut toujours 1 209,33 m² après un recadrage quatre fois plus serré
+- **Un cadrage qui amputerait le plan est refusé**, en nommant ce qui dépasse. Rogner un contour lui laisserait une forme plausible et une surface fausse, qui repartirait aussitôt en quantité puis en coût sans que rien ne l'annonce
+
+#### Corrigé
+
+- **Une modification partielle n'efface plus les colonnes dont elle ne parle pas.** `fusionner(nombreOuNull(x), existant)` avait l'air correct et ne l'était pas : `nombreOuNull` traduit « non mentionné » et « vidé » par un même `null`, si bien que `fusionner` n'avait plus rien à distinguer et effaçait précisément ce qu'il existait pour préserver. Faire **glisser un massif sur le plan** envoie `{pos_x, pos_y}` et rien d'autre : sa surface, sa latitude et sa longitude partaient à `NULL` au passage. **Modifier l'adresse d'un espace vert** effaçait le calibrage de son plan, et toutes les surfaces cessaient de se calculer. Aucun message, aucune trace — un chiffre juste devenait un vide, et on ne s'en apercevait qu'en rouvrant la fiche des semaines plus tard
+- **Le calibrage ne s'efface plus que lorsque l'image du plan change vraiment.** C'était l'intention d'origine ; la condition retenue — « le champ n'est pas mentionné » — se déclenchait à chaque modification. Un plan envoyé à la main emmène désormais avec lui l'échelle et le cadrage, qui ne le décrivent plus
+- **La fenêtre de recadrage annonçait « aucun fond de carte n'est disponible sur ce serveur »** sur un serveur qui en proposait trois. La barre du plan et la fenêtre décrivaient chacune leur requête sous la même clé de cache `['plan-fonds']`, l'une rendant le tableau des fonds et l'autre l'objet entier ; React Query ne garde qu'une valeur par clé, celle du premier arrivé. Les deux partagent maintenant le même hook
+
+
 ### Espaces verts — le plan se fabrique depuis la carte, déjà à l'échelle
 
 > Pour annoter un parc, il fallait d'abord se procurer une image ailleurs :

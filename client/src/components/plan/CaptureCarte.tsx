@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { MapContainer, TileLayer, useMap, useMapEvents } from 'react-leaflet'
 import type { Map as CarteLeaflet } from 'leaflet'
-import { Camera, Crosshair, Info, Search } from 'lucide-react'
+import { Camera, Crop, Crosshair, Info, Search } from 'lucide-react'
 import { Modal, ModalBody, ModalFooter, Button, Spinner } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -24,9 +24,11 @@ import type { ContourPropose } from './types'
  * la carte connaît exactement.
  */
 
-interface FondCarte {
+export interface FondCarte {
   cle: string
   libelle: string
+  /** Deux ou trois lettres, pour la barre du plan où la place est comptée. */
+  court: string
   description: string
   modele: string
   attribution: string
@@ -42,13 +44,28 @@ interface LimitesCapture {
   tailleTuile: number
 }
 
+/**
+ * Ce qu'une capture regarde : centre, zoom, dimensions, fond.
+ *
+ * Mémorisé sur l'espace vert, c'est lui qui permet ensuite de changer de fond
+ * à cadre identique, ou de recadrer en retraduisant ce qui est posé.
+ */
+export interface CadragePlan {
+  lat: number
+  lng: number
+  zoom: number
+  largeur: number
+  hauteur: number
+  fond?: string
+}
+
 export interface ResultatCapture {
   /** L'espace vert mis à jour, plan et échelle compris. */
   espace: any
   largeurMetres: number
   trous: number
   /** Le cadrage retenu, pour aller chercher les contours sur la même vue. */
-  cadrage: { lat: number; lng: number; zoom: number; largeur: number; hauteur: number }
+  cadrage: CadragePlan
 }
 
 interface Props {
@@ -60,8 +77,86 @@ interface Props {
   adresse?: string | null
   /** Un plan est déjà en place : le remplacer se dit avant, pas après. */
   planExistant?: boolean
+  /**
+   * Le cadrage du plan actuel, quand il vient déjà de la carte.
+   *
+   * La fenêtre s'ouvre dessus plutôt que sur la position de l'espace vert :
+   * recadrer, c'est partir de ce qu'on voit pour le resserrer, pas retrouver
+   * l'endroit à la main.
+   */
+  cadrageActuel?: CadragePlan | null
+  /** Emprise de ce qui est posé, en pourcentages du plan actuel. */
+  empriseContenu?: { minX: number; minY: number; maxX: number; maxY: number } | null
   onFermer: () => void
   onCapture: (resultat: ResultatCapture) => void
+}
+
+/**
+ * Web Mercator, le strict nécessaire côté navigateur.
+ *
+ * Le serveur porte la même chose et fait foi ; ces quelques lignes servent à
+ * dire ce que le cadre représente pendant qu'on le déplace, et à retrouver sur
+ * la carte l'emprise de ce qui est déjà posé sur le plan. Les recopier vaut
+ * mieux qu'un aller-retour réseau à chaque mouvement de souris.
+ */
+const TAILLE_TUILE = 256
+const RESOLUTION_EQUATEUR = 156543.03392804097
+
+const metresParPixel = (lat: number, zoom: number) =>
+  (RESOLUTION_EQUATEUR * Math.cos((lat * Math.PI) / 180)) / 2 ** zoom
+
+const pixelX = (lng: number, zoom: number) => ((lng + 180) / 360) * TAILLE_TUILE * 2 ** zoom
+
+const pixelY = (lat: number, zoom: number) => {
+  const phi = (lat * Math.PI) / 180
+  return ((1 - Math.log(Math.tan(phi) + 1 / Math.cos(phi)) / Math.PI) / 2) * TAILLE_TUILE * 2 ** zoom
+}
+
+const lngDepuisPixel = (px: number, zoom: number) => (px / (TAILLE_TUILE * 2 ** zoom)) * 360 - 180
+
+const latDepuisPixel = (py: number, zoom: number) => {
+  const n = Math.PI - (2 * Math.PI * py) / (TAILLE_TUILE * 2 ** zoom)
+  return (180 / Math.PI) * Math.atan(Math.sinh(n))
+}
+
+/**
+ * Où se trouve, sur le globe, une portion du plan exprimée en pourcentages.
+ *
+ * C'est ce qui permet au bouton « Cadrer sur ce qui est posé » de viser le
+ * massif plutôt que le quartier : l'emprise est connue en pourcentages de
+ * l'image, le cadrage dit à quoi ces pourcentages correspondent.
+ */
+function empriseSurLaCarte(
+  boite: { minX: number; minY: number; maxX: number; maxY: number },
+  cadrage: CadragePlan
+): [[number, number], [number, number]] {
+  const gauche = pixelX(cadrage.lng, cadrage.zoom) - cadrage.largeur / 2
+  const haut = pixelY(cadrage.lat, cadrage.zoom) - cadrage.hauteur / 2
+  const x = (pourcent: number) => gauche + (pourcent / 100) * cadrage.largeur
+  const y = (pourcent: number) => haut + (pourcent / 100) * cadrage.hauteur
+  return [
+    [latDepuisPixel(y(boite.maxY), cadrage.zoom), lngDepuisPixel(x(boite.minX), cadrage.zoom)],
+    [latDepuisPixel(y(boite.minY), cadrage.zoom), lngDepuisPixel(x(boite.maxX), cadrage.zoom)],
+  ]
+}
+
+/**
+ * Les fonds proposés par le serveur, et ses limites d'assemblage.
+ *
+ * Exporté pour que la barre du plan et cette fenêtre partagent **la même**
+ * requête, et non seulement la même clé de cache. Les deux écrans l'ont d'abord
+ * écrite chacun de leur côté sous `['plan-fonds']` : l'un rendait le tableau
+ * des fonds, l'autre l'objet entier. React Query ne garde qu'une valeur par
+ * clé, celle du premier arrivé — et la fenêtre de recadrage annonçait
+ * « aucun fond de carte n'est disponible sur ce serveur » sur un serveur qui
+ * en proposait trois.
+ */
+export function useFondsPlan() {
+  return useQuery<{ fonds: FondCarte[]; limites: LimitesCapture }>({
+    queryKey: ['plan-fonds'],
+    queryFn: () => api.get('/green-spaces/plan/fonds').then(r => r.data.data),
+    staleTime: Infinity,
+  })
 }
 
 /** Là où la carte s'ouvre quand l'espace vert n'a pas de position. */
@@ -70,25 +165,34 @@ const ZOOM_DEFAUT_SANS_POSITION = 6
 const ZOOM_DEFAUT = 18
 
 export default function CaptureCarte({
-  espaceId, nom, latitude, longitude, adresse, planExistant, onFermer, onCapture,
+  espaceId, nom, latitude, longitude, adresse, planExistant,
+  cadrageActuel, empriseContenu, onFermer, onCapture,
 }: Props) {
   const positionConnue = Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
-  const centreInitial: [number, number] = positionConnue
+
+  // Le cadrage en cours prime sur la position de l'espace vert : on recadre ce
+  // qu'on regarde, on ne recommence pas de zéro.
+  const centreInitial: [number, number] = cadrageActuel
+    ? [cadrageActuel.lat, cadrageActuel.lng]
+    : positionConnue
     ? [Number(latitude), Number(longitude)]
     : CENTRE_DEFAUT
+  const zoomInitial = cadrageActuel
+    ? cadrageActuel.zoom
+    : positionConnue
+    ? ZOOM_DEFAUT
+    : ZOOM_DEFAUT_SANS_POSITION
 
   const carteRef = useRef<CarteLeaflet | null>(null)
-  const [cleFond, setCleFond] = useState('photo')
-  const [zoom, setZoom] = useState(positionConnue ? ZOOM_DEFAUT : ZOOM_DEFAUT_SANS_POSITION)
+  const [cleFond, setCleFond] = useState(cadrageActuel?.fond ?? 'photo')
+  const [zoom, setZoom] = useState(zoomInitial)
   const [centre, setCentre] = useState<[number, number]>(centreInitial)
   const [taille, setTaille] = useState({ largeur: 0, hauteur: 0 })
   const [recherche, setRecherche] = useState('')
+  /** Ce que le serveur refuse de couper, quand il refuse. */
+  const [ampute, setAmpute] = useState<string[] | null>(null)
 
-  const { data: reglages, isLoading: fondsEnCours } = useQuery<{ fonds: FondCarte[]; limites: LimitesCapture }>({
-    queryKey: ['plan-fonds'],
-    queryFn: () => api.get('/green-spaces/plan/fonds').then(r => r.data.data),
-    staleTime: Infinity,
-  })
+  const { data: reglages, isLoading: fondsEnCours } = useFondsPlan()
 
   const fonds = reglages?.fonds ?? []
   const limites = reglages?.limites ?? null
@@ -134,26 +238,37 @@ export default function CaptureCarte({
   }, [fond, limites, centre, zoom, taille])
 
   /** Largeur réelle de ce qui est cadré, la seule mesure qui parle à tout le monde. */
-  const largeurMetres = useMemo(() => {
-    if (!cadrage) return null
-    const mpp = (156543.03392804097 * Math.cos((cadrage.lat * Math.PI) / 180)) / 2 ** cadrage.zoom
-    return mpp * cadrage.largeur
-  }, [cadrage])
+  const largeurMetres = useMemo(
+    () => (cadrage ? metresParPixel(cadrage.lat, cadrage.zoom) * cadrage.largeur : null),
+    [cadrage]
+  )
 
   const capture = useMutation({
     mutationFn: async () => {
       if (!cadrage || !fond) throw new Error('La carte n’est pas prête')
+      setAmpute(null)
       const reponse = await api.post(`/green-spaces/${espaceId}/plan/capture`, { ...cadrage, fond: fond.cle })
       return reponse.data.data
     },
     onSuccess: (data: any) => {
-      toast.success('Plan créé et calibré depuis la carte')
+      toast.success(
+        data.deplaces > 0
+          ? `Plan recadré — ${data.deplaces} objet${data.deplaces > 1 ? 's' : ''} replacé${data.deplaces > 1 ? 's' : ''}`
+          : 'Plan créé et calibré depuis la carte'
+      )
       onCapture({
         espace: data.espace,
         largeurMetres: data.capture.largeurMetres,
         trous: data.capture.trous,
         cadrage: cadrage!,
       })
+    },
+    onError: (erreur: any) => {
+      // Le serveur refuse un cadrage qui couperait un contour : rogner lui
+      // laisserait une forme plausible et une surface fausse. La liste de ce
+      // qui dépasse vaut mieux qu'un message générique.
+      const dehors = erreur?.response?.data?.data?.ampute
+      if (Array.isArray(dehors) && dehors.length > 0) setAmpute(dehors)
     },
   })
 
@@ -180,7 +295,12 @@ export default function CaptureCarte({
   })
 
   return (
-    <Modal isOpen onClose={onFermer} title={`Plan de « ${nom} » depuis la carte`} size="full">
+    <Modal
+      isOpen
+      onClose={onFermer}
+      title={cadrageActuel ? `Recadrer le plan de « ${nom} »` : `Plan de « ${nom} » depuis la carte`}
+      size="full"
+    >
       <ModalBody>
         {fondsEnCours ? (
           <div className="flex justify-center py-16"><Spinner /></div>
@@ -229,7 +349,29 @@ export default function CaptureCarte({
                 <Button type="submit" size="sm" variant="secondary" loading={chercher.isPending}>
                   Aller
                 </Button>
-                {positionConnue && (
+                {/*
+                  Le geste central du recadrage : le plan couvre six cents
+                  mètres de ville pour un massif de six cents mètres carrés, et
+                  c'est sur le massif qu'il faut cadrer. La carte se cale sur
+                  l'emprise de ce qui est posé, avec un peu d'air autour.
+                */}
+                {cadrageActuel && empriseContenu && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    icon={<Crop className="h-4 w-4" />}
+                    onClick={() =>
+                      carteRef.current?.fitBounds(empriseSurLaCarte(empriseContenu, cadrageActuel), {
+                        padding: [40, 40],
+                      })
+                    }
+                    title="Cadrer la carte sur ce qui est posé sur le plan"
+                  >
+                    Cadrer sur le posé
+                  </Button>
+                )}
+                {positionConnue && !cadrageActuel && (
                   <Button
                     type="button"
                     size="sm"
@@ -304,13 +446,34 @@ export default function CaptureCarte({
               <p className="text-xs text-gray-500 dark:text-gray-400">{fond.attribution}</p>
             </div>
 
+            {/*
+              Le message a d'abord dit de « vérifier que les repères retombent
+              au bon endroit ». Ce n'est plus vrai depuis que le cadrage est
+              mémorisé : le serveur retraduit les coordonnées d'un cadre à
+              l'autre, et ce qui est posé reste sur le même terrain. Laisser
+              l'ancien avertissement ferait douter d'un travail juste.
+            */}
             {planExistant && (
-              <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                Un plan existe déjà pour cet espace vert. Il sera remplacé, ainsi que son
-                calibrage. Les repères et les zones déjà posés restent en place — ils sont
-                enregistrés en pourcentages du plan — mais vérifiez qu’ils retombent au bon
-                endroit sur le nouveau fond.
+              <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:bg-blue-900/30 dark:text-blue-100">
+                {cadrageActuel
+                  ? 'Le plan actuel sera remplacé. Les repères et les zones déjà posés sont replacés automatiquement au même endroit sur le terrain, et leurs surfaces ne changent pas.'
+                  : 'Le plan actuel sera remplacé, ainsi que son calibrage. Ce plan n’ayant pas été fabriqué depuis la carte, les repères et les zones déjà posés gardent leurs coordonnées en pourcentages : vérifiez qu’ils retombent au bon endroit.'}
               </p>
+            )}
+
+            {ampute && (
+              <div className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:bg-amber-900/30 dark:text-amber-100">
+                <p className="font-medium">Ce cadrage couperait ce qui est déjà posé.</p>
+                <p className="mt-1">
+                  Un contour rogné garderait une forme plausible avec une surface fausse — donc une
+                  quantité fausse, et un coût faux. Élargissez le cadre, ou retirez ces objets du
+                  plan avant de recadrer :
+                </p>
+                <ul className="mt-1.5 list-inside list-disc">
+                  {ampute.slice(0, 8).map((nom, i) => <li key={i}>{nom}</li>)}
+                  {ampute.length > 8 && <li>… et {ampute.length - 8} autre(s)</li>}
+                </ul>
+              </div>
             )}
           </div>
         )}
@@ -324,7 +487,11 @@ export default function CaptureCarte({
           disabled={!cadrage || capture.isPending}
           loading={capture.isPending}
         >
-          {capture.isPending ? 'Assemblage de la carte…' : 'Utiliser cette vue comme plan'}
+          {capture.isPending
+            ? 'Assemblage de la carte…'
+            : cadrageActuel
+            ? 'Utiliser ce cadrage'
+            : 'Utiliser cette vue comme plan'}
         </Button>
       </ModalFooter>
     </Modal>
