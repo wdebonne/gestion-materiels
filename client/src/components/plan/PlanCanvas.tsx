@@ -160,8 +160,33 @@ export default function PlanCanvas({
   const estSelectionne = (type: SelectionPlan['type'], id: number) =>
     selection?.type === type && selection.id === id
 
-  // Les étiquettes reprennent la taille perdue par la mise à l'échelle du plan.
-  const contreEchelle = { transform: `scale(${1 / zoom})`, transformOrigin: 'top center' }
+  /**
+   * Pose un marqueur sur le plan, insensible au zoom.
+   *
+   * La contre-échelle porte sur **l'ancre**, et non sur la pastille et
+   * l'étiquette séparément. C'est tout le sujet : `scale()` change ce qu'on
+   * voit, jamais la place occupée. La pastille rapetissée gardait donc sa
+   * hauteur de boîte, l'étiquette posée juste en dessous (`top-full`) partait
+   * de cette hauteur-là, et l'écart se retrouvait multiplié par le zoom au
+   * moment où le plan était agrandi — deux pixels d'intention devenaient
+   * quatre-vingt-dix à 300 %, et le nom flottait loin sous son repère, parfois
+   * plus près du repère voisin.
+   *
+   * En mettant l'échelle sur l'ancre, la pastille, l'écart et l'étiquette
+   * rapetissent ensemble : à l'écran, le marqueur garde sa taille et son nom
+   * reste collé dessous, quel que soit le grossissement.
+   *
+   * `translate(-50%, -50%)` résout sur la boîte **non transformée**, si bien
+   * que le centre de l'ancre retombe exactement sur le point visé quelle que
+   * soit l'échelle.
+   */
+  const ancre = (x: number, y: number, zIndex: number): CSSProperties => ({
+    left: `${x}%`,
+    top: `${y}%`,
+    transform: `translate(-50%, -50%) scale(${1 / zoom})`,
+    transformOrigin: 'center',
+    zIndex,
+  })
 
   const taillePastille = compact ? 'w-5 h-5' : 'w-7 h-7'
   const tailleGroupe = compact ? 'w-6 h-6' : 'w-8 h-8'
@@ -269,14 +294,14 @@ export default function PlanCanvas({
           return (
             <div
               key={`el-${el.id}`}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${ou.x}%`, top: `${ou.y}%`, zIndex: choisi ? 40 : 10 }}
+              className="absolute"
+              style={ancre(ou.x, ou.y, choisi ? 40 : 10)}
             >
               <div
                 className={`${taillePastille} rounded-full border-2 border-white shadow-lg flex items-center justify-center transition-transform ${
                   onSelect ? 'cursor-pointer' : ''
                 } ${choisi ? 'scale-125 ring-2 ring-blue-400' : 'hover:scale-110'}`}
-                style={{ backgroundColor: info.color, ...contreEchelle, transformOrigin: 'center' }}
+                style={{ backgroundColor: info.color }}
                 title={el.label || el.code}
                 onPointerDown={(e) => onMarqueurPointerDown?.({ type: 'element', id: el.id }, e)}
                 onClick={(e) => {
@@ -289,11 +314,8 @@ export default function PlanCanvas({
                 <span className={compact ? 'text-[9px]' : 'text-xs'}>{info.icon}</span>
               </div>
               {vus.etiquettes && (el.code || el.label) && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 pointer-events-none">
-                  <span
-                    className="inline-block px-1 py-px rounded bg-white/85 dark:bg-gray-900/85 text-[10px] text-gray-700 dark:text-gray-200 shadow-sm whitespace-nowrap"
-                    style={contreEchelle}
-                  >
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 pointer-events-none">
+                  <span className="inline-block px-1 py-px rounded bg-white/85 dark:bg-gray-900/85 text-[10px] text-gray-700 dark:text-gray-200 shadow-sm whitespace-nowrap">
                     {el.code || el.label}
                     {/* La surface rejoint le libellé : au centre de la zone,
                         elle se posait sous le marqueur et se lisait à moitié. */}
@@ -310,12 +332,10 @@ export default function PlanCanvas({
           <MarqueurGroupe
             key={`gr-${g.id}`}
             groupe={g}
-            x={ou.x}
-            y={ou.y}
             couleur={g.color || typeGroupe(g.group_type).color}
             taille={tailleGroupe}
             selectionne={estSelectionne('group', g.id)}
-            contreEchelle={contreEchelle}
+            ancrage={ancre(ou.x, ou.y, estSelectionne('group', g.id) ? 40 : 15)}
             etiquettes={vus.etiquettes}
             onSelect={onSelect}
             onPointerDown={onMarqueurPointerDown}
@@ -328,18 +348,14 @@ export default function PlanCanvas({
           return (
             <div
               key={`an-${a.id}`}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${a.pos_x}%`, top: `${a.pos_y}%`, zIndex: choisi ? 40 : 20 }}
+              className="absolute"
+              style={ancre(Number(a.pos_x), Number(a.pos_y), choisi ? 40 : 20)}
             >
               <div
                 className={`${tailleRepere} rounded-full border-2 border-white shadow-lg flex items-center justify-center transition-transform ${
                   onSelect ? 'cursor-pointer' : ''
                 } ${choisi ? 'scale-125 ring-2 ring-blue-400' : 'hover:scale-110'}`}
-                style={{
-                  backgroundColor: a.color || '#22c55e',
-                  ...contreEchelle,
-                  transformOrigin: 'center',
-                }}
+                style={{ backgroundColor: a.color || '#22c55e' }}
                 title={a.label}
                 onPointerDown={(e) => onMarqueurPointerDown?.({ type: 'annotation', id: a.id }, e)}
                 onClick={(e) => {
@@ -354,11 +370,8 @@ export default function PlanCanvas({
                 )}
               </div>
               {vus.etiquettes && a.label && (
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 pointer-events-none">
-                  <span
-                    className="inline-block px-1 py-px rounded bg-white/85 dark:bg-gray-900/85 text-[10px] text-gray-700 dark:text-gray-200 shadow-sm whitespace-nowrap"
-                    style={contreEchelle}
-                  >
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 pointer-events-none">
+                  <span className="inline-block px-1 py-px rounded bg-white/85 dark:bg-gray-900/85 text-[10px] text-gray-700 dark:text-gray-200 shadow-sm whitespace-nowrap">
                     {a.label}
                   </span>
                 </div>
@@ -374,37 +387,31 @@ export default function PlanCanvas({
 
 function MarqueurGroupe({
   groupe,
-  x,
-  y,
   couleur,
   taille,
   selectionne,
-  contreEchelle,
+  ancrage,
   etiquettes,
   onSelect,
   onPointerDown,
 }: {
   groupe: GroupeSurPlan
-  x: number
-  y: number
   couleur: string
   taille: string
   selectionne: boolean
-  contreEchelle: CSSProperties
+  /** Style d'ancrage calculé par le plan : position, centrage et contre-échelle. */
+  ancrage: CSSProperties
   etiquettes: boolean
   onSelect?: (s: SelectionPlan | null) => void
   onPointerDown?: (s: SelectionPlan, e: React.PointerEvent) => void
 }) {
   return (
-    <div
-      className="absolute -translate-x-1/2 -translate-y-1/2"
-      style={{ left: `${x}%`, top: `${y}%`, zIndex: selectionne ? 40 : 15 }}
-    >
+    <div className="absolute" style={ancrage}>
       <div
         className={`${taille} rounded-lg border-2 border-white shadow-lg flex items-center justify-center transition-transform ${
           onSelect ? 'cursor-pointer' : ''
         } ${selectionne ? 'scale-125 ring-2 ring-blue-400' : 'hover:scale-110'}`}
-        style={{ backgroundColor: couleur, ...contreEchelle, transformOrigin: 'center' }}
+        style={{ backgroundColor: couleur }}
         title={groupe.name}
         onPointerDown={(e) => onPointerDown?.({ type: 'group', id: groupe.id }, e)}
         onClick={(e) => {
@@ -415,11 +422,8 @@ function MarqueurGroupe({
         <Layers className="h-3 w-3 text-white" />
       </div>
       {etiquettes && groupe.name && (
-        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-0.5 pointer-events-none">
-          <span
-            className="inline-block px-1 py-px rounded bg-white/85 dark:bg-gray-900/85 text-[10px] text-gray-700 dark:text-gray-200 shadow-sm whitespace-nowrap"
-            style={contreEchelle}
-          >
+        <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 pointer-events-none">
+          <span className="inline-block px-1 py-px rounded bg-white/85 dark:bg-gray-900/85 text-[10px] text-gray-700 dark:text-gray-200 shadow-sm whitespace-nowrap">
             {groupe.name}
             {groupe.area_m2 ? ` · ${formaterSurface(Number(groupe.area_m2))}` : ''}
           </span>
