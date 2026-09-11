@@ -7,6 +7,21 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Les écrans publics ignoraient le nom et le logo de la commune
+
+> Une commune qui pose son nom et son logo dans les réglages ne les voyait
+> nulle part avant de s'être connectée — la page portait « Gestion Matériels »
+> et un « G » générique, et le pied de page annonçait « Version 1.0.0 » quelle
+> que soit la version installée.
+
+#### Corrigé
+
+- **Connexion, mot de passe oublié et réinitialisation lisent enfin les réglages.** Ces trois écrans demandaient `settings.logo`, `settings.siteName` et `settings.version` ; le magasin expose `site_logo`, `site_name` et `site_version`. Les quatre lectures rendaient `undefined` et retombaient sur les valeurs de repli — dont un numéro de version écrit en dur. L'index `[key: string]: any` de l'interface des réglages empêchait TypeScript de le signaler, et c'est la seule raison pour laquelle cela a pu durer
+
+#### Documentation
+
+- **Les fichiers `.md` remis en face du code.** Le décompte de tests datait de 131 (735 aujourd'hui), celui des index de 25 (45), celui des avertissements ESLint de 449 (506) ; la liste des tables des espaces verts nommait `green_space_element_groups`, qui s'appelle `green_space_groups`, et oubliait les deux référentiels d'espace ; la roadmap annonçait 7 onglets pour 8 ; le guide de rotation JWT proposait un `npm run jwt:rotate` qui n'a jamais existé ; le guide Portainer annonçait le port 80 quand le compose publie 3001 ; la structure des plugins oubliait Manifestations et Espaces Verts ; le bloc API du README passait sous silence une douzaine de routes d'espaces verts réellement servies
+
 ### Espaces verts — le plan annoté se manipule enfin à la main
 
 > Le plan était un formulaire déguisé en plan. Rien ne s'y saisissait : déplacer un repère demandait d'appuyer sur « Déplacer », de lire une bannière, puis de cliquer ailleurs ; une zone ne se dessinait qu'après avoir créé *puis* posé un élément autre part, et une fois tracée elle ne se retouchait plus — on l'effaçait et on recommençait. Un jardinier qui veut bouger un banc de dix centimètres ne le fait pas. Trois défauts s'y ajoutaient, dont un qui rendait l'outil faux : les coordonnées d'un clic étaient divisées **deux fois** par le zoom, et à 200 % tout se posait au quart de la distance visée.

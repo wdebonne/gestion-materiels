@@ -109,16 +109,16 @@ export default function ResetPasswordPage() {
       <div className="w-full max-w-md">
         {/* Logo et titre */}
         <div className="text-center mb-8">
-          {settings.logo ? (
+          {settings.site_logo ? (
             <img 
-              src={settings.logo} 
-              alt={settings.siteName} 
+              src={settings.site_logo} 
+              alt={settings.site_name} 
               className="h-16 mx-auto mb-4"
             />
           ) : (
             <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl font-bold text-white">
-                {settings.siteName?.charAt(0) || 'G'}
+                {settings.site_name?.charAt(0) || 'G'}
               </span>
             </div>
           )}

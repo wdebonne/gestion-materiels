@@ -46,21 +46,29 @@ export default function LoginPage() {
       <div className="w-full max-w-md">
         {/* Logo et titre */}
         <div className="text-center mb-8">
-          {settings.logo ? (
+          {/*
+            Le magasin des réglages expose `site_logo`, `site_name` et
+            `site_version` ; cet écran lisait `logo`, `siteName` et `version`.
+            L'index `[key: string]: any` de l'interface empêchait TypeScript de
+            le dire, et les quatre lectures rendaient `undefined` : la commune
+            qui avait posé son nom et son logo ne les voyait nulle part sur
+            l'écran de connexion, et la version y était figée à « 1.0.0 ».
+          */}
+          {settings.site_logo ? (
             <img 
-              src={settings.logo} 
-              alt={settings.siteName} 
+              src={settings.site_logo} 
+              alt={settings.site_name} 
               className="h-16 mx-auto mb-4"
             />
           ) : (
             <div className="w-16 h-16 bg-white/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
               <span className="text-3xl font-bold text-white">
-                {settings.siteName?.charAt(0) || 'G'}
+                {settings.site_name?.charAt(0) || 'G'}
               </span>
             </div>
           )}
           <h1 className="text-2xl font-bold text-white">
-            {settings.siteName || 'Gestion Matériels'}
+            {settings.site_name || 'Gestion Matériels'}
           </h1>
           <p className="text-primary-200 mt-2">
             Connectez-vous à votre compte
@@ -148,7 +156,7 @@ export default function LoginPage() {
 
         {/* Footer */}
         <p className="text-center text-primary-200 text-sm mt-6">
-          {settings.siteName} - Version {settings.version || '1.0.0'}
+          {settings.site_name || 'Gestion Matériels'} — version {settings.site_version || '1.0.0'}
         </p>
       </div>
     </div>

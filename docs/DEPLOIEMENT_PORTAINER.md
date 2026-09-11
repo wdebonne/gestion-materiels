@@ -63,7 +63,7 @@ SMTP_FROM=noreply@exemple.com
 
 1. Cliquez sur **Deploy the stack**
 2. Attendez que les conteneurs soient créés et démarrés
-3. L'application sera accessible sur le port configuré (par défaut : 80)
+3. L'application sera accessible sur le port de l'hôte, **3001 par défaut** et non 80 : `docker-compose.yml` publie `"${PORT:-3001}:3001"`. La variable `PORT` déplace le port de l'hôte, pas celui du conteneur, qui reste 3001
 
 ---
 

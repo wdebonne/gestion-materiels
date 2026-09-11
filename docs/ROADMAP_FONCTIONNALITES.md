@@ -1,7 +1,7 @@
 # 🗺️ Roadmap des Fonctionnalités - Gestion Matériels
 
 > Document de suivi des fonctionnalités du projet.
-> Créé le 6 mars 2026 — état vérifié contre le code le 1er septembre 2026.
+> Créé le 6 mars 2026 — état vérifié contre le code le 11 septembre 2026.
 
 ---
 
@@ -25,7 +25,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
 | 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 |
-| 15 | 🔴 Haute | Espaces Verts | ✅ Fait | |
+| 15 | 🔴 Haute | Espaces Verts | ✅ Fait | Implantation depuis le parc à prix figé et plan annoté manipulable — septembre 2026 |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
 | 18 | 🟠 Moyenne | Compteurs et énergie (relevés par catégorie, recharges électriques) | ✅ Fait | Septembre 2026 — voir la section dédiée plus bas |
@@ -286,12 +286,19 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 ### 15. Espaces Verts (gestion espaces verts municipaux)
 - **Description :** Plugin système complet pour la gestion des espaces verts avec plan interactif annoté, composition botanique, entretiens et intégrations transversales.
 - **Fonctionnalités :**
-  - **Plan interactif** : Upload d'image du plan, placement de repères par clic avec drag & drop, popup persistant au clic, labels visibles sous les repères
+  - **Implantation depuis le parc** : le matériel se déclare une fois au parc, puis se pose en quantité dans un espace vert. Le prix est **figé à la pose** — monter un tarif ne réévalue pas ce qui est déjà en terre — et le type d'élément est deviné de la branche du parc
+  - **Onglet Coûts** : par groupe, par variété, par type et par année de pose ; les lignes sans prix sont comptées à part, jamais chiffrées à zéro
+  - **Plan interactif** : on attrape un repère et on le pose au glisser, la molette zoome là où l'on pointe, le glisser déplace la vue. Quatre outils nommés — déplacer, poser, dessiner, mesurer — et une ligne d'aide qui annonce ce que le prochain clic fera. `Ctrl+Z`, `Échap`, `Suppr` et les flèches font ce qu'on attend
   - **Éléments du plan** : 8 types (arbre, arbuste, massif floral, haie, pelouse, bassin, mobilier, autre) avec état de santé, dimensions, espèce, photo
   - **Modale visualisation élément** : Clic sur un élément ouvre une fiche détaillée (image, type, état, espèce, quantité, superficie, prix, dates, position, description, historique d'entretiens liés) avec boutons édition/suppression
   - **Groupes de composition** : Regroupement logique d'éléments (massif, zone, alignement, haie, autre) avec couleur
-  - **Zones polygonales** : Dessin de zones par clics successifs sur le plan
-  - **Légende interactive** : Filtrage par type et groupe, codes couleur des états
+  - **Zones polygonales retouchables** : un sommet se déplace, un point clair au milieu d'un côté en insère un, `Alt`+clic en retire un, le glisser de l'intérieur pousse la zone entière. On referme en revenant sur le premier point, par un double-clic ou par `Entrée`
+  - **Calibrage et surfaces calculées** : tracer une longueur connue et la donner en mètres suffit pour que chaque zone affiche sa surface, réglette d'échelle à l'appui. Facultatif — une surface se saisit toujours à la main, et une valeur ainsi corrigée n'est jamais réécrite par un sommet déplacé ensuite (`area_source`)
+  - **Matériau et coût d'une zone** : gazon, enrobé, écorce se choisissent dans le parc ; la surface devient la quantité, le prix au m² est figé à la pose. Une case « ne pas compter dans les coûts » permet de tracer ce qui était déjà là sans lui inventer un prix — ces lignes sont comptées à part (`exclude_from_costs`)
+  - **Création depuis le plan** : implanter depuis le parc, ajouter un élément libre, poser un élément déjà saisi ou un simple repère, tous à l'endroit désigné
+  - **Panneau latéral et calques** : la liste de ce qui est sur le plan et de ce qui ne l'est pas, avec recherche et œil pour masquer ; éléments, groupes, repères, zones et étiquettes s'affichent ou se cachent
+  - **Matériel implantable réglable** : l'administrateur décide de ce que le parc propose aux espaces verts, par catégorie, sous-catégorie ou matériel — trois états, le plus précis l'emporte. Le réglage s'ajoute à la portée par catégorie du compte, il ne la remplace pas
+  - **Légende** : types présents, zones et surface totale, codes couleur des états
   - **Entretiens** : Historique avec type, date, intervenant, durée, coût, éléments concernés, documents joints (upload direct), recherche/filtre textuel
   - **Gestion des types d'entretien** : Types par défaut en BDD (modifiables, désactivables), ajout de types personnalisés, modale de gestion complète
   - **Gestion des types de documents** : Types par défaut en BDD (modifiables, désactivables), ajout de types personnalisés, modale de gestion complète
@@ -309,9 +316,11 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Intégration Alertes** : Les entretiens avec date d'échéance prochaine génèrent automatiquement des alertes via cron
   - **Intégration Calendrier** : Les entretiens programmés créent automatiquement un événement calendrier
   - **Intégration Suivi** : Les coûts d'entretien apparaissent dans le module Suivi avec filtre et tableau dédiés
-- **Tables BDD :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_element_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`, `green_space_doc_types`, `green_space_maintenance_types`, `green_space_document_elements`, `green_space_snapshots`, `green_space_group_types`, `green_space_element_replacements`
-- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, types de groupes, remplacement d'éléments, historique remplacements, clonage, snapshots, archives, stats
-- **Frontend :** 7 onglets (Éléments, Plan annoté, Carte, Saisons, Documents, Entretien, Archives), modale clonage, export PDF
+- **Tables BDD (17) :** `green_spaces`, `green_space_elements`, `green_space_annotations`, `green_space_seasons`, `green_space_documents`, `green_space_groups`, `green_space_maintenances`, `green_space_maintenance_elements`, `green_space_maintenance_documents`, `green_space_doc_types`, `green_space_maintenance_types`, `green_space_document_elements`, `green_space_snapshots`, `green_space_group_types`, `green_space_element_replacements`, `green_space_types`, `green_space_statuses`
+  > La liste annonçait `green_space_element_groups` ; la table s'appelle `green_space_groups`, et les deux référentiels d'espace manquaient.
+- **Colonnes du plan :** `plan_scale_metres`, `plan_ratio` et `plan_scale_points` sur l'espace (le calibrage) ; `area_m2`, `area_source`, `exclude_from_costs` et `zone_points` sur l'élément. Les positions et les polygones sont en **pourcentages** du plan, ce qui permet de remplacer l'image sans déplacer ce qui est posé dessus
+- **Routes API :** `/api/green-spaces` — CRUD espaces, éléments, annotations, saisons, documents, groupes, entretiens, types de documents, types d'entretien, types de groupes, remplacement d'éléments, historique remplacements, clonage, snapshots, archives, stats, catalogue du parc, implantations, coûts, et le réglage `materiel-implantable`
+- **Frontend :** 8 onglets (Éléments, Coûts, Plan annoté, Carte, Saisons, Documents, Entretien, Archives), modale clonage, export PDF. Le plan est rendu par un composant unique, partagé avec le PDF, la vue d'archive et la comparaison de versions
 - **Impact :** Gestion complète des espaces verts communaux avec vision cartographique et suivi des interventions
 
 ---
@@ -344,7 +353,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 ### 17. Consolidation structurelle
 
 - **Fait :**
-  - **Index de base de données** : 25 index sur 54 tables qui n'en comptaient aucun
+  - **Index de base de données** : 45 index sur 70 tables qui n'en comptaient aucun
   - **Découpage du bundle** : 33 des 37 pages en chargement différé, l'écran de connexion ne télécharge plus leaflet, fullcalendar, recharts et jspdf
   - **Pagination réelle** : au-delà du vingtième matériel, les suivants étaient invisibles
   - **Validation serveur des écritures de terrain** : une charge incomplète produisait un 500 « Erreur serveur » au lieu d'un message utile
@@ -353,10 +362,10 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Système de migration versionné** : `npm run db:migrate` pointait vers un fichier inexistant
   - **Types vérifiés à la construction de l'image** : la production était le seul endroit où le code n'était jamais type-checké. Client passé de 76 à 0 erreur de type
   - **Lint client réparé** : le script existait, les plugins étaient installés, aucun fichier de configuration n'existait
-  - **639 tests** contre 36
+  - **735 tests** contre 36 — 691 au serveur (40 suites), 44 au client (5 suites)
 - **Reste à faire :**
-  - Découpage des fichiers-monstres (`EspacesVertsPage.tsx` ~5 900 lignes, `ObjectDetailPage.tsx` ~3 000 lignes, `espaceVert.routes.ts` ~1 550 lignes) — à faire au fil de l'eau, pas en sprint dédié. Les compteurs de septembre 2026 en ont sorti un premier morceau : les relevés et leur carte vivent dans `components/Compteurs.tsx`, le vocabulaire de l'énergie dans `lib/energie.ts`
-  - Types partagés entre client et serveur (449 avertissements ESLint restants, presque tous des `any`)
+  - Découpage des fichiers-monstres (`EspacesVertsPage.tsx` ~7 200 lignes, `ObjectDetailPage.tsx` ~3 000 lignes, `espaceVert.routes.ts` ~2 200 lignes) — à faire au fil de l'eau, pas en sprint dédié. Deux morceaux en sont sortis : les relevés de compteur dans `components/Compteurs.tsx` et le vocabulaire de l'énergie dans `lib/energie.ts` (septembre 2026), puis le rendu du plan annoté dans `components/plan/` — un seul composant là où quatre écrans le redessinaient chacun à sa façon. La page a néanmoins **grossi** entre-temps : le découpage ne suit pas le rythme des fonctionnalités
+  - Types partagés entre client et serveur (506 avertissements ESLint restants, presque tous des `any` ; aucune erreur)
   - Les requêtes du cron encadrent leurs colonnes de dates dans `date()`, ce qui empêche les index correspondants de servir
 
 ---

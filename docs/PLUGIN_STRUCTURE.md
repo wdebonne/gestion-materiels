@@ -14,6 +14,17 @@ Plugins intégrés à l'application avec des pages React dédiées, mais gérés
 | Amortissement | `depreciation` | `/depreciation` | Dépréciation et valeur résiduelle |
 | Cartographie | `map` | `/map` | Carte interactive Leaflet |
 | Import / Export | `import-export` | `/import-export` | Import/Export CSV et Excel |
+| Manifestations | `manifestations` | `/manifestations` | Gestion événements et prêt matériel |
+| Espaces Verts | `espaces-verts` | `/espaces-verts` | Plan annoté, composition botanique, entretiens |
+
+S'y ajoutent trois plugins associables à une catégorie, sans route propre, qui
+enrichissent la fiche d'un matériel : `fuel` (carburant **et** recharges
+électriques), `maintenance` (entretien) et `technical-control` (contrôle
+technique).
+
+Les plugins dont la page est écrite en JSON ont leurs fichiers dans
+`plugins/pages/<slug>/`. Ceux dont la page est écrite en React — Calendrier,
+Manifestations et Espaces Verts — n'y figurent pas.
 
 ### Plugins personnalisés (ZIP)
 Plugins importables via fichier ZIP avec pages dynamiques JSON et API configurables.

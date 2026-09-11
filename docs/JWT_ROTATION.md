@@ -1,7 +1,7 @@
 # 🔐 Guide de Rotation des Secrets JWT
 
 **Date de création** : 6 février 2026  
-**Révision** : 29 août 2026  
+**Révision** : 11 septembre 2026  
 **Projet** : Gestion Matériels
 
 ---
@@ -79,12 +79,10 @@ curl -X POST https://votre-domaine.com/api/security/jwt/rotate \
 # 4. Redémarrer l'application (après la période de grâce si souhaité)
 ```
 
-### Via le script (alternative)
-
-```bash
-# Dans le répertoire du projet
-npm run jwt:rotate
-```
+> **Il n'existe pas de script `npm run jwt:rotate`.** Ce guide en annonçait un ;
+> ni `package.json` ni `scripts/` n'en ont jamais contenu, et la commande
+> échouait donc au moment précis où l'on en avait besoin. La rotation passe par
+> l'API ci-dessus, ou par l'écran Paramètres → Authentification.
 
 ---
 
