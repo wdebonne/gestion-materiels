@@ -358,6 +358,7 @@ class DatabaseManager {
         has_subcategories ${boolType} DEFAULT 0,
         available_for_manifestations ${boolType} DEFAULT 1,
         available_for_green_spaces ${boolType} DEFAULT 1,
+        available_for_public_space ${boolType} DEFAULT 1,
         is_prestation ${boolType} DEFAULT 0,
         sort_order INTEGER DEFAULT 0,
         created_at DATETIME ${timestampDefault},
@@ -374,6 +375,7 @@ class DatabaseManager {
         sort_order INTEGER DEFAULT 0,
         available_for_manifestations ${boolType},
         available_for_green_spaces ${boolType},
+        available_for_public_space ${boolType},
         is_prestation ${boolType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
@@ -410,6 +412,7 @@ class DatabaseManager {
         notes ${textType},
         custom_fields ${textType},
         available_for_manifestations ${boolType},
+        available_for_public_space ${boolType},
         is_prestation ${boolType},
         material_type VARCHAR(20) DEFAULT 'unique',
         quantity_total INTEGER DEFAULT 0,
@@ -1354,6 +1357,54 @@ class DatabaseManager {
         previous_custom_fields TEXT DEFAULT ('{}'),
         previous_data TEXT DEFAULT ('{}'),
         created_at DATETIME ${timestampDefault}
+      )`,
+
+      // Mobilier de voie publique : un exemplaire posé, rattaché à son modèle
+      // du parc. Un banc acheté en série est une ligne au catalogue et cent
+      // lignes ici — c'est l'exemplaire qui porte sa position et son entretien.
+      `CREATE TABLE IF NOT EXISTS street_furniture (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        object_id INTEGER NOT NULL,
+        numero INTEGER NOT NULL DEFAULT 1,
+        label VARCHAR(255) NOT NULL DEFAULT '',
+        code VARCHAR(100) DEFAULT '',
+        latitude DECIMAL(10,8) NOT NULL,
+        longitude DECIMAL(11,8) NOT NULL,
+        position_source VARCHAR(20) DEFAULT 'carte',
+        position_accuracy DECIMAL(8,2),
+        address VARCHAR(500) DEFAULT '',
+        street VARCHAR(255) DEFAULT '',
+        sector VARCHAR(255) DEFAULT '',
+        status VARCHAR(50) DEFAULT 'en_service',
+        condition_state VARCHAR(50) DEFAULT 'bon',
+        installed_on DATE,
+        last_intervention_date DATE,
+        next_intervention_date DATE,
+        notes ${textType},
+        image VARCHAR(500) DEFAULT '',
+        custom_fields ${textType} DEFAULT ('{}'),
+        created_by INTEGER,
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault},
+        FOREIGN KEY (object_id) REFERENCES objects(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Ce qui est arrivé à cet exemplaire-là : « le banc 23 a été repeint »
+      // est une phrase sur une ligne, jamais sur le modèle.
+      `CREATE TABLE IF NOT EXISTS street_furniture_interventions (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        item_id INTEGER NOT NULL,
+        intervention_type VARCHAR(50) DEFAULT 'entretien',
+        performed_on DATE,
+        next_date DATE,
+        description ${textType},
+        cost DECIMAL(10,2),
+        performed_by VARCHAR(255) DEFAULT '',
+        user_id INTEGER,
+        created_at DATETIME ${timestampDefault},
+        FOREIGN KEY (item_id) REFERENCES street_furniture(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
       )`
     ];
 
@@ -1461,6 +1512,20 @@ class DatabaseManager {
       // Réservations
       ['idx_reservations_object', 'reservations', 'object_id'],
       ['idx_reservations_status', 'reservations', 'status'],
+
+      // Mobilier de voie publique
+      // « Où sont tous mes bancs ? » part du modèle, pas de la carte : c'est la
+      // question que pose la fiche matériel, et celle que pose le filtre par
+      // modèle de la cartographie.
+      ['idx_street_furniture_object', 'street_furniture', 'object_id'],
+      // La carte lit une emprise, jamais la table entière. Latitude d'abord :
+      // une commune s'étale plus en longueur qu'un index ne le devine.
+      ['idx_street_furniture_position', 'street_furniture', 'latitude, longitude'],
+      ['idx_street_furniture_street', 'street_furniture', 'street'],
+      ['idx_street_furniture_status', 'street_furniture', 'status'],
+      // Les échéances sont balayées d'un bloc pour teinter les retards.
+      ['idx_street_furniture_next', 'street_furniture', 'next_intervention_date'],
+      ['idx_sf_interventions_item', 'street_furniture_interventions', 'item_id, performed_on'],
     ];
 
     for (const [nom, table, colonnes] of indexes) {

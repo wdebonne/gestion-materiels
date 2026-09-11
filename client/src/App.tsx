@@ -38,6 +38,7 @@ const LogsPage = lazy(() => import('@/pages/settings/LogsPage'))
 const WebhooksPage = lazy(() => import('@/pages/settings/WebhooksPage'))
 const ManifestationsSettingsPage = lazy(() => import('@/pages/settings/ManifestationsSettingsPage'))
 const EspacesVertsSettingsPage = lazy(() => import('@/pages/settings/EspacesVertsSettingsPage'))
+const CartographieSettingsPage = lazy(() => import('@/pages/settings/CartographieSettingsPage'))
 const NotificationsPage = lazy(() => import('@/pages/settings/NotificationsPage'))
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
 const ApiTokensPage = lazy(() => import('@/pages/settings/ApiTokensPage'))
@@ -156,6 +157,7 @@ function App() {
             <Route path="webhooks" element={<WebhooksPage />} />
             <Route path="manifestations" element={<ManifestationsSettingsPage />} />
             <Route path="espaces-verts" element={<EspacesVertsSettingsPage />} />
+            <Route path="cartographie" element={<CartographieSettingsPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
 
             {/* Anciennes adresses, regroupées en onglets : on redirige plutôt

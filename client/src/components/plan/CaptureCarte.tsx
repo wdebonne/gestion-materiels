@@ -569,30 +569,12 @@ function SuiviCadre({
 /**
  * L'adresse la plus proche d'un point, selon OpenStreetMap.
  *
- * Rend une chaîne vide plutôt qu'une erreur : une adresse absente n'empêche
- * rien, et un rond-point ou une berge n'en a souvent aucune. Appelée une fois
- * par capture, jamais en boucle — Nominatim est gratuit et demande qu'on
- * l'économise.
+ * Déménagée dans `@/lib/geocodage` le jour où la cartographie du mobilier
+ * urbain a posé la même question : elle n'avait aucune raison d'importer cette
+ * fenêtre entière pour obtenir une chaîne de caractères. Réexportée ici pour
+ * que les écrans qui l'appelaient déjà n'aient rien à changer.
  */
-export async function adresseDuPoint(lat: number, lng: number): Promise<string> {
-  try {
-    const url = 'https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18'
-      + `&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lng)}`
-    const reponse = await fetch(url, { headers: { Accept: 'application/json' } })
-    if (!reponse.ok) return ''
-    const lu = await reponse.json()
-    const a = lu?.address
-    if (!a) return String(lu?.display_name ?? '')
-
-    // Une adresse française lisible plutôt que le `display_name` complet, qui
-    // empile le département, la région et le pays.
-    const voie = [a.house_number, a.road].filter(Boolean).join(' ')
-    const commune = a.village ?? a.town ?? a.city ?? a.municipality ?? ''
-    return [voie, a.postcode, commune].filter(Boolean).join(', ')
-  } catch {
-    return ''
-  }
-}
+export { adresseDuPoint } from '@/lib/geocodage'
 
 /**
  * Interroge OpenStreetMap sur ce que le cadre capturé contient.
