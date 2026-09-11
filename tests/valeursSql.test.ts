@@ -1,4 +1,4 @@
-import { dateOuNull, nombreOuNull } from '../src/utils/valeursSql';
+import { dateOuNull, fusionner, nombreFusionne, nombreOuNull } from '../src/utils/valeursSql';
 import { parametresMySQL } from '../src/database';
 
 /**
@@ -70,5 +70,61 @@ describe('paramètres envoyés à MySQL', () => {
     expect(parametresMySQL(['2026-08-30T17:47:37'])).toEqual(['2026-08-30T17:47:37']);
     expect(parametresMySQL(['2026-08-30'])).toEqual(['2026-08-30']);
     expect(parametresMySQL([42, true, 'Vidange'])).toEqual([42, true, 'Vidange']);
+  });
+});
+
+/**
+ * Ce qu'une modification partielle doit laisser tranquille.
+ *
+ * Une distinction que le code avait perdue : ne **pas parler** d'un champ
+ * (`undefined`) n'est pas demander à l'**effacer** (`null`). Les deux
+ * arrivaient au même `null`, et le prix se payait ailleurs, en silence — faire
+ * glisser un massif sur le plan envoie `{pos_x, pos_y}` et rien d'autre, et sa
+ * surface partait avec ; corriger l'adresse d'un espace vert décalibrait son
+ * plan, et toutes les surfaces cessaient de se calculer.
+ *
+ * Rien ne le signalait : un chiffre juste devenait un vide, et on ne s'en
+ * apercevait qu'en rouvrant la fiche des semaines plus tard.
+ */
+describe('modification partielle d’une colonne numérique', () => {
+  it('garde la valeur existante quand le champ n’est pas mentionné', () => {
+    expect(nombreFusionne(undefined, 1000)).toBe(1000);
+    expect(nombreFusionne(undefined, null)).toBeNull();
+    expect(nombreFusionne(undefined, 0)).toBe(0);
+  });
+
+  it('efface quand on le demande explicitement', () => {
+    // Ce que fait « Retirer du plan » : `pos_x: null`.
+    expect(nombreFusionne(null, 42)).toBeNull();
+    expect(nombreFusionne('', 42)).toBeNull();
+  });
+
+  it('écrit la nouvelle valeur quand il y en a une', () => {
+    expect(nombreFusionne(7, 42)).toBe(7);
+    expect(nombreFusionne('7.5', 42)).toBe(7.5);
+    // Zéro est une valeur et non une absence : une surface doit pouvoir être
+    // corrigée vers zéro.
+    expect(nombreFusionne(0, 42)).toBe(0);
+  });
+
+  /** La régression exacte, telle qu'elle se produisait sur le plan annoté. */
+  it('ne touche pas à la surface quand on ne déplace qu’un repère', () => {
+    const recu: Record<string, unknown> = { pos_x: 50, pos_y: 50 };
+    const existant = { pos_x: 30, area_m2: 1000, latitude: 49.5721 };
+
+    expect(nombreFusionne(recu.pos_x, existant.pos_x)).toBe(50);
+    expect(nombreFusionne(recu.area_m2, existant.area_m2)).toBe(1000);
+    expect(nombreFusionne(recu.latitude, existant.latitude)).toBe(49.5721);
+  });
+
+  /**
+   * L'appariement piégé, gardé comme preuve. `fusionner` et `nombreOuNull` sont
+   * justes chacun de son côté ; c'est leur composition qui détruit la
+   * distinction, la seconde rendant `null` là où la première attend `undefined`
+   * pour ne rien faire.
+   */
+  it('montre pourquoi fusionner(nombreOuNull(x)) ne pouvait pas marcher', () => {
+    expect(fusionner(nombreOuNull(undefined), 1000)).toBeNull();
+    expect(nombreFusionne(undefined, 1000)).toBe(1000);
   });
 });

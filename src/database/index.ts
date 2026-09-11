@@ -1114,6 +1114,7 @@ class DatabaseManager {
         plan_scale_metres DECIMAL(16,8),
         plan_ratio DECIMAL(12,8),
         plan_scale_points ${textType},
+        plan_capture ${textType},
         custom_fields ${textType} DEFAULT ('{}'),
         cloned_from_id INTEGER,
         created_by INTEGER,
