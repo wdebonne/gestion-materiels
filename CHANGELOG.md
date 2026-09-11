@@ -7,6 +7,18 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Le nom d'un repère flottait loin sous lui
+
+> Sur un plan agrandi, le nom d'un repère se retrouvait des dizaines de pixels
+> plus bas que sa pastille — parfois plus près du repère voisin que du sien.
+> Plus on zoomait pour travailler, plus l'étiquette s'éloignait.
+
+#### Corrigé
+
+- **La contre-échelle porte désormais sur l'ancre du marqueur**, et non sur la pastille et l'étiquette séparément. C'était tout le sujet : `scale()` change ce qu'on voit, jamais la place occupée. La pastille rapetissée gardait sa hauteur de boîte, l'étiquette posée juste en dessous partait de cette hauteur-là, et l'écart se retrouvait multiplié par le zoom — deux pixels d'intention en devenaient plusieurs dizaines. Pastille, écart et étiquette rapetissent maintenant ensemble
+- Mesuré dans l'application, de 143 % à 436 % de zoom : le marqueur garde ses 28 pixels, l'étiquette reste à 10 pixels sous lui et parfaitement centrée, à tous les grossissements
+
+
 ### La fiche d'un espace vert se remplit depuis la carte
 
 > Créer un espace vert demandait de tout savoir avant d'avoir rien vu : un nom,
