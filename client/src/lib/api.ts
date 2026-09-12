@@ -1672,6 +1672,31 @@ export interface MobilierUrbain {
   contenu?: MobilierUrbain[]
 }
 
+/**
+ * Un entretien, rapporté à l'implantation qui l'a reçu.
+ *
+ * Les deux gisements y sont mêlés : une reprise de peinture sur un banc de
+ * trottoir et une sur un banc du square racontent la même campagne, et les
+ * séparer obligerait à les recoller de tête.
+ */
+export interface EntretienImplantation {
+  id: number
+  intervention_type: string
+  performed_on: string | null
+  next_date: string | null
+  description: string
+  cost: number | null
+  performed_by: string
+  auteur?: string | null
+  implantation_cle: string
+  implantation_label: string
+  implantation_source: 'voirie' | 'espace_vert'
+  implantation_lieu: string
+  implantation_street: string
+  green_space_id: number | null
+  object_id: number | null
+}
+
 export interface InterventionMobilier {
   id: number
   item_id: number
@@ -1809,6 +1834,19 @@ export const mobilierUrbainApi = {
       `/mobilier-urbain/objets/${objectId}`
     ),
 
+  /**
+   * Tout ce qui a été fait sur les exemplaires d'un modèle, remis dans l'ordre.
+   *
+   * « Quels bancs ont été repeints cette année ? » — une question qui ne se lit
+   * ni dans l'onglet Entretiens du parc, qui parle du matériel comme d'un bien
+   * unique, ni exemplaire par exemplaire, ce qui demanderait d'ouvrir
+   * vingt-trois fiches.
+   */
+  entretiensDuModele: (objectId: number) =>
+    api.get<{ success: boolean; data: EntretienImplantation[]; total: number }>(
+      `/mobilier-urbain/objets/${objectId}/entretiens`
+    ),
+
   /** Un élément d'espace vert, vu depuis la carte : en lecture, sauf l'entretien. */
   detailElement: (elementId: number) =>
     api.get<{ success: boolean; data: Implantation }>(`/mobilier-urbain/element/${elementId}`),
@@ -1904,4 +1942,83 @@ export const materielVoiePubliqueApi = {
     api.put<{ success: boolean }>(`/mobilier-urbain/materiel-voie-publique/${niveau}/${id}`, {
       available,
     }),
+}
+
+// ======================== AGENDAS EXTERNES ========================
+
+/**
+ * Un carnet d'agenda branché sur l'application.
+ *
+ * Il y en a autant que la commune en a besoin — le carnet du service technique,
+ * celui des espaces verts, celui du régisseur des salles —, et chacun ne reçoit
+ * que ce qu'on lui désigne. Sans cet aiguillage, brancher un CalDAV y déversait
+ * les entretiens de véhicules, les contrôles techniques et les tontes de
+ * pelouse dans le même flux, et la seule réaction possible était de couper.
+ */
+export interface AgendaExterne {
+  id: number
+  name: string
+  kind: 'caldav' | 'outlook'
+  server_url: string
+  username: string
+  /** Rendu en pastilles : le renvoyer tel quel conserve le secret enregistré. */
+  password: string
+  calendar_path: string
+  client_id: string
+  client_secret: string
+  tenant_id: string
+  direction: 'import' | 'export' | 'deux_sens'
+  /** Vide = toutes les natures. */
+  natures: string[]
+  /** Vide = toutes les catégories. */
+  category_ids: number[]
+  include_uncategorized: boolean
+  color: string
+  enabled: boolean
+  last_sync: string | null
+  last_error: string | null
+}
+
+export interface NatureAgenda {
+  valeur: string
+  libelle: string
+  description: string
+}
+
+/** Ce que l'export enverrait, avant de l'envoyer. */
+export interface ApercuAgenda {
+  total: number
+  parNature: Array<{ nature: string; libelle: string; cnt: number }>
+  exemples: Array<{ title: string; start_date: string; nature: string }>
+}
+
+export const agendaExterneApi = {
+  lister: () => api.get<{ success: boolean; data: AgendaExterne[] }>('/calendar/agendas'),
+
+  vocabulaire: () =>
+    api.get<{
+      success: boolean
+      data: { natures: NatureAgenda[]; directions: NatureAgenda[] }
+    }>('/calendar/agendas/vocabulaire'),
+
+  creer: (corps: Partial<AgendaExterne>) =>
+    api.post<{ success: boolean; data: AgendaExterne }>('/calendar/agendas', corps),
+
+  modifier: (id: number, corps: Partial<AgendaExterne>) =>
+    api.put<{ success: boolean; data: AgendaExterne }>(`/calendar/agendas/${id}`, corps),
+
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/calendar/agendas/${id}`),
+
+  tester: (id: number) =>
+    api.post<{ success: boolean; message: string }>(`/calendar/agendas/${id}/test`),
+
+  /** Combien d'événements partiraient, et lesquels — sans rien envoyer. */
+  apercu: (id: number) =>
+    api.get<{ success: boolean; data: ApercuAgenda }>(`/calendar/agendas/${id}/apercu`),
+
+  synchroniser: (id: number) =>
+    api.post<{
+      success: boolean
+      data: { importes: number; envoyes: number; retires: number; erreur: string | null }
+    }>(`/calendar/agendas/${id}/sync`),
 }

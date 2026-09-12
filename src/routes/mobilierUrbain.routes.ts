@@ -29,6 +29,7 @@ import {
   prochainNumero,
   rafraichirEcheances,
   REFUS_POSITION,
+  rendezVousIntervention,
   SOURCES_POSITION,
   STATUTS,
   termeValide,
@@ -467,6 +468,59 @@ router.get('/objets/:objectId', authenticateToken, async (req: AuthRequest, res:
   }
 });
 
+/**
+ * GET /objets/:objectId/entretiens - Tout ce qui a été fait sur ce modèle.
+ *
+ * La question que pose la fiche d'un matériel une fois qu'on sait où sont ses
+ * exemplaires : « quels bancs ont été repeints cette année ? ». Elle ne se lit
+ * ni dans l'onglet Entretiens du parc — qui parle du matériel comme d'un bien
+ * unique, un véhicule, un tracteur — ni exemplaire par exemplaire, ce qui
+ * demanderait d'ouvrir vingt-trois fiches.
+ *
+ * Les deux gisements sont mêlés et remis dans l'ordre du temps : une reprise de
+ * peinture sur un banc de trottoir et une sur un banc du square racontent la
+ * même campagne.
+ */
+router.get('/objets/:objectId/entretiens', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const lignes = await lireImplantations(req, {
+      object_id: req.params.objectId,
+      // Un exemplaire déposé a eu une vie : l'entretien qu'on lui a donné
+      // compte dans ce qu'a coûté le modèle, et disparaître avec lui serait
+      // perdre la moitié de l'histoire.
+      avec_deposes: '1',
+      limit: '5000',
+    });
+    if (lignes === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    await historiques(lignes);
+
+    // Aplati : l'écran veut une frise, pas un arbre. Chaque ligne emporte de
+    // quoi dire sur quel exemplaire elle porte et où il se trouve.
+    const entretiens = lignes.flatMap((ligne) =>
+      (ligne.interventions ?? []).map((intervention: any) => ({
+        ...intervention,
+        implantation_cle: ligne.cle,
+        implantation_label: ligne.label,
+        implantation_source: ligne.source,
+        implantation_lieu: ligne.lieu,
+        implantation_street: ligne.street,
+        green_space_id: ligne.green_space_id,
+        object_id: ligne.object_id,
+      }))
+    );
+
+    entretiens.sort((a, b) =>
+      String(b.performed_on ?? '').localeCompare(String(a.performed_on ?? ''))
+    );
+
+    res.json({ success: true, data: entretiens, total: entretiens.length });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // ======================== UN ÉLÉMENT D'ESPACE VERT ========================
 
 /**
@@ -992,6 +1046,9 @@ router.post('/:id/interventions', authenticateToken, requireFieldWrite, async (r
     }
 
     await rafraichirEcheances(req.params.id);
+    // Une échéance qui ne figure nulle part avant d'être dépassée n'est pas
+    // une échéance : elle part au calendrier comme celles des espaces verts.
+    await rendezVousIntervention(resultat.lastInsertRowid);
 
     await logService.info(
       'other',
@@ -1057,6 +1114,7 @@ router.put('/interventions/:interventionId', authenticateToken, requireFieldWrit
     );
 
     await rafraichirEcheances(existante.item_id);
+    await rendezVousIntervention(req.params.interventionId);
 
     res.json({ success: true, data: await exemplaireComplet(existante.item_id) });
   } catch (error: any) {
@@ -1075,6 +1133,9 @@ router.delete('/interventions/:interventionId', authenticateToken, requireSuperv
     await db.execute('DELETE FROM street_furniture_interventions WHERE id = ?', [
       req.params.interventionId,
     ]);
+    // L'ordre compte : la ligne n'existe plus, `rendezVousIntervention` ne
+    // trouvera donc rien à reposer et se contentera d'effacer l'ancien.
+    await rendezVousIntervention(req.params.interventionId);
     await rafraichirEcheances(existante.item_id);
 
     res.json({ success: true, data: await exemplaireComplet(existante.item_id) });

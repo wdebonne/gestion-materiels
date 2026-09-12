@@ -7,6 +7,104 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Chaque agenda externe reçoit ce qu'on lui désigne, et rien d'autre
+
+> Brancher l'agenda de l'application sur un carnet CalDAV y déversait tout : les
+> entretiens de véhicules, les contrôles techniques, les échéances du matériel de
+> manifestation et les tontes des espaces verts. Le carnet du service technique
+> devenait illisible, et la seule réaction possible était de couper la
+> synchronisation — donc de ne plus rien voir du tout.
+>
+> Et la question d'à côté restait sans réponse : ce qui avait été fait sur les
+> exemplaires d'un modèle — « quels bancs ont été repeints cette année ? » — ne
+> se lisait ni sur la fiche du matériel, qui parle du bien comme d'un exemplaire
+> unique, ni sans ouvrir les vingt-trois fiches une par une.
+
+#### Ajouté
+
+- **Autant d'agendas externes que la commune en a besoin**, chacun avec ses
+  propres identifiants : le carnet du service technique, celui des espaces
+  verts, celui du régisseur des salles. Ils se règlent dans **Paramètres →
+  Agendas externes**
+- **Un aiguillage sur deux axes**, ceux selon lesquels une commune découpe son
+  travail : la **nature** de l'échéance — entretien du parc, contrôle technique,
+  espaces verts, mobilier de voie publique, manifestations, rendez-vous saisis à
+  la main — et la **catégorie** du matériel concerné. Ne rien cocher veut dire
+  « tout » : c'est le réglage de départ, celui qui convient quand il n'y a qu'un
+  carnet
+- **La synchronisation sait enfin envoyer.** Elle ne faisait qu'importer : elle
+  ramenait les rendez-vous du serveur distant dans le calendrier. Un carnet peut
+  désormais **recevoir** les échéances de l'application, en iCalendar, par dépôt
+  CalDAV — ou faire les deux
+- **Un aperçu avant d'envoyer** : « 47 événements partiraient vers ce carnet —
+  Contrôle technique : 31, Entretien du parc : 16 », avec les premiers titres. Un
+  aiguillage se règle autrement à l'aveugle, et l'on n'en découvre l'effet
+  qu'une fois le carnet de quelqu'un d'autre rempli
+- **Ce qui cesse de correspondre est retiré du carnet distant.** Décocher une
+  catégorie n'y laisse pas ses rendez-vous pour toujours : l'application se
+  souvient de ce qu'elle a déposé et l'enlève
+- **Les échéances de la voirie vont au calendrier.** Une intervention de
+  cartographie qui annonce une date de retour pose un rendez-vous, comme le font
+  les espaces verts depuis toujours. Elle le déplace quand la date change, le
+  retire quand l'intervention est supprimée. Sans cela, l'échéance ne se voyait
+  nulle part avant d'être dépassée
+- **Une vue « Entretiens » sur la fiche d'un matériel**, à côté de ses
+  implantations : tout ce qui a été fait sur ses exemplaires, les deux gisements
+  mêlés et remis dans l'ordre du temps, filtrable par année et totalisé. Une
+  reprise de peinture sur un banc de trottoir et une sur un banc du square
+  racontent la même campagne
+
+#### Modifié
+
+- **La fenêtre de synchronisation du calendrier ne configure plus rien** : elle
+  montre l'état des carnets et permet de les faire passer. Les régler tient d'un
+  écran d'administration, et les dupliquer ici ferait deux endroits où la même
+  chose se modifie
+- **La vue du calendrier ne change pas.** Elle affiche toutes les échéances que
+  les droits du compte permettent de voir, comme avant. L'aiguillage décide de ce
+  qui **sort**, jamais de ce qui s'affiche — confondre les deux ferait
+  disparaître de l'écran des échéances qu'on a seulement choisi de ne pas
+  exporter
+- **La configuration existante est reprise** en une destination, en réception :
+  c'est tout ce que l'ancienne synchronisation savait faire, et lui inventer un
+  envoi aurait expédié au carnet, dès la mise à jour, des centaines d'événements
+  que personne n'a demandés
+- **Le corps d'un entretien d'espace vert a été sorti de sa route** vers
+  `entretienEspaceVert.service`, appelé par le module des espaces verts comme par
+  la cartographie
+- **Outlook reste en réception seule** : y écrire demande le consentement délégué
+  de Microsoft Graph, que la configuration actuelle — un simple secret
+  d'application — ne porte pas. L'écran le dit plutôt que de laisser essayer
+
+#### Corrigé
+
+- **Deux carnets CalDAV s'effaçaient l'un l'autre.** L'import balayait ses
+  événements par `source = 'caldav'`, ce qui emportait aussi ceux du voisin à
+  chaque passage. Chaque événement importé porte désormais le carnet dont il vient
+- **« fetch failed » comme message d'erreur.** Un serveur injoignable — nom de
+  domaine inexistant, pare-feu, certificat refusé — n'apprenait rien à qui doit
+  le réparer. Le message nomme maintenant l'adresse visée
+- **L'historique d'un élément de parc affichait des lignes sans texte** quand
+  l'entretien n'avait pas de titre : `COALESCE` retenait la chaîne vide plutôt
+  que la description
+
+#### Vérifié
+
+- Un carnet réglé sur « contrôle technique » : trois dépôts iCalendar valides,
+  UID stables, `DTEND` au lendemain — la date de fin d'un événement en journée
+  entière est exclusive, et une échéance qui s'arrête le jour même disparaît des
+  agendas qui appliquent la norme
+- Le même carnet basculé sur « espaces verts » : un dépôt, et **trois
+  suppressions** sur le serveur distant
+- Filtrage par catégorie : un seul contrôle technique retenu, celui du tracteur
+  rattaché à la catégorie cochée
+- Serveur injoignable : la synchronisation n'échoue que pour ce carnet, l'erreur
+  est retenue dessus et s'affiche dans les réglages
+- Une intervention de voirie avec échéance : rendez-vous créé, déplacé quand la
+  date change, retiré à la suppression
+- Neuf entretiens de bancs — cinq en espaces verts, quatre en voirie — listés
+  ensemble sur la fiche du modèle, avec leur total
+
 ### Consigner un entretien de parc depuis la carte
 
 > La carte montrait les éléments des espaces verts mais ne les touchait pas :

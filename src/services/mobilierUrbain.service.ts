@@ -244,6 +244,66 @@ export async function rafraichirEcheances(itemId: number | string): Promise<void
   );
 }
 
+/**
+ * Porte au calendrier la prochaine échéance d'une intervention, ou l'en retire.
+ *
+ * Les espaces verts le font depuis toujours : un entretien qui annonce une date
+ * de retour pose un rendez-vous. La voirie ne le faisait pas — l'échéance
+ * s'inscrivait sur l'exemplaire, se teintait en rouge une fois dépassée, et
+ * n'apparaissait nulle part avant. Autant dire qu'elle était dépassée avant
+ * d'être vue.
+ *
+ * L'événement porte `object_id` : c'est lui qui fait que le calendrier applique
+ * la portée par catégorie, et que la ligne ne s'affiche pas chez un compte qui
+ * n'a pas accès à ce matériel.
+ *
+ * Rejouée à chaque écriture — création, correction, suppression — et non tenue à
+ * la main : l'ancien rendez-vous est effacé avant que le nouveau ne soit posé,
+ * ce qui évite les doublons et rattrape les corrections de date.
+ */
+export async function rendezVousIntervention(interventionId: number | string): Promise<void> {
+  await db.execute(
+    `DELETE FROM calendar_events
+     WHERE plugin_reference = 'street-furniture-intervention' AND plugin_reference_id = ?`,
+    [interventionId]
+  );
+
+  const ligne = await db.queryOne(
+    `SELECT i.next_date, i.intervention_type, i.performed_by,
+            sf.id as item_id, sf.label, sf.street, sf.object_id
+     FROM street_furniture_interventions i
+     JOIN street_furniture sf ON sf.id = i.item_id
+     WHERE i.id = ?`,
+    [interventionId]
+  );
+  if (!ligne?.next_date) return;
+
+  const nature = TYPES_INTERVENTION.find((t) => t.valeur === ligne.intervention_type);
+  await db.execute(
+    `INSERT INTO calendar_events (title, description, event_type, start_date, end_date,
+       all_day, color, object_id, plugin_reference, plugin_reference_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      `🔧 ${ligne.label} : ${nature?.libelle ?? ligne.intervention_type}`,
+      [
+        'Intervention prévue sur la voie publique',
+        ligne.street ? `Lieu : ${ligne.street}` : null,
+        ligne.performed_by ? `Intervenant : ${ligne.performed_by}` : null,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      'maintenance',
+      ligne.next_date,
+      ligne.next_date,
+      1,
+      '#2563eb',
+      ligne.object_id,
+      'street-furniture-intervention',
+      interventionId,
+      new Date().toISOString(),
+    ]
+  );
+}
 // -------------------------------------------------------------------- lecture
 
 /**

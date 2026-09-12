@@ -1,4 +1,5 @@
-import { useState, useRef, useMemo, useEffect } from 'react'
+import { useState, useRef, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid'
@@ -9,7 +10,7 @@ import frLocale from '@fullcalendar/core/locales/fr'
 import { 
   Plus, Trash2, ChevronLeft, ChevronRight, Calendar as CalendarIcon, 
   List, Grid3X3, Clock, RefreshCw, Settings, Cloud, CloudOff,
-  Filter, Search, X, ExternalLink
+  Filter, Search, X
 } from 'lucide-react'
 import { Button, Input, Modal, ModalBody, ModalFooter, TextArea, Select, Autocomplete, LoadingInline, Badge } from '@/components/ui'
 import api from '@/lib/api'
@@ -34,9 +35,27 @@ interface CalendarEvent {
   externalId?: string
 }
 
+/**
+ * Ce que les carnets externes ont donné au dernier passage.
+ *
+ * Une liste, et non plus un couple Outlook/CalDAV figé : il n'y a plus « un »
+ * agenda externe mais autant que la commune en branche — le carnet du service
+ * technique, celui des espaces verts, celui du régisseur des salles.
+ */
+interface AgendaExterne {
+  id: number
+  name: string
+  kind: 'caldav' | 'outlook'
+  direction: 'import' | 'export' | 'deux_sens'
+  enabled: boolean
+  lastSync: string | null
+  lastError: string | null
+  color: string
+}
+
 interface SyncStatus {
-  outlook: { connected: boolean; lastSync?: string; email?: string }
-  caldav: { connected: boolean; lastSync?: string; server?: string }
+  agendas: AgendaExterne[]
+  enErreur: number
 }
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
@@ -99,10 +118,7 @@ export default function CalendarPage() {
         const response = await api.get('/calendar/sync/status')
         return response.data
       } catch {
-        return {
-          outlook: { connected: false },
-          caldav: { connected: false }
-        }
+        return { agendas: [], enErreur: 0 }
       }
     }
   })
@@ -470,7 +486,10 @@ export default function CalendarPage() {
               title="Paramètres de synchronisation" aria-label="Paramètres de synchronisation"
               className="hidden sm:flex"
             >
-              {syncStatus?.outlook?.connected || syncStatus?.caldav?.connected ? (
+              {/* Un carnet en panne se voit sans ouvrir les réglages. */}
+              {(syncStatus?.enErreur ?? 0) > 0 ? (
+                <CloudOff className="w-4 h-4 text-red-600" />
+              ) : (syncStatus?.agendas ?? []).some((a) => a.enabled) ? (
                 <Cloud className="w-4 h-4 text-green-600" />
               ) : (
                 <CloudOff className="w-4 h-4 text-gray-600 dark:text-gray-300" />
@@ -737,22 +756,21 @@ export default function CalendarPage() {
             <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
               <h3 className="font-semibold text-gray-700 dark:text-gray-200 mb-2 text-sm">Synchronisation</h3>
               <div className="space-y-2">
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-300">Outlook</span>
-                  {syncStatus?.outlook?.connected ? (
-                    <Badge variant="success" size="sm">Connecté</Badge>
-                  ) : (
-                    <Badge variant="default" size="sm">Non connecté</Badge>
-                  )}
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600 dark:text-gray-300">CalDAV</span>
-                  {syncStatus?.caldav?.connected ? (
-                    <Badge variant="success" size="sm">Connecté</Badge>
-                  ) : (
-                    <Badge variant="default" size="sm">Non connecté</Badge>
-                  )}
-                </div>
+                {(syncStatus?.agendas ?? []).length === 0 && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">Aucun agenda branché</p>
+                )}
+                {(syncStatus?.agendas ?? []).map((a) => (
+                  <div key={a.id} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="min-w-0 truncate text-gray-600 dark:text-gray-300">{a.name}</span>
+                    {a.lastError ? (
+                      <Badge variant="danger" size="sm">En erreur</Badge>
+                    ) : a.enabled ? (
+                      <Badge variant="success" size="sm">Actif</Badge>
+                    ) : (
+                      <Badge variant="default" size="sm">Désactivé</Badge>
+                    )}
+                  </div>
+                ))}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -1004,274 +1022,106 @@ export default function CalendarPage() {
   )
 }
 
-// Composant pour les paramètres de synchronisation
-function CalendarSyncSettings({ 
-  isOpen, 
-  onClose, 
+/**
+ * Ce que les carnets externes ont donné, et de quoi les faire passer.
+ *
+ * Ne configure plus rien : il n'y a plus « un » agenda externe mais autant que
+ * la commune en branche, chacun avec ses identifiants et son aiguillage. Les
+ * régler tient d'un écran d'administration, pas d'une fenêtre ouverte au-dessus
+ * du calendrier — et les dupliquer ici ferait deux endroits où la même chose se
+ * modifie.
+ *
+ * La **vue du calendrier ne change pas** : elle montre tout ce que le compte a
+ * le droit de voir. L'aiguillage décide de ce qui sort vers les carnets, jamais
+ * de ce qui s'affiche ici.
+ */
+function CalendarSyncSettings({
+  isOpen,
+  onClose,
   syncStatus,
-  onSync 
-}: { 
+  onSync
+}: {
   isOpen: boolean
   onClose: () => void
   syncStatus?: SyncStatus
   onSync: () => void
 }) {
-  const queryClient = useQueryClient()
-  const [activeTab, setActiveTab] = useState<'outlook' | 'caldav'>('outlook')
-  const [outlookConfig, setOutlookConfig] = useState({
-    clientId: '',
-    clientSecret: '',
-    tenantId: '',
-    enabled: false
-  })
-  const [caldavConfig, setCaldavConfig] = useState({
-    serverUrl: '',
-    username: '',
-    password: '',
-    calendarPath: '',
-    enabled: false
-  })
-
-  // Charger la configuration existante
-  useEffect(() => {
-    if (isOpen) {
-      api.get('/calendar/sync/config').then((res) => {
-        if (res.data.outlook) {
-          setOutlookConfig(prev => ({ ...prev, ...res.data.outlook }))
-        }
-        if (res.data.caldav) {
-          setCaldavConfig(prev => ({ ...prev, ...res.data.caldav }))
-        }
-      }).catch(() => {})
-    }
-  }, [isOpen])
-
-  const saveOutlookConfig = async () => {
-    try {
-      await api.post('/calendar/sync/outlook/config', outlookConfig)
-      toast.success('Configuration Outlook enregistrée')
-      queryClient.invalidateQueries({ queryKey: ['calendar-sync-status'] })
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Erreur lors de la sauvegarde')
-    }
-  }
-
-  const saveCaldavConfig = async () => {
-    try {
-      await api.post('/calendar/sync/caldav/config', caldavConfig)
-      toast.success('Configuration CalDAV enregistrée')
-      queryClient.invalidateQueries({ queryKey: ['calendar-sync-status'] })
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Erreur lors de la sauvegarde')
-    }
-  }
-
-  const testConnection = async (type: 'outlook' | 'caldav') => {
-    try {
-      await api.post(`/calendar/sync/${type}/test`)
-      toast.success('Connexion réussie !')
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Erreur de connexion')
-    }
-  }
-
-  const disconnectService = async (type: 'outlook' | 'caldav') => {
-    try {
-      await api.delete(`/calendar/sync/${type}`)
-      toast.success('Déconnecté')
-      queryClient.invalidateQueries({ queryKey: ['calendar-sync-status'] })
-      if (type === 'outlook') {
-        setOutlookConfig(prev => ({ ...prev, enabled: false }))
-      } else {
-        setCaldavConfig(prev => ({ ...prev, enabled: false }))
-      }
-    } catch (err: any) {
-      toast.error(err.response?.data?.error || 'Erreur')
-    }
-  }
+  const agendas = syncStatus?.agendas ?? []
 
   return (
-    <Modal
-      isOpen={isOpen}
-      onClose={onClose}
-      title="Synchronisation du calendrier"
-      size="lg"
-    >
-      <ModalBody className="space-y-4">
-        {/* Tabs */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
-          <button
-            onClick={() => setActiveTab('outlook')}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'outlook'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M7.88 12.04q0 .45-.11.87-.1.41-.33.74-.22.33-.58.52-.37.2-.87.2t-.85-.2q-.35-.21-.57-.55-.22-.33-.33-.75-.1-.42-.1-.86t.1-.87q.1-.43.34-.76.22-.34.57-.54.36-.2.87-.2t.86.2q.35.21.57.55.22.34.31.77.1.43.1.88zM24 12v9.38q0 .46-.33.8-.33.32-.8.32H7.13q-.46 0-.8-.33-.32-.33-.32-.8V18H1q-.41 0-.7-.3-.3-.29-.3-.7V7q0-.41.3-.7Q.58 6 1 6h6.5V2.55q0-.44.3-.75.3-.3.75-.3h12.9q.44 0 .75.3.3.3.3.75V12zm-6-8.25v3h3v-3zm0 4.5v3h3v-3zm0 4.5v1.83l3.05-1.83zm-5.25-9v3h3.75v-3zm0 4.5v3h3.75v-3zm0 4.5v2.03l2.41 1.5 1.34-.8v-2.73zM9 3.75V6h2l.13.01.12.04v-2.3zM5.98 15.98q.9 0 1.6-.3.7-.32 1.19-.86.48-.55.73-1.28.25-.74.25-1.61 0-.83-.25-1.55-.24-.71-.71-1.24t-1.15-.83q-.68-.3-1.55-.3-.92 0-1.64.3-.71.3-1.2.85-.5.54-.75 1.3-.25.74-.25 1.63 0 .85.26 1.56.26.72.74 1.23.48.52 1.17.81.69.3 1.56.3zM7.5 21h12.39L12 16.08V17q0 .41-.3.7-.29.3-.7.3H7.5zm15-.13v-7.24l-5.9 3.54Z"/>
-            </svg>
-            Microsoft Outlook
-            {syncStatus?.outlook?.connected && (
-              <Badge variant="success" size="sm">Connecté</Badge>
-            )}
-          </button>
-          <button
-            onClick={() => setActiveTab('caldav')}
-            className={`flex items-center gap-2 px-4 py-2 border-b-2 font-medium text-sm transition-colors ${
-              activeTab === 'caldav'
-                ? 'border-primary-600 text-primary-600'
-                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200'
-            }`}
-          >
-            <CalendarIcon className="w-5 h-5" />
-            CalDAV
-            {syncStatus?.caldav?.connected && (
-              <Badge variant="success" size="sm">Connecté</Badge>
-            )}
-          </button>
-        </div>
-
-        {/* Outlook Configuration */}
-        {activeTab === 'outlook' && (
-          <div className="space-y-4">
-            <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-              <h4 className="font-medium text-blue-800 dark:text-blue-200 mb-2">Configuration Microsoft Outlook</h4>
-              <p className="text-sm text-blue-700 dark:text-blue-300">
-                Pour synchroniser avec Outlook, vous devez créer une application dans le portail Azure AD.{' '}
-                <a 
-                  href="https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="underline inline-flex items-center gap-1"
-                >
-                  Accéder au portail Azure <ExternalLink className="w-3 h-3" />
-                </a>
-              </p>
-            </div>
-
-            <Input
-              label="Client ID (Application ID)"
-              value={outlookConfig.clientId}
-              onChange={(e) => setOutlookConfig({ ...outlookConfig, clientId: e.target.value })}
-              placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-            />
-
-            <Input
-              label="Client Secret"
-              type="password"
-              value={outlookConfig.clientSecret}
-              onChange={(e) => setOutlookConfig({ ...outlookConfig, clientSecret: e.target.value })}
-              placeholder="Votre secret client"
-            />
-
-            <Input
-              label="Tenant ID"
-              value={outlookConfig.tenantId}
-              onChange={(e) => setOutlookConfig({ ...outlookConfig, tenantId: e.target.value })}
-              placeholder="common ou votre ID de tenant"
-            />
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={outlookConfig.enabled}
-                onChange={(e) => setOutlookConfig({ ...outlookConfig, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-200">Activer la synchronisation Outlook</span>
-            </label>
-
-            <div className="flex gap-2 pt-2">
-              <Button onClick={saveOutlookConfig}>
-                Enregistrer
-              </Button>
-              <Button variant="secondary" onClick={() => testConnection('outlook')}>
-                Tester la connexion
-              </Button>
-              {syncStatus?.outlook?.connected && (
-                <Button variant="danger" onClick={() => disconnectService('outlook')}>
-                  Déconnecter
-                </Button>
-              )}
-            </div>
+    <Modal isOpen={isOpen} onClose={onClose} title="Agendas externes" size="md">
+      <ModalBody>
+        {agendas.length === 0 ? (
+          <div className="py-8 text-center">
+            <CloudOff className="mx-auto mb-2 h-8 w-8 text-gray-300 dark:text-gray-600" />
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Aucun agenda externe n’est branché.
+            </p>
+            <p className="mx-auto mt-1 max-w-sm text-xs text-gray-500 dark:text-gray-400">
+              Un agenda externe reçoit les échéances que vous lui désignez — les entretiens d’une
+              catégorie, les chantiers des espaces verts — et peut en retour afficher ici ses
+              propres rendez-vous.
+            </p>
           </div>
+        ) : (
+          <ul className="space-y-2">
+            {agendas.map((a) => (
+              <li
+                key={a.id}
+                className="flex items-start gap-3 rounded-lg border border-gray-200 p-3 dark:border-gray-700"
+              >
+                <span
+                  className="mt-1 h-3 w-3 flex-shrink-0 rounded-full"
+                  style={{ background: a.enabled ? a.color : '#cbd5e1' }}
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {a.name}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    {a.kind === 'caldav' ? 'CalDAV' : 'Outlook'} ·{' '}
+                    {a.direction === 'export'
+                      ? 'envoi'
+                      : a.direction === 'import'
+                        ? 'réception'
+                        : 'les deux sens'}
+                    {a.lastSync ? ` · dernier passage le ${format(new Date(a.lastSync), 'd MMMM yyyy', { locale: fr })}` : ' · jamais passé'}
+                  </p>
+                  {a.lastError && (
+                    <p className="mt-1 text-xs text-red-600 dark:text-red-400">{a.lastError}</p>
+                  )}
+                </div>
+                {!a.enabled && (
+                  <Badge variant="default" size="sm">
+                    Désactivé
+                  </Badge>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
 
-        {/* CalDAV Configuration */}
-        {activeTab === 'caldav' && (
-          <div className="space-y-4">
-            <div className="bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg p-4">
-              <h4 className="font-medium text-green-800 dark:text-green-200 mb-2">Configuration CalDAV</h4>
-              <p className="text-sm text-green-700 dark:text-green-300">
-                CalDAV est compatible avec de nombreux services : Nextcloud, Synology, iCloud, Google Calendar, etc.
-              </p>
-            </div>
-
-            <Input
-              label="URL du serveur CalDAV"
-              value={caldavConfig.serverUrl}
-              onChange={(e) => setCaldavConfig({ ...caldavConfig, serverUrl: e.target.value })}
-              placeholder="https://example.com/remote.php/dav"
-            />
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input
-                label="Nom d'utilisateur"
-                value={caldavConfig.username}
-                onChange={(e) => setCaldavConfig({ ...caldavConfig, username: e.target.value })}
-                placeholder="utilisateur"
-              />
-
-              <Input
-                label="Mot de passe"
-                type="password"
-                value={caldavConfig.password}
-                onChange={(e) => setCaldavConfig({ ...caldavConfig, password: e.target.value })}
-                placeholder="Mot de passe ou token"
-              />
-            </div>
-
-            <Input
-              label="Chemin du calendrier (optionnel)"
-              value={caldavConfig.calendarPath}
-              onChange={(e) => setCaldavConfig({ ...caldavConfig, calendarPath: e.target.value })}
-              placeholder="/calendars/users/user/calendar"
-            />
-
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={caldavConfig.enabled}
-                onChange={(e) => setCaldavConfig({ ...caldavConfig, enabled: e.target.checked })}
-                className="w-4 h-4 rounded border-gray-300 dark:border-gray-600 text-primary-600 focus:ring-primary-500"
-              />
-              <span className="text-sm text-gray-700 dark:text-gray-200">Activer la synchronisation CalDAV</span>
-            </label>
-
-            <div className="flex gap-2 pt-2">
-              <Button onClick={saveCaldavConfig}>
-                Enregistrer
-              </Button>
-              <Button variant="secondary" onClick={() => testConnection('caldav')}>
-                Tester la connexion
-              </Button>
-              {syncStatus?.caldav?.connected && (
-                <Button variant="danger" onClick={() => disconnectService('caldav')}>
-                  Déconnecter
-                </Button>
-              )}
-            </div>
-          </div>
-        )}
+        <p className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+          Le calendrier ci-dessous continue d’afficher tout ce que vos droits vous permettent de
+          voir. Ce qui part vers un agenda externe se règle séparément, carnet par carnet.
+        </p>
       </ModalBody>
 
       <ModalFooter>
+        <Link
+          to="/settings/agendas"
+          onClick={onClose}
+          className="inline-flex min-h-[38px] items-center gap-1.5 rounded-lg border border-gray-300 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
+        >
+          <Settings className="h-4 w-4" />
+          Configurer les agendas
+        </Link>
+        <div className="flex-1" />
         <Button variant="secondary" onClick={onClose}>
           Fermer
         </Button>
-        <Button onClick={onSync}>
-          <RefreshCw className="w-4 h-4 mr-1" />
+        <Button onClick={onSync} disabled={agendas.length === 0}>
+          <RefreshCw className="mr-1.5 h-4 w-4" />
           Synchroniser maintenant
         </Button>
       </ModalFooter>

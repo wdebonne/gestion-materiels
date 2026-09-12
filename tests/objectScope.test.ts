@@ -43,6 +43,8 @@ const EXEMPTIONS: Record<string, string> = {
     "Tâche planifiée, sans requête ni utilisateur : il n'y a pas de portée à appliquer.",
   'services/email.service.ts':
     "Composition d'e-mails côté serveur, sans requête ni utilisateur.",
+  'services/agendasExternes.service.ts':
+    "Ne lit la catégorie d'un matériel que pour décider vers quel agenda externe part une échéance, et ne rend jamais rien à un utilisateur : l'aiguillage tourne côté serveur, sans requête ni compte, et ce qu'il produit est un dépôt de fichier iCalendar vers un serveur configuré par un administrateur. Les titres exportés sont ceux d'événements du calendrier, dont la lecture par un compte reste gouvernée par filtreObjetsLies dans calendar.routes.ts.",
   'services/mobilierUrbain.service.ts':
     "Ne porte que les colonnes et les jointures que les routes du mobilier de voie publique assemblent : celles-ci appliquent la portée sur chaque lecture de liste, et `exemplaireComplet` n'est appelé qu'avec l'identifiant d'un exemplaire dont l'accès vient d'être vérifié, ou d'un exemplaire créé à l'instant depuis un modèle que l'appelant a le droit de voir. La jointure sur `objects` ne sert qu'à nommer le modèle d'un point déjà autorisé.",
   'services/manifestationDocuments.service.ts':

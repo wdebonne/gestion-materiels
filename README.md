@@ -286,8 +286,11 @@ a réellement consommé, chaque écriture portant sa propre nature.
 - 🗓️ Mini-calendrier avec navigation rapide (overlay sur mobile)
 - 🔍 Recherche et filtres par type d'événement
 - 📆 Vues : Mois, Semaine, Jour, Liste (adaptées aux petits écrans)
-- 🔄 **Synchronisation Outlook** via Azure AD *(voir la réserve dans « État réel »)*
-- 🔄 **Synchronisation CalDAV** (Nextcloud, Synology, iCloud, Google)
+- 🔗 **Autant d'agendas externes que nécessaire**, chacun avec ses identifiants : le carnet du service technique, celui des espaces verts, celui du régisseur des salles. CalDAV (Nextcloud, Synology, iCloud, Google) et Outlook via Azure AD
+- 🚦 **Chaque carnet ne reçoit que ce qu'on lui désigne** : par **nature** d'échéance — entretien du parc, contrôle technique, espaces verts, mobilier de voie publique, manifestations, rendez-vous saisis à la main — et par **catégorie** de matériel. Ne rien cocher veut dire « tout ». Sans cet aiguillage, brancher un CalDAV y déversait les tontes de pelouse à côté des contrôles techniques des camions, et la seule réaction possible était de couper
+- ↔️ **Envoi, réception, ou les deux** : les échéances de l'application partent en iCalendar vers le carnet du service concerné, et celui-ci peut en retour faire apparaître ses propres rendez-vous dans le calendrier. Ce qui cesse de correspondre aux règles est **retiré** du carnet distant
+- 👁️ **Un aperçu avant d'envoyer** : combien d'événements partiraient, de quelles natures, et les premiers titres — un aiguillage se règle autrement à l'aveugle
+- 🔒 **La vue du calendrier ne change pas** : elle affiche toutes les échéances que vos droits vous permettent de voir. L'aiguillage décide de ce qui *sort*, jamais de ce qui s'affiche
 - ⚠️ Système d'alertes automatiques
 - 📧 Notifications par email
 - 🔔 Compteur d'alertes en temps réel
@@ -1017,11 +1020,31 @@ carte sans perdre son historique ; `avec_deposes=1` le ramène.
 ### Calendrier
 
 ```
-GET    /api/calendar/events   # Liste des événements
+GET    /api/calendar/events   # Liste des événements (filtrée par les droits du compte)
 POST   /api/calendar/events   # Créer un événement
 PUT    /api/calendar/:id      # Modifier un événement
 DELETE /api/calendar/:id      # Supprimer un événement
+
+# Agendas externes — qui reçoit quoi (superviseur)
+GET    /api/calendar/agendas              # Les carnets configurés, sans leurs secrets
+GET    /api/calendar/agendas/vocabulaire  # Natures d'échéances et sens de synchronisation
+POST   /api/calendar/agendas              # Ajouter un carnet
+PUT    /api/calendar/agendas/:id          # Modifier (un secret en pastilles reste inchangé)
+DELETE /api/calendar/agendas/:id          # Retirer (ce qui est déjà déposé là-bas y reste)
+POST   /api/calendar/agendas/:id/test     # Le serveur répond-il, et accepte-t-il les identifiants ?
+GET    /api/calendar/agendas/:id/apercu   # Ce que l'envoi ferait, sans rien envoyer
+POST   /api/calendar/agendas/:id/sync     # Faire passer ce carnet seul
+
+GET    /api/calendar/sync/status          # État des carnets au dernier passage
+POST   /api/calendar/sync                 # Faire passer tous les carnets actifs
 ```
+
+Un carnet reçoit un événement quand **sa nature** est cochée (ou qu'aucune ne
+l'est) **et** que **la catégorie** du matériel concerné l'est (ou qu'aucune ne
+l'est). Ce qui ne désigne aucun matériel — une tonte de parc, un rendez-vous
+saisi à la main — passe ou non selon `include_uncategorized`. Un événement
+**importé** n'est jamais réexporté : la boucle recopierait indéfiniment les
+mêmes rendez-vous d'un agenda à l'autre.
 
 ### QR Codes
 
