@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-735-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-763-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -529,7 +529,7 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 40 suites
+├── tests/                  # Tests backend (Jest) — 41 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain
 │   ├── apiTokens.test.ts  # Portée des tokens API
@@ -1144,7 +1144,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 |----------|---------------|---------------|
 | **SSO SAML / OIDC / LDAP / Passkey** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local |
 | **2FA, timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Aucun second facteur n'est implémenté ; le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
-| **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
+| **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | Deux manques. La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse : il faudrait viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres. Et l'**envoi** n'est pas implémenté — y écrire demande le consentement délégué, que le secret d'application ne porte pas. Un carnet Outlook est donc en réception seule, et l'écran le dit. CalDAV n'a ni l'un ni l'autre problème |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 
 ### Limites connues
@@ -1155,6 +1155,8 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
 - Un service ne peut être mis en copie que globalement ; il n'existe pas encore de mise en copie d'une personne depuis l'écran (l'API l'accepte : `POST /:id/watchers` avec `user_id`)
 - Une image déposée est systématiquement ré-encodée en JPEG par `normalizeImage()`, mais conserve son extension et son `Content-Type` d'origine : un PNG à fond transparent ressort opaque, sous un nom en `.png` dont le contenu est du JPEG. Sans effet sur un cliché de terrain, visible sur un logo ou un favicon
+- **Réception d'un agenda externe : quatre réserves.** Elle ne ramène que la fenêtre **d'aujourd'hui à +90 jours** — un rendez-vous passé ou lointain ne remonte pas. Elle **remplace** à chaque passage ce qu'elle avait ramené : une modification faite dans l'application sur un événement reçu est écrasée au passage suivant, le carnet d'origine fait foi. Un événement reçu n'est **jamais réexporté** vers un autre carnet, sinon deux agendas se recopieraient indéfiniment. Enfin, un événement reçu n'est rattaché à aucun matériel, donc **aucun filtre de catégorie ne s'y applique** : il est visible par tous les comptes. Brancher un agenda personnel en réception l'expose à toute la commune — préférez un carnet de service
+- L'**envoi** couvre la fenêtre **-30 jours à +365 jours** : assez pour rattraper ce qui vient d'être saisi et couvrir les échéances annuelles, sans repousser dix ans d'historique à chaque passage
 - Le typage du client comporte encore 506 avertissements ESLint, presque tous des `any` — aucune erreur
 
 ## 🛠️ Développement
@@ -1194,7 +1196,7 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-> **735 tests** : 691 backend (40 suites) + 44 frontend (5 suites).
+> **763 tests** : 719 backend (41 suites) + 44 frontend (5 suites).
 >
 > Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas
 > vérifier à l'œil — le reste couvre les routes et les écrans module par module.

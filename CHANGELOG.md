@@ -88,6 +88,22 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   l'entretien n'avait pas de titre : `COALESCE` retenait la chaîne vide plutôt
   que la description
 
+#### Réserves
+
+- **La réception ne ramène que d'aujourd'hui à +90 jours.** Un rendez-vous
+  passé, ou dans deux ans, ne remonte pas dans le calendrier
+- **Elle remplace ce qu'elle avait ramené** à chaque passage : une modification
+  faite dans l'application sur un événement reçu est écrasée au passage suivant.
+  Le carnet d'origine fait foi
+- **Un événement reçu n'est jamais réexporté** vers un autre carnet : deux
+  agendas se recopieraient l'un l'autre indéfiniment
+- **Un événement reçu n'est rattaché à aucun matériel**, donc aucun filtre de
+  catégorie ne s'y applique : il est visible par tous les comptes. Brancher un
+  agenda **personnel** en réception l'expose à toute la commune — préférer un
+  carnet de service
+- **L'envoi couvre -30 jours à +365 jours** : assez pour rattraper ce qui vient
+  d'être saisi et couvrir les échéances annuelles, sans repousser dix ans
+  d'historique à chaque passage
 #### Vérifié
 
 - Un carnet réglé sur « contrôle technique » : trois dépôts iCalendar valides,

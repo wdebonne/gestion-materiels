@@ -13,11 +13,11 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
-| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 639 tests (595 backend, 44 frontend) |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 763 tests (719 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
-| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | 🟡 Partiel | Carte et saisie GPS ✅ — le **géocodage d'adresses** n'existe pas |
+| 7 | 🟡 Basse | Cartographie GPS (Leaflet) | ✅ Fait | Dépassé : la carte ne montre plus des matériels mais des **implantations** — un modèle au parc, ses exemplaires sur le terrain, voirie et espaces verts confondus. Géocodage inverse ✅ |
 | 8 | 🟡 Basse | Timeline historique matériel | ✅ Fait | |
 | 9 | 🟡 Basse | Reporting périodique automatique | ✅ Fait | Rapport hebdomadaire réellement envoyé le lundi à 7h |
 | 10 | 🟢 Optionnel | Dark Mode | ✅ Fait | Étendu à l'ensemble des pages |
@@ -120,15 +120,23 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 
 ## 🟡 Priorité Basse
 
-### 7. Cartographie GPS (Leaflet)
-- **Description :** Vue carte pour localiser les équipements géographiquement.
-- **Fonctionnalités :**
-  - Carte interactive OpenStreetMap
-  - Marqueurs par matériel avec popup fiche
-  - Filtres par catégorie/statut
-  - Géocodage d'adresses
-- **Librairies :** `react-leaflet`, `leaflet`
-- **Impact :** Utile pour communes multi-sites
+### 7. Cartographie GPS (Leaflet) — livré, et au-delà de l'énoncé
+- **Description :** l'énoncé d'origine — « des marqueurs par matériel » — s'est révélé faux dès
+  le premier essai : un banc acheté en série est **une** fiche au parc et vingt-trois points sur
+  le terrain. La carte montre donc des **implantations**, pas des matériels.
+- **Ce qui existe :**
+  - Un modèle au catalogue, ses exemplaires numérotés sur la carte, chacun avec sa position, sa
+    rue, son état et son historique d'interventions
+  - **Voirie et espaces verts sur la même carte** : les éléments posés sur un plan capturé sont
+    géolocalisés depuis le cadrage mémorisé, et la carte annonce quand une position est approchée
+  - Pose au doigt sur la carte, au GPS de l'appareil, ou **dans une jardinière déjà posée** —
+    un bac hors espace vert porte ses plantations
+  - Géocodage **inverse** (Nominatim) : adresse, rue et quartier lus du point posé
+  - Recherche simple et avancée, « autour de moi », export PDF paramétrable
+  - Réglage administrateur : quelle part du parc se pose sur la voie publique
+- **Librairies :** `react-leaflet`, `leaflet`, fonds IGN Géoplateforme et OpenStreetMap
+- **Ce qui reste ouvert :** le géocodage **direct** (saisir une adresse pour placer un point)
+  n'existe pas — on pointe sur la carte ou l'on relève au GPS
 
 ### 8. Timeline historique matériel
 - **Description :** Frise chronologique visuelle sur la fiche d'un matériel.
