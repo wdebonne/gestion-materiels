@@ -602,6 +602,13 @@ router.get('/:slug/pages/:pageName', authenticateToken, async (req: AuthRequest,
   try {
     const { slug, pageName } = req.params;
 
+    // Comme la route sœur `GET /:slug/pages`, le plugin doit exister en base.
+    // Sans cette vérification, un slug fabriqué descendait jusqu'au disque.
+    const plugin = await db.queryOne('SELECT id FROM plugins WHERE slug = ?', [slug]);
+    if (!plugin) {
+      return res.status(404).json({ success: false, message: 'Plugin non trouvé' });
+    }
+
     const pages = pluginAdvancedService.loadPluginPages(slug);
     const page = pages[pageName];
 
