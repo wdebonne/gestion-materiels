@@ -12,6 +12,7 @@ import { authenticateToken, AuthRequest, JwtPayload } from '../middleware/auth.m
 import { sendEmail } from '../services/email.service';
 import { logService } from '../services/log.service';
 import { getJwtSecret } from '../config/secrets';
+import { resoudreSous } from '../utils/cheminSous';
 import { lirePolitique, verifierMotDePasse, motDePasseExpire } from '../services/passwordPolicy.service';
 import { notifierWebhooks } from '../services/webhook.service';
 
@@ -458,11 +459,17 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
 // PUT /api/auth/profile - Mettre à jour le profil
 router.put('/profile', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { firstName, lastName, avatar } = req.body;
+    // `avatar` n'est volontairement pas lu ici : il désigne un fichier que
+    // `DELETE /api/auth/avatar` supprime ensuite du disque. Recopié depuis le
+    // corps de la requête, il laissait n’importe quel compte — fût-il en
+    // consultation seule — désigner puis faire supprimer la base de données.
+    // L'avatar ne s'écrit que par `POST /api/auth/avatar`, à partir du
+    // fichier réellement reçu.
+    const { firstName, lastName } = req.body;
 
     await db.execute(
-      'UPDATE users SET first_name = ?, last_name = ?, avatar = ?, updated_at = ? WHERE id = ?',
-      [firstName, lastName, avatar, new Date().toISOString(), req.user?.userId]
+      'UPDATE users SET first_name = ?, last_name = ?, updated_at = ? WHERE id = ?',
+      [firstName, lastName, new Date().toISOString(), req.user?.userId]
     );
 
     res.json({ success: true, message: 'Profil mis à jour' });
@@ -634,8 +641,10 @@ router.post('/avatar', authenticateToken, uploadAvatar.single('avatar'), async (
     // Supprimer l'ancien avatar s'il existe
     const currentUser = await db.queryOne('SELECT avatar FROM users WHERE id = ?', [userId]);
     if (currentUser?.avatar) {
-      const oldPath = path.join(__dirname, '../../', currentUser.avatar.replace(/^\//, ''));
-      if (fs.existsSync(oldPath)) {
+      // Même si la valeur en base venait à être douteuse, la suppression
+      // reste bornée au dossier des avatars.
+      const oldPath = resoudreSous(path.join(__dirname, '../../uploads/avatars'), path.basename(currentUser.avatar));
+      if (oldPath && fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
       }
     }
@@ -681,8 +690,10 @@ router.delete('/avatar', authenticateToken, async (req: AuthRequest, res: Respon
 
     const currentUser = await db.queryOne('SELECT avatar FROM users WHERE id = ?', [userId]);
     if (currentUser?.avatar) {
-      const oldPath = path.join(__dirname, '../../', currentUser.avatar.replace(/^\//, ''));
-      if (fs.existsSync(oldPath)) {
+      // Même si la valeur en base venait à être douteuse, la suppression
+      // reste bornée au dossier des avatars.
+      const oldPath = resoudreSous(path.join(__dirname, '../../uploads/avatars'), path.basename(currentUser.avatar));
+      if (oldPath && fs.existsSync(oldPath)) {
         fs.unlinkSync(oldPath);
       }
     }
