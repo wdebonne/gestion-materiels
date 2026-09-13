@@ -35,6 +35,22 @@ function contexte(base: BaseMigration): ContexteMigration {
   return {
     executer: (sql, params) => base.execute(sql, params ?? []),
     interroger: (sql, params) => base.query(sql, params ?? []),
+    creerIndex: async (nom, table, colonnes) => {
+      if (sqlite) {
+        await base.execute(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`);
+        return;
+      }
+
+      // MySQL ne connaît pas `IF NOT EXISTS` sur un index : on regarde avant.
+      const dejaLa = await base.query(
+        `SELECT 1 FROM information_schema.STATISTICS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?`,
+        [table, nom]
+      );
+      if (dejaLa.length === 0) {
+        await base.execute(`CREATE INDEX ${nom} ON ${table} (${colonnes})`);
+      }
+    },
     dialecte,
     autoIncrement: sqlite ? 'AUTOINCREMENT' : 'AUTO_INCREMENT',
     texteLong: sqlite ? 'TEXT' : 'LONGTEXT',

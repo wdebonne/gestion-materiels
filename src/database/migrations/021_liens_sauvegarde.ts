@@ -40,9 +40,11 @@ const liensSauvegarde: Migration = {
 
     // Le ménage des jetons périmés balaie par date : c'est la seule lecture
     // qui ne passe pas par la clé primaire.
-    await ctx.executer(
-      'CREATE INDEX IF NOT EXISTS idx_backup_tokens_expires ON backup_download_tokens (expires_at)'
-    );
+    //
+    // Par `ctx.creerIndex` et non en clair : `CREATE INDEX IF NOT EXISTS`
+    // n'existe pas en MySQL, et l'écrire ainsi arrêtait le serveur au
+    // démarrage — la faute ne se voyait pas sur SQLite.
+    await ctx.creerIndex('idx_backup_tokens_expires', 'backup_download_tokens', 'expires_at');
   },
 };
 
