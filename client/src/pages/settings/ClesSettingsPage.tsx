@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Save, KeyRound, ExternalLink, QrCode } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Save, KeyRound, ExternalLink, QrCode, Plug, ArrowRight } from 'lucide-react'
 import {
   Button,
   Card,
@@ -195,6 +196,32 @@ export default function ClesSettingsPage() {
               </tbody>
             </table>
           </div>
+        </CardBody>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            <span className="flex items-center gap-2">
+              <Plug className="h-5 w-5 text-primary-600" />
+              Reprendre un inventaire Snipe-IT
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardBody>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Les <strong>composants</strong> de Snipe-IT deviennent des clés avec leur quantité et
+            leur prix d'origine, les <strong>actifs</strong> des trousseaux dont l'
+            <em>asset&nbsp;tag</em> fournit le numéro d'inventaire, et les composants sortis vers
+            un actif en forment la composition. Un aperçu se valide ligne à ligne avant toute
+            écriture.
+          </p>
+          <Link to="/settings/cles/import-snipeit" className="mt-3 inline-block">
+            <Button variant="outline">
+              Ouvrir l'import
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </Link>
         </CardBody>
       </Card>
 
