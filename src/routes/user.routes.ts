@@ -97,6 +97,45 @@ router.get('/annuaire', authenticateToken, requireSupervisor, async (_req: AuthR
   }
 });
 
+/**
+ * POST /api/users/:id/revoke-sessions - Couper les sessions d'un compte.
+ *
+ * Le seul recours était jusqu'ici de désactiver le compte, donc d'empêcher
+ * la personne de travailler — puis de le réactiver, ce qui rouvrait la même
+ * faille, l'ancien jeton redevenant valable. Ici le compte reste actif : il
+ * faut simplement se reconnecter.
+ */
+router.post('/:id/revoke-sessions', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const compte = await db.queryOne('SELECT id, email FROM users WHERE id = ?', [id]);
+    if (!compte) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+    }
+
+    await db.execute(
+      'UPDATE users SET token_version = token_version + 1, updated_at = ? WHERE id = ?',
+      [new Date().toISOString(), id]
+    );
+
+    await logService.warning('auth', `Sessions révoquées pour ${compte.email}`, {}, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.json({
+      success: true,
+      message: `Les sessions de ${compte.email} ont été fermées.`,
+    });
+  } catch (error: any) {
+    console.error('Erreur revoke-sessions:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 // GET /api/users/:id - Détail d'un utilisateur
 router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {

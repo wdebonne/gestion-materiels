@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import mysql, { Pool, PoolConnection } from 'mysql2/promise';
 import path from 'path';
 import fs from 'fs';
+import { AsyncLocalStorage } from 'async_hooks';
 import { appliquerMigrations } from './migrationRunner';
 
 export type DatabaseType = 'sqlite' | 'mysql';
@@ -55,11 +56,34 @@ export function parametresMySQL(params: any[]): any[] {
   });
 }
 
+/**
+ * Contexte d'une transaction en cours.
+ *
+ * Il est porté par `AsyncLocalStorage` plutôt que passé de main en main :
+ * les écritures à protéger — restauration d'une sauvegarde, import d'un
+ * tableur — appellent `db.execute()` à des dizaines d'endroits, à travers
+ * plusieurs fonctions. Passer un objet de transaction obligerait à toucher
+ * chacun de ces appels, donc à en oublier, et un appel oublié écrirait hors
+ * de la transaction sans que rien ne le signale.
+ *
+ * Sur MySQL le contexte porte la connexion dédiée que la transaction a tirée
+ * du pool : sans elle, la requête suivante repartirait sur une autre
+ * connexion, donc hors transaction. Sur SQLite il n'y a qu'une connexion, et
+ * le contexte sert seulement à savoir qu'un `BEGIN` est ouvert.
+ */
+interface ContexteTransaction {
+  connexion: PoolConnection | null;
+}
+
+const transactionEnCours = new AsyncLocalStorage<ContexteTransaction>();
+
 class DatabaseManager {
   private static instance: DatabaseManager;
   private sqliteDb: Database.Database | null = null;
   private mysqlPool: Pool | null = null;
   private config: DatabaseConfig;
+  /** Chaîne les transactions : voir `transaction()`. */
+  private fileTransactions: Promise<void> = Promise.resolve();
 
   private constructor() {
     this.config = {
@@ -218,9 +242,12 @@ class DatabaseManager {
    */
   private async lancerMySQL(sql: string, params: any[]): Promise<any> {
     const valeurs = parametresMySQL(params);
+    // Dans une transaction, la requête doit emprunter sa connexion : le pool
+    // en rendrait une autre, et l'écriture tomberait hors du BEGIN.
+    const cible = transactionEnCours.getStore()?.connexion ?? this.mysqlPool!;
     const [resultat] = LIMIT_PARAMETRE.test(sql)
-      ? await this.mysqlPool!.query(sql, valeurs)
-      : await this.mysqlPool!.execute(sql, valeurs);
+      ? await cible.query(sql, valeurs)
+      : await cible.execute(sql, valeurs);
     return resultat;
   }
 
@@ -260,6 +287,88 @@ class DatabaseManager {
       const result: any = await this.lancerMySQL(sql, params);
       return { lastInsertRowid: result.insertId, changes: result.affectedRows };
     }
+  }
+
+  /**
+   * Exécute `travail` en une seule transaction : tout passe, ou rien.
+   *
+   * Les écritures faites dans `travail` — y compris au fond des fonctions
+   * qu'il appelle — rejoignent la transaction sans avoir à être modifiées.
+   * Une exception annule le tout et se propage à l'appelant.
+   *
+   * **Réservé aux opérations d'administration en bloc** : restauration,
+   * import. Sur SQLite il n'existe qu'une connexion, si bien qu'une écriture
+   * venue d'une autre requête pendant que `travail` attend se retrouverait
+   * dans la même transaction, et serait annulée avec elle. Les transactions
+   * sont donc sérialisées entre elles, et ces opérations-là sont de toute
+   * façon exclusives — la restauration referme la base derrière elle.
+   *
+   * Une transaction imbriquée rejoint celle qui l'entoure plutôt que d'en
+   * ouvrir une seconde : il n'y a pas de points de reprise, et l'imbrication
+   * ne doit pas laisser croire à une annulation partielle.
+   */
+  public async transaction<T>(travail: () => Promise<T>): Promise<T> {
+    const dejaDedans = transactionEnCours.getStore();
+    if (dejaDedans) return travail();
+
+    // Sérialisation : la précédente doit être close avant la suivante.
+    const precedente = this.fileTransactions;
+    let libererLaFile: () => void = () => {};
+    this.fileTransactions = new Promise<void>((resoudre) => {
+      libererLaFile = resoudre;
+    });
+    await precedente;
+
+    try {
+      return this.config.type === 'sqlite'
+        ? await this.transactionSQLite(travail)
+        : await this.transactionMySQL(travail);
+    } finally {
+      libererLaFile();
+    }
+  }
+
+  private async transactionSQLite<T>(travail: () => Promise<T>): Promise<T> {
+    const base = this.sqliteDb!;
+    // IMMEDIATE prend le verrou d'écriture tout de suite plutôt qu'au premier
+    // INSERT : mieux vaut échouer à l'ouverture qu'à mi-chemin.
+    base.exec('BEGIN IMMEDIATE');
+    try {
+      const resultat = await transactionEnCours.run({ connexion: null }, travail);
+      base.exec('COMMIT');
+      return resultat;
+    } catch (erreur) {
+      try {
+        base.exec('ROLLBACK');
+      } catch {
+        // La transaction était déjà close : rien à annuler.
+      }
+      throw erreur;
+    }
+  }
+
+  private async transactionMySQL<T>(travail: () => Promise<T>): Promise<T> {
+    const connexion = await this.mysqlPool!.getConnection();
+    try {
+      await connexion.beginTransaction();
+      const resultat = await transactionEnCours.run({ connexion }, travail);
+      await connexion.commit();
+      return resultat;
+    } catch (erreur) {
+      try {
+        await connexion.rollback();
+      } catch {
+        // La connexion est perdue : le serveur annulera de lui-même.
+      }
+      throw erreur;
+    } finally {
+      connexion.release();
+    }
+  }
+
+  /** Vrai si le code courant écrit dans une transaction. */
+  public dansUneTransaction(): boolean {
+    return transactionEnCours.getStore() !== undefined;
   }
 
   private async createTables(migrationsAuto = true): Promise<void> {
@@ -1772,6 +1881,48 @@ class DatabaseManager {
   }
 
   private async seedDefaultTypes(): Promise<void> {
+    /*
+     * Types d'entretien du parc roulant.
+     *
+     * Les quatre référentiels du parc — stations, types d'entretien,
+     * prestataires, centres de contrôle — arrivaient tous vides. Les listes
+     * fermées sont pourtant ce qui empêche « Total Pavilly », « TOTAL Pavilly »
+     * et « total pavilly » de compter pour trois dans les rapports de coûts :
+     * vides, elles ne protègent de rien et l'agent n'a rien à choisir.
+     *
+     * Seuls les types d'entretien sont posés ici : ils sont les mêmes dans
+     * toutes les communes. Les stations, prestataires et centres de contrôle
+     * sont des établissements nommés, propres à chaque collectivité — en
+     * inventer reviendrait à inscrire des fournisseurs fictifs dans une base
+     * municipale. Ceux-là, le superviseur les saisit, ce qu'il peut enfin
+     * faire.
+     */
+    const TYPES_ENTRETIEN_PARC = [
+      'Vidange',
+      'Révision',
+      'Filtres',
+      'Freins',
+      'Pneumatiques',
+      'Batterie',
+      'Courroie de distribution',
+      'Climatisation',
+      'Carrosserie',
+      'Affûtage',
+      'Réparation',
+      'Autre',
+    ];
+
+    for (const nom of TYPES_ENTRETIEN_PARC) {
+      try {
+        await this.execute(
+          'INSERT INTO maintenance_types (name) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM maintenance_types WHERE name = ?)',
+          [nom, nom]
+        );
+      } catch {
+        /* Le type existe déjà : rien à poser. */
+      }
+    }
+
     const defaultSpaceTypes = [
       { value: 'parc', label: 'Parc', icon: '🌳' },
       { value: 'jardin', label: 'Jardin public', icon: '🌺' },

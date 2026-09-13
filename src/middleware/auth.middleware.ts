@@ -9,6 +9,15 @@ export interface JwtPayload {
   userId: number;
   email: string;
   role: string;
+  /**
+   * Version des jetons du compte au moment de l'émission.
+   *
+   * Un JWT vaut par lui-même : rien ne permettait d'en couper un avant son
+   * expiration. Incrémenter `token_version` en base périme d'un coup tous
+   * les jetons du compte. Absente des jetons émis avant cette version, elle
+   * est alors lue comme 0 — personne n'est déconnecté par la mise à jour.
+   */
+  tv?: number;
 }
 
 export interface AuthRequest extends Request {
@@ -38,12 +47,23 @@ export const authenticateToken = async (
     
     // Vérifier que l'utilisateur existe toujours et est actif
     const user = await db.queryOne(
-      'SELECT id, email, role, is_active FROM users WHERE id = ?',
+      'SELECT id, email, role, is_active, token_version FROM users WHERE id = ?',
       [decoded.userId]
     );
 
     if (!user || !user.is_active) {
       res.status(401).json({ success: false, message: 'Utilisateur non trouvé ou désactivé' });
+      return;
+    }
+
+    // Session révoquée : le compte a changé de version depuis que ce jeton
+    // a été émis. C'est le seul moyen de couper une session en cours sans
+    // désactiver le compte, donc sans empêcher la personne de travailler.
+    if ((decoded.tv ?? 0) !== (user.token_version ?? 0)) {
+      res.status(401).json({
+        success: false,
+        message: 'Session expirée. Veuillez vous reconnecter.',
+      });
       return;
     }
 

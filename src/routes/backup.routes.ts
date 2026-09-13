@@ -470,25 +470,29 @@ router.post('/restore', authenticateToken, requireAdmin, async (req: AuthRequest
     } else if (fs.existsSync(path.join(extractDir, 'database.json'))) {
       // Restaurer depuis JSON (pour MySQL ou migration)
       const exportData = JSON.parse(fs.readFileSync(path.join(extractDir, 'database.json'), 'utf8'));
-      
-      for (const [table, rows] of Object.entries(exportData) as [string, any[]][]) {
-        if (rows.length > 0) {
-          // Vider la table
+
+      // Tout ou rien. Chaque table est d'abord vidée, puis réinsérée ligne à
+      // ligne : une coupure au milieu — disque plein, ligne refusée par une
+      // contrainte, serveur arrêté — laissait la base à moitié vide, sans
+      // aucun moyen de revenir en arrière. Et c'est la restauration, donc le
+      // dernier recours, qui échouait ainsi.
+      await db.transaction(async () => {
+        for (const [table, rows] of Object.entries(exportData) as [string, any[]][]) {
+          if (rows.length === 0) continue;
+
           await db.execute(`DELETE FROM ${table}`);
-          
-          // Insérer les données
-          const columns = Object.keys(rows[0]).filter(col => col !== 'id');
+
+          const columns = Object.keys(rows[0]).filter((col) => col !== 'id');
           const placeholders = columns.map(() => '?').join(', ');
-          
+
           for (const row of rows) {
-            const values = columns.map(col => row[col]);
             await db.execute(
               `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`,
-              values
+              columns.map((col) => row[col])
             );
           }
         }
-      }
+      });
     }
 
     // Restaurer les uploads

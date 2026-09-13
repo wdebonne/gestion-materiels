@@ -12,6 +12,7 @@ import { authenticateToken, AuthRequest, JwtPayload } from '../middleware/auth.m
 import { sendEmail } from '../services/email.service';
 import { logService } from '../services/log.service';
 import { getJwtSecret } from '../config/secrets';
+import { authLimiter } from '../middleware/rateLimiter.middleware';
 import { resoudreSous } from '../utils/cheminSous';
 import { lirePolitique, verifierMotDePasse, motDePasseExpire } from '../services/passwordPolicy.service';
 import { notifierWebhooks } from '../services/webhook.service';
@@ -48,6 +49,14 @@ const uploadAvatar = multer({
   limits: { fileSize: 5 * 1024 * 1024 } // 5 MB max
 });
 
+/*
+ * Le compteur de tentatives ne vaut que pour les routes qui éprouvent un
+ * secret : s'y présenter en masse, c'est chercher un mot de passe. Consulter
+ * son profil, se déconnecter ou rafraîchir un jeton sont des gestes de
+ * session déjà authentifiés, et les compter revenait à bloquer l'usage
+ * normal — le client appelle `GET /me` à chaque ouverture.
+ */
+
 // Validation des entrées
 const loginValidation = [
   body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
@@ -69,7 +78,8 @@ function generateTokens(user: any): { accessToken: string; refreshToken: string 
   const payload: JwtPayload = {
     userId: user.id,
     email: user.email,
-    role: user.role
+    role: user.role,
+    tv: user.token_version ?? 0,
   };
 
   const accessToken = jwt.sign(payload, getJwtSecret(), {
@@ -84,7 +94,7 @@ function generateTokens(user: any): { accessToken: string; refreshToken: string 
 }
 
 // POST /api/auth/login - Connexion
-router.post('/login', loginValidation, async (req: AuthRequest, res: Response) => {
+router.post('/login', authLimiter, loginValidation, async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -268,7 +278,7 @@ async function enregistrerEchec(
 }
 
 // POST /api/auth/register - Inscription (admin only)
-router.post('/register', authenticateToken, registerValidation, async (req: AuthRequest, res: Response) => {
+router.post('/register', authLimiter, authenticateToken, registerValidation, async (req: AuthRequest, res: Response) => {
   try {
     // Seuls les admins peuvent créer des utilisateurs
     if (req.user?.role !== 'admin') {
@@ -327,7 +337,7 @@ router.post('/register', authenticateToken, registerValidation, async (req: Auth
 });
 
 // POST /api/auth/forgot-password - Mot de passe oublié
-router.post('/forgot-password', [
+router.post('/forgot-password', authLimiter, [
   body('email').isEmail().normalizeEmail().withMessage('Email invalide')
 ], async (req: AuthRequest, res: Response) => {
   try {
@@ -378,7 +388,7 @@ router.post('/forgot-password', [
 });
 
 // POST /api/auth/reset-password - Réinitialiser le mot de passe
-router.post('/reset-password', [
+router.post('/reset-password', authLimiter, [
   body('token').notEmpty().withMessage('Token requis'),
   body('password').notEmpty().withMessage('Le mot de passe est obligatoire')
 ], async (req: AuthRequest, res: Response) => {
@@ -513,10 +523,23 @@ router.put('/change-password', authenticateToken, [
     // Hasher et mettre à jour le nouveau mot de passe
     const hashedPassword = await bcrypt.hash(newPassword, parseInt(process.env.BCRYPT_ROUNDS || '12'));
     const maintenant = new Date().toISOString();
+    // Changer son mot de passe coupe les sessions ouvertes ailleurs : c'est
+    // le geste de quelqu'un qui pense son compte compromis, et laisser les
+    // anciens jetons valables sept jours de plus le viderait de son sens.
     await db.execute(
-      'UPDATE users SET password = ?, password_changed_at = ?, updated_at = ? WHERE id = ?',
+      `UPDATE users SET password = ?, password_changed_at = ?, updated_at = ?,
+              token_version = token_version + 1
+       WHERE id = ?`,
       [hashedPassword, maintenant, maintenant, req.user?.userId]
     );
+
+    // ...sauf celle d'ici : l'appareil qui vient de changer le mot de passe
+    // reçoit des jetons à jour plutôt que de se voir déconnecté.
+    const compte = await db.queryOne(
+      'SELECT id, email, role, token_version FROM users WHERE id = ?',
+      [req.user?.userId]
+    );
+    const jetons = generateTokens(compte);
 
     // Log du changement de mot de passe
     await logService.success('auth', 'Mot de passe changé', {}, {
@@ -526,9 +549,54 @@ router.put('/change-password', authenticateToken, [
       userAgent: req.headers['user-agent']
     });
 
-    res.json({ success: true, message: 'Mot de passe mis à jour' });
+    res.json({
+      success: true,
+      message: 'Mot de passe mis à jour',
+      ...jetons,
+    });
   } catch (error: any) {
     console.error('Erreur change-password:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * POST /api/auth/revoke-sessions - Fermer ses sessions ouvertes ailleurs.
+ *
+ * Un ordinateur portable oublié dans un véhicule de service, une session
+ * restée ouverte sur un poste partagé : jusqu'ici il n'existait aucun moyen
+ * d'y mettre fin. Un JWT vaut par lui-même, et le sien courait encore sept
+ * jours.
+ *
+ * L'appareil qui fait la demande reste connecté — il reçoit des jetons à la
+ * nouvelle version. Tous les autres sont coupés au prochain appel.
+ */
+router.post('/revoke-sessions', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.execute(
+      'UPDATE users SET token_version = token_version + 1, updated_at = ? WHERE id = ?',
+      [new Date().toISOString(), req.user?.userId]
+    );
+
+    const compte = await db.queryOne(
+      'SELECT id, email, role, token_version FROM users WHERE id = ?',
+      [req.user?.userId]
+    );
+
+    await logService.success('auth', 'Sessions révoquées par leur titulaire', {}, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.json({
+      success: true,
+      message: 'Vos autres sessions ont été fermées.',
+      ...generateTokens(compte),
+    });
+  } catch (error: any) {
+    console.error('Erreur revoke-sessions:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });

@@ -667,10 +667,47 @@ export function initCronJobs(): void {
   // injoignable aurait fait manquer.
   cron.schedule('0 3 * * *', deposerExportsAutomatiques);
 
+  // Ménage des alertes traitées, avant l'heure de pointe.
+  cron.schedule('30 3 * * *', purgerAlertesTraitees);
+
   // Exécuter une première vérification au démarrage
   setTimeout(checkAlerts, 10000);
 
   console.log('📅 Tâches cron initialisées');
+}
+
+/**
+ * Retient les alertes rejetées pendant ce nombre de jours, puis les efface.
+ *
+ * Rien n'a jamais supprimé de ligne de la table `alerts` : une commune qui
+ * suit deux cents matériels y accumule une alerte par échéance et par
+ * relance, sans que rien ne redescende jamais. Trois mois laissent le temps
+ * de retrouver ce qui s'est passé au trimestre précédent — au-delà, c'est le
+ * journal des activités qui garde la trace, et non la liste des alertes,
+ * qui sert à signaler ce qui reste à faire.
+ *
+ * Une alerte encore active n'est jamais touchée, si vieille soit-elle : une
+ * échéance dépassée depuis six mois est précisément celle qui doit rester
+ * sous les yeux.
+ */
+const JOURS_RETENTION_ALERTES = 90;
+
+/** Efface les alertes rejetées depuis plus de `JOURS_RETENTION_ALERTES`. */
+export async function purgerAlertesTraitees(): Promise<void> {
+  try {
+    const limite = new Date(Date.now() - JOURS_RETENTION_ALERTES * 24 * 60 * 60 * 1000);
+
+    const resultat = await db.execute(
+      'DELETE FROM alerts WHERE is_dismissed = 1 AND created_at < ?',
+      [limite.toISOString()]
+    );
+
+    if (resultat.changes > 0) {
+      console.log(`🧹 ${resultat.changes} alerte(s) traitée(s) purgée(s)`);
+    }
+  } catch (erreur) {
+    console.error('❌ Purge des alertes interrompue :', erreur);
+  }
 }
 
 // Vérifier les réservations en retard
