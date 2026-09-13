@@ -1,0 +1,40 @@
+{
+  "title": "Clés et badges",
+  "layout": "default",
+  "components": [
+    {
+      "type": "header",
+      "title": "Clés et badges",
+      "subtitle": "Trousseaux, clés, badges : ce qu'ils ouvrent et chez qui ils sont"
+    },
+    {
+      "type": "stats",
+      "items": [
+        {
+          "label": "Trousseaux",
+          "source": "trousseaux_count",
+          "icon": "KeyRound",
+          "color": "bg-blue-100 text-blue-600"
+        },
+        {
+          "label": "Clés et badges",
+          "source": "cles_count",
+          "icon": "Package",
+          "color": "bg-green-100 text-green-600"
+        },
+        {
+          "label": "Attribués",
+          "source": "attribues_count",
+          "icon": "User",
+          "color": "bg-yellow-100 text-yellow-600"
+        },
+        {
+          "label": "Lieux référencés",
+          "source": "lieux_count",
+          "icon": "MapPin",
+          "color": "bg-purple-100 text-purple-600"
+        }
+      ]
+    }
+  ]
+}

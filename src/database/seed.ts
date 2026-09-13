@@ -25,7 +25,18 @@ const DEFAULT_SETTINGS = [
   { key: 'reminder_days_before', value: '30', type: 'number', description: 'Jours avant rappel' },
   { key: 'auto_backup', value: 'false', type: 'boolean', description: 'Sauvegarde automatique' },
   { key: 'backup_frequency', value: 'weekly', type: 'string', description: 'Fréquence de sauvegarde' },
-  { key: 'maintenance_mode', value: 'false', type: 'boolean', description: 'Mode maintenance' }
+  { key: 'maintenance_mode', value: 'false', type: 'boolean', description: 'Mode maintenance' },
+
+  // Page publique des étiquettes de clés. Le message s'adresse à quelqu'un qui
+  // vient de ramasser un trousseau et n'a pas de compte : il doit dire quoi en
+  // faire, et rien de plus.
+  { key: 'cle_public_titre', value: 'Trousseau de clés', type: 'string', description: 'Titre de la page publique des clés' },
+  { key: 'cle_public_message', value: 'Clé de la ville de Pavilly. Merci de rapporter ce trousseau à la mairie ou à la police municipale.', type: 'string', description: 'Message affiché à qui trouve un trousseau' },
+  { key: 'cle_public_contact', value: '', type: 'string', description: 'Coordonnées affichées sur la page publique des clés' },
+  // Vide par défaut : l'hôte courant sert de repli. Renseigner un domaine court
+  // raccourcit l'URL, donc allège le QR code — décisif sur une étiquette Avery
+  // L6008, qui ne fait que dix millimètres de haut.
+  { key: 'cle_public_base_url', value: '', type: 'string', description: 'Base courte des liens d\'étiquettes (ex. pavilly.fr/t)' }
 ];
 
 const DEFAULT_EMAIL_TEMPLATES = [
@@ -661,6 +672,31 @@ const DEFAULT_PLUGINS = [
       space_types: ['parc', 'jardin', 'square', 'rond_point', 'allee', 'autre'],
       element_types: ['arbre', 'haie', 'massif', 'pelouse', 'mobilier', 'eclairage', 'arrosage', 'cloture', 'autre'],
       condition_states: ['bon', 'moyen', 'mauvais', 'danger', 'remplace']
+    })
+  },
+  {
+    name: 'Clés et badges',
+    slug: 'cles',
+    version: '1.0.0',
+    description: 'Clés, badges et trousseaux : ce qu\'ils ouvrent, leur coût et leur traçabilité',
+    author: 'Système',
+    icon: 'key-round',
+    plugin_type: 'menu',
+    route: 'cles',
+    is_system: 1,
+    is_active: 1,
+    // Les préfixes sont un point de départ, pas une liste fermée : chaque
+    // commune nomme ses services autrement, et le numéro reste modifiable à la
+    // création du trousseau.
+    config: JSON.stringify({
+      prefixes: [
+        { code: 'TST', label: 'Trousseau Service Technique' },
+        { code: 'TMR', label: 'Trousseau Mairie' },
+        { code: 'TEC', label: 'Trousseau École' },
+        { code: 'TPM', label: 'Trousseau Police Municipale' }
+      ],
+      etats_retour: ['bon', 'usé', 'endommagé', 'perdu'],
+      formats_etiquettes: ['L7160', 'L7163', 'L7165', 'L7651', 'L6008']
     })
   }
 ];

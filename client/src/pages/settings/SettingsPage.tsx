@@ -11,7 +11,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock
+  ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -88,10 +88,16 @@ const settingsNavItems = [
     label: 'Espaces verts',
     adminOnly: true
   },
-  { 
-    to: '/settings/cartographie', 
-    icon: MapPin, 
+  {
+    to: '/settings/cartographie',
+    icon: MapPin,
     label: 'Cartographie',
+    adminOnly: true
+  },
+  {
+    to: '/settings/cles',
+    icon: KeyRound,
+    label: 'Clés',
     adminOnly: true
   },
   { 

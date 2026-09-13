@@ -18,6 +18,9 @@ import DashboardPage from '@/pages/DashboardPage'
  * restent en direct ; le reste arrive quand on y va.
  */
 const ScanPage = lazy(() => import('@/pages/ScanPage'))
+const ClesPage = lazy(() => import('@/pages/ClesPage'))
+const CleDetailPage = lazy(() => import('@/pages/CleDetailPage'))
+const TrousseauPublicPage = lazy(() => import('@/pages/TrousseauPublicPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
 const ResetPasswordPage = lazy(() => import('@/pages/ResetPasswordPage'))
 const CategoriesPage = lazy(() => import('@/pages/CategoriesPage'))
@@ -39,6 +42,7 @@ const WebhooksPage = lazy(() => import('@/pages/settings/WebhooksPage'))
 const ManifestationsSettingsPage = lazy(() => import('@/pages/settings/ManifestationsSettingsPage'))
 const EspacesVertsSettingsPage = lazy(() => import('@/pages/settings/EspacesVertsSettingsPage'))
 const CartographieSettingsPage = lazy(() => import('@/pages/settings/CartographieSettingsPage'))
+const ClesSettingsPage = lazy(() => import('@/pages/settings/ClesSettingsPage'))
 const AgendasExternesPage = lazy(() => import('@/pages/settings/AgendasExternesPage'))
 const NotificationsPage = lazy(() => import('@/pages/settings/NotificationsPage'))
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
@@ -118,6 +122,14 @@ function App() {
         <Route path="/forgot-password" element={<PublicRoute><ForgotPasswordPage /></PublicRoute>} />
         <Route path="/reset-password/:token" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
 
+        {/* Étiquette d'un trousseau, ouverte à tous.
+            Ni `ProtectedRoute` ni `PublicRoute` : le premier exigerait un compte,
+            le second redirigerait les personnes déjà connectées — or ce sont
+            justement elles qui doivent y voir le détenteur et la composition.
+            Hors du `Layout` : celui qui a trouvé des clés dans la rue n'a que
+            faire d'une barre de navigation qu'il ne peut pas utiliser. */}
+        <Route path="/t/:token" element={<TrousseauPublicPage />} />
+
         {/* Routes protégées */}
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<DashboardPage />} />
@@ -128,6 +140,8 @@ function App() {
           <Route path="categories/:categorySlug/:subcategorySlug/fields" element={<CustomFieldsPage />} />
           <Route path="objects/:objectId" element={<ObjectDetailPage />} />
           <Route path="scan" element={<ScanPage />} />
+          <Route path="cles" element={<ClesPage />} />
+          <Route path="cles/:objectId" element={<CleDetailPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="tracking" element={<TrackingPage />} />
@@ -159,6 +173,7 @@ function App() {
             <Route path="manifestations" element={<ManifestationsSettingsPage />} />
             <Route path="espaces-verts" element={<EspacesVertsSettingsPage />} />
             <Route path="cartographie" element={<CartographieSettingsPage />} />
+            <Route path="cles" element={<ClesSettingsPage />} />
             <Route path="agendas" element={<AgendasExternesPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
 
