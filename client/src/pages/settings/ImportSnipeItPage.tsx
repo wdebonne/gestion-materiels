@@ -103,6 +103,8 @@ export default function ImportSnipeItPage() {
   const [trousseauxRetenus, setTrousseauxRetenus] = useState<Set<number>>(new Set())
   const [categorie, setCategorie] = useState('')
   const [reprendreDetenteurs, setReprendreDetenteurs] = useState(true)
+  const [sousCategorieCles, setSousCategorieCles] = useState('Clés et badges')
+  const [sousCategorieTrousseaux, setSousCategorieTrousseaux] = useState('Trousseaux')
   const [resultat, setResultat] = useState<any>(null)
 
   const { data: config, isLoading } = useQuery({
@@ -187,6 +189,8 @@ export default function ImportSnipeItPage() {
           trousseaux: [...trousseauxRetenus],
           cles,
           reprendreDetenteurs,
+          sousCategorieCles,
+          sousCategorieTrousseaux,
         },
       })
       return res.data.data
@@ -528,8 +532,29 @@ export default function ImportSnipeItPage() {
               onChange={(e) => setCategorie(e.target.value)}
               placeholder="Où ranger les clés et les trousseaux"
               options={categories.map((c: any) => ({ value: String(c.id), label: c.name }))}
-              hint="Pensez à rattacher cette catégorie au plugin Clés, dans Paramètres → Plugins."
+              hint="Elle sera rattachée au plugin Clés automatiquement."
             />
+
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Input
+                label="Sous-catégorie des clés et badges"
+                value={sousCategorieCles}
+                onChange={(e) => setSousCategorieCles(e.target.value)}
+                placeholder="Clés et badges"
+              />
+              <Input
+                label="Sous-catégorie des trousseaux"
+                value={sousCategorieTrousseaux}
+                onChange={(e) => setSousCategorieTrousseaux(e.target.value)}
+                placeholder="Trousseaux"
+              />
+            </div>
+            <p className="-mt-2 text-xs text-gray-600 dark:text-gray-400">
+              Créées si elles n'existent pas. L'écran des catégories n'affiche que des
+              sous-catégories&nbsp;: sans elles, le matériel importé reste introuvable depuis
+              la navigation, même s'il est bien enregistré. Videz les deux champs pour ranger
+              directement dans la catégorie.
+            </p>
 
             <label className="flex cursor-pointer items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
               <input
@@ -568,6 +593,7 @@ export default function ImportSnipeItPage() {
                   <li>
                     {resultat.sitesCrees} site(s) et {resultat.ouvrantsCrees} ouvrant(s) créés
                   </li>
+                  <li>{resultat.sousCategoriesCreees} sous-catégorie(s) créée(s)</li>
                   <li>{resultat.compositions} rattachement(s) de clé à un trousseau</li>
                   <li>{resultat.attributions} détention(s) reprise(s)</li>
                 </ul>
