@@ -1,6 +1,7 @@
 import { db } from '../database';
 import { recalculerDepuisLots } from './cles.service';
 import { cleDeSite, lireLibelle, type LectureLibelle } from './snipeItLibelle.service';
+import { decoderEntites, decoderEntitesOuNull } from '../utils/decoderEntites';
 
 /**
  * Reprise d'un inventaire tenu dans Snipe-IT.
@@ -334,10 +335,15 @@ const dateOuNull = (valeur: unknown): string | null => {
   return brut ? String(brut).slice(0, 10) : null;
 };
 
-const texteOuNull = (valeur: unknown): string | null => {
-  const t = String(valeur ?? '').trim();
-  return t ? t : null;
-};
+/**
+ * Texte d'un champ Snipe-IT, ramené à une forme lisible.
+ *
+ * Le décodage est fait ici, au point d'entrée unique des champs textuels :
+ * l'API de Snipe-IT rend ses valeurs déjà échappées pour le HTML, si bien
+ * qu'une barrière « Rad'o » arrive en « Rad&#039;o ». Recopiée telle quelle,
+ * l'entité resterait visible sur la fiche et sur l'étiquette imprimée.
+ */
+const texteOuNull = (valeur: unknown): string | null => decoderEntitesOuNull(valeur);
 
 /**
  * Construit le plan, sans rien écrire.
@@ -360,14 +366,14 @@ export async function analyser(config: ConfigSnipeIt): Promise<PlanImport> {
   // --- les clés
   const cles: PropositionCle[] = composantsBruts.map((c: any) => ({
     sourceId: Number(c.id),
-    nom: String(c.name ?? '').trim(),
+    nom: decoderEntites(String(c.name ?? '')).trim(),
     modele: texteOuNull(c.model_number),
     serie: texteOuNull(c.serial),
     quantite: Math.max(0, Number(c.qty) || 0),
     prixUnitaire: nombreOuNull(c.purchase_cost),
     dateAchat: dateOuNull(c.purchase_date),
     categorieSnipe: texteOuNull(c.category?.name),
-    lecture: lireLibelle(String(c.name ?? '')),
+    lecture: lireLibelle(decoderEntites(String(c.name ?? ''))),
     objectIdExistant: dejaImporte.get(`component:${c.id}`) ?? null,
   }));
 
@@ -397,14 +403,16 @@ export async function analyser(config: ConfigSnipeIt): Promise<PlanImport> {
     const detenteur = a.assigned_to
       ? {
           type: String(a.assigned_to.type ?? 'user'),
-          nom: String(a.assigned_to.name ?? '').trim(),
+          nom: decoderEntites(String(a.assigned_to.name ?? '')).trim(),
         }
       : null;
 
     return {
       sourceId: Number(a.id),
-      inventaire: String(a.asset_tag ?? '').trim(),
-      nom: String(a.name ?? '').trim() || String(a.asset_tag ?? '').trim(),
+      inventaire: decoderEntites(String(a.asset_tag ?? '')).trim(),
+      nom:
+        decoderEntites(String(a.name ?? '')).trim() ||
+        decoderEntites(String(a.asset_tag ?? '')).trim(),
       serie: texteOuNull(a.serial),
       composants: composantsParActif.get(Number(a.id)) ?? [],
       detenteur,
@@ -506,6 +514,8 @@ export async function appliquer(
 
   const parSourceId = new Map(plan.cles.map((c) => [c.sourceId, c]));
   const retenues = choix.cles.filter((c) => parSourceId.has(c.sourceId));
+
+  await rattacherLePlugin(choix.categoryId);
 
   // --- référentiel des lieux, avant les clés qui s'y rattachent
   const sitesParCle = new Map<string, number>();
@@ -737,6 +747,38 @@ export async function appliquer(
   }
 
   return resultat;
+}
+
+/**
+ * Rattache le plugin Clés à la catégorie de destination.
+ *
+ * Sans ce rattachement, l'import réussit et l'écran Clés reste vide : le module
+ * ne montre que les catégories que `plugin_categories` lui désigne, et une
+ * catégorie absente de cette table vaut « aucune », non « toutes ». L'écran le
+ * disait — « un administrateur doit désigner… » — mais faire réussir un import
+ * qui n'affiche rien est un piège, pas une information.
+ *
+ * Choisir une catégorie de destination *est* la décision de rattachement : il
+ * n'y a pas de cas où l'on importerait des clés dans une catégorie que le module
+ * des clés ne doit pas voir. Le rattachement est donc ajouté, jamais retiré —
+ * les autres catégories déjà désignées restent en place.
+ */
+async function rattacherLePlugin(categoryId: number): Promise<void> {
+  const plugin = await db.queryOne<{ id: number }>(
+    "SELECT id FROM plugins WHERE slug = 'cles'"
+  );
+  if (!plugin) return;
+
+  const deja = await db.queryOne(
+    'SELECT id FROM plugin_categories WHERE plugin_id = ? AND category_id = ?',
+    [plugin.id, categoryId]
+  );
+  if (deja) return;
+
+  await db.execute(
+    'INSERT INTO plugin_categories (plugin_id, category_id, subcategory_id) VALUES (?, ?, NULL)',
+    [plugin.id, categoryId]
+  );
 }
 
 /**

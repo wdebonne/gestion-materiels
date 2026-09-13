@@ -124,6 +124,15 @@ export function lireLibelle(libelle: string): LectureLibelle {
   const { reste: tete, passe } = retirerPrefixes(morceaux[0]);
   const queue = morceaux.slice(1).join(' – ').trim();
 
+  // « Centre de loisirs – Pass » : la seconde partie ne nomme pas une porte,
+  // elle dit que la clé ouvre tout. Sans ce cas, le référentiel se retrouvait
+  // avec un ouvrant littéralement appelé « Pass » sous chaque bâtiment, et la
+  // clé ne passait plus que par lui.
+  const { reste: apresQueue, passe: queueEstPasse } = retirerPrefixes(queue);
+  if (tete && queueEstPasse && !apresQueue) {
+    return { site: tete, estPasse: true, confiance: 'sure', reste: brut };
+  }
+
   // « Clé – Porte principale » : le préfixe a tout mangé, la tête est vide.
   // La suite est alors le seul candidat, et on ne sait pas de quel site.
   if (!tete) {

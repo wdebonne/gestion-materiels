@@ -24,6 +24,7 @@ import revocationSessions from './022_revocation_sessions';
 import alertesEnDouble from './023_alertes_en_double';
 import clesEtTrousseaux from './024_cles_et_trousseaux';
 import importSnipeIt from './025_import_snipeit';
+import entitesHtmlImportees from './026_entites_html_importees';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -60,6 +61,7 @@ export const MIGRATIONS: readonly Migration[] = [
   alertesEnDouble,
   clesEtTrousseaux,
   importSnipeIt,
+  entitesHtmlImportees,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';
