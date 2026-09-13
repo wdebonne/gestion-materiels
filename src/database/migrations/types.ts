@@ -10,6 +10,15 @@ export type Dialecte = 'sqlite' | 'mysql';
 export interface ContexteMigration {
   executer(sql: string, params?: any[]): Promise<{ lastInsertRowid: number; changes: number }>;
   interroger<T = any>(sql: string, params?: any[]): Promise<T[]>;
+  /**
+   * Crée un index, sans échouer si un index du même nom existe déjà.
+   *
+   * `CREATE INDEX IF NOT EXISTS` n'existe pas en MySQL : la migration qui
+   * l'écrivait en clair passait sur SQLite et arrêtait le serveur en
+   * production, où la base est MySQL. Le savoir tient ici, une fois, plutôt
+   * que dans chaque migration qui aura besoin d’un index.
+   */
+  creerIndex(nom: string, table: string, colonnes: string): Promise<void>;
   dialecte: Dialecte;
   /** `AUTOINCREMENT` ou `AUTO_INCREMENT` selon le moteur. */
   autoIncrement: string;
