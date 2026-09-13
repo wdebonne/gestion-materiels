@@ -26,6 +26,7 @@ interface SettingsState {
   
   // Actions
   fetchSettings: () => Promise<void>
+  fetchPublicSettings: () => Promise<void>
   updateSettings: (settings: Partial<Settings>) => Promise<void>
 }
 
@@ -50,6 +51,20 @@ export const useSettingsStore = create<SettingsState>()((set) => ({
   settings: defaultSettings,
   isLoading: false,
   error: null,
+
+  /**
+   * Les seuls réglages lisibles avant la connexion : nom, logo, favicon,
+   * version. `fetchSettings` exige un jeton, si bien que l'écran de
+   * connexion affichait le nom générique et une version figée à 1.0.0.
+   */
+  fetchPublicSettings: async () => {
+    try {
+      const response = await api.get('/settings/public')
+      set((state) => ({ settings: { ...state.settings, ...response.data.settings } }))
+    } catch {
+      // Sans réseau, les valeurs par défaut suffisent à afficher l'écran.
+    }
+  },
 
   fetchSettings: async () => {
     set({ isLoading: true, error: null })

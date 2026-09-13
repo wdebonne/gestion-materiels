@@ -21,6 +21,20 @@ const PLUGIN_PAGES_DIR = './plugins/pages';
  */
 const SLUG_PLUGIN = /^[a-z0-9_-]+$/;
 
+/**
+ * Un nom de table de plugin part brut dans `CREATE TABLE` et `DROP TABLE` :
+ * il vient du `plugin.json` d'une archive téléversée. Installer un plugin
+ * suppose déjà d'accorder sa confiance, et la route est réservée à
+ * l'administrateur — mais borner le nom ne coûte qu'une ligne, là où le
+ * laisser libre coûterait la base.
+ */
+export function nomTableSur(nom: unknown): string {
+  if (typeof nom !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(nom)) {
+    throw new Error(`Nom de table de plugin invalide : ${nom}`);
+  }
+  return nom;
+}
+
 function dossierDesPages(pluginSlug: string): string {
   if (typeof pluginSlug !== 'string' || !SLUG_PLUGIN.test(pluginSlug)) {
     throw new Error(`Slug de plugin invalide : ${pluginSlug}`);
@@ -146,7 +160,7 @@ function generateCreateTableSQL(table: PluginTable): string {
   }
 
   const allColumns = [...columns, ...foreignKeys].join(',\n        ');
-  return `CREATE TABLE IF NOT EXISTS ${table.name} (\n        ${allColumns}\n      )`;
+  return `CREATE TABLE IF NOT EXISTS ${nomTableSur(table.name)} (\n        ${allColumns}\n      )`;
 }
 
 // Créer les tables d'un plugin
@@ -178,7 +192,7 @@ export async function dropPluginTables(pluginSlug: string): Promise<void> {
     if (config.database?.tables) {
       for (const table of config.database.tables) {
         console.log(`🗑️ Suppression table: ${table.name}`);
-        await db.execute(`DROP TABLE IF EXISTS ${table.name}`);
+        await db.execute(`DROP TABLE IF EXISTS ${nomTableSur(table.name)}`);
       }
     }
   } catch (error) {

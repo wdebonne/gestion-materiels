@@ -38,6 +38,39 @@ const upload = multer({
 });
 
 // GET /api/settings - Récupérer tous les paramètres
+/**
+ * GET /api/settings/public - Ce que l'écran de connexion a besoin de savoir.
+ *
+ * `LoginPage` lit le magasin des réglages, que seul `Layout` — la coquille
+ * authentifiée — remplissait. Avant la connexion le magasin restait donc
+ * vide : la commune qui avait posé son nom et son logo ne les voyait nulle
+ * part sur l'écran de connexion, et la version y restait sur sa valeur de
+ * repli, « 1.0.0 », alors que la barre latérale affichait la vraie.
+ *
+ * Quatre clés d'apparence, et pas une de plus : cette route est ouverte, et
+ * `GET /api/settings` rend tout le reste — jusqu'aux réglages de sauvegarde
+ * et au mode maintenance.
+ */
+const REGLAGES_PUBLICS = ['site_name', 'site_logo', 'site_favicon', 'site_version'] as const;
+
+router.get('/public', async (_req, res: Response) => {
+  try {
+    const lignes = await db.query(
+      `SELECT setting_key, setting_value FROM settings
+       WHERE setting_key IN (${REGLAGES_PUBLICS.map(() => '?').join(', ')})`,
+      [...REGLAGES_PUBLICS]
+    );
+
+    const settings: Record<string, string> = {};
+    for (const ligne of lignes) settings[ligne.setting_key] = ligne.setting_value ?? '';
+
+    res.json({ success: true, settings });
+  } catch (error: any) {
+    console.error('Erreur get settings publics:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const settings = await db.query('SELECT * FROM settings');

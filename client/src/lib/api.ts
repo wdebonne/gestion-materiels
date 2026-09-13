@@ -117,6 +117,7 @@ api.interceptors.response.use(
           method: methode.toUpperCase() as 'POST' | 'PUT' | 'PATCH',
           body: originalRequest.data ? JSON.parse(originalRequest.data) : undefined,
           label: decrireSaisie(url),
+          userId: useAuthStore.getState().user?.id,
         })
 
         toast.success('Saisie conservée. Elle partira au retour du réseau.', {

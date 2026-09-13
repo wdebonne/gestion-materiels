@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react'
 import { useAuthStore, seSouvenirDeMoi, definirSouvenir } from '@/stores/auth.store'
@@ -10,13 +10,20 @@ import toast from 'react-hot-toast'
 
 export default function LoginPage() {
   const { setAuth, setPasswordExpired } = useAuthStore()
-  const { settings } = useSettingsStore()
+  const { settings, fetchPublicSettings } = useSettingsStore()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [souvenir, setSouvenir] = useState(seSouvenirDeMoi)
+
+  // Le magasin des réglages n'était rempli que par `Layout`, la coquille
+  // authentifiée : avant la connexion il restait vide, et la commune ne
+  // voyait ici ni son nom, ni son logo, ni sa version.
+  useEffect(() => {
+    fetchPublicSettings()
+  }, [fetchPublicSettings])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

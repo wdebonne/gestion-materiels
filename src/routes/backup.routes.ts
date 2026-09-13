@@ -11,18 +11,43 @@ import { sendBackupEmail, sendBackupDownloadLink } from '../services/email.servi
 import { logService } from '../services/log.service';
 import { notifierWebhooks } from '../services/webhook.service';
 
-// Stockage des tokens de téléchargement temporaires (en mémoire)
-// Format: { token: { backupId, expiresAt, createdBy } }
-const downloadTokens: Map<string, { backupId: number; expiresAt: Date; createdBy: string }> = new Map();
+/**
+ * Liens de téléchargement temporaires d'une sauvegarde.
+ *
+ * Ils vivaient dans une `Map` : le premier redémarrage du serveur effaçait
+ * des liens annoncés pour sept jours, et le destinataire tombait sur un
+ * « lien invalide ou expiré » qui n'était ni l'un ni l'autre.
+ */
+async function enregistrerLien(token: string, backupId: number, expiresAt: Date, createdBy: string) {
+  await db.execute(
+    'INSERT INTO backup_download_tokens (token, backup_id, expires_at, created_by) VALUES (?, ?, ?, ?)',
+    [token, backupId, expiresAt.toISOString(), createdBy]
+  );
+}
 
-// Nettoyer les tokens expirés toutes les 10 minutes
+/** Rend le lien s'il existe et n'a pas expiré ; `null` sinon. */
+async function lireLien(token: string) {
+  const ligne = await db.queryOne(
+    'SELECT backup_id, expires_at, created_by FROM backup_download_tokens WHERE token = ?',
+    [token]
+  );
+  if (!ligne) return null;
+  return {
+    backupId: ligne.backup_id as number,
+    expiresAt: new Date(ligne.expires_at),
+    createdBy: (ligne.created_by ?? '') as string,
+  };
+}
+
+async function oublierLien(token: string) {
+  await db.execute('DELETE FROM backup_download_tokens WHERE token = ?', [token]);
+}
+
+// Ménage des liens périmés, toutes les dix minutes.
 setInterval(() => {
-  const now = new Date();
-  for (const [token, data] of downloadTokens.entries()) {
-    if (data.expiresAt < now) {
-      downloadTokens.delete(token);
-    }
-  }
+  db.execute('DELETE FROM backup_download_tokens WHERE expires_at < ?', [new Date().toISOString()]).catch(
+    (erreur) => console.error('Erreur nettoyage des liens de sauvegarde :', erreur)
+  );
 }, 10 * 60 * 1000);
 
 // Configuration multer pour les backups
@@ -183,11 +208,12 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
         // Générer un lien de téléchargement temporaire pour les gros fichiers
         const token = uuidv4();
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
-        downloadTokens.set(token, {
-          backupId: result.lastInsertRowid as number,
+        await enregistrerLien(
+          token,
+          result.lastInsertRowid as number,
           expiresAt,
-          createdBy: req.user?.email || 'unknown'
-        });
+          req.user?.email || 'unknown'
+        );
         
         // Récupérer l'URL du site
         const siteUrlSetting = await db.queryOne("SELECT setting_value FROM settings WHERE setting_key = 'site_url'");
@@ -259,13 +285,13 @@ router.get('/download/:token', async (req, res: Response) => {
   try {
     const { token } = req.params;
 
-    const tokenData = downloadTokens.get(token);
+    const tokenData = await lireLien(token);
     if (!tokenData) {
       return res.status(404).json({ success: false, message: 'Lien de téléchargement invalide ou expiré' });
     }
 
     if (new Date() > tokenData.expiresAt) {
-      downloadTokens.delete(token);
+      await oublierLien(token);
       return res.status(410).json({ success: false, message: 'Ce lien de téléchargement a expiré' });
     }
 
@@ -310,11 +336,7 @@ router.post('/:id/generate-link', authenticateToken, requireAdmin, async (req: A
     // Générer le token
     const token = uuidv4();
     const expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
-    downloadTokens.set(token, {
-      backupId: parseInt(id),
-      expiresAt,
-      createdBy: req.user?.email || 'unknown'
-    });
+    await enregistrerLien(token, parseInt(id), expiresAt, req.user?.email || 'unknown');
 
     // Récupérer l'URL du site
     const siteUrlSetting = await db.queryOne("SELECT setting_value FROM settings WHERE setting_key = 'site_url'");
@@ -359,11 +381,7 @@ router.post('/:id/send-email', authenticateToken, requireAdmin, async (req: Auth
       // Générer un lien de téléchargement temporaire pour les gros fichiers
       const token = uuidv4();
       const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
-      downloadTokens.set(token, {
-        backupId: parseInt(id),
-        expiresAt,
-        createdBy: req.user?.email || 'unknown'
-      });
+      await enregistrerLien(token, parseInt(id), expiresAt, req.user?.email || 'unknown');
       
       // Récupérer l'URL du site
       const siteUrlSetting = await db.queryOne("SELECT setting_value FROM settings WHERE setting_key = 'site_url'");
