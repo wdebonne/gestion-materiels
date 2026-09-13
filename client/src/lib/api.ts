@@ -593,6 +593,68 @@ export interface StockFormData {
   subcategory_id?: number | null
 }
 
+/**
+ * Ce qui part et ce qui rentre aujourd'hui.
+ *
+ * Le miroir exact de `src/services/tourneeManifestation.service.ts` : les deux
+ * gisements de matériel y sont déjà réunis et chaque ligne dit ce qu'il lui
+ * reste à faire. L'écran n'a donc rien à recalculer — c'est le serveur qui
+ * tranche, et lui seul, pour que la règle ne se dédouble pas.
+ */
+export type PhaseTournee = 'livraison' | 'recuperation'
+
+/** `fait` veut dire « tout saisi », pas « clos » : le statut suit après. */
+export type EtatArret = 'a_faire' | 'commence' | 'fait'
+
+/** Un nombre, un oui ou non, un acte réalisé : trois saisies différentes. */
+export type NatureLigne = 'quantite' | 'exemplaire' | 'prestation'
+
+export interface LigneTournee {
+  /** Référence de la ligne : `stock:41`, `parc:12`. */
+  ref: string
+  source: 'stock' | 'parc'
+  ligne_id: number
+  nom: string
+  /** Numéro d'inventaire ou de série, pour reconnaître l'exemplaire sur place. */
+  repere: string
+  unite: string
+  nature: NatureLigne
+  demande: number
+  livre: number
+  rendu: number
+  perdu: number
+  etat_retour: string | null
+  /** Ce qu'il reste à faire sur la phase en cours. */
+  reste: number
+}
+
+export interface ArretTournee {
+  manifestation_id: number
+  titre: string
+  statut: string
+  phase: PhaseTournee
+  jour: string
+  /** Jours de retard ; 0 quand l'arrêt est à l'heure ou à venir. */
+  retard: number
+  lieu: string
+  contact_nom: string
+  contact_tel: string
+  heure_debut: string
+  heure_fin: string
+  consignes: string
+  lignes: LigneTournee[]
+  reste: number
+  fait: number
+  etat: EtatArret
+}
+
+export interface Tournee {
+  jour: string
+  jusqu_au: string
+  livraisons: ArretTournee[]
+  recuperations: ArretTournee[]
+}
+
 // --- API Manifestations ---
 
 export const manifestationApi = {
@@ -629,6 +691,18 @@ export const manifestationApi = {
     api.put<{ success: boolean }>(`/manifestations/${id}/status`, { status, comment }),
   updateMaterials: (id: number, materials: Partial<ManifestationMaterial>[]) =>
     api.put<{ success: boolean }>(`/manifestations/${id}/materials`, { materials }),
+
+  /**
+   * `jusqu_au` prépare la veille pour le lendemain ; les retards remontent
+   * toujours. `manifestation` réduit la tournée à un seul dossier, sans
+   * condition de date : c'est la saisie ouverte depuis la liste.
+   */
+  getTournee: (filtres?: { jusqu_au?: string; manifestation?: number }) => {
+    const p = new URLSearchParams()
+    if (filtres?.jusqu_au) p.append('jusqu_au', filtres.jusqu_au)
+    if (filtres?.manifestation) p.append('manifestation', String(filtres.manifestation))
+    return api.get<{ success: boolean; data: Tournee }>(`/manifestations/tournee?${p.toString()}`)
+  },
 
   // Stats
   getStats: () =>
@@ -1099,7 +1173,17 @@ export const objetManifestationApi = {
   suivre: (
     manifestationId: number,
     itemId: number,
-    data: { delivered?: boolean; returned?: boolean; return_state?: EtatRetour; notes?: string }
+    data: {
+      /** Un exemplaire se coche… */
+      delivered?: boolean
+      returned?: boolean
+      /** …un lot se compte. Le nombre l'emporte sur la case. */
+      delivered_quantity?: number
+      returned_quantity?: number
+      /** Vide efface le constat : on s'est trompé de ligne. */
+      return_state?: EtatRetour | ''
+      notes?: string
+    }
   ) =>
     api.put<{ success: boolean; data: ObjetManifestation[] }>(
       `/manifestations/${manifestationId}/objects/${itemId}`,

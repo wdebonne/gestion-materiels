@@ -7,6 +7,100 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### L'agent de terrain pointe enfin ce qu'il charge
+
+> Livrer et récupérer du matériel était une affaire de superviseur. Le rôle
+> *agent de terrain*, dont la description dit pourtant « saisit sur le terrain »,
+> ne pouvait rien pointer : toutes les écritures du module étaient gardées par
+> `requireSupervisor`. Celui qui déchargeait le camion notait ses chiffres sur un
+> papier, et quelqu'un d'autre les ressaisissait le soir — quand il les
+> ressaisissait. C'est à ce transfert-là que les quantités se perdent.
+>
+> Et même pour un superviseur, il fallait deviner beaucoup : ouvrir la liste,
+> comprendre que « validée » veut dire « à charger » et « livrée » veut dire « à
+> aller rechercher », trouver la bonne icône parmi six sans intitulé, puis
+> pointer le stock dans une fenêtre et le matériel du parc dans une autre, avec
+> d'autres mots. Rien ne disait ce qui traînait dehors depuis trois jours.
+
+#### Ajouté
+
+- **Un onglet « Tournée du jour »**, premier écran pour qui n'a pas la main sur
+  les dossiers : ce qui part, ce qui rentre, dans l'ordre où l'on monte dans le
+  camion. Un arrêt porte son lieu, son horaire, son contact et **un numéro qui
+  s'appelle d'un doigt** — sur place, c'est ce qu'on cherche en premier quand une
+  porte est fermée. Un bouton « Et demain » prépare la veille pour le lendemain
+- **Le retard passe devant.** Une manifestation dont la date de récupération est
+  passée reste en tête de liste, bordée de rouge et chiffrée en jours, jusqu'à ce
+  que quelqu'un dise ce que le matériel est devenu. C'est ce silence-là qui fait
+  les stocks faux, et rien ne le montrait
+- **« Tout est parti », « Tout est rentré » : un geste.** C'est le cas de neuf
+  arrêts sur dix ; lui demander trois écrans le fait remettre à plus tard, puis
+  oublier. L'écart ne se saisit que quand il existe
+- **Un seul geste quand c'est la même personne qui charge et qui tient le
+  dossier** — le cas d'une petite commune. Le bouton devient alors « Tout est
+  parti — marquer livrée » : séparer le constat de l'acte administratif ne
+  garantit rien lorsque les deux reviennent au même compte, et laisse derrière
+  soi des manifestations livrées que le statut dit encore à livrer. Pointer sans
+  prononcer reste possible par « Détailler ». Un agent, lui, garde ses deux
+  étapes : il pointe, le superviseur valide
+- **Une saisie qui réunit enfin les deux gisements de matériel.** Le stock des
+  manifestations et le parc se pointaient dans deux écrans différents : celui qui
+  charge ne sait pas laquelle des deux tables porte ses chaises, et n'a pas à le
+  savoir. Chaque ligne se saisit selon sa nature — un lot se compte au pas de un,
+  un exemplaire se coche, une prestation se dit réalisée — parce que demander
+  « combien de camions sont revenus » n'a pas de sens
+- **Le geste du jour porte son nom** dans la liste des manifestations : « Livrer »
+  sur une manifestation validée, « Récupérer » sur une livrée. Une rangée
+  d'icônes muettes oblige à survoler chacune pour trouver laquelle enregistre une
+  livraison — un réflexe que personne n'a sur un téléphone
+- **Tout est dimensionné pour le pouce** : cibles de 44 px, compteurs à deux
+  boutons, vérifié à 400 px de large
+
+#### Modifié
+
+- **L'agent de terrain constate, il n'arbitre pas.** Il dit ce qui est parti, ce
+  qui est revenu, ce qui s'est cassé et l'état d'un matériel au retour. Il ne
+  peut ni ramener une demande de dix tables à huit — cela engage la collectivité
+  vis-à-vis du demandeur — ni prononcer la livraison, qui est l'acte
+  administratif. Ces deux-là restent au superviseur, qui voit dans la tournée un
+  bouton « Marquer livrée » dès que tout est pointé
+- **Les deux routes de saisie vérifient désormais le périmètre du compte.** Elles
+  n'étaient ouvertes qu'aux superviseurs, qui voient tout : le contrôle n'y avait
+  jamais eu lieu d'être. Un agent, lui, ne voit qu'une partie des manifestations
+
+#### Corrigé
+
+- **Déplier une manifestation n'affichait rien.** Le chevron ne rendait le
+  tableau du stock que si celui-ci n'était pas vide : sur un brouillon sans
+  matériel, ou sur une manifestation qui ne retient que du parc, on cliquait, la
+  flèche tournait, l'écran ne bougeait pas. Il montre maintenant d'abord ce qu'on
+  vient vérifier — livraison, récupération, horaires, lieu, contact — puis les
+  deux gisements de matériel, et à défaut la raison de ce vide
+- **Les totaux d'une manifestation ignoraient le parc.** « Demandé / Livré /
+  Récupéré » ne comptait que `manifestation_materials` : une manifestation qui
+  retenait une remorque et cinquante chaises du parc n'affichait aucun total, et
+  la carte semblait décrire un dossier vide
+- **Marquer une manifestation livrée ne sortait pas le matériel du parc.** Seul
+  le stock passait en « livré ». Un camion physiquement parti n'apparaissait donc
+  nulle part comme sorti — et la tournée du lendemain n'avait rien à aller
+  rechercher
+- **Un changement de statut ne rafraîchissait pas la tournée** : l'arrêt restait
+  affiché là où il n'était plus, et l'agent le repointait
+
+#### Vérifié
+
+- 26 cas sur les règles de la tournée — quel jour, quel reste, quel retard, quel
+  ordre — éprouvées sans base de données : c'est ce calcul qui décide de ce qu'un
+  agent voit en arrivant le matin
+- 10 cas sur le partage des droits, lus dans les routes elles-mêmes : une garde
+  relâchée par mégarde sur la demande, le statut ou la suppression fait échouer la
+  suite, là où une relecture à l'œil ne la verrait pas dans deux mille lignes
+- Cycle complet parcouru dans l'application : création, validation, « Tout est
+  parti », passage en récupération, « Tout est rentré », avec l'historique
+  vérifié en base — « PC Dell, sorti, revenu, état : intact »
+- Tournée et fenêtre de saisie vérifiées à 400 px de large, la largeur d'un
+  téléphone
+
 ### La boîte partagée d'un service ne se saisissait qu'une fois
 
 > Créer un service permettait de lui donner une boîte partagée ; sa fenêtre de
