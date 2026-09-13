@@ -2,6 +2,7 @@ import { db } from '../database';
 import { recalculerDepuisLots } from './cles.service';
 import { cleDeSite, lireLibelle, type LectureLibelle } from './snipeItLibelle.service';
 import { decoderEntites, decoderEntitesOuNull } from '../utils/decoderEntites';
+import slugify from '../utils/slugify';
 
 /**
  * Reprise d'un inventaire tenu dans Snipe-IT.
@@ -460,8 +461,19 @@ async function correspondances(): Promise<Map<string, number>> {
 
 export interface ChoixImport {
   categoryId: number;
-  subcategoryIdCles?: number | null;
-  subcategoryIdTrousseaux?: number | null;
+  /**
+   * Sous-catégories où ranger ce qui est importé, par leur nom.
+   *
+   * Retrouvées si elles existent, créées sinon. Par leur nom et non par leur
+   * identifiant : à la première reprise elles n'existent pas encore, et
+   * demander de les créer à la main avant d'importer ajouterait une étape dont
+   * personne ne comprendrait la raison.
+   *
+   * Vide veut dire « directement dans la catégorie » — ce qui ne convient que
+   * si celle-ci n'a pas les sous-catégories activées.
+   */
+  sousCategorieCles?: string | null;
+  sousCategorieTrousseaux?: string | null;
   /** Clés retenues, avec le rattachement éventuellement corrigé par l'écran. */
   cles: Array<{
     sourceId: number;
@@ -482,6 +494,7 @@ export interface ResultatImport {
   trousseauxMisAJour: number;
   sitesCrees: number;
   ouvrantsCrees: number;
+  sousCategoriesCreees: number;
   compositions: number;
   attributions: number;
   ignores: string[];
@@ -507,6 +520,7 @@ export async function appliquer(
     trousseauxMisAJour: 0,
     sitesCrees: 0,
     ouvrantsCrees: 0,
+    sousCategoriesCreees: 0,
     compositions: 0,
     attributions: 0,
     ignores: [],
@@ -516,6 +530,50 @@ export async function appliquer(
   const retenues = choix.cles.filter((c) => parSourceId.has(c.sourceId));
 
   await rattacherLePlugin(choix.categoryId);
+
+  /**
+   * Sous-catégorie où ranger, retrouvée par son nom ou créée.
+   *
+   * Un nom vide rend `null` : le matériel est alors rattaché directement à la
+   * catégorie, ce qui ne convient que si celle-ci n'a pas les sous-catégories
+   * activées. Dans le cas contraire, l'écran des catégories n'affiche que des
+   * sous-catégories, et un matériel rattaché à la catégorie seule y devient
+   * invisible — il existe, il est trouvable par la recherche et par l'écran des
+   * clés, mais la navigation ne le montre plus.
+   */
+  async function sousCategorieDe(nom: string | null | undefined): Promise<number | null> {
+    const propre = String(nom ?? '').trim();
+    if (!propre) return null;
+
+    const slug = slugify(propre);
+    const existante = await db.queryOne<{ id: number }>(
+      'SELECT id FROM subcategories WHERE category_id = ? AND slug = ?',
+      [choix.categoryId, slug]
+    );
+    if (existante) return existante.id;
+
+    const rang = await db.queryOne<{ maxOrder: number | null }>(
+      'SELECT MAX(sort_order) AS maxOrder FROM subcategories WHERE category_id = ?',
+      [choix.categoryId]
+    );
+
+    const creee = await db.execute(
+      'INSERT INTO subcategories (category_id, name, slug, sort_order) VALUES (?, ?, ?, ?)',
+      [choix.categoryId, propre, slug, (rang?.maxOrder ?? 0) + 1]
+    );
+
+    // La catégorie doit se déclarer porteuse de sous-catégories, sinon son
+    // écran continue de lister des matériels et n'en montre aucune.
+    await db.execute('UPDATE categories SET has_subcategories = 1 WHERE id = ?', [
+      choix.categoryId,
+    ]);
+
+    resultat.sousCategoriesCreees += 1;
+    return Number(creee.lastInsertRowid);
+  }
+
+  const sousCategorieCles = await sousCategorieDe(choix.sousCategorieCles);
+  const sousCategorieTrousseaux = await sousCategorieDe(choix.sousCategorieTrousseaux);
 
   // --- référentiel des lieux, avant les clés qui s'y rattachent
   const sitesParCle = new Map<string, number>();
@@ -570,11 +628,14 @@ export async function appliquer(
     let objectId = cle.objectIdExistant;
 
     if (objectId) {
-      await db.execute('UPDATE objects SET name = ?, serial_number = ? WHERE id = ?', [
-        cle.nom,
-        cle.serie,
-        objectId,
-      ]);
+      // Le rangement est réaligné à chaque passage, et pas seulement le nom :
+      // c'est ce qui permet de réparer une première reprise qui avait déposé
+      // les matériels directement dans la catégorie, où l'écran des catégories
+      // ne les montrait pas.
+      await db.execute(
+        'UPDATE objects SET name = ?, serial_number = ?, category_id = ?, subcategory_id = ? WHERE id = ?',
+        [cle.nom, cle.serie, choix.categoryId, sousCategorieCles, objectId]
+      );
       resultat.clesMisesAJour += 1;
     } else {
       // Le numéro de modèle va dans les champs personnalisés de la catégorie,
@@ -591,7 +652,7 @@ export async function appliquer(
           cle.nom,
           cle.serie,
           choix.categoryId,
-          choix.subcategoryIdCles ?? null,
+          sousCategorieCles,
           champs,
           `Importé depuis Snipe-IT (composant ${cle.sourceId})`,
         ]
@@ -663,11 +724,10 @@ export async function appliquer(
     let objectId = trousseau.objectIdExistant;
 
     if (objectId) {
-      await db.execute('UPDATE objects SET name = ?, reference = ? WHERE id = ?', [
-        trousseau.nom,
-        trousseau.inventaire,
-        objectId,
-      ]);
+      await db.execute(
+        'UPDATE objects SET name = ?, reference = ?, category_id = ?, subcategory_id = ? WHERE id = ?',
+        [trousseau.nom, trousseau.inventaire, choix.categoryId, sousCategorieTrousseaux, objectId]
+      );
       resultat.trousseauxMisAJour += 1;
     } else {
       // Le numéro d'inventaire est unique dans le parc : un `asset_tag` qui
@@ -693,7 +753,7 @@ export async function appliquer(
           trousseau.inventaire,
           trousseau.serie,
           choix.categoryId,
-          choix.subcategoryIdTrousseaux ?? null,
+          sousCategorieTrousseaux,
           `Importé depuis Snipe-IT (actif ${trousseau.sourceId})`,
         ]
       );

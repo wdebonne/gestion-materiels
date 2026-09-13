@@ -64,12 +64,16 @@ beforeAll(() => {
       etat_retour VARCHAR(50), notes TEXT);
     CREATE TABLE cle_import_snipeit (id INTEGER PRIMARY KEY AUTOINCREMENT, source_type VARCHAR(20),
       source_id INTEGER, object_id INTEGER, site_id INTEGER, imported_at DATETIME, UNIQUE(source_type, source_id));
+    CREATE TABLE categories (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(255), has_subcategories INTEGER DEFAULT 0);
+    CREATE TABLE subcategories (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER,
+      name VARCHAR(255), slug VARCHAR(255), sort_order INTEGER DEFAULT 0);
     CREATE TABLE plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, slug VARCHAR(100), name VARCHAR(100));
     CREATE TABLE plugin_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id INTEGER,
       category_id INTEGER, subcategory_id INTEGER);
 
     INSERT INTO users (id, first_name, last_name) VALUES (1, 'Camille', 'Durand');
     INSERT INTO plugins (id, slug, name) VALUES (11, 'cles', 'Clés et badges');
+    INSERT INTO categories (id, name, has_subcategories) VALUES (7, 'Clés et Trousseaux', 1);
   `);
 });
 
@@ -139,6 +143,8 @@ function choixDEssai(plan: PlanImport): ChoixImport {
     })),
     trousseaux: plan.trousseaux.map((t) => t.sourceId),
     reprendreDetenteurs: true,
+    sousCategorieCles: 'Clés et badges',
+    sousCategorieTrousseaux: 'Trousseaux',
   };
 }
 
@@ -220,6 +226,31 @@ describe('Un premier import écrit ce que le plan décrit', () => {
       .prepare('SELECT * FROM plugin_categories WHERE plugin_id = 11 AND category_id = 7')
       .get();
     expect(lien).toBeTruthy();
+  });
+
+  it('range clés et trousseaux dans des sous-catégories distinctes', () => {
+    // L'écran des catégories n'affiche que des sous-catégories : un matériel
+    // rattaché à la seule catégorie y est invisible, alors qu'il existe bel et
+    // bien. C'est ce qui rendait une première reprise « vide » à l'écran.
+    const sous: any[] = base.prepare('SELECT id, name FROM subcategories WHERE category_id = 7').all();
+    expect(sous.map((s) => s.name).sort()).toEqual(['Clés et badges', 'Trousseaux']);
+
+    const cle: any = base.prepare("SELECT subcategory_id FROM objects WHERE serial_number = 'KM-001'").get();
+    const trousseau: any = base.prepare("SELECT subcategory_id FROM objects WHERE reference = 'TST001'").get();
+
+    expect(cle.subcategory_id).not.toBeNull();
+    expect(trousseau.subcategory_id).not.toBeNull();
+    expect(cle.subcategory_id).not.toBe(trousseau.subcategory_id);
+  });
+
+  it('ne crée pas deux fois la même sous-catégorie', async () => {
+    const plan = planDEssai();
+    plan.cles = [];
+    plan.trousseaux = [];
+    await appliquer(plan, { ...choixDEssai(plan), cles: [], trousseaux: [] }, 1);
+
+    const n: any = base.prepare('SELECT COUNT(*) n FROM subcategories WHERE category_id = 7').get();
+    expect(n.n).toBe(2);
   });
 
   it('ne rattache pas deux fois la même catégorie', async () => {
