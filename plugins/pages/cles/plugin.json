@@ -1,0 +1,34 @@
+{
+  "name": "Clés et badges",
+  "slug": "cles",
+  "version": "1.0.0",
+  "description": "Clés, badges et trousseaux : ce qu'ils ouvrent, ce qu'ils ont coûté, chez qui ils sont passés",
+  "author": "Système",
+  "icon": "key-round",
+  "type": "menu",
+  "route": "cles",
+  "config": {
+    "prefixes": [
+      { "code": "TST", "label": "Trousseau Service Technique" },
+      { "code": "TMR", "label": "Trousseau Mairie" },
+      { "code": "TEC", "label": "Trousseau École" },
+      { "code": "TPM", "label": "Trousseau Police Municipale" }
+    ],
+    "etats_retour": ["bon", "usé", "endommagé", "perdu"],
+    "formats_etiquettes": ["L7160", "L7163", "L7165", "L7651", "L6008"],
+    "types_detenteur": ["user", "service", "ouvrant", "externe"]
+  },
+  "pages": {
+    "index": {
+      "title": "Clés et badges",
+      "layout": "default",
+      "components": [
+        {
+          "type": "header",
+          "title": "Clés et badges",
+          "subtitle": "Trousseaux, clés, badges : ce qu'ils ouvrent et chez qui ils sont"
+        }
+      ]
+    }
+  }
+}

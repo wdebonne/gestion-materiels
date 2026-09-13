@@ -544,7 +544,7 @@ body {
      La grille est un enfant direct de `body`, via un portail React : masquer
      `#root` aurait sinon masqué la grille avec lui, et la page serait sortie
      blanche. */
-  body > *:not(.zone-etiquettes) {
+  body > *:not(.zone-etiquettes):not(.zone-planches) {
     display: none !important;
   }
 
@@ -612,5 +612,145 @@ body {
   @page {
     size: A4 portrait;
     margin: 0;
+  }
+}
+
+/*
+ * Planches d'étiquettes Avery.
+ *
+ * La grille `.zone-etiquettes` ci-dessus imprime deux colonnes de 52 mm, ce qui
+ * ne correspond à aucune planche du commerce : les étiquettes tombaient à
+ * cheval sur les découpes. Une planche Avery se cale au millimètre sur des
+ * cotes publiées — largeur, hauteur, marges, écarts — que le composant passe en
+ * variables CSS depuis `formatsAvery.ts`.
+ *
+ * Chaque feuille est un élément à part, terminé par un saut de page, plutôt
+ * qu'une seule longue grille : les marges d'une planche valent pour *chaque*
+ * feuille, et une grille unique n'aurait posé sa marge haute qu'en tête de la
+ * première.
+ *
+ * Les cotes sont en millimètres de bout en bout. Convertir en pixels
+ * dépendrait du DPI et ferait dériver l'alignement d'un peu à chaque rangée —
+ * assez pour que la dernière sorte du papier.
+ */
+.planche-avery {
+  display: grid;
+  box-sizing: border-box;
+  width: 210mm;
+  height: 297mm;
+  padding-top: var(--marge-haut);
+  padding-left: var(--marge-gauche);
+  grid-template-columns: repeat(var(--colonnes), var(--largeur));
+  grid-auto-rows: var(--hauteur);
+  column-gap: var(--ecart-h);
+  row-gap: var(--ecart-v);
+  align-content: start;
+  background: #fff;
+  color: #000;
+}
+
+.etiquette-avery {
+  box-sizing: border-box;
+  width: var(--largeur);
+  height: var(--hauteur);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  gap: 1.5mm;
+  padding: 1mm;
+  /* Une étiquette ne doit jamais être coupée entre deux pages. */
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+/* Les contours ne servent qu'à vérifier le calage : ils ne s'impriment pas sur
+   une vraie planche, où la découpe fait la limite. */
+.planche-avery.calibrage .etiquette-avery {
+  outline: 0.2mm dashed #94a3b8;
+  outline-offset: -0.2mm;
+}
+
+.etiquette-avery-qr {
+  flex-shrink: 0;
+  width: var(--qr);
+  height: var(--qr);
+}
+
+.etiquette-avery-texte {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+
+.etiquette-avery-inventaire {
+  font-weight: 700;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+}
+
+.etiquette-avery-nom,
+.etiquette-avery-ouvre {
+  line-height: 1.15;
+  overflow: hidden;
+}
+
+/* Le numéro d'inventaire est ce qu'on lit à l'œil nu : il grossit avec la
+   place disponible, le reste se contente de ce qui reste. */
+.etiquette-avery[data-profil='complet'] .etiquette-avery-inventaire {
+  font-size: 11pt;
+}
+.etiquette-avery[data-profil='complet'] .etiquette-avery-nom {
+  font-size: 7.5pt;
+  margin-top: 0.8mm;
+}
+.etiquette-avery[data-profil='complet'] .etiquette-avery-ouvre {
+  font-size: 6.5pt;
+  margin-top: 0.6mm;
+  color: #334155;
+}
+
+.etiquette-avery[data-profil='compact'] .etiquette-avery-inventaire {
+  font-size: 8pt;
+}
+.etiquette-avery[data-profil='compact'] .etiquette-avery-nom {
+  font-size: 5.5pt;
+  margin-top: 0.4mm;
+}
+
+/* Dix millimètres de haut : le numéro, et rien d'autre. */
+.etiquette-avery[data-profil='minuscule'] {
+  gap: 0.8mm;
+  padding: 0.4mm;
+}
+.etiquette-avery[data-profil='minuscule'] .etiquette-avery-inventaire {
+  font-size: 6pt;
+}
+
+/* Sur écran la planche n'apparaît que dans l'aperçu de la modale, réduite pour
+   tenir dans le dialogue. L'original garde ses cotes en millimètres : c'est lui
+   qui part à l'imprimante. */
+.zone-planches {
+  display: none;
+}
+
+.apercu-planche {
+  overflow: hidden;
+  transform-origin: top left;
+}
+
+@media print {
+  .zone-planches {
+    display: block !important;
+  }
+
+  .planche-avery {
+    break-after: page;
+    page-break-after: always;
+  }
+
+  /* Sans quoi le navigateur ajoute une page blanche après la dernière. */
+  .planche-avery:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 }

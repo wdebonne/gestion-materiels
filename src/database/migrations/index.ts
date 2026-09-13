@@ -22,6 +22,7 @@ import agendasExternes from './020_agendas_externes';
 import liensSauvegarde from './021_liens_sauvegarde';
 import revocationSessions from './022_revocation_sessions';
 import alertesEnDouble from './023_alertes_en_double';
+import clesEtTrousseaux from './024_cles_et_trousseaux';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -56,6 +57,7 @@ export const MIGRATIONS: readonly Migration[] = [
   liensSauvegarde,
   revocationSessions,
   alertesEnDouble,
+  clesEtTrousseaux,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

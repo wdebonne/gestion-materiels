@@ -43,6 +43,8 @@ import trackingRoutes from './routes/tracking.routes';
 import securityRoutes from './routes/security.routes';
 import apiTokenRoutes from './routes/apiToken.routes';
 import qrcodeRoutes from './routes/qrcode.routes';
+import cleRoutes from './routes/cle.routes';
+import clePublicRoutes from './routes/clePublic.routes';
 import importExportRoutes from './routes/importExport.routes';
 import reservationRoutes from './routes/reservation.routes';
 import authSettingsRoutes from './routes/authSettings.routes';
@@ -288,6 +290,12 @@ app.use('/api/services', serviceRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
 app.use('/api/mobilier-urbain', mobilierUrbainRoutes);
+// Monté avant `/api/cles` : la page d'un trousseau trouvé est la seule route du
+// module ouverte sans compte, et « public » ne doit pas être pris pour un
+// identifiant de matériel par le routeur principal. Le limiteur la protège de
+// l'énumération de jetons, que l'alphabet opaque rend déjà coûteuse.
+app.use('/api/cles/public', intakeLimiter, clePublicRoutes);
+app.use('/api/cles', cleRoutes);
 
 // Servir le frontend en production
 if (process.env.NODE_ENV === 'production') {

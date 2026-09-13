@@ -37,7 +37,8 @@ import {
   QrCode,
   PartyPopper,
   CalendarDays,
-  TreePine
+  TreePine,
+  KeyRound
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -163,7 +164,10 @@ export default function Layout() {
     'party-popper': PartyPopper,
     TreePine,
     treepine: TreePine,
-    'tree-pine': TreePine
+    'tree-pine': TreePine,
+    KeyRound,
+    keyround: KeyRound,
+    'key-round': KeyRound
   }
 
   // Navigation de base
@@ -180,7 +184,7 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles']
   // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
   const baseNavSlugs = ['manifestations']
   const pluginNavigation = menuPlugins

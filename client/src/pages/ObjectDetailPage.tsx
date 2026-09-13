@@ -12,6 +12,7 @@ import ObjectTimeline from '@/components/ObjectTimeline'
 import ImplantationsDuMateriel, {
   useImplantationsDuMateriel,
 } from '@/components/ImplantationsDuMateriel'
+import PanneauCle from '@/components/PanneauCle'
 import Can from '@/components/Can'
 import { useFavoritesStore } from '@/stores/favorites.store'
 import { useValidation, schemaPlein, schemaEntretien, schemaControle } from '@/lib/validation'
@@ -845,6 +846,13 @@ export default function ObjectDetailPage() {
       }
     })
     
+    // Le plugin Clés n'ajoute pas un onglet de saisie mais un renvoi : tout s'y
+    // gère sur l'écran dédié, qui connaît les lots, les ouvrants et la
+    // détention. Recopier ces formulaires ici en ferait deux à tenir.
+    if (isPluginActive('cles')) {
+      baseTabs.push({ id: 'cles', label: 'Clé' } as any)
+    }
+
     if (implantations.length > 0) {
       baseTabs.push({
         id: 'implantations',
@@ -2967,6 +2975,10 @@ export default function ObjectDetailPage() {
       </Modal>
 
       {/* Onglet Timeline / Historique */}
+      {activeTab === 'cles' && object && (
+        <PanneauCle objectId={Number(id)} />
+      )}
+
       {activeTab === 'implantations' && object && (
         <ImplantationsDuMateriel objectId={Number(id)} objectName={object.name} />
       )}
