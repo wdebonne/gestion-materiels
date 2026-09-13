@@ -43,6 +43,7 @@ const ManifestationsSettingsPage = lazy(() => import('@/pages/settings/Manifesta
 const EspacesVertsSettingsPage = lazy(() => import('@/pages/settings/EspacesVertsSettingsPage'))
 const CartographieSettingsPage = lazy(() => import('@/pages/settings/CartographieSettingsPage'))
 const ClesSettingsPage = lazy(() => import('@/pages/settings/ClesSettingsPage'))
+const ImportSnipeItPage = lazy(() => import('@/pages/settings/ImportSnipeItPage'))
 const AgendasExternesPage = lazy(() => import('@/pages/settings/AgendasExternesPage'))
 const NotificationsPage = lazy(() => import('@/pages/settings/NotificationsPage'))
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
@@ -174,6 +175,7 @@ function App() {
             <Route path="espaces-verts" element={<EspacesVertsSettingsPage />} />
             <Route path="cartographie" element={<CartographieSettingsPage />} />
             <Route path="cles" element={<ClesSettingsPage />} />
+            <Route path="cles/import-snipeit" element={<ImportSnipeItPage />} />
             <Route path="agendas" element={<AgendasExternesPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
 

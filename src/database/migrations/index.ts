@@ -23,6 +23,7 @@ import liensSauvegarde from './021_liens_sauvegarde';
 import revocationSessions from './022_revocation_sessions';
 import alertesEnDouble from './023_alertes_en_double';
 import clesEtTrousseaux from './024_cles_et_trousseaux';
+import importSnipeIt from './025_import_snipeit';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -58,6 +59,7 @@ export const MIGRATIONS: readonly Migration[] = [
   revocationSessions,
   alertesEnDouble,
   clesEtTrousseaux,
+  importSnipeIt,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

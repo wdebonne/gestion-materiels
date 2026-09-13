@@ -45,6 +45,7 @@ import apiTokenRoutes from './routes/apiToken.routes';
 import qrcodeRoutes from './routes/qrcode.routes';
 import cleRoutes from './routes/cle.routes';
 import clePublicRoutes from './routes/clePublic.routes';
+import snipeItRoutes from './routes/snipeIt.routes';
 import importExportRoutes from './routes/importExport.routes';
 import reservationRoutes from './routes/reservation.routes';
 import authSettingsRoutes from './routes/authSettings.routes';
@@ -295,6 +296,9 @@ app.use('/api/mobilier-urbain', mobilierUrbainRoutes);
 // identifiant de matériel par le routeur principal. Le limiteur la protège de
 // l'énumération de jetons, que l'alphabet opaque rend déjà coûteuse.
 app.use('/api/cles/public', intakeLimiter, clePublicRoutes);
+// Monté avant `/api/cles` : « snipeit » ne doit pas être pris pour un
+// identifiant de matériel par le routeur principal.
+app.use('/api/cles/snipeit', snipeItRoutes);
 app.use('/api/cles', cleRoutes);
 
 // Servir le frontend en production
