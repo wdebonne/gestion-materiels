@@ -192,8 +192,10 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       notify_new_request, notify_status_change, notify_material_change, notify_message,
     } = req.body;
 
-    // Un réglage absent vaut « activé » : couper une notification doit être un
-    // geste explicite, jamais la conséquence d'un champ oublié.
+    // Un réglage absent vaut « activé » : couper une notification — ou désactiver
+    // un service — doit être un geste explicite, jamais la conséquence d'un champ
+    // oublié. Un 0 explicite, lui, est bien un refus : sans ce test, enregistrer
+    // un réglage sur un service désactivé le remettait silencieusement en service.
     const actif = (valeur: unknown) => (valeur === false || valeur === 0 ? 0 : 1);
 
     // Un seul service pilote les manifestations : le désigner retire le drapeau
@@ -210,7 +212,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
        WHERE id = ?`,
       [
         name, email?.trim() || null, description?.trim() || null,
-        is_observer ? 1 : 0, is_coordinator ? 1 : 0, is_active === false ? 0 : 1,
+        is_observer ? 1 : 0, is_coordinator ? 1 : 0, actif(is_active),
         actif(notify_new_request), actif(notify_status_change),
         actif(notify_material_change), actif(notify_message),
         new Date().toISOString(), req.params.id,

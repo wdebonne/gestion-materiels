@@ -7,6 +7,39 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### La boîte partagée d'un service ne se saisissait qu'une fois
+
+> Créer un service permettait de lui donner une boîte partagée ; sa fenêtre de
+> configuration, elle, n'en montrait rien. Une adresse mal tapée, un service qui
+> change de nom, une boîte qui déménage au gré d'une réorganisation : plus rien
+> ne rattrapait la saisie initiale. La seule issue était de supprimer le service
+> et de le recréer — donc d'effacer ses membres, son périmètre, ses délégations,
+> et la trace de ce qu'il avait approuvé.
+
+#### Ajouté
+
+- **Une carte « Identité » en tête de la configuration d'un service** : son nom,
+  sa boîte partagée et sa description s'y corrigent. Vider le champ d'adresse
+  retire la boîte partagée ; les membres continuent de recevoir les avis dans
+  tous les cas. Ces trois champs s'enregistrent ensemble, d'un bouton, là où les
+  cases à cocher de la fenêtre partent à chaque clic : une adresse en cours de
+  frappe n'a pas à s'envoyer lettre par lettre
+- **Une case « Service actif »**, au même endroit. Un service qui a déjà rendu
+  des décisions est désactivé plutôt que supprimé, pour ne pas réécrire la
+  traçabilité d'une manifestation — mais rien ne permettait ensuite de le
+  remettre en service
+
+#### Corrigé
+
+- **Enregistrer un réglage sur un service désactivé le remettait silencieusement
+  en service.** Le serveur ne lisait comme refus que le `false` d'un booléen, et
+  le `0` que l'application lui envoyait valait « activé ». Cocher une
+  notification sur un service écarté suffisait à le faire ressurgir dans les
+  prochaines sollicitations. Le `0` explicite est désormais un refus, et un champ
+  absent vaut toujours « activé » — couper doit rester un geste délibéré
+- Renommer un service ne change pas son identifiant technique : les désignations
+  par nom court, dans les intégrations qui en font usage, continuent de le viser
+
 ### Chaque agenda externe reçoit ce qu'on lui désigne, et rien d'autre
 
 > Brancher l'agenda de l'application sur un carnet CalDAV y déversait tout : les
