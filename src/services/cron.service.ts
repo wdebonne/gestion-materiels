@@ -50,6 +50,44 @@ function priorityToSeverity(priority: string, daysUntilExpiry: number): string {
   }
 }
 
+/**
+ * Retrouve l'alerte déjà posée pour une échéance, rejetée ou non.
+ *
+ * La recherche filtrait sur `is_dismissed = 0` : une alerte rejetée n'était
+ * jamais retrouvée, et le passage suivant du cron — toutes les heures — en
+ * reposait une identique. L'utilisateur ne pouvait donc pas s'en défaire, et
+ * la table `alerts` grossissait d'une ligne par échéance et par heure.
+ * Constaté sur la base de développement, où les alertes 1-3 et 9-11 visaient
+ * les mêmes trois contrôles techniques.
+ *
+ * `ORDER BY id DESC` parce que les bases déjà en service portent les doublons
+ * produits par l'ancien comportement : c'est la plus récente qui fait foi.
+ */
+interface AlerteExistante {
+  id: number;
+  due_date: string | null;
+  is_dismissed: number;
+}
+
+async function alertePosee(reference: string, referenceId: number): Promise<AlerteExistante | null> {
+  return db.queryOne(
+    `SELECT id, due_date, is_dismissed FROM alerts
+     WHERE plugin_reference = ? AND plugin_reference_id = ?
+     ORDER BY id DESC`,
+    [reference, referenceId]
+  );
+}
+
+/**
+ * Un rejet vaut pour l'échéance telle qu'elle était ce jour-là. Si l'échéance
+ * bouge — contrôle refait, entretien reprogrammé — la situation est neuve et
+ * l'alerte doit reparaître.
+ */
+function rejetToujoursValable(alerte: AlerteExistante | null, echeance: unknown): boolean {
+  if (!alerte || !alerte.is_dismissed) return false;
+  return String(alerte.due_date ?? '') === String(echeance ?? '');
+}
+
 // Vérifier les alertes à envoyer
 export async function checkAlerts(): Promise<void> {
   try {
@@ -68,10 +106,7 @@ export async function checkAlerts(): Promise<void> {
 
     for (const tc of technicalControls) {
       // Créer ou mettre à jour l'alerte
-      const existingAlert = await db.queryOne(
-        "SELECT id FROM alerts WHERE plugin_reference = 'technical-control' AND plugin_reference_id = ? AND is_dismissed = 0",
-        [tc.id]
-      );
+      const existingAlert = await alertePosee('technical-control', tc.id);
 
       const daysUntilExpiry = Math.ceil(
         (new Date(tc.expiry_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -83,7 +118,9 @@ export async function checkAlerts(): Promise<void> {
         ? `Le contrôle technique a expiré le ${tc.expiry_date}`
         : `Le contrôle technique expire le ${tc.expiry_date}`;
 
-      if (!existingAlert) {
+      if (rejetToujoursValable(existingAlert, tc.expiry_date)) {
+        // L'utilisateur a écarté cette échéance : on n'en repose pas une.
+      } else if (!existingAlert) {
         const alertResult = await db.execute(
           `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -118,8 +155,8 @@ export async function checkAlerts(): Promise<void> {
       } else {
         // Mettre à jour la sévérité et le message
         await db.execute(
-          'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
-          [severity, message, existingAlert.id]
+          'UPDATE alerts SET severity = ?, message = ?, due_date = ?, is_dismissed = 0 WHERE id = ?',
+          [severity, message, tc.expiry_date, existingAlert.id]
         );
       }
     }
@@ -136,10 +173,7 @@ export async function checkAlerts(): Promise<void> {
     );
 
     for (const m of maintenances) {
-      const existingAlert = await db.queryOne(
-        "SELECT id FROM alerts WHERE plugin_reference = 'maintenance' AND plugin_reference_id = ? AND is_dismissed = 0",
-        [m.id]
-      );
+      const existingAlert = await alertePosee('maintenance', m.id);
 
       const daysUntilDue = Math.ceil(
         (new Date(m.next_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -151,7 +185,9 @@ export async function checkAlerts(): Promise<void> {
         ? `${m.maintenance_type} en retard depuis le ${m.next_date}` 
         : `${m.maintenance_type} prévue le ${m.next_date}`;
 
-      if (!existingAlert) {
+      if (rejetToujoursValable(existingAlert, m.next_date)) {
+        // Rejet respecté tant que l'échéance n'a pas bougé.
+      } else if (!existingAlert) {
         const alertResult = await db.execute(
           `INSERT INTO alerts (title, message, alert_type, severity, object_id, plugin_reference, plugin_reference_id, due_date)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -182,11 +218,11 @@ export async function checkAlerts(): Promise<void> {
         } catch (error) {
           console.error('Erreur envoi email alerte maintenance:', error);
         }
-      } else if (isOverdue) {
+      } else if (isOverdue || existingAlert.is_dismissed) {
         // Mettre à jour l'alerte existante si en retard
         await db.execute(
-          'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
-          [severity, message, existingAlert.id]
+          'UPDATE alerts SET severity = ?, message = ?, due_date = ?, is_dismissed = 0 WHERE id = ?',
+          [severity, message, m.next_date, existingAlert.id]
         );
       }
     }
@@ -206,10 +242,7 @@ export async function checkAlerts(): Promise<void> {
     );
 
     for (const gsm of greenSpaceMaintenances) {
-      const existingAlert = await db.queryOne(
-        "SELECT id FROM alerts WHERE plugin_reference = 'green-space-maintenance' AND plugin_reference_id = ? AND is_dismissed = 0",
-        [gsm.id]
-      );
+      const existingAlert = await alertePosee('green-space-maintenance', gsm.id);
 
       const daysUntilDue = Math.ceil(
         (new Date(gsm.next_maintenance_date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
@@ -221,7 +254,9 @@ export async function checkAlerts(): Promise<void> {
         ? `Entretien "${gsm.maintenance_type}" en retard depuis le ${gsm.next_maintenance_date}`
         : `Entretien "${gsm.maintenance_type}" prévu le ${gsm.next_maintenance_date}`;
 
-      if (!existingAlert) {
+      if (rejetToujoursValable(existingAlert, gsm.next_maintenance_date)) {
+        // Rejet respecté tant que l'échéance n'a pas bougé.
+      } else if (!existingAlert) {
         const alertResult = await db.execute(
           `INSERT INTO alerts (title, message, alert_type, severity, plugin_reference, plugin_reference_id, due_date)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -244,10 +279,10 @@ export async function checkAlerts(): Promise<void> {
           alertType: 'maintenance',
           severity
         });
-      } else if (isOverdue) {
+      } else if (isOverdue || existingAlert.is_dismissed) {
         await db.execute(
-          'UPDATE alerts SET severity = ?, message = ? WHERE id = ?',
-          [severity, message, existingAlert.id]
+          'UPDATE alerts SET severity = ?, message = ?, due_date = ?, is_dismissed = 0 WHERE id = ?',
+          [severity, message, gsm.next_maintenance_date, existingAlert.id]
         );
       }
     }
@@ -485,11 +520,18 @@ export async function verifierManifestations(): Promise<void> {
       for (const manifestation of retards) {
         // Une alerte par manifestation, pas une par passage du cron : sans ce
         // garde-fou, une récupération oubliée en produirait une par heure.
-        const deja = await db.queryOne(
-          "SELECT id FROM alerts WHERE plugin_reference = 'manifestation-recovery' AND plugin_reference_id = ? AND is_dismissed = 0",
-          [manifestation.id]
-        );
-        if (deja) continue;
+        const deja = await alertePosee('manifestation-recovery', manifestation.id);
+        if (deja) {
+          // Le rejet devenu caduc — la date de récupération a bougé — réactive
+          // l'alerte au lieu d'en créer une seconde.
+          if (deja.is_dismissed && !rejetToujoursValable(deja, manifestation.recovery_date)) {
+            await db.execute('UPDATE alerts SET due_date = ?, is_dismissed = 0 WHERE id = ?', [
+              manifestation.recovery_date,
+              deja.id,
+            ]);
+          }
+          continue;
+        }
 
         const message = `Le matériel de « ${manifestation.title} » devait être récupéré le ${manifestation.recovery_date}. Tant que la récupération n'est pas saisie, le stock le compte comme sorti.`;
         const alerte = await db.execute(

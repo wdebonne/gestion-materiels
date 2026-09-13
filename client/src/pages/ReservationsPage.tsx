@@ -69,7 +69,7 @@ export default function ReservationsPage() {
   const { data: users = [] } = useQuery({
     queryKey: ['all-users-for-reservation'],
     queryFn: async () => {
-      const res = await api.get('/users')
+      const res = await api.get('/users/annuaire')
       return res.data.users ?? res.data.data ?? []
     },
     enabled: showModal && isSupervisor

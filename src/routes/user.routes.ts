@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
 import { ROLES, isRole } from '../config/roles';
 import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.service';
 import { notifierWebhooks } from '../services/webhook.service';
@@ -59,6 +59,40 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
     });
   } catch (error: any) {
     console.error('Erreur get users:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * GET /api/users/annuaire - Liste réduite, pour désigner quelqu'un.
+ *
+ * L'écran des réservations demande à qui prêter le matériel, et remplissait
+ * sa liste avec `GET /api/users`, réservé à l'administrateur. Un superviseur
+ * recevait donc un 403 silencieux, une liste vide, et un bouton « Créer »
+ * définitivement désactivé : il ne pouvait enregistrer aucune réservation.
+ *
+ * D'où cette vue étroite — de quoi afficher un nom, rien de plus. Ni rôle, ni
+ * état du compte, ni dernière connexion : désigner un emprunteur n'exige pas
+ * de connaître l'organigramme.
+ */
+router.get('/annuaire', authenticateToken, requireSupervisor, async (_req: AuthRequest, res: Response) => {
+  try {
+    const utilisateurs = await db.query(
+      `SELECT id, first_name, last_name FROM users
+       WHERE is_active = 1 AND anonymized_at IS NULL
+       ORDER BY last_name, first_name`
+    );
+
+    res.json({
+      success: true,
+      users: utilisateurs.map((u: any) => ({
+        id: u.id,
+        firstName: u.first_name,
+        lastName: u.last_name,
+      })),
+    });
+  } catch (error: any) {
+    console.error('Erreur annuaire utilisateurs:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });

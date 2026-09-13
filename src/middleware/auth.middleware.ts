@@ -51,7 +51,11 @@ export const authenticateToken = async (
     // compte cloisonné doit être arrêté sur un chemin hors de son périmètre.
     if (refuserSiCloisonne(req, res, user.role)) return;
 
-    req.user = decoded;
+    // Le rôle vient de la base, pas du jeton. Recopier `decoded` tel quel
+    // laissait un compte rétrogradé garder ses anciens droits jusqu'à
+    // expiration — sept jours avec `JWT_EXPIRES_IN=7d`. La désactivation,
+    // elle, était bien immédiate : seul le rôle traînait.
+    req.user = { ...decoded, role: user.role };
     next();
   } catch (error) {
     res.status(403).json({ success: false, message: 'Token invalide ou expiré' });
