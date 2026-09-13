@@ -107,23 +107,93 @@ async function lire<T = any>(
     signal: AbortSignal.timeout(30_000),
   });
 
+  const texte = await reponse.text().catch(() => '');
+
   if (!reponse.ok) {
-    // Le corps d'erreur de Snipe-IT est souvent plus parlant que le code :
-    // un jeton périmé rend 401 avec « Unauthorized », une instance derrière un
-    // portail d'authentification rend du HTML sur un 200.
-    const corps = await reponse.text().catch(() => '');
-    throw new Error(`Snipe-IT a répondu ${reponse.status} sur ${chemin}${corps ? ` : ${corps.slice(0, 200)}` : ''}`);
+    throw new ErreurSnipeIt(diagnostiquer(reponse.status, texte, url.toString()), reponse.status);
   }
 
-  const texte = await reponse.text();
   try {
     return JSON.parse(texte) as T;
   } catch {
-    throw new Error(
-      `Snipe-IT a renvoyé une réponse qui n'est pas du JSON sur ${chemin}. ` +
-        `L'adresse pointe-t-elle bien vers l'application, et non vers une page de connexion ?`
+    // Un 200 qui n'est pas du JSON, c'est presque toujours un portail
+    // d'authentification — SSO, mot de passe HTTP — placé devant l'application.
+    throw new ErreurSnipeIt(
+      estHtml(texte)
+        ? `L'adresse ${url.origin} renvoie une page web au lieu de données. ` +
+            `Un portail d'authentification est probablement placé devant Snipe-IT : ` +
+            `l'API doit être joignable sans passer par lui.`
+        : `Snipe-IT a renvoyé une réponse illisible sur ${chemin}.`,
+      reponse.status
     );
   }
+}
+
+/** Erreur portant le code HTTP, pour que l'appelant puisse décider de réessayer. */
+export class ErreurSnipeIt extends Error {
+  constructor(
+    message: string,
+    public readonly statut: number
+  ) {
+    super(message);
+    this.name = 'ErreurSnipeIt';
+  }
+}
+
+function estHtml(corps: string): boolean {
+  return /^\s*<(!doctype|html)/i.test(corps);
+}
+
+/**
+ * Traduit une réponse d'erreur en quelque chose d'actionnable.
+ *
+ * La version précédente recopiait 200 caractères du corps dans le message :
+ * sur une 404 d'Apache, l'utilisateur recevait du HTML brut — « <!DOCTYPE HTML
+ * PUBLIC… » — qui ne lui disait pas quoi corriger. Or ces erreurs ont presque
+ * toujours la même poignée de causes, et chacune a son geste.
+ */
+function diagnostiquer(statut: number, corps: string, url: string): string {
+  const html = estHtml(corps);
+
+  if (statut === 404 && html) {
+    // Le serveur web répond, mais rien ne route vers Snipe-IT : c'est l'adresse
+    // qui est en cause, pas le jeton.
+    return (
+      `L'adresse ne mène pas à l'API Snipe-IT (404 du serveur web sur ${url}). ` +
+      `Vérifiez trois choses : le sous-dossier d'installation s'il y en a un ` +
+      `(https://serveur/snipeit et non https://serveur), l'absence de chemin ` +
+      `d'interface dans l'adresse (pas /login ni /hardware), et le fait que ` +
+      `${url.replace(/\/api\/v1.*$/, '')}/api/v1/hardware réponde bien du JSON dans un navigateur.`
+    );
+  }
+
+  if (statut === 404) {
+    return `Snipe-IT ne connaît pas cette route (404 sur ${url}). L'instance est-elle à jour ?`;
+  }
+
+  if (statut === 401 || statut === 403) {
+    return (
+      `Snipe-IT refuse le jeton (${statut}). Créez-en un nouveau dans votre profil → ` +
+      `Manage API Keys, et vérifiez que le compte associé a le droit de consulter ` +
+      `les actifs et les composants.`
+    );
+  }
+
+  if (statut === 429) {
+    return `Snipe-IT limite le débit (429). Réessayez dans quelques minutes.`;
+  }
+
+  if (statut >= 500) {
+    return `Snipe-IT a rencontré une erreur interne (${statut}). Consultez ses journaux.`;
+  }
+
+  // Reste le cas où Snipe-IT répond du JSON d'erreur, qui est souvent parlant :
+  // celui-là mérite d'être montré, contrairement à une page HTML.
+  if (!html && corps) {
+    return `Snipe-IT a répondu ${statut} : ${corps.slice(0, 200)}`;
+  }
+
+  return `Snipe-IT a répondu ${statut} sur ${url}.`;
 }
 
 /** Parcourt toutes les pages d'une collection Snipe-IT (`{ total, rows }`). */
@@ -152,30 +222,97 @@ async function toutesLesPages<T = any>(
 }
 
 /**
+ * Adresses à essayer quand celle donnée ne répond pas.
+ *
+ * Trois erreurs de saisie couvrent presque tous les cas : oublier le
+ * sous-dossier d'installation, coller l'adresse d'un écran plutôt que celle de
+ * l'application, et pointer la racine du domaine quand le serveur web n'expose
+ * pas le dossier `public/` de Laravel.
+ */
+function adressesCandidates(baseUrl: string): string[] {
+  const base = racine({ baseUrl, token: '' });
+  const candidates = [base];
+
+  // Laravel sert son application depuis `public/` ; un hôte mal configuré
+  // oblige à le nommer.
+  candidates.push(`${base}/public`);
+
+  // Un chemin d'interface collé depuis la barre d'adresse du navigateur.
+  const CHEMINS_INTERFACE = [
+    'login', 'dashboard', 'hardware', 'components', 'accessories',
+    'consumables', 'licenses', 'users', 'settings', 'account', 'setup',
+  ];
+
+  try {
+    const url = new URL(base);
+    const segments = url.pathname.split('/').filter(Boolean);
+    if (segments.length > 0 && CHEMINS_INTERFACE.includes(segments[segments.length - 1].toLowerCase())) {
+      segments.pop();
+      candidates.push(`${url.origin}${segments.length ? `/${segments.join('/')}` : ''}`);
+    }
+  } catch {
+    // Une adresse non analysable ne produit pas de candidat supplémentaire ;
+    // la première tentative rendra un message clair.
+  }
+
+  return [...new Set(candidates)];
+}
+
+/**
  * Vérifie que l'adresse et le jeton mènent bien à une instance joignable.
  *
  * Sur `/hardware` plutôt que sur `/version` : cette dernière répond sur
  * certaines instances sans jeton valide, et confirmerait donc une
  * configuration qui échouera au premier import.
+ *
+ * Si l'adresse donnée échoue, quelques variantes sont essayées et la bonne est
+ * **suggérée**, jamais substituée en douce : l'adresse est enregistrée et
+ * réutilisée à chaque import, elle doit être celle que l'utilisateur a vue et
+ * acceptée. Un test qui réussit sur une adresse différente de celle affichée
+ * mentirait sur ce qui sera utilisé ensuite.
  */
 export async function verifierConnexion(
   config: ConfigSnipeIt
-): Promise<{ ok: boolean; message: string; actifs?: number; composants?: number }> {
-  try {
-    const [materiels, composants] = await Promise.all([
-      lire<{ total?: number }>(config, '/hardware', { limit: 1 }),
-      lire<{ total?: number }>(config, '/components', { limit: 1 }),
-    ]);
+): Promise<{
+  ok: boolean;
+  message: string;
+  actifs?: number;
+  composants?: number;
+  urlSuggeree?: string;
+}> {
+  const candidates = adressesCandidates(config.baseUrl);
+  let premiereErreur = '';
 
-    return {
-      ok: true,
-      message: 'Connexion établie',
-      actifs: materiels.total ?? 0,
-      composants: composants.total ?? 0,
-    };
-  } catch (erreur: any) {
-    return { ok: false, message: erreur?.message ?? 'Connexion impossible' };
+  for (const [index, baseUrl] of candidates.entries()) {
+    try {
+      const essai = { ...config, baseUrl };
+      const [materiels, composants] = await Promise.all([
+        lire<{ total?: number }>(essai, '/hardware', { limit: 1 }),
+        lire<{ total?: number }>(essai, '/components', { limit: 1 }),
+      ]);
+
+      return {
+        ok: true,
+        message:
+          index === 0
+            ? 'Connexion établie'
+            : `Connexion établie sur ${baseUrl}. Corrigez l'adresse ci-dessus, puis enregistrez.`,
+        actifs: materiels.total ?? 0,
+        composants: composants.total ?? 0,
+        urlSuggeree: index === 0 ? undefined : baseUrl,
+      };
+    } catch (erreur: any) {
+      if (index === 0) premiereErreur = erreur?.message ?? 'Connexion impossible';
+
+      // Un jeton refusé est définitif : l'adresse est bonne, inutile d'en
+      // essayer d'autres — et insister enverrait le jeton à des URL au hasard.
+      if (erreur instanceof ErreurSnipeIt && (erreur.statut === 401 || erreur.statut === 403)) {
+        return { ok: false, message: erreur.message };
+      }
+    }
   }
+
+  return { ok: false, message: premiereErreur };
 }
 
 // ======================== ANALYSE ========================
