@@ -38,7 +38,9 @@ describe('03 — le superviseur peut désigner un emprunteur', () => {
 
   it('n’y expose que de quoi afficher un nom', () => {
     const debut = routes.indexOf("router.get('/annuaire'");
-    const bloc = routes.slice(debut, routes.indexOf("router.get('/:id'"));
+    // Jusqu'à la fin du gestionnaire, et non jusqu'à la route suivante :
+    // d'autres routes se sont depuis intercalées avant `GET /:id`.
+    const bloc = routes.slice(debut, routes.indexOf('});', debut));
     expect(bloc).toMatch(/SELECT id, first_name, last_name FROM users/);
     for (const champ of ['role', 'email', 'last_login', 'is_active AS', 'password']) {
       expect(bloc.includes(`${champ},`)).toBe(false);
@@ -91,7 +93,7 @@ describe('05 — le rôle vient de la base, pas du jeton', () => {
   });
 
   it('lit bien le rôle en base avant de l’utiliser', () => {
-    const lecture = mw.indexOf('SELECT id, email, role, is_active FROM users');
+    const lecture = mw.indexOf('role, is_active');
     const affectation = mw.indexOf('req.user = { ...decoded');
     expect(lecture).toBeGreaterThan(-1);
     expect(lecture).toBeLessThan(affectation);

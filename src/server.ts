@@ -246,7 +246,12 @@ app.get('/api/api-info', (req: Request, res: Response) => {
 });
 
 // Routes API avec rate limiting spécifiques
-app.use('/api/auth', authLimiter, authRoutes);
+// `authLimiter` est posé route par route dans `auth.routes`, et non ici :
+// monté sur tout le routeur, il couvrait aussi `GET /api/auth/me`, que le
+// client appelle à chaque ouverture de l'application. Dix appels par quart
+// d'heure — et la clé étant l'adresse IP faute d'e-mail dans le corps, ce
+// budget était partagé par toute la commune derrière son NAT.
+app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/subcategories', subcategoryRouter);

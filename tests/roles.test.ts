@@ -151,13 +151,46 @@ describe('Contrat des routes', () => {
     });
   });
 
-  describe('Suppressions et référentiels — réservés aux administrateurs', () => {
+  describe('Suppression d’un matériel — réservée aux administrateurs', () => {
     it('delete /:id (supprimer un matériel)', () => {
       expect(allowedRolesFor(objectRoutes, 'delete', '/:id')).toEqual(ADMIN);
     });
+  });
 
-    it('post /fuel-stations (référentiel des stations)', () => {
-      expect(allowedRolesFor(objectRoutes, 'post', '/fuel-stations')).toEqual(ADMIN);
+  /**
+   * Le référentiel du parc exigeait un administrateur, alors que le tableau
+   * des droits du README attribue « Gérer le référentiel » au superviseur, et
+   * que `ReferenceSelect` lui montre le bouton « Ajouter ». Il voyait donc
+   * l'action et récoltait un 403 — ce qui gardait les listes vides, faute de
+   * quelqu’un pour les remplir.
+   */
+  describe('Référentiel du parc — tenu par le superviseur', () => {
+    const referentiels: Array<[string, string]> = [
+      ['post', '/fuel-stations'],
+      ['put', '/fuel-stations/:stationId'],
+      ['delete', '/fuel-stations/:stationId'],
+      ['post', '/maintenance-types'],
+      ['put', '/maintenance-types/:typeId'],
+      ['delete', '/maintenance-types/:typeId'],
+      ['post', '/maintenance-providers'],
+      ['put', '/maintenance-providers/:providerId'],
+      ['delete', '/maintenance-providers/:providerId'],
+      ['post', '/control-centers'],
+      ['put', '/control-centers/:centerId'],
+      ['delete', '/control-centers/:centerId'],
+    ];
+
+    it.each(referentiels)('%s %s', (method, path) => {
+      expect(allowedRolesFor(objectRoutes, method, path)).toEqual(GESTION);
+    });
+
+    it('reste fermé à l’agent et au simple utilisateur', () => {
+      for (const [method, path] of referentiels) {
+        const roles = allowedRolesFor(objectRoutes, method, path)!;
+        expect(roles).not.toContain('agent');
+        expect(roles).not.toContain('user');
+        expect(roles).not.toContain('service');
+      }
     });
   });
 
