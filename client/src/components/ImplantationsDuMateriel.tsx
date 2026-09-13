@@ -14,7 +14,9 @@ import {
   source as gisement,
   SOURCES,
   statut,
+  typeIntervention,
 } from '@/lib/mobilierUrbain'
+import { euros } from '@/lib/espacesVerts'
 
 /**
  * « J'ai créé un banc au catalogue. Où sont les vingt-trois bancs posés ? »
@@ -60,6 +62,15 @@ export default function ImplantationsDuMateriel({ objectId, objectName }: Props)
   const [recherche, setRecherche] = useState('')
   const [lieu, setLieu] = useState('')
   const [ou, setOu] = useState('')
+  /*
+    Deux questions, deux vues.
+
+    « Où sont mes bancs » se lit dans un tableau d'exemplaires ; « lesquels ont
+    été repeints cette année » dans une frise d'entretiens. Les empiler sur le
+    même écran ferait deux cents lignes sous vingt-trois — on ne verrait plus
+    ni l'une ni l'autre.
+  */
+  const [vue, setVue] = useState<'exemplaires' | 'entretiens'>('exemplaires')
 
   /** Les lieux réellement occupés : « Voie publique », puis chaque parc. */
   const lieux = useMemo(() => {
@@ -142,6 +153,30 @@ export default function ImplantationsDuMateriel({ objectId, objectName }: Props)
 
       <Card>
         <CardBody className="space-y-3">
+          <div className="flex gap-1 rounded-lg bg-gray-100 p-1 dark:bg-gray-900/40">
+            {([
+              ['exemplaires', `Exemplaires (${items.length})`],
+              ['entretiens', 'Entretiens'],
+            ] as const).map(([valeur, libelle]) => (
+              <button
+                key={valeur}
+                type="button"
+                onClick={() => setVue(valeur)}
+                className={`flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  vue === valeur
+                    ? 'bg-white text-gray-900 shadow-sm dark:bg-gray-700 dark:text-gray-100'
+                    : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+                }`}
+              >
+                {libelle}
+              </button>
+            ))}
+          </div>
+
+          {vue === 'entretiens' && <VueEntretiens objectId={objectId} />}
+
+          {vue === 'exemplaires' && (
+          <>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative min-w-[180px] flex-1 sm:max-w-xs">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -287,6 +322,8 @@ export default function ImplantationsDuMateriel({ objectId, objectName }: Props)
               Aucun exemplaire ne correspond à cette recherche.
             </p>
           )}
+          </>
+          )}
 
           <p className="text-xs text-gray-500 dark:text-gray-400">
             {objectName ? `« ${objectName} » est un modèle` : 'Ce matériel est un modèle'} : ce qui
@@ -317,6 +354,147 @@ function Chiffre({
     <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 dark:border-gray-700 dark:bg-gray-800">
       <p className={`text-xl font-bold ${couleurs[ton]}`}>{valeur}</p>
       <p className="text-xs text-gray-500 dark:text-gray-400">{libelle}</p>
+    </div>
+  )
+}
+
+/**
+ * Tout ce qui a été fait sur les exemplaires de ce modèle, dans l'ordre du temps.
+ *
+ * L'autre moitié de la question posée par une fiche matériel. « Où sont mes
+ * bancs » a sa réponse dans le tableau des exemplaires ; « lesquels ont été
+ * repeints cette année » n'en avait aucune — ni l'onglet Entretiens du parc, qui
+ * parle du matériel comme d'un bien unique, ni les fiches une par une.
+ *
+ * Les deux gisements sont mêlés à dessein : une reprise de peinture sur un banc
+ * de trottoir et une sur un banc du square sont la même campagne.
+ */
+function VueEntretiens({ objectId }: { objectId: number }) {
+  const { data: entretiens = [], isLoading } = useQuery({
+    queryKey: ['entretiens-par-modele', objectId],
+    queryFn: async () => (await mobilierUrbainApi.entretiensDuModele(objectId)).data.data,
+  })
+
+  const [annee, setAnnee] = useState('')
+
+  /** Les années où il s'est passé quelque chose, la plus récente d'abord. */
+  const annees = useMemo(() => {
+    const vues = new Set<string>()
+    for (const e of entretiens) {
+      if (e.performed_on) vues.add(String(e.performed_on).slice(0, 4))
+    }
+    return [...vues].sort().reverse()
+  }, [entretiens])
+
+  const filtres = useMemo(
+    () => (annee ? entretiens.filter((e) => String(e.performed_on ?? '').startsWith(annee)) : entretiens),
+    [entretiens, annee]
+  )
+
+  /** Ce que la campagne a coûté, quand les lignes portent un montant. */
+  const total = useMemo(
+    () => filtres.reduce((somme, e) => somme + (Number(e.cost) || 0), 0),
+    [filtres]
+  )
+
+  if (isLoading) return <LoadingInline />
+
+  if (entretiens.length === 0) {
+    return (
+      <p className="py-10 text-center text-sm text-gray-500 dark:text-gray-400">
+        Rien n’a encore été consigné sur les implantations de ce matériel.
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={annee}
+          onChange={(e) => setAnnee(e.target.value)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-700 dark:text-gray-100"
+          aria-label="Filtrer par année"
+        >
+          <option value="">Toutes les années ({entretiens.length})</option>
+          {annees.map((a) => (
+            <option key={a} value={a}>
+              {a} ({entretiens.filter((e) => String(e.performed_on ?? '').startsWith(a)).length})
+            </option>
+          ))}
+        </select>
+        {total > 0 && (
+          <span className="text-sm text-gray-600 dark:text-gray-300">
+            {filtres.length} intervention{filtres.length > 1 ? 's' : ''} ·{' '}
+            <strong className="text-gray-900 dark:text-gray-100">{euros(total)}</strong>
+          </span>
+        )}
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[680px] text-sm">
+          <thead>
+            <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+              <th className="py-2 pr-3 font-medium">Date</th>
+              <th className="py-2 pr-3 font-medium">Exemplaire</th>
+              <th className="py-2 pr-3 font-medium">Nature</th>
+              <th className="py-2 pr-3 font-medium">Ce qui a été fait</th>
+              <th className="py-2 pr-3 font-medium">Par</th>
+              <th className="py-2 font-medium">Coût</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+            {filtres.map((e) => {
+              const destination =
+                e.implantation_source === 'voirie'
+                  ? `/map?materiel=${e.object_id}&mobilier=${e.implantation_cle}`
+                  : `/espaces-verts?espace=${e.green_space_id}`
+              return (
+                <tr key={`${e.implantation_cle}-${e.id}`} className="hover:bg-gray-50 dark:hover:bg-gray-700/40">
+                  <td className="whitespace-nowrap py-2.5 pr-3 text-gray-600 dark:text-gray-300">
+                    {jour(e.performed_on)}
+                  </td>
+                  <td className="py-2.5 pr-3">
+                    <Link
+                      to={destination}
+                      className="flex items-center gap-1.5 font-medium text-gray-900 hover:underline dark:text-gray-100"
+                    >
+                      <span>{gisement(e.implantation_source).icone}</span>
+                      <span className="truncate">{e.implantation_label}</span>
+                    </Link>
+                    <span className="block truncate text-xs text-gray-500 dark:text-gray-400">
+                      {e.implantation_street || e.implantation_lieu}
+                    </span>
+                  </td>
+                  <td className="py-2.5 pr-3 text-gray-700 dark:text-gray-200">
+                    {/* Côté voirie la nature vient d'un référentiel fermé, côté
+                        parcs d'un référentiel que la commune règle : on affiche
+                        le libellé quand on le connaît, la valeur sinon. */}
+                    {e.implantation_source === 'voirie'
+                      ? typeIntervention(e.intervention_type).libelle
+                      : e.intervention_type}
+                  </td>
+                  <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-300">
+                    {e.description || '—'}
+                  </td>
+                  <td className="py-2.5 pr-3 text-gray-600 dark:text-gray-300">
+                    {e.performed_by || e.auteur || '—'}
+                  </td>
+                  <td className="whitespace-nowrap py-2.5 text-gray-600 dark:text-gray-300">
+                    {e.cost ? euros(Number(e.cost)) : '—'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {filtres.length === 0 && (
+        <p className="py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+          Rien en {annee}.
+        </p>
+      )}
     </div>
   )
 }

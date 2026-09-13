@@ -11,7 +11,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, CalendarDays, Bell, TreePine, MapPin
+  ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -92,6 +92,12 @@ const settingsNavItems = [
     to: '/settings/cartographie', 
     icon: MapPin, 
     label: 'Cartographie',
+    adminOnly: true
+  },
+  { 
+    to: '/settings/agendas', 
+    icon: CalendarClock, 
+    label: 'Agendas externes',
     adminOnly: true
   },
   { 

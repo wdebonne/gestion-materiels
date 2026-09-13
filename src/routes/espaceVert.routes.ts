@@ -44,6 +44,10 @@ import {
   type Cadrage as CadrageCapture,
 } from '../services/captureCarte.service';
 import { exportLimiter } from '../middleware/rateLimiter.middleware';
+import {
+  consignerEntretien,
+  REFUS_TYPE_ENTRETIEN,
+} from '../services/entretienEspaceVert.service';
 import path from 'path';
 
 const router = Router();
@@ -2073,74 +2077,26 @@ router.put('/groups/:groupId/elements', authenticateToken, requireSupervisor, as
 // ======================== ENTRETIENS ========================
 
 // POST /:id/maintenances - Créer un entretien
+/**
+ * POST /:id/maintenances - Consigner un entretien sur cet espace vert.
+ *
+ * Le corps du geste vit dans `entretienEspaceVert.service` : la cartographie
+ * le rejoue sur un seul élément, depuis le terrain, et deux écritures de la
+ * même chose auraient divergé au premier ajout — l'une oubliant la recopie des
+ * dates sur les éléments, l'autre le rendez-vous au calendrier.
+ */
 router.post('/:id/maintenances', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
-    const { maintenance_type, title, description, performed_date, next_maintenance_date, performed_by, duration_minutes, cost, notes, element_ids, document_ids } = req.body;
-    if (!maintenance_type) return res.status(400).json({ success: false, message: 'Le type d\'entretien est requis' });
-
-    const now = new Date().toISOString();
-    const result = await db.execute(
-      `INSERT INTO green_space_maintenances (green_space_id, maintenance_type, title, description, performed_date, next_maintenance_date, performed_by, duration_minutes, cost, notes, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [req.params.id, maintenance_type, title || '', description || '', performed_date || null, next_maintenance_date || null, performed_by || '', duration_minutes || null, cost || null, notes || '', now, now]
-    );
-
-    const maintenanceId = result.lastInsertRowid;
-
-    // Lier les éléments
-    if (Array.isArray(element_ids)) {
-      for (const eid of element_ids) {
-        await db.execute('INSERT INTO green_space_maintenance_elements (maintenance_id, element_id) VALUES (?, ?)', [maintenanceId, eid]);
-      }
-      // Mettre à jour la date de dernier entretien des éléments
-      if (performed_date) {
-        for (const eid of element_ids) {
-          await db.execute('UPDATE green_space_elements SET last_maintenance_date = ? WHERE id = ?', [performed_date, eid]);
-        }
-      }
-      if (next_maintenance_date) {
-        for (const eid of element_ids) {
-          await db.execute('UPDATE green_space_elements SET next_maintenance_date = ? WHERE id = ?', [next_maintenance_date, eid]);
-        }
-      }
+    if (!req.body.maintenance_type) {
+      return res.status(400).json({ success: false, message: REFUS_TYPE_ENTRETIEN });
     }
 
-    // Lier les documents
-    if (Array.isArray(document_ids)) {
-      for (const did of document_ids) {
-        await db.execute('INSERT INTO green_space_maintenance_documents (maintenance_id, document_id) VALUES (?, ?)', [maintenanceId, did]);
-      }
-    }
-
-    // Créer un événement calendrier si prochaine date d'entretien
-    if (next_maintenance_date) {
-      const space = await db.queryOne('SELECT name FROM green_spaces WHERE id = ?', [req.params.id]);
-      const spaceName = space?.name || 'Espace vert';
-      await db.execute(
-        `INSERT INTO calendar_events (title, description, event_type, start_date, end_date, all_day, color, plugin_reference, plugin_reference_id, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          `🌿 ${spaceName}: ${maintenance_type}`,
-          `Entretien prévu - ${title || maintenance_type}${performed_by ? `\nIntervenant: ${performed_by}` : ''}`,
-          'maintenance',
-          next_maintenance_date,
-          next_maintenance_date,
-          1,
-          '#16a34a',
-          'green-space-maintenance',
-          maintenanceId,
-          req.user?.userId
-        ]
-      );
-    }
-
-    const created = await db.queryOne('SELECT * FROM green_space_maintenances WHERE id = ?', [maintenanceId]);
+    const created = await consignerEntretien(req.params.id, req.body, req.user?.userId);
     res.status(201).json({ success: true, data: created });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
-
 // PUT /maintenances/:maintenanceId - Modifier un entretien
 router.put('/maintenances/:maintenanceId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {

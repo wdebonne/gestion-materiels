@@ -2,6 +2,19 @@ import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor } from '../middleware/auth.middleware';
 import { filtreObjetsLies } from '../middleware/objectScope';
+import { logService } from '../services/log.service';
+import {
+  apercuExport,
+  destination as destinationParId,
+  destinations,
+  DIRECTIONS,
+  exporterVers,
+  NATURES,
+  noterPassage,
+  sansSecrets,
+  tester,
+  type Destination,
+} from '../services/agendasExternes.service';
 
 const router = Router();
 
@@ -251,6 +264,196 @@ router.post('/events', authenticateToken, requireSupervisor, async (req: AuthReq
   }
 });
 
+// ======================== AGENDAS EXTERNES ========================
+//
+// Déclarées **avant** `PUT /:id` et `DELETE /:id` : Express prend la première
+// route qui correspond, et `/agendas` serait sinon lu comme l'identifiant d'un
+// événement.
+
+/** GET /agendas/vocabulaire - Les natures et les sens, publiés par le serveur. */
+router.get('/agendas/vocabulaire', authenticateToken, requireSupervisor, async (_req: AuthRequest, res: Response) => {
+  res.json({ success: true, data: { natures: NATURES, directions: DIRECTIONS } });
+});
+
+/** GET /agendas - Les carnets configurés, sans leurs secrets. */
+router.get('/agendas', authenticateToken, requireSupervisor, async (_req: AuthRequest, res: Response) => {
+  try {
+    const liste = await destinations();
+    res.json({ success: true, data: liste.map(sansSecrets) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** Les champs qu'un écran envoie, relus sans confiance. */
+function lireCorps(corps: any) {
+  const texte = (valeur: unknown): string => (typeof valeur === 'string' ? valeur.trim() : '');
+  const listeDeNombres = (valeur: unknown): number[] =>
+    Array.isArray(valeur) ? valeur.map(Number).filter((n) => Number.isFinite(n) && n > 0) : [];
+  const listeDeTermes = (valeur: unknown): string[] =>
+    Array.isArray(valeur)
+      ? valeur.map(String).filter((v) => NATURES.some((n) => n.valeur === v))
+      : [];
+
+  return {
+    name: texte(corps.name) || 'Agenda externe',
+    kind: corps.kind === 'outlook' ? 'outlook' : 'caldav',
+    server_url: texte(corps.server_url),
+    username: texte(corps.username),
+    calendar_path: texte(corps.calendar_path),
+    client_id: texte(corps.client_id),
+    tenant_id: texte(corps.tenant_id),
+    direction: ['import', 'export', 'deux_sens'].includes(corps.direction)
+      ? corps.direction
+      : 'export',
+    natures: JSON.stringify(listeDeTermes(corps.natures)),
+    category_ids: JSON.stringify(listeDeNombres(corps.category_ids)),
+    include_uncategorized: corps.include_uncategorized === false ? 0 : 1,
+    color: texte(corps.color) || '#10b981',
+    enabled: corps.enabled === false ? 0 : 1,
+  };
+}
+
+/** POST /agendas - Ajouter un carnet. */
+router.post('/agendas', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const champs = lireCorps(req.body);
+    const maintenant = new Date().toISOString();
+    const resultat = await db.execute(
+      `INSERT INTO calendar_destinations
+         (name, kind, server_url, username, password, calendar_path,
+          client_id, client_secret, tenant_id, direction, natures, category_ids,
+          include_uncategorized, color, enabled, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        champs.name, champs.kind, champs.server_url, champs.username,
+        typeof req.body.password === 'string' ? req.body.password : '',
+        champs.calendar_path, champs.client_id,
+        typeof req.body.client_secret === 'string' ? req.body.client_secret : '',
+        champs.tenant_id, champs.direction, champs.natures, champs.category_ids,
+        champs.include_uncategorized, champs.color, champs.enabled, maintenant, maintenant,
+      ]
+    );
+
+    await logService.info('other', `Agenda externe ajouté : ${champs.name}`, {}, { userId: req.user?.userId });
+    const creee = await destinationParId(resultat.lastInsertRowid);
+    res.status(201).json({ success: true, data: creee ? sansSecrets(creee) : null });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * PUT /agendas/:id - Modifier un carnet.
+ *
+ * Un secret affiché en pastilles revient tel quel : le réécrire viderait le mot
+ * de passe à chaque enregistrement d'un simple changement de règle.
+ */
+router.put('/agendas/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const existante = await destinationParId(req.params.id);
+    if (!existante) {
+      return res.status(404).json({ success: false, message: 'Agenda non trouvé' });
+    }
+
+    const champs = lireCorps(req.body);
+    const secret = (recu: unknown, actuel: string): string =>
+      typeof recu === 'string' && recu !== '••••••••' ? recu : actuel;
+
+    await db.execute(
+      `UPDATE calendar_destinations SET
+         name = ?, kind = ?, server_url = ?, username = ?, password = ?, calendar_path = ?,
+         client_id = ?, client_secret = ?, tenant_id = ?, direction = ?, natures = ?,
+         category_ids = ?, include_uncategorized = ?, color = ?, enabled = ?, updated_at = ?
+       WHERE id = ?`,
+      [
+        champs.name, champs.kind, champs.server_url, champs.username,
+        secret(req.body.password, existante.password), champs.calendar_path,
+        champs.client_id, secret(req.body.client_secret, existante.client_secret),
+        champs.tenant_id, champs.direction, champs.natures, champs.category_ids,
+        champs.include_uncategorized, champs.color, champs.enabled,
+        new Date().toISOString(), req.params.id,
+      ]
+    );
+
+    const miseAJour = await destinationParId(req.params.id);
+    res.json({ success: true, data: miseAJour ? sansSecrets(miseAJour) : null });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * DELETE /agendas/:id - Retirer un carnet.
+ *
+ * Ce qui a été déposé là-bas y reste : l'application n'a pas à vider l'agenda
+ * de quelqu'un parce qu'on débranche la liaison. La mémoire de ce qui a été
+ * poussé part avec la destination (cascade), et les événements importés de ce
+ * carnet sont retirés du calendrier — ils n'ont plus de source.
+ */
+router.delete('/agendas/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const existante = await destinationParId(req.params.id);
+    if (!existante) {
+      return res.status(404).json({ success: false, message: 'Agenda non trouvé' });
+    }
+
+    await db.execute('DELETE FROM calendar_events WHERE external_calendar_id = ?', [req.params.id]);
+    await db.execute('DELETE FROM calendar_destinations WHERE id = ?', [req.params.id]);
+
+    await logService.warning('other', `Agenda externe retiré : ${existante.name}`, {}, { userId: req.user?.userId });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** POST /agendas/:id/test - Le carnet répond-il, et accepte-t-il les identifiants ? */
+router.post('/agendas/:id/test', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const cible = await destinationParId(req.params.id);
+    if (!cible) {
+      return res.status(404).json({ success: false, message: 'Agenda non trouvé' });
+    }
+    await tester(cible);
+    res.json({ success: true, message: 'Connexion réussie' });
+  } catch (error: any) {
+    res.status(400).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /agendas/:id/apercu - Ce que l'export enverrait, sans rien envoyer.
+ *
+ * Un aiguillage se règle autrement à l'aveugle : on coche des natures et des
+ * catégories sans savoir combien d'événements cela représente, et on ne le
+ * découvre qu'une fois le carnet de quelqu'un d'autre rempli.
+ */
+router.get('/agendas/:id/apercu', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const cible = await destinationParId(req.params.id);
+    if (!cible) {
+      return res.status(404).json({ success: false, message: 'Agenda non trouvé' });
+    }
+    res.json({ success: true, data: await apercuExport(cible) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/** POST /agendas/:id/sync - Synchroniser ce carnet seul. */
+router.post('/agendas/:id/sync', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const cible = await destinationParId(req.params.id);
+    if (!cible) {
+      return res.status(404).json({ success: false, message: 'Agenda non trouvé' });
+    }
+    res.json({ success: true, data: await synchroniserDestination(cible) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // PUT /api/calendar/:id - Modifier un événement (raccourci)
 router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
@@ -458,392 +661,103 @@ router.get('/upcoming', authenticateToken, async (req: AuthRequest, res: Respons
 
 // ==================== SYNCHRONISATION CALENDRIERS ====================
 
-// GET /api/calendar/sync/status - Statut de synchronisation
-router.get('/sync/status', authenticateToken, async (req: AuthRequest, res: Response) => {
+// GET /api/calendar/sync/status - Ce que les carnets ont donné au dernier passage
+//
+// Rend la liste des destinations plutôt qu'un couple Outlook/CalDAV figé : il
+// n'y a plus « un » agenda externe mais autant que la commune en branche.
+router.get('/sync/status', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
-    let outlookData: any = {};
-    let caldavData: any = {};
-
-    try {
-      const outlookConfig = await db.queryOne(
-        "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
-      );
-      if (outlookConfig && outlookConfig.setting_value) {
-        outlookData = JSON.parse(outlookConfig.setting_value);
-      }
-    } catch (e) {
-      // Si le parsing échoue ou si la table n'existe pas, on continue avec les valeurs par défaut
-    }
-
-    try {
-      const caldavConfig = await db.queryOne(
-        "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
-      );
-      if (caldavConfig && caldavConfig.setting_value) {
-        caldavData = JSON.parse(caldavConfig.setting_value);
-      }
-    } catch (e) {
-      // Si le parsing échoue ou si la table n'existe pas, on continue avec les valeurs par défaut
-    }
-
+    const liste = await destinations();
     res.json({
-      outlook: {
-        connected: !!outlookData.enabled && !!outlookData.clientId,
-        lastSync: outlookData.lastSync || null,
-        email: outlookData.email || null
-      },
-      caldav: {
-        connected: !!caldavData.enabled && !!caldavData.serverUrl,
-        lastSync: caldavData.lastSync || null,
-        server: caldavData.serverUrl || null
-      }
+      success: true,
+      agendas: liste.map((d) => ({
+        id: d.id,
+        name: d.name,
+        kind: d.kind,
+        direction: d.direction,
+        enabled: d.enabled,
+        lastSync: d.last_sync,
+        lastError: d.last_error,
+        color: d.color,
+      })),
+      // Un carnet en panne se voit sans avoir à ouvrir les réglages.
+      enErreur: liste.filter((d) => d.enabled && d.last_error).length,
     });
   } catch (error: any) {
     console.error('Erreur get sync status:', error);
-    // En cas d'erreur, retourner un statut par défaut plutôt qu'une erreur 500
-    res.json({
-      outlook: { connected: false, lastSync: null, email: null },
-      caldav: { connected: false, lastSync: null, server: null }
-    });
+    res.json({ success: true, agendas: [], enErreur: 0 });
   }
 });
 
-// GET /api/calendar/sync/config - Configuration de synchronisation
-router.get('/sync/config', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+/**
+ * Un passage complet sur un carnet : ce qu'il donne, ce qu'il reçoit.
+ *
+ * L'échec est noté sur la destination plutôt que remonté seul : avec plusieurs
+ * carnets, un serveur injoignable ne doit pas empêcher les autres de passer, et
+ * la raison doit rester lisible après coup dans l'écran des réglages.
+ */
+async function synchroniserDestination(d: Destination): Promise<{
+  id: number;
+  name: string;
+  importes: number;
+  envoyes: number;
+  retires: number;
+  erreur: string | null;
+}> {
+  const bilan = { id: d.id, name: d.name, importes: 0, envoyes: 0, retires: 0, erreur: null as string | null };
+
   try {
-    const outlookConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
-    );
-    const caldavConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
-    );
-
-    const outlookData = outlookConfig ? JSON.parse(outlookConfig.setting_value || '{}') : {};
-    const caldavData = caldavConfig ? JSON.parse(caldavConfig.setting_value || '{}') : {};
-
-    // Ne pas renvoyer les secrets complets
-    res.json({
-      outlook: {
-        clientId: outlookData.clientId || '',
-        clientSecret: outlookData.clientSecret ? '••••••••' : '',
-        tenantId: outlookData.tenantId || '',
-        enabled: !!outlookData.enabled
-      },
-      caldav: {
-        serverUrl: caldavData.serverUrl || '',
-        username: caldavData.username || '',
-        password: caldavData.password ? '••••••••' : '',
-        calendarPath: caldavData.calendarPath || '',
-        enabled: !!caldavData.enabled
-      }
-    });
-  } catch (error: any) {
-    console.error('Erreur get sync config:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
+    if (d.direction === 'import' || d.direction === 'deux_sens') {
+      const recus = d.kind === 'caldav' ? await importerCaldav(d) : await importerOutlook(d);
+      bilan.importes = recus.count;
+    }
+    if (d.direction === 'export' || d.direction === 'deux_sens') {
+      const envoi = await exporterVers(d);
+      bilan.envoyes = envoi.envoyes;
+      bilan.retires = envoi.retires;
+    }
+    await noterPassage(d.id);
+  } catch (erreur: any) {
+    bilan.erreur = erreur?.message ?? 'Échec de la synchronisation';
+    await noterPassage(d.id, bilan.erreur ?? undefined);
   }
-});
 
-// POST /api/calendar/sync/outlook/config - Configurer Outlook
-router.post('/sync/outlook/config', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  return bilan;
+}
+
+/**
+ * POST /api/calendar/sync - Faire passer tous les carnets actifs.
+ *
+ * Reste ouverte à tout compte authentifié, comme avant : déclencher une
+ * synchronisation ne révèle rien et ne configure rien. Seul le réglage des
+ * carnets demande le rôle de superviseur.
+ */
+router.post('/sync', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
-    const { clientId, clientSecret, tenantId, enabled } = req.body;
-
-    // Récupérer la config existante pour ne pas écraser le secret si non modifié
-    const existingConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
-    );
-    const existingData = existingConfig ? JSON.parse(existingConfig.setting_value || '{}') : {};
-
-    const newConfig = {
-      clientId: clientId || existingData.clientId,
-      clientSecret: clientSecret === '••••••••' ? existingData.clientSecret : clientSecret,
-      tenantId: tenantId || existingData.tenantId,
-      enabled: !!enabled,
-      lastSync: existingData.lastSync
-    };
-
-    if (existingConfig) {
-      await db.execute(
-        "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_outlook_config'",
-        [JSON.stringify(newConfig), new Date().toISOString()]
-      );
-    } else {
-      const now = new Date().toISOString();
-      await db.execute(
-        "INSERT INTO settings (setting_key, setting_value, created_at, updated_at) VALUES ('calendar_outlook_config', ?, ?, ?)",
-        [JSON.stringify(newConfig), now, now]
-      );
+    const liste = (await destinations()).filter((d) => d.enabled);
+    const resultats = [];
+    for (const d of liste) {
+      resultats.push(await synchroniserDestination(d));
     }
-
-    res.json({ success: true, message: 'Configuration Outlook enregistrée' });
-  } catch (error: any) {
-    console.error('Erreur save outlook config:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-// POST /api/calendar/sync/caldav/config - Configurer CalDAV
-router.post('/sync/caldav/config', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    const { serverUrl, username, password, calendarPath, enabled } = req.body;
-
-    // Récupérer la config existante pour ne pas écraser le mot de passe si non modifié
-    const existingConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
-    );
-    const existingData = existingConfig ? JSON.parse(existingConfig.setting_value || '{}') : {};
-
-    const newConfig = {
-      serverUrl: serverUrl || existingData.serverUrl,
-      username: username || existingData.username,
-      password: password === '••••••••' ? existingData.password : password,
-      calendarPath: calendarPath || existingData.calendarPath,
-      enabled: !!enabled,
-      lastSync: existingData.lastSync
-    };
-
-    if (existingConfig) {
-      await db.execute(
-        "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_caldav_config'",
-        [JSON.stringify(newConfig), new Date().toISOString()]
-      );
-    } else {
-      const now = new Date().toISOString();
-      await db.execute(
-        "INSERT INTO settings (setting_key, setting_value, created_at, updated_at) VALUES ('calendar_caldav_config', ?, ?, ?)",
-        [JSON.stringify(newConfig), now, now]
-      );
-    }
-
-    res.json({ success: true, message: 'Configuration CalDAV enregistrée' });
-  } catch (error: any) {
-    console.error('Erreur save caldav config:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-// POST /api/calendar/sync/outlook/test - Tester la connexion Outlook
-router.post('/sync/outlook/test', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    const config = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
-    );
-    
-    if (!config) {
-      return res.status(400).json({ success: false, error: 'Configuration Outlook non trouvée' });
-    }
-
-    const data = JSON.parse(config.setting_value || '{}');
-    
-    if (!data.clientId || !data.clientSecret || !data.tenantId) {
-      return res.status(400).json({ success: false, error: 'Configuration incomplète' });
-    }
-
-    // Test de connexion à Microsoft Graph API
-    // Pour une vraie implémentation, il faudrait utiliser @azure/msal-node
-    // Ici on simule juste un test basique
-    const tokenEndpoint = `https://login.microsoftonline.com/${data.tenantId}/oauth2/v2.0/token`;
-    
-    try {
-      const response = await fetch(tokenEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded'
-        },
-        body: new URLSearchParams({
-          client_id: data.clientId,
-          client_secret: data.clientSecret,
-          scope: 'https://graph.microsoft.com/.default',
-          grant_type: 'client_credentials'
-        })
-      });
-
-      if (response.ok) {
-        res.json({ success: true, message: 'Connexion Outlook réussie' });
-      } else {
-        const errorData = await response.json() as { error_description?: string };
-        res.status(400).json({ 
-          success: false, 
-          error: errorData.error_description || 'Erreur d\'authentification' 
-        });
-      }
-    } catch (fetchError) {
-      res.status(400).json({ success: false, error: 'Impossible de contacter le serveur Microsoft' });
-    }
-  } catch (error: any) {
-    console.error('Erreur test outlook:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-// POST /api/calendar/sync/caldav/test - Tester la connexion CalDAV
-router.post('/sync/caldav/test', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    const config = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
-    );
-    
-    if (!config) {
-      return res.status(400).json({ success: false, error: 'Configuration CalDAV non trouvée' });
-    }
-
-    const data = JSON.parse(config.setting_value || '{}');
-    
-    if (!data.serverUrl || !data.username || !data.password) {
-      return res.status(400).json({ success: false, error: 'Configuration incomplète' });
-    }
-
-    // Test de connexion CalDAV basique avec PROPFIND
-    try {
-      const auth = Buffer.from(`${data.username}:${data.password}`).toString('base64');
-      const response = await fetch(data.serverUrl, {
-        method: 'PROPFIND',
-        headers: {
-          'Authorization': `Basic ${auth}`,
-          'Depth': '0',
-          'Content-Type': 'application/xml'
-        },
-        body: `<?xml version="1.0" encoding="utf-8"?>
-          <propfind xmlns="DAV:">
-            <prop>
-              <displayname/>
-              <resourcetype/>
-            </prop>
-          </propfind>`
-      });
-
-      if (response.ok || response.status === 207) {
-        res.json({ success: true, message: 'Connexion CalDAV réussie' });
-      } else if (response.status === 401) {
-        res.status(400).json({ success: false, error: 'Identifiants incorrects' });
-      } else {
-        res.status(400).json({ success: false, error: `Erreur serveur: ${response.status}` });
-      }
-    } catch (fetchError) {
-      res.status(400).json({ success: false, error: 'Impossible de contacter le serveur CalDAV' });
-    }
-  } catch (error: any) {
-    console.error('Erreur test caldav:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-// POST /api/calendar/sync - Synchroniser tous les calendriers
-router.post('/sync', authenticateToken, async (req: AuthRequest, res: Response) => {
-  try {
-    const results = {
-      outlook: { synced: false, events: 0, error: null as string | null },
-      caldav: { synced: false, events: 0, error: null as string | null }
-    };
-
-    // Synchroniser Outlook
-    const outlookConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_outlook_config'"
-    );
-    if (outlookConfig) {
-      const data = JSON.parse(outlookConfig.setting_value || '{}');
-      if (data.enabled && data.clientId && data.clientSecret) {
-        try {
-          const syncResult = await syncOutlookCalendar(data);
-          results.outlook = { synced: true, events: syncResult.count, error: null };
-          
-          // Mettre à jour lastSync
-          data.lastSync = new Date().toISOString();
-          await db.execute(
-            "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_outlook_config'",
-            [JSON.stringify(data), new Date().toISOString()]
-          );
-        } catch (err: any) {
-          results.outlook.error = err.message;
-        }
-      }
-    }
-
-    // Synchroniser CalDAV
-    const caldavConfig = await db.queryOne(
-      "SELECT * FROM settings WHERE setting_key = 'calendar_caldav_config'"
-    );
-    if (caldavConfig) {
-      const data = JSON.parse(caldavConfig.setting_value || '{}');
-      if (data.enabled && data.serverUrl && data.username) {
-        try {
-          const syncResult = await syncCaldavCalendar(data);
-          results.caldav = { synced: true, events: syncResult.count, error: null };
-          
-          // Mettre à jour lastSync
-          data.lastSync = new Date().toISOString();
-          await db.execute(
-            "UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = 'calendar_caldav_config'",
-            [JSON.stringify(data), new Date().toISOString()]
-          );
-        } catch (err: any) {
-          results.caldav.error = err.message;
-        }
-      }
-    }
-
-    res.json({ success: true, results });
+    res.json({ success: true, results: resultats });
   } catch (error: any) {
     console.error('Erreur sync:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
 
-// DELETE /api/calendar/sync/outlook - Déconnecter Outlook
-router.delete('/sync/outlook', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    // Supprimer les événements synchronisés depuis Outlook
-    await db.execute(
-      "DELETE FROM calendar_events WHERE source = 'outlook'"
-    );
-    
-    // Désactiver la config
-    await db.execute(
-      "UPDATE settings SET setting_value = '{}', updated_at = ? WHERE setting_key = 'calendar_outlook_config'",
-      [new Date().toISOString()]
-    );
-
-    res.json({ success: true, message: 'Outlook déconnecté' });
-  } catch (error: any) {
-    console.error('Erreur disconnect outlook:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-// DELETE /api/calendar/sync/caldav - Déconnecter CalDAV
-router.delete('/sync/caldav', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
-  try {
-    // Supprimer les événements synchronisés depuis CalDAV
-    await db.execute(
-      "DELETE FROM calendar_events WHERE source = 'caldav'"
-    );
-    
-    // Désactiver la config
-    await db.execute(
-      "UPDATE settings SET setting_value = '{}', updated_at = ? WHERE setting_key = 'calendar_caldav_config'",
-      [new Date().toISOString()]
-    );
-
-    res.json({ success: true, message: 'CalDAV déconnecté' });
-  } catch (error: any) {
-    console.error('Erreur disconnect caldav:', error);
-    res.status(500).json({ success: false, message: 'Erreur serveur' });
-  }
-});
-
-// Fonction helper pour synchroniser Outlook
-async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
+async function importerOutlook(d: Destination): Promise<{ count: number }> {
   try {
     // Obtenir un token d'accès
-    const tokenEndpoint = `https://login.microsoftonline.com/${config.tenantId}/oauth2/v2.0/token`;
+    const tokenEndpoint = `https://login.microsoftonline.com/${d.tenant_id}/oauth2/v2.0/token`;
     const tokenResponse = await fetch(tokenEndpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       },
       body: new URLSearchParams({
-        client_id: config.clientId,
-        client_secret: config.clientSecret,
+        client_id: d.client_id,
+        client_secret: d.client_secret,
         scope: 'https://graph.microsoft.com/.default',
         grant_type: 'client_credentials'
       })
@@ -880,21 +794,26 @@ async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
     const events = eventsData.value || [];
 
     // Supprimer les anciens événements Outlook et insérer les nouveaux
-    await db.execute("DELETE FROM calendar_events WHERE source = 'outlook'");
+    // Seulement les siens, pour la même raison que côté CalDAV.
+    await db.execute(
+      "DELETE FROM calendar_events WHERE source = 'outlook' AND external_calendar_id = ?",
+      [d.id]
+    );
 
     let count = 0;
     for (const event of events) {
       await db.execute(
-        `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, 'outlook', ?, ?)`,
+        `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, external_calendar_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'outlook', ?, ?, ?)`,
         [
           event.subject,
           event.bodyPreview || '',
           event.start?.dateTime || null,
           event.end?.dateTime || null,
           event.isAllDay ? 1 : 0,
-          '#0078D4', // Bleu Outlook
+          d.color,
           event.id,
+          d.id,
           new Date().toISOString()
         ]
       );
@@ -909,12 +828,12 @@ async function syncOutlookCalendar(config: any): Promise<{ count: number }> {
 }
 
 // Fonction helper pour synchroniser CalDAV
-async function syncCaldavCalendar(config: any): Promise<{ count: number }> {
+async function importerCaldav(d: Destination): Promise<{ count: number }> {
   try {
-    const auth = Buffer.from(`${config.username}:${config.password}`).toString('base64');
-    const calendarUrl = config.calendarPath 
-      ? `${config.serverUrl}${config.calendarPath}`
-      : config.serverUrl;
+    const auth = Buffer.from(`${d.username}:${d.password}`).toString('base64');
+    const calendarUrl = d.calendar_path 
+      ? `${d.server_url}${d.calendar_path}`
+      : d.server_url;
 
     // Requête REPORT pour récupérer les événements
     const now = new Date();
@@ -952,22 +871,27 @@ async function syncCaldavCalendar(config: any): Promise<{ count: number }> {
     const xmlText = await response.text();
     const events = parseCalDavResponse(xmlText);
 
-    // Supprimer les anciens événements CalDAV et insérer les nouveaux
-    await db.execute("DELETE FROM calendar_events WHERE source = 'caldav'");
+    // Seulement les siens : deux carnets CalDAV s'effaçaient l'un l'autre à
+    // chaque passage, chacun croyant que « source = caldav » le désignait.
+    await db.execute(
+      "DELETE FROM calendar_events WHERE source = 'caldav' AND external_calendar_id = ?",
+      [d.id]
+    );
 
     let count = 0;
     for (const event of events) {
       await db.execute(
-        `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, created_at) 
-         VALUES (?, ?, ?, ?, ?, ?, 'caldav', ?, ?)`,
+        `INSERT INTO calendar_events (title, description, start_date, end_date, all_day, color, source, external_id, external_calendar_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'caldav', ?, ?, ?)`,
         [
           event.summary,
           event.description || '',
           event.dtstart,
           event.dtend,
           event.allDay ? 1 : 0,
-          '#10B981', // Vert pour CalDAV
+          d.color,
           event.uid,
+          d.id,
           new Date().toISOString()
         ]
       );

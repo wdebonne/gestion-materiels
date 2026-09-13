@@ -555,6 +555,10 @@ class DatabaseManager {
         reminder_sent ${boolType} DEFAULT 0,
         source VARCHAR(50) DEFAULT 'local',
         external_id VARCHAR(500),
+        -- De quel carnet vient un événement importé : deux agendas CalDAV
+        -- s'effaçaient l'un l'autre, chacun croyant que « source = caldav »
+        -- désignait les siens.
+        external_calendar_id INTEGER,
         created_by INTEGER,
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
@@ -1410,6 +1414,46 @@ class DatabaseManager {
         created_at DATETIME ${timestampDefault},
         FOREIGN KEY (item_id) REFERENCES street_furniture(id) ON DELETE CASCADE,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      )`,
+
+      // Les agendas externes branchés sur l'application. Autant que la commune
+      // en a besoin : chacun ne reçoit que les natures et les catégories qu'on
+      // lui désigne, sans quoi le carnet du service technique reçoit aussi les
+      // tontes de pelouse et devient illisible.
+      `CREATE TABLE IF NOT EXISTS calendar_destinations (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        name VARCHAR(255) NOT NULL,
+        kind VARCHAR(20) NOT NULL DEFAULT 'caldav',
+        server_url VARCHAR(500) DEFAULT '',
+        username VARCHAR(255) DEFAULT '',
+        password VARCHAR(500) DEFAULT '',
+        calendar_path VARCHAR(500) DEFAULT '',
+        client_id VARCHAR(255) DEFAULT '',
+        client_secret VARCHAR(500) DEFAULT '',
+        tenant_id VARCHAR(255) DEFAULT '',
+        direction VARCHAR(20) NOT NULL DEFAULT 'export',
+        natures ${textType},
+        category_ids ${textType},
+        include_uncategorized ${boolType} DEFAULT 1,
+        color VARCHAR(20) DEFAULT '#10b981',
+        enabled ${boolType} DEFAULT 1,
+        last_sync DATETIME,
+        last_error ${textType},
+        created_at DATETIME ${timestampDefault},
+        updated_at DATETIME ${timestampDefault}
+      )`,
+
+      // Ce qui a été déposé, et où : sans cette mémoire, un événement qui
+      // cesse de correspondre aux règles resterait dans le carnet distant pour
+      // toujours.
+      `CREATE TABLE IF NOT EXISTS calendar_exports (
+        id INTEGER PRIMARY KEY ${autoIncrement},
+        destination_id INTEGER NOT NULL,
+        event_id INTEGER NOT NULL,
+        external_uid VARCHAR(255) NOT NULL,
+        pushed_at DATETIME ${timestampDefault},
+        FOREIGN KEY (destination_id) REFERENCES calendar_destinations(id) ON DELETE CASCADE,
+        FOREIGN KEY (event_id) REFERENCES calendar_events(id) ON DELETE CASCADE
       )`
     ];
 
@@ -1533,6 +1577,10 @@ class DatabaseManager {
       // « Que contient cette jardinière ? » se pose à chaque ouverture de fiche.
       ['idx_street_furniture_parent', 'street_furniture', 'parent_id'],
       ['idx_sf_interventions_item', 'street_furniture_interventions', 'item_id, performed_on'],
+
+      // Agendas externes — la synchronisation relit ce qu'elle a déposé
+      ['idx_calendar_exports_dest', 'calendar_exports', 'destination_id'],
+      ['idx_calendar_events_externe', 'calendar_events', 'external_calendar_id'],
     ];
 
     for (const [nom, table, colonnes] of indexes) {

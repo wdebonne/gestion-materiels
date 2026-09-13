@@ -714,6 +714,9 @@ function FicheElementEspaceVert({
   implantation: Implantation
   onFermer: () => void
 }) {
+  const queryClient = useQueryClient()
+  const [ajout, setAjout] = useState(false)
+
   const { data, isLoading } = useQuery({
     queryKey: ['implantation-element', implantation.id],
     queryFn: async () => (await mobilierUrbainApi.detailElement(implantation.id)).data.data,
@@ -848,13 +851,33 @@ function FicheElementEspaceVert({
         </p>
 
         <div className="border-t border-gray-200 pt-4 dark:border-gray-700">
-          <h4 className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
-            <History className="h-4 w-4" />
-            Entretiens
-            <span className="font-normal text-gray-500 dark:text-gray-400">
-              ({item.interventions?.length ?? 0})
-            </span>
-          </h4>
+          <div className="mb-3 flex items-center justify-between">
+            <h4 className="flex items-center gap-1.5 text-sm font-semibold text-gray-900 dark:text-gray-100">
+              <History className="h-4 w-4" />
+              Entretiens
+              <span className="font-normal text-gray-500 dark:text-gray-400">
+                ({item.interventions?.length ?? 0})
+              </span>
+            </h4>
+            {/* La seule écriture que la carte s'autorise sur un parc : le geste
+                de terrain, celui qu'on ne fera pas si on doit rouvrir un autre
+                module pour l'accomplir. */}
+            <Button variant="secondary" onClick={() => setAjout((v) => !v)}>
+              <Plus className="mr-1 h-4 w-4" />
+              Ajouter
+            </Button>
+          </div>
+
+          {ajout && (
+            <AjoutEntretienElement
+              item={item}
+              onFini={() => setAjout(false)}
+              onEnregistre={() => {
+                queryClient.invalidateQueries({ queryKey: ['mobilier'] })
+                queryClient.invalidateQueries({ queryKey: ['mobilier-stats'] })
+              }}
+            />
+          )}
 
           {isLoading ? (
             <div className="flex justify-center py-6">
@@ -892,6 +915,152 @@ function FicheElementEspaceVert({
             </ol>
           )}
         </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Consigner un entretien sur un élément de parc, sans quitter la carte.
+ *
+ * Le vocabulaire n'est pas celui du mobilier de voirie : l'entretien part dans
+ * la table des espaces verts, et y inscrire « peinture » quand la commune a
+ * configuré « reprise de peinture » ferait deux types pour la même chose dans
+ * leurs propres écrans. On propose donc **leurs** natures, celles que
+ * l'administrateur a réglées — avec la possibilité d'en taper une autre, comme
+ * le fait déjà la fiche d'un espace vert.
+ */
+function AjoutEntretienElement({
+  item,
+  onFini,
+  onEnregistre,
+}: {
+  item: Implantation
+  onFini: () => void
+  onEnregistre: () => void
+}) {
+  const queryClient = useQueryClient()
+  const [form, setForm] = useState({
+    maintenance_type: '',
+    performed_date: new Date().toISOString().slice(0, 10),
+    next_maintenance_date: '',
+    title: '',
+    description: '',
+    cost: '',
+    performed_by: '',
+    condition_state: item.condition_state,
+  })
+
+  const { data: types = [] } = useQuery({
+    queryKey: ['green-space-maintenance-types'],
+    queryFn: async () => (await mobilierUrbainApi.typesEntretienEspaceVert()).data.data,
+  })
+  const actifs = types.filter((t) => !t.disabled)
+
+  const enregistrer = useMutation({
+    mutationFn: () => mobilierUrbainApi.ajouterEntretienElement(item.id, form),
+    onSuccess: () => {
+      toast.success('Entretien consigné')
+      queryClient.invalidateQueries({ queryKey: ['implantation-element', item.id] })
+      // L'entretien vit dans le module des espaces verts : sa fiche de parc doit
+      // le voir apparaître elle aussi, sans qu'on ait à recharger la page.
+      queryClient.invalidateQueries({ queryKey: ['green-space'] })
+      queryClient.invalidateQueries({ queryKey: ['green-spaces'] })
+      onEnregistre()
+      onFini()
+    },
+    onError: (erreur: any) =>
+      toast.error(erreur?.response?.data?.message ?? 'Enregistrement impossible'),
+  })
+
+  const champ = (clef: keyof typeof form) => ({
+    value: form[clef],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm({ ...form, [clef]: e.target.value }),
+  })
+
+  const valider = () => {
+    if (!form.maintenance_type.trim()) {
+      toast.error('Choisissez la nature de l’entretien')
+      return
+    }
+    enregistrer.mutate()
+  }
+
+  return (
+    <div className="mb-3 space-y-3 rounded-lg border border-green-200 bg-green-50/60 p-3 dark:border-green-800 dark:bg-green-900/10">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <label className={LIBELLE}>Nature</label>
+          <input
+            list="carto-types-entretien"
+            {...champ('maintenance_type')}
+            placeholder="Tonte, taille, peinture…"
+            className={CHAMP}
+          />
+          <datalist id="carto-types-entretien">
+            {actifs.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </datalist>
+        </div>
+        <div>
+          <label className={LIBELLE}>Date</label>
+          <input type="date" {...champ('performed_date')} className={CHAMP} />
+        </div>
+        <div className="sm:col-span-2">
+          <label className={LIBELLE}>Ce qui a été fait</label>
+          <textarea
+            rows={2}
+            {...champ('description')}
+            placeholder="Banc repeint en vert RAL 6005, deux lattes remplacées…"
+            className={CHAMP}
+          />
+        </div>
+        <div>
+          <label className={LIBELLE}>Par</label>
+          <input
+            type="text"
+            {...champ('performed_by')}
+            placeholder="Régie, entreprise…"
+            className={CHAMP}
+          />
+        </div>
+        <div>
+          <label className={LIBELLE}>Coût (€)</label>
+          <input type="number" step="0.01" {...champ('cost')} className={CHAMP} />
+        </div>
+        <div>
+          <label className={LIBELLE}>État après intervention</label>
+          <select {...champ('condition_state')} className={CHAMP}>
+            {ETATS.map((e) => (
+              <option key={e.valeur} value={e.valeur}>
+                {e.libelle}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className={LIBELLE}>À revoir le</label>
+          <input type="date" {...champ('next_maintenance_date')} className={CHAMP} />
+        </div>
+      </div>
+
+      {/* Dire où cela va se ranger évite la question « pourquoi mon entretien
+          apparaît-il dans la fiche du parc ? » — c'est voulu, et c'est mieux. */}
+      <p className="text-xs text-gray-600 dark:text-gray-400">
+        L’entretien sera rattaché à cet élément et rangé dans les entretiens de «&nbsp;{item.lieu}&nbsp;».
+      </p>
+
+      <div className="flex justify-end gap-2">
+        <Button variant="secondary" onClick={onFini} disabled={enregistrer.isPending}>
+          Annuler
+        </Button>
+        <Button onClick={valider} disabled={enregistrer.isPending}>
+          Consigner
+        </Button>
       </div>
     </div>
   )

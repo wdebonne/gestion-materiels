@@ -7,7 +7,7 @@ import {
   requireSupervisor,
 } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
-import { filtreObjets, REFUS_PORTEE } from '../middleware/objectScope';
+import { filtreObjets, filtreObjetsLies, REFUS_PORTEE } from '../middleware/objectScope';
 import { lireDisponibilite, versColonne } from '../services/disponibiliteParc.service';
 import {
   arbrePosable,
@@ -29,6 +29,7 @@ import {
   prochainNumero,
   rafraichirEcheances,
   REFUS_POSITION,
+  rendezVousIntervention,
   SOURCES_POSITION,
   STATUTS,
   termeValide,
@@ -42,6 +43,10 @@ import {
   type Implantation,
 } from '../services/implantations.service';
 import { FONDS } from '../services/captureCarte.service';
+import {
+  consignerEntretien,
+  REFUS_TYPE_ENTRETIEN,
+} from '../services/entretienEspaceVert.service';
 import { dateOuNull, fusionner, nombreOuNull } from '../utils/valeursSql';
 
 /**
@@ -61,6 +66,13 @@ import { dateOuNull, fusionner, nombreOuNull } from '../utils/valeursSql';
  * deux fois. Les routes d'écriture ne touchent que la voie publique : un arbre
  * se modifie dans la fiche de son espace vert, où l'on voit son plan, ses
  * voisins, ses coûts et ses saisons.
+ *
+ * **Une seule exception, et elle se justifie seule** : consigner un entretien
+ * sur un élément d'espace vert (`POST /element/:id/interventions`). C'est le
+ * geste de terrain — noter devant le banc du square qu'il vient d'être repeint
+ * —, et l'envoyer rouvrir le module des espaces verts pour cela garantit qu'il
+ * ne sera pas fait. L'entretien est écrit là où le module le range, un chantier
+ * de l'espace rattaché à ce seul élément : une mémoire, deux portes d'entrée.
  */
 
 const router = Router();
@@ -456,6 +468,59 @@ router.get('/objets/:objectId', authenticateToken, async (req: AuthRequest, res:
   }
 });
 
+/**
+ * GET /objets/:objectId/entretiens - Tout ce qui a été fait sur ce modèle.
+ *
+ * La question que pose la fiche d'un matériel une fois qu'on sait où sont ses
+ * exemplaires : « quels bancs ont été repeints cette année ? ». Elle ne se lit
+ * ni dans l'onglet Entretiens du parc — qui parle du matériel comme d'un bien
+ * unique, un véhicule, un tracteur — ni exemplaire par exemplaire, ce qui
+ * demanderait d'ouvrir vingt-trois fiches.
+ *
+ * Les deux gisements sont mêlés et remis dans l'ordre du temps : une reprise de
+ * peinture sur un banc de trottoir et une sur un banc du square racontent la
+ * même campagne.
+ */
+router.get('/objets/:objectId/entretiens', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const lignes = await lireImplantations(req, {
+      object_id: req.params.objectId,
+      // Un exemplaire déposé a eu une vie : l'entretien qu'on lui a donné
+      // compte dans ce qu'a coûté le modèle, et disparaître avec lui serait
+      // perdre la moitié de l'histoire.
+      avec_deposes: '1',
+      limit: '5000',
+    });
+    if (lignes === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    await historiques(lignes);
+
+    // Aplati : l'écran veut une frise, pas un arbre. Chaque ligne emporte de
+    // quoi dire sur quel exemplaire elle porte et où il se trouve.
+    const entretiens = lignes.flatMap((ligne) =>
+      (ligne.interventions ?? []).map((intervention: any) => ({
+        ...intervention,
+        implantation_cle: ligne.cle,
+        implantation_label: ligne.label,
+        implantation_source: ligne.source,
+        implantation_lieu: ligne.lieu,
+        implantation_street: ligne.street,
+        green_space_id: ligne.green_space_id,
+        object_id: ligne.object_id,
+      }))
+    );
+
+    entretiens.sort((a, b) =>
+      String(b.performed_on ?? '').localeCompare(String(a.performed_on ?? ''))
+    );
+
+    res.json({ success: true, data: entretiens, total: entretiens.length });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 // ======================== UN ÉLÉMENT D'ESPACE VERT ========================
 
 /**
@@ -487,6 +552,92 @@ router.get('/element/:elementId', authenticateToken, async (req: AuthRequest, re
 
     await historiques([element]);
     res.json({ success: true, data: element });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /element/:elementId/interventions - Consigner un entretien sur un
+ * élément d'espace vert, depuis la carte.
+ *
+ * La seule écriture que la cartographie s'autorise sur un espace vert, et elle
+ * se justifie seule : c'est le geste de terrain. Quelqu'un qui passe devant le
+ * banc du square doit pouvoir noter qu'il vient d'être repeint sans rouvrir le
+ * module des espaces verts, retrouver le parc, ouvrir l'onglet Entretien et
+ * cocher l'élément dans une liste de trois cents.
+ *
+ * Tout le reste — le libellé, la position, les surfaces, les coûts figés, les
+ * saisons — reste modifiable dans la fiche du parc, et là seulement : ce sont
+ * des choses que la carte ne montre pas et ne saurait pas arbitrer.
+ *
+ * L'entretien est écrit **là où le module des espaces verts le range** : un
+ * chantier de l'espace, rattaché à ce seul élément. Il apparaît donc aussi dans
+ * l'onglet Entretien du parc, ce qui est exactement ce qu'on veut — une seule
+ * mémoire, deux portes d'entrée.
+ */
+router.post('/element/:elementId/interventions', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
+  try {
+    // `filtreObjetsLies` et non `filtreObjets` : un élément peut n'être rattaché
+    // à aucun matériel du parc — un arbre existant, saisi à la main — et le
+    // filtrer par la catégorie d'un matériel absent le rendrait introuvable.
+    const portee = await filtreObjetsLies(req, 'o', 'gse.object_id');
+    if (portee === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE });
+    }
+
+    const element = await db.queryOne(
+      `SELECT gse.id, gse.green_space_id, gse.label, gse.condition_state,
+              gs.name as espace_nom
+       FROM green_space_elements gse
+       JOIN green_spaces gs ON gs.id = gse.green_space_id
+       LEFT JOIN objects o ON o.id = gse.object_id
+       WHERE gse.id = ?${portee.sql}`,
+      [req.params.elementId, ...portee.params]
+    );
+    if (!element) {
+      return res.status(404).json({ success: false, message: 'Élément non trouvé' });
+    }
+
+    const nature = texte(req.body.maintenance_type) || texte(req.body.intervention_type);
+    if (!nature) {
+      return res.status(400).json({ success: false, message: REFUS_TYPE_ENTRETIEN });
+    }
+
+    const entretien = await consignerEntretien(
+      element.green_space_id,
+      {
+        ...req.body,
+        maintenance_type: nature,
+        // Le chantier ne touche que cet élément-là : c'est ce qui distingue la
+        // saisie de terrain de la tonte de tout un parc.
+        element_ids: [Number(element.id)],
+      },
+      req.user?.userId
+    );
+
+    // L'entretien dit souvent l'état dans lequel il laisse l'élément : un banc
+    // repeint est « bon », et aller le retaper dans la fiche du parc est un
+    // geste que personne ne fait.
+    if (req.body.condition_state !== undefined) {
+      await db.execute(
+        'UPDATE green_space_elements SET condition_state = ?, updated_at = ? WHERE id = ?',
+        [
+          termeValide(ETATS, req.body.condition_state, element.condition_state),
+          new Date().toISOString(),
+          element.id,
+        ]
+      );
+    }
+
+    await logService.info(
+      'other',
+      `Entretien consigné depuis la carte sur « ${element.label} » (${element.espace_nom})`,
+      { elementId: element.id, greenSpaceId: element.green_space_id, type: nature },
+      { userId: req.user!.userId }
+    );
+
+    res.status(201).json({ success: true, data: entretien });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -895,6 +1046,9 @@ router.post('/:id/interventions', authenticateToken, requireFieldWrite, async (r
     }
 
     await rafraichirEcheances(req.params.id);
+    // Une échéance qui ne figure nulle part avant d'être dépassée n'est pas
+    // une échéance : elle part au calendrier comme celles des espaces verts.
+    await rendezVousIntervention(resultat.lastInsertRowid);
 
     await logService.info(
       'other',
@@ -960,6 +1114,7 @@ router.put('/interventions/:interventionId', authenticateToken, requireFieldWrit
     );
 
     await rafraichirEcheances(existante.item_id);
+    await rendezVousIntervention(req.params.interventionId);
 
     res.json({ success: true, data: await exemplaireComplet(existante.item_id) });
   } catch (error: any) {
@@ -978,6 +1133,9 @@ router.delete('/interventions/:interventionId', authenticateToken, requireSuperv
     await db.execute('DELETE FROM street_furniture_interventions WHERE id = ?', [
       req.params.interventionId,
     ]);
+    // L'ordre compte : la ligne n'existe plus, `rendezVousIntervention` ne
+    // trouvera donc rien à reposer et se contentera d'effacer l'ancien.
+    await rendezVousIntervention(req.params.interventionId);
     await rafraichirEcheances(existante.item_id);
 
     res.json({ success: true, data: await exemplaireComplet(existante.item_id) });

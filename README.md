@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-735-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-763-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -218,19 +218,24 @@ passage la permission de renommer le véhicule.
 - 📊 **Export PDF** : Plan annoté en paysage + légende + tableaux détaillés
 - 🔗 **Intégrations** : Alertes automatiques (cron), événements calendrier, coûts dans le module Suivi
 
-### 🗺️ Cartographie — mobilier de voie publique (Nouveau!)
-- 🪑 **Un modèle au parc, des exemplaires sur la carte** : « Banc modèle Ville » reste **une** fiche dans les catégories ; ses exemplaires se posent depuis la cartographie, **numérotés d'office** — Banc 1, Banc 2, … Banc 23 —, chacun avec sa position, sa rue, son état et son historique. Plus besoin de créer vingt-trois fiches identiques, ni de se contenter d'un champ « quantité : 23 » qui ne dit ni où ils sont ni lequel a été repeint
-- 📍 **Poser en trois questions** — quoi, où, le reste. Le catalogue annonce pour chaque modèle **combien sont déjà posés**, ce qui répond au passage à « l'ai-je déjà créé ? ». « Poser et continuer » enchaîne sur l'exemplaire suivant du même modèle sans repasser par le catalogue
-- 📲 **Deux façons de dire « où »**, également légitimes : le doigt sur la carte au bureau, et **« Utiliser ma position »** sur le trottoir. L'application retient laquelle a parlé et la précision du relevé. Sur la fiche d'un exemplaire, **« Je suis devant »** reprend la position d'un seul geste
+### 🗺️ Cartographie — où est implanté le matériel (Nouveau!)
+- 🪑 **Un modèle au parc, des exemplaires sur le terrain** : « Banc modèle Ville » reste **une** fiche dans les catégories ; ses exemplaires se posent depuis la cartographie, **numérotés d'office** — Banc 1, Banc 2, … Banc 23 —, chacun avec sa position, sa rue, son état et son historique. Plus besoin de créer vingt-trois fiches identiques, ni de se contenter d'un champ « quantité : 23 » qui ne dit ni où ils sont ni lequel a été repeint
+- 🌳 **Voirie et espaces verts sur la même carte** : un banc est un banc, qu'il soit scellé rue de la Gare ou posé dans le square. Les éléments des espaces verts apparaissent à côté du mobilier de voirie, avec les mêmes pictogrammes, la même recherche, les mêmes filtres et le même export. Un sélecteur **« Partout / Voie publique / Espaces verts »** restreint quand on prépare une tournée — le défaut montre tout, parce que c'est la question qu'on se pose
+- 🛰️ **Les éléments posés sur un plan capturé sont situés sur le globe** : le cadrage mémorisé à la capture dit à quel morceau de terrain les pourcentages du plan correspondent. Un arbre pointé sur le plan d'un parc tombe au bon endroit sur la carte de la commune, au mètre près
+- ⚠️ **La carte dit ce qu'elle ne sait pas** : un élément sans plan capturé ni relevé de terrain retombe sur le marqueur de son parc — « quelque part dans ce parc » —, son marqueur est tracé en **pointillés** et sa fiche annonce « position approchée ». Le nombre d'implantations que la carte ne peut pas montrer est affiché en haut de l'écran
+- 📍 **Poser en trois questions** — quoi, où, le reste. Le catalogue annonce pour chaque modèle **combien sont déjà posés**, voirie et espaces verts comptés séparément, ce qui répond au passage à « l'ai-je déjà créé ? ». « Poser et continuer » enchaîne sur l'exemplaire suivant du même modèle sans repasser par le catalogue
+- 📲 **Trois façons de dire « où »** : le doigt sur la carte au bureau, **« Utiliser ma position »** sur le trottoir, et **« Dans une jardinière déjà posée »**. L'application retient laquelle a parlé et la précision du relevé. Sur la fiche d'un exemplaire, **« Je suis devant »** reprend la position d'un seul geste
+- 🌷 **Une jardinière hors espace vert porte ses plantations** : un bac sur un îlot de parking n'est pas un parc, et lui créer une fiche d'espace vert de 0,4 m² avec plan et contour serait absurde. Il est un mobilier comme un autre, et ce qu'il contient aussi — avec une **quantité**, parce que douze géraniums sont une ligne et non douze. Le contenu prend la position et l'adresse du contenant, le suit quand on le déplace, et part avec lui
 - 🏠 **Adresse, rue et quartier lus du point** par géocodage inverse, et modifiables : c'est ce que personne ne tape sur un téléphone, et ce dont l'export « par rue » a besoin
-- 🎨 **Des marqueurs qu'on distingue sans cliquer** : la famille d'un mobilier — éclairage, banc, corbeille, abribus, potelet, passage piéton, jardinière, borne, jeux… — est **devinée du catalogue** et donne sa couleur et son pictogramme au point. Aucun référentiel à garnir avant de poser le premier banc ; une pastille signale ce qui est hors service, en mauvais état ou en retard d'entretien
-- 🔧 **Un historique par exemplaire** : « le banc 23 a été repeint le 14 mars, en vert RAL 6005, par la régie, pour 85 € » se range sur ce banc-là et sur aucun autre. Onze natures d'intervention (pose, contrôle, nettoyage, entretien, peinture, réparation, remplacement de pièce, déplacement, dépose, dégradation, autre). L'état après intervention et la prochaine échéance se saisissent dans le même formulaire
-- 🛰️ **Trois fonds de carte** — photo aérienne IGN, plan IGN, OpenStreetMap —, les mêmes que le plan d'un espace vert. Aucune clé ni compte tiers ; le choix est mémorisé
-- 🔍 **Recherche à deux étages** : le simple tient sur une ligne (un mot, une catégorie, un modèle, un statut) ; l'avancé, replié, ouvre l'état, la rue, la zone, les dates de pose, l'échéance, « en retard », « jamais entretenu », « inclure le déposé » et **« autour de moi »** à 100 m, 300 m ou 1 km. Les rues et zones proposent ce qui a **déjà été saisi**, pour que « rue de la Gare » tapée trois fois ne fasse pas trois rues
-- 📄 **Export PDF paramétrable** : regroupement **par matériel, par rue, par zone, par catégorie, par statut ou par état** ; quinze colonnes à cocher ; la carte telle qu'elle est affichée ; une synthèse par groupe ; l'historique des interventions sous chaque ligne ; titre, mention de service et orientation libres
-- 🔗 **Onglet « Sur la voie publique » sur la fiche d'un matériel** : combien d'exemplaires sont dehors, dans quelle rue, dans quel état, et lequel a été repris récemment — avec un lien qui ouvre la carte filtrée sur ce modèle
+- 🎨 **Des marqueurs qu'on distingue sans cliquer** : la famille — éclairage, banc, corbeille, abribus, potelet, passage piéton, jardinière, arbre, massif, pelouse… — est **devinée du catalogue** et donne sa couleur et son pictogramme au point. Aucun référentiel à garnir avant de poser le premier banc ; une pastille signale ce qui est hors service, en mauvais état ou en retard d'entretien
+- 🔧 **Un historique par exemplaire** : « le banc 23 a été repeint le 14 mars, en vert RAL 6005, par la régie, pour 85 € » se range sur ce banc-là et sur aucun autre. Onze natures d'intervention (pose, contrôle, nettoyage, entretien, peinture, réparation, remplacement de pièce, déplacement, dépose, dégradation, autre). L'état après intervention et la prochaine échéance se saisissent dans le même formulaire. Côté espaces verts, les entretiens rattachés à un élément se lisent au même endroit
+- 🗺️ **Trois fonds de carte** — photo aérienne IGN, plan IGN, OpenStreetMap —, les mêmes que le plan d'un espace vert. Aucune clé ni compte tiers ; le choix est mémorisé
+- 🔍 **Recherche à deux étages** : le simple tient sur une ligne (un mot, une catégorie, un modèle, un gisement, un statut) ; l'avancé, replié, ouvre l'état, l'espace vert, la rue, la zone, les dates de pose, l'échéance, « en retard », « jamais entretenu », « inclure le déposé » et **« autour de moi »** à 100 m, 300 m ou 1 km. Les rues et zones proposent ce qui a **déjà été saisi**, pour que « rue de la Gare » tapée trois fois ne fasse pas trois rues
+- 📄 **Export PDF paramétrable** : regroupement **par matériel, par lieu, par rue, par zone, par catégorie, par statut ou par état** ; seize colonnes à cocher ; la carte telle qu'elle est affichée ; une synthèse par groupe ; l'historique des interventions sous chaque ligne ; titre, mention de service et orientation libres
+- 🔗 **Onglet « Implantations » sur la fiche d'un matériel** : « 5 implantations — 3 sur la voie publique, 2 dans les espaces verts », avec l'état et le dernier entretien de chacune. Chaque ligne renvoie là où elle vit — la carte pour la voirie, la fiche du parc pour un espace vert, ouverte directement sur le bon parc
 - 🔒 **Quel parc se pose sur la voie publique** : réglable par l'administrateur depuis **Paramètres → Cartographie**, par catégorie, sous-catégorie ou matériel — même mécanique que le prêt en manifestation et l'implantation en espace vert, **le réglage le plus précis l'emporte**. Les prestations sont exclues d'office : elles ne se scellent pas dans un trottoir
 - 🗃️ **« Déposé » plutôt que supprimé** : un candélabre retiré sort de la carte et garde son historique — « qu'y avait-il à cet angle avant ? » ne doit pas rester sans réponse
+- ✍️ **On lit partout, on écrit là où ça vit** — à une exception près, et elle se justifie seule : **consigner un entretien** sur un élément de parc se fait depuis la carte, parce que c'est le geste de terrain. Il est rangé là où le module des espaces verts le range — un chantier du parc rattaché à ce seul élément —, apparaît donc aussi dans son onglet Entretien et pose son rendez-vous au calendrier. Le reste — libellé, position, surfaces, coûts figés, saisons — ne se modifie que dans la fiche du parc, qui seule les connaît
 
 ### Plugins intégrés
 - ⛽ **Carburant / Recharges** : Suivi des consommations et coûts, gestion des stations et des bornes, filtrage avancé, pièces jointes (PDF/images). Le module **s'adapte à ce que consomme le matériel** (voir ci-dessous)
@@ -281,8 +286,11 @@ a réellement consommé, chaque écriture portant sa propre nature.
 - 🗓️ Mini-calendrier avec navigation rapide (overlay sur mobile)
 - 🔍 Recherche et filtres par type d'événement
 - 📆 Vues : Mois, Semaine, Jour, Liste (adaptées aux petits écrans)
-- 🔄 **Synchronisation Outlook** via Azure AD *(voir la réserve dans « État réel »)*
-- 🔄 **Synchronisation CalDAV** (Nextcloud, Synology, iCloud, Google)
+- 🔗 **Autant d'agendas externes que nécessaire**, chacun avec ses identifiants : le carnet du service technique, celui des espaces verts, celui du régisseur des salles. CalDAV (Nextcloud, Synology, iCloud, Google) et Outlook via Azure AD
+- 🚦 **Chaque carnet ne reçoit que ce qu'on lui désigne** : par **nature** d'échéance — entretien du parc, contrôle technique, espaces verts, mobilier de voie publique, manifestations, rendez-vous saisis à la main — et par **catégorie** de matériel. Ne rien cocher veut dire « tout ». Sans cet aiguillage, brancher un CalDAV y déversait les tontes de pelouse à côté des contrôles techniques des camions, et la seule réaction possible était de couper
+- ↔️ **Envoi, réception, ou les deux** : les échéances de l'application partent en iCalendar vers le carnet du service concerné, et celui-ci peut en retour faire apparaître ses propres rendez-vous dans le calendrier. Ce qui cesse de correspondre aux règles est **retiré** du carnet distant
+- 👁️ **Un aperçu avant d'envoyer** : combien d'événements partiraient, de quelles natures, et les premiers titres — un aiguillage se règle autrement à l'aveugle
+- 🔒 **La vue du calendrier ne change pas** : elle affiche toutes les échéances que vos droits vous permettent de voir. L'aiguillage décide de ce qui *sort*, jamais de ce qui s'affiche
 - ⚠️ Système d'alertes automatiques
 - 📧 Notifications par email
 - 🔔 Compteur d'alertes en temps réel
@@ -521,7 +529,7 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 40 suites
+├── tests/                  # Tests backend (Jest) — 41 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain
 │   ├── apiTokens.test.ts  # Portée des tokens API
@@ -943,16 +951,33 @@ DELETE /api/green-spaces/snapshots/:sid    # Supprimer un snapshot
 GET    /api/green-spaces/:id/archives      # Archives (snapshots + données source si cloné)
 ```
 
-### Cartographie — mobilier de voie publique
+### Cartographie — implantations
 
 Un **modèle** vit dans le parc (`/api/objects`), ses **exemplaires** vivent ici.
+
+Les routes de **lecture** couvrent les deux gisements — `street_furniture` pour
+la voie publique, `green_space_elements` pour les espaces verts — et rendent une
+forme unique : un banc est un banc, qu'il soit sur un trottoir ou dans un parc.
+Les routes d'**écriture** ne touchent que la voie publique ; un élément d'espace
+vert se modifie dans son module, qui connaît son plan, ses surfaces et ses coûts.
+
 Toutes les lectures appliquent la portée par catégorie du compte ; toutes les
 écritures vérifient en plus que l'administrateur a ouvert ce matériel à la pose.
 
 ```
-GET    /api/mobilier-urbain                # Exemplaires posés, filtrés (voir ci-dessous)
-GET    /api/mobilier-urbain/:id            # Un exemplaire et son historique
-POST   /api/mobilier-urbain                # Poser un exemplaire (modèle + position requis)
+# Lecture — les deux gisements
+GET    /api/mobilier-urbain                # Implantations, filtrées (voir ci-dessous)
+GET    /api/mobilier-urbain/export         # Les mêmes lignes (?avec_interventions=1) pour le PDF
+GET    /api/mobilier-urbain/objets/:objectId # Toutes les implantations d'un modèle, où qu'elles soient
+GET    /api/mobilier-urbain/element/:eid   # Un élément d'espace vert vu de la carte
+POST   /api/mobilier-urbain/element/:eid/interventions  # Consigner un entretien dessus (geste de terrain)
+GET    /api/mobilier-urbain/stats          # Total, voirie, espaces verts, modèles, rues, à reprendre,
+                                           #   en retard, et ce que la carte ne peut pas montrer
+GET    /api/mobilier-urbain/facettes       # Rues, zones, modèles, catégories et espaces verts, avec effectifs
+
+# Écriture — voie publique seulement
+GET    /api/mobilier-urbain/:id            # Un exemplaire, son contenu et son historique
+POST   /api/mobilier-urbain                # Poser (modèle + position, ou modèle + parent_id)
 PUT    /api/mobilier-urbain/:id            # Modifier, déplacement compris (le modèle n'est pas modifiable)
 DELETE /api/mobilier-urbain/:id            # Supprimer (superviseur ; préférer le statut « déposé »)
 
@@ -961,15 +986,9 @@ POST   /api/mobilier-urbain/:id/interventions             # Consigner (état et 
 PUT    /api/mobilier-urbain/interventions/:iid            # Corriger
 DELETE /api/mobilier-urbain/interventions/:iid            # Retirer (superviseur)
 
-# Depuis la fiche d'un matériel du parc
-GET    /api/mobilier-urbain/objets/:objectId # Tous les exemplaires de ce modèle
-
-# Poser, chercher, documenter
-GET    /api/mobilier-urbain/catalogue       # Modèles posables (?q=), avec le nombre déjà posé
-GET    /api/mobilier-urbain/facettes        # Rues, zones, modèles et catégories déjà saisis, avec effectifs
-GET    /api/mobilier-urbain/stats           # Total, en service, à reprendre, en retard, modèles, rues
-GET    /api/mobilier-urbain/export          # Les mêmes lignes (?avec_interventions=1) pour le PDF
-GET    /api/mobilier-urbain/referentiels    # Statuts, états, sources de position, natures d'intervention
+# Poser, documenter
+GET    /api/mobilier-urbain/catalogue       # Modèles posables (?q=), avec le nombre déjà posé et implanté
+GET    /api/mobilier-urbain/referentiels    # Statuts, états, gisements, sources de position, interventions
 GET    /api/mobilier-urbain/fonds           # Fonds de carte (photo IGN, plan IGN, OSM)
 
 # Quel parc se pose sur la voie publique (superviseur)
@@ -980,24 +999,52 @@ PUT    /api/mobilier-urbain/materiel-voie-publique/:niveau/:id   # Régler (cate
 ```
 
 **Filtres de `GET /` et `GET /export`**, tous facultatifs et combinables :
-`q`, `category_id`, `subcategory_id`, `object_id` (listes séparées par des
+`q`, `source` (`voirie` | `espace_vert`, vide pour les deux), `category_id`,
+`subcategory_id`, `object_id`, `green_space_id` (listes séparées par des
 virgules), `status`, `condition_state`, `street`, `sector`,
 `bbox=minLat,minLng,maxLat,maxLng`, `pose_du`, `pose_au`, `echeance_avant`,
 `en_retard=1`, `jamais_entretenu=1`, `avec_deposes=1`, `lat`/`lng`/`rayon`
 (« autour de moi », en mètres — la distance est rendue avec chaque ligne),
 `limit`.
 
-Le mobilier **déposé** est exclu par défaut : il sort de la carte sans perdre son
-historique. `avec_deposes=1` le ramène.
+Chaque ligne porte une `cle` unique tous gisements confondus (`voirie-12`,
+`espace_vert-45`), son `lieu` (« Voie publique » ou le nom du parc) et sa
+`precision_position` : `exacte` (relevée ou pointée), `plan` (calculée depuis le
+cadrage du plan capturé de son espace vert), `espace` (repli sur la position du
+parc — « quelque part par là ») ou `inconnue` (listée, mais pas cartographiable).
+
+**Rue et zone ne concernent que la voie publique** : un élément de parc n'a pas
+de rue, il a un parc. Le mobilier **déposé** est exclu par défaut — il sort de la
+carte sans perdre son historique ; `avec_deposes=1` le ramène.
 
 ### Calendrier
 
 ```
-GET    /api/calendar/events   # Liste des événements
+GET    /api/calendar/events   # Liste des événements (filtrée par les droits du compte)
 POST   /api/calendar/events   # Créer un événement
 PUT    /api/calendar/:id      # Modifier un événement
 DELETE /api/calendar/:id      # Supprimer un événement
+
+# Agendas externes — qui reçoit quoi (superviseur)
+GET    /api/calendar/agendas              # Les carnets configurés, sans leurs secrets
+GET    /api/calendar/agendas/vocabulaire  # Natures d'échéances et sens de synchronisation
+POST   /api/calendar/agendas              # Ajouter un carnet
+PUT    /api/calendar/agendas/:id          # Modifier (un secret en pastilles reste inchangé)
+DELETE /api/calendar/agendas/:id          # Retirer (ce qui est déjà déposé là-bas y reste)
+POST   /api/calendar/agendas/:id/test     # Le serveur répond-il, et accepte-t-il les identifiants ?
+GET    /api/calendar/agendas/:id/apercu   # Ce que l'envoi ferait, sans rien envoyer
+POST   /api/calendar/agendas/:id/sync     # Faire passer ce carnet seul
+
+GET    /api/calendar/sync/status          # État des carnets au dernier passage
+POST   /api/calendar/sync                 # Faire passer tous les carnets actifs
 ```
+
+Un carnet reçoit un événement quand **sa nature** est cochée (ou qu'aucune ne
+l'est) **et** que **la catégorie** du matériel concerné l'est (ou qu'aucune ne
+l'est). Ce qui ne désigne aucun matériel — une tonte de parc, un rendez-vous
+saisi à la main — passe ou non selon `include_uncategorized`. Un événement
+**importé** n'est jamais réexporté : la boucle recopierait indéfiniment les
+mêmes rendez-vous d'un agenda à l'autre.
 
 ### QR Codes
 
@@ -1097,7 +1144,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 |----------|---------------|---------------|
 | **SSO SAML / OIDC / LDAP / Passkey** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local |
 | **2FA, timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Aucun second facteur n'est implémenté ; le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
-| **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse. Il faut viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres à synchroniser. CalDAV n'a pas ce problème |
+| **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | Deux manques. La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse : il faudrait viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres. Et l'**envoi** n'est pas implémenté — y écrire demande le consentement délégué, que le secret d'application ne porte pas. Un carnet Outlook est donc en réception seule, et l'écran le dit. CalDAV n'a ni l'un ni l'autre problème |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 
 ### Limites connues
@@ -1108,6 +1155,8 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - La correspondance des champs à la réception ne couvre pas encore les lignes de matériel : le chemin et les clés se règlent en base (`material_mapping`), pas dans l'écran
 - Un service ne peut être mis en copie que globalement ; il n'existe pas encore de mise en copie d'une personne depuis l'écran (l'API l'accepte : `POST /:id/watchers` avec `user_id`)
 - Une image déposée est systématiquement ré-encodée en JPEG par `normalizeImage()`, mais conserve son extension et son `Content-Type` d'origine : un PNG à fond transparent ressort opaque, sous un nom en `.png` dont le contenu est du JPEG. Sans effet sur un cliché de terrain, visible sur un logo ou un favicon
+- **Réception d'un agenda externe : quatre réserves.** Elle ne ramène que la fenêtre **d'aujourd'hui à +90 jours** — un rendez-vous passé ou lointain ne remonte pas. Elle **remplace** à chaque passage ce qu'elle avait ramené : une modification faite dans l'application sur un événement reçu est écrasée au passage suivant, le carnet d'origine fait foi. Un événement reçu n'est **jamais réexporté** vers un autre carnet, sinon deux agendas se recopieraient indéfiniment. Enfin, un événement reçu n'est rattaché à aucun matériel, donc **aucun filtre de catégorie ne s'y applique** : il est visible par tous les comptes. Brancher un agenda personnel en réception l'expose à toute la commune — préférez un carnet de service
+- L'**envoi** couvre la fenêtre **-30 jours à +365 jours** : assez pour rattraper ce qui vient d'être saisi et couvrir les échéances annuelles, sans repousser dix ans d'historique à chaque passage
 - Le typage du client comporte encore 506 avertissements ESLint, presque tous des `any` — aucune erreur
 
 ## 🛠️ Développement
@@ -1147,7 +1196,7 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-> **735 tests** : 691 backend (40 suites) + 44 frontend (5 suites).
+> **763 tests** : 719 backend (41 suites) + 44 frontend (5 suites).
 >
 > Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas
 > vérifier à l'œil — le reste couvre les routes et les écrans module par module.
