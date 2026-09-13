@@ -51,6 +51,24 @@ describe('Un passe ouvre le site, pas une porte', () => {
     expect(lu.ouvrant).toBeUndefined();
   });
 
+  it.each([
+    ['Clé Centre de loisirs - Pass', 'Centre de loisirs'],
+    ['Centre de loisirs / Passe', 'Centre de loisirs'],
+    ['Gymnase - PASS GENERAL', 'Gymnase'],
+  ])('%s : la seconde partie dit « tout le site », ce n’est pas une porte', (libelle, site) => {
+    // Sans ce cas, le référentiel se retrouvait avec un ouvrant littéralement
+    // appelé « Pass » sous chaque bâtiment.
+    const lu = lireLibelle(libelle);
+    expect(lu).toMatchObject({ site, estPasse: true });
+    expect(lu.ouvrant).toBeUndefined();
+  });
+
+  it('ne confond pas « Passage couvert » avec un passe', () => {
+    const lu = lireLibelle('Clé Mairie - Passage couvert');
+    expect(lu.estPasse).toBe(false);
+    expect(lu.ouvrant).toBe('Passage couvert');
+  });
+
   it('replie une précision dans le nom du site plutôt que d’inventer une porte', () => {
     const lu = lireLibelle('Passe Mairie - bâtiment A');
     expect(lu.estPasse).toBe(true);

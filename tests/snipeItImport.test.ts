@@ -64,8 +64,12 @@ beforeAll(() => {
       etat_retour VARCHAR(50), notes TEXT);
     CREATE TABLE cle_import_snipeit (id INTEGER PRIMARY KEY AUTOINCREMENT, source_type VARCHAR(20),
       source_id INTEGER, object_id INTEGER, site_id INTEGER, imported_at DATETIME, UNIQUE(source_type, source_id));
+    CREATE TABLE plugins (id INTEGER PRIMARY KEY AUTOINCREMENT, slug VARCHAR(100), name VARCHAR(100));
+    CREATE TABLE plugin_categories (id INTEGER PRIMARY KEY AUTOINCREMENT, plugin_id INTEGER,
+      category_id INTEGER, subcategory_id INTEGER);
 
     INSERT INTO users (id, first_name, last_name) VALUES (1, 'Camille', 'Durand');
+    INSERT INTO plugins (id, slug, name) VALUES (11, 'cles', 'Clés et badges');
   `);
 });
 
@@ -206,6 +210,28 @@ describe('Un premier import écrit ce que le plan décrit', () => {
   it('ignore un actif sans numéro d’inventaire, et le dit', () => {
     expect(resultat.trousseauxCrees).toBe(1);
     expect(resultat.ignores.join(' ')).toMatch(/inventaire/i);
+  });
+
+  it('rattache le plugin à la catégorie de destination', () => {
+    // Sans ce rattachement, l'import réussit et l'écran Clés reste vide :
+    // le module ne montre que les catégories désignées par `plugin_categories`,
+    // et une catégorie absente vaut « aucune », non « toutes ».
+    const lien: any = base
+      .prepare('SELECT * FROM plugin_categories WHERE plugin_id = 11 AND category_id = 7')
+      .get();
+    expect(lien).toBeTruthy();
+  });
+
+  it('ne rattache pas deux fois la même catégorie', async () => {
+    const plan = planDEssai();
+    plan.cles = [];
+    plan.trousseaux = [];
+    await appliquer(plan, { ...choixDEssai(plan), cles: [], trousseaux: [] }, 1);
+
+    const liens: any = base
+      .prepare('SELECT COUNT(*) n FROM plugin_categories WHERE plugin_id = 11 AND category_id = 7')
+      .get();
+    expect(liens.n).toBe(1);
   });
 });
 

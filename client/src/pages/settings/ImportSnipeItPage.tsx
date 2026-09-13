@@ -120,16 +120,26 @@ export default function ImportSnipeItPage() {
     queryFn: async () => (await api.get('/categories')).data.categories ?? [],
   })
 
+  const [diagnostic, setDiagnostic] = useState<{
+    ok: boolean
+    message: string
+    urlSuggeree?: string
+  } | null>(null)
+
   const tester = useMutation({
     mutationFn: async () => (await api.post('/cles/snipeit/tester', { baseUrl, token: jeton })).data.data,
     onSuccess: (d) => {
-      if (d.ok) {
+      // Le diagnostic reste sous les yeux : un message d'adresse comporte
+      // plusieurs choses à vérifier, et un toast disparaît avant qu'on ait fini
+      // de les lire.
+      setDiagnostic(d)
+      if (d.ok && !d.urlSuggeree) {
         toast.success(`Connexion établie : ${d.actifs} actif(s), ${d.composants} composant(s)`)
-      } else {
-        toast.error(d.message)
       }
     },
-    onError: () => toast.error('Test impossible'),
+    onError: () => {
+      setDiagnostic({ ok: false, message: 'Le serveur n\'a pas pu joindre Snipe-IT.' })
+    },
   })
 
   const enregistrer = useMutation({
@@ -280,6 +290,26 @@ export default function ImportSnipeItPage() {
               </span>
             )}
           </div>
+
+          {diagnostic && (
+            <Alert type={diagnostic.ok ? (diagnostic.urlSuggeree ? 'warning' : 'success') : 'error'}>
+              <div className="space-y-2">
+                <p>{diagnostic.message}</p>
+                {diagnostic.urlSuggeree && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setBaseUrl(diagnostic.urlSuggeree!)
+                      setDiagnostic(null)
+                    }}
+                  >
+                    Utiliser {diagnostic.urlSuggeree}
+                  </Button>
+                )}
+              </div>
+            </Alert>
+          )}
         </CardBody>
       </Card>
 
