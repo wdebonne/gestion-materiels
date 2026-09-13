@@ -125,6 +125,19 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
+        // Le service worker garde 24 h de réponses `/api/` (NetworkFirst).
+        // Sur la tablette partagée d'un service technique, l'agent suivant
+        // les voyait hors réseau : effacer l'état d'authentification ne
+        // suffit pas, il faut vider le cache avec.
+        if (typeof caches !== 'undefined') {
+          caches
+            .keys()
+            .then((noms) =>
+              Promise.all(noms.filter((nom) => nom.includes('api-cache')).map((nom) => caches.delete(nom)))
+            )
+            .catch(() => {})
+        }
+
         // Le jeton est joint explicitement : l'état est effacé juste après, et
         // l'intercepteur de requête lirait alors un jeton déjà nul. La requête
         // partait sans en-tête d'autorisation, le serveur répondait 401, et la

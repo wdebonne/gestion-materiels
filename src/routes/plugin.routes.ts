@@ -602,6 +602,13 @@ router.get('/:slug/pages/:pageName', authenticateToken, async (req: AuthRequest,
   try {
     const { slug, pageName } = req.params;
 
+    // Comme la route sœur `GET /:slug/pages`, le plugin doit exister en base.
+    // Sans cette vérification, un slug fabriqué descendait jusqu'au disque.
+    const plugin = await db.queryOne('SELECT id FROM plugins WHERE slug = ?', [slug]);
+    if (!plugin) {
+      return res.status(404).json({ success: false, message: 'Plugin non trouvé' });
+    }
+
     const pages = pluginAdvancedService.loadPluginPages(slug);
     const page = pages[pageName];
 
@@ -687,10 +694,14 @@ router.post('/:slug/data/*', authenticateToken, async (req: AuthRequest, res: Re
       return res.status(404).json({ success: false, message: 'Endpoint non trouvé' });
     }
 
-    // Si c'est une action d'upload
+    // Un point d'entrée d'envoi de fichier reste à écrire. Il répondait
+    // `success: true` : le plugin croyait son fichier enregistré alors que
+    // rien n'était écrit. Un refus franc vaut mieux qu'un succès qui ment.
     if (matchedEndpoint.action === 'upload') {
-      // Gérer l'upload de fichier
-      return res.json({ success: true, message: 'Upload endpoint - à implémenter avec multer' });
+      return res.status(501).json({
+        success: false,
+        message: "L'envoi de fichier par un plugin n'est pas encore disponible.",
+      });
     }
 
     const result = await pluginAdvancedService.executePluginQuery(

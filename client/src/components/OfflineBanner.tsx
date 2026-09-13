@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { CloudOff, Upload, WifiOff } from 'lucide-react'
 import { offlineQueue, type QueuedMutation } from '@/lib/offlineQueue'
 import api from '@/lib/api'
+import { useAuthStore } from '@/stores/auth.store'
 import toast from 'react-hot-toast'
 
 /**
@@ -16,9 +17,13 @@ export default function OfflineBanner() {
   const [enAttente, setEnAttente] = useState(0)
   const [envoiEnCours, setEnvoiEnCours] = useState(false)
 
+  // Les saisies d'un autre agent ne sont ni comptées ni rejouées ici :
+  // elles repartiront sous son propre compte, à sa prochaine session.
+  const utilisateurId = useAuthStore((etat) => etat.user?.id)
+
   const rafraichir = useCallback(async () => {
-    setEnAttente(await offlineQueue.count())
-  }, [])
+    setEnAttente(await offlineQueue.count(utilisateurId))
+  }, [utilisateurId])
 
   const envoyer = useCallback(
     async (saisie: QueuedMutation) => {
@@ -35,7 +40,7 @@ export default function OfflineBanner() {
     if (envoiEnCours) return
     setEnvoiEnCours(true)
     try {
-      const bilan = await offlineQueue.flush(envoyer)
+      const bilan = await offlineQueue.flush(envoyer, utilisateurId)
 
       if (bilan.ok > 0) {
         toast.success(
@@ -54,7 +59,19 @@ export default function OfflineBanner() {
       setEnvoiEnCours(false)
       await rafraichir()
     }
-  }, [envoiEnCours, envoyer, rafraichir])
+  }, [envoiEnCours, envoyer, rafraichir, utilisateurId])
+
+  // `online` ne se déclenche qu'au changement d'état : rouvrir l'application
+  // déjà connectée, la file pleine, n'envoyait rien tant que l'agent ne
+  // touchait pas le bouton. La référence garantit un seul essai au montage —
+  // sans elle, `vider` changeant d'identité à chaque envoi, l'effet se
+  // redéclencherait en boucle.
+  const essaiAuMontage = useRef(false)
+  useEffect(() => {
+    if (essaiAuMontage.current) return
+    essaiAuMontage.current = true
+    if (typeof navigator === 'undefined' || navigator.onLine) vider()
+  }, [vider])
 
   useEffect(() => {
     rafraichir()

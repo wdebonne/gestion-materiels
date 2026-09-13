@@ -9,6 +9,15 @@ export interface JwtPayload {
   userId: number;
   email: string;
   role: string;
+  /**
+   * Version des jetons du compte au moment de l'émission.
+   *
+   * Un JWT vaut par lui-même : rien ne permettait d'en couper un avant son
+   * expiration. Incrémenter `token_version` en base périme d'un coup tous
+   * les jetons du compte. Absente des jetons émis avant cette version, elle
+   * est alors lue comme 0 — personne n'est déconnecté par la mise à jour.
+   */
+  tv?: number;
 }
 
 export interface AuthRequest extends Request {
@@ -38,7 +47,7 @@ export const authenticateToken = async (
     
     // Vérifier que l'utilisateur existe toujours et est actif
     const user = await db.queryOne(
-      'SELECT id, email, role, is_active FROM users WHERE id = ?',
+      'SELECT id, email, role, is_active, token_version FROM users WHERE id = ?',
       [decoded.userId]
     );
 
@@ -47,11 +56,26 @@ export const authenticateToken = async (
       return;
     }
 
+    // Session révoquée : le compte a changé de version depuis que ce jeton
+    // a été émis. C'est le seul moyen de couper une session en cours sans
+    // désactiver le compte, donc sans empêcher la personne de travailler.
+    if ((decoded.tv ?? 0) !== (user.token_version ?? 0)) {
+      res.status(401).json({
+        success: false,
+        message: 'Session expirée. Veuillez vous reconnecter.',
+      });
+      return;
+    }
+
     // Le rôle vient d'être établi : c'est ici, et nulle part ailleurs, qu'un
     // compte cloisonné doit être arrêté sur un chemin hors de son périmètre.
     if (refuserSiCloisonne(req, res, user.role)) return;
 
-    req.user = decoded;
+    // Le rôle vient de la base, pas du jeton. Recopier `decoded` tel quel
+    // laissait un compte rétrogradé garder ses anciens droits jusqu'à
+    // expiration — sept jours avec `JWT_EXPIRES_IN=7d`. La désactivation,
+    // elle, était bien immédiate : seul le rôle traînait.
+    req.user = { ...decoded, role: user.role };
     next();
   } catch (error) {
     res.status(403).json({ success: false, message: 'Token invalide ou expiré' });

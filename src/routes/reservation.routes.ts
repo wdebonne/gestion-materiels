@@ -210,7 +210,10 @@ router.post('/',
       // Un agent ne réserve que pour lui-même : il ne peut pas engager
       // le matériel au nom d'un collègue.
       const isSupervisor = req.user!.role === 'admin' || req.user!.role === 'supervisor';
-      const userId = isSupervisor ? req.body.userId : req.user!.userId;
+      // `userId` est déclaré optionnel par le validateur. Sans le repli, un
+      // superviseur qui réserve pour lui-même envoyait `undefined` en base et
+      // recevait une 500 (`NOT NULL constraint failed: reservations.user_id`).
+      const userId = isSupervisor ? (req.body.userId ?? req.user!.userId) : req.user!.userId;
 
       // Vérifier que l'objet existe
       const object = await db.queryOne('SELECT id, name FROM objects WHERE id = ?', [objectId]);

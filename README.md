@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-763-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-799-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -1196,7 +1196,7 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-> **763 tests** : 719 backend (41 suites) + 44 frontend (5 suites).
+> **799 tests** : 755 backend (43 suites) + 44 frontend (5 suites).
 >
 > Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas
 > vérifier à l'œil — le reste couvre les routes et les écrans module par module.
@@ -1213,6 +1213,8 @@ npm run test:run      # Exécution unique
 > | `geometriePlan.test.ts` | Aires du plan annoté : un pourcent vertical ne mesure pas comme un pourcent horizontal, et l'oublier double la surface |
 > | `captureCarte.test.ts` | Échelle d'un plan capturé : elle est calculée et non relevée, donc une formule fausse passerait inaperçue jusqu'à la commande d'enrobé |
 > | `manifestationApprobations.test.ts` | Qui approuve quoi, dans quel ordre, et ce que change une délégation |
+> | `tourneeManifestation.test.ts` | Ce qu'un agent voit en arrivant le matin : quel jour un arrêt est dû, ce qu'il reste à charger ou à rentrer, ce qui est en retard. Un « reste » mal compté fait ressortir chaque matin un dossier clos, ou fait disparaître trente chaises encore dehors |
+> | `saisieTerrainDroits.test.ts` | Le partage entre constater et arbitrer : l'agent pointe ce qui part et ce qui revient, le superviseur seul corrige la demande et prononce les statuts. Une garde relâchée par mégarde ne se verrait pas à l'œil dans deux mille lignes de routes |
 > | `batchQuery.test.ts` | Chargement groupé : regroupement, découpage en tranches |
 > | `settingsColumns.test.ts` | Aucune requête n'interroge `settings` avec de mauvais noms de colonnes |
 > | `valeursSql.test.ts` | Le vide d'un formulaire devient `NULL`, et « ne rien dire » ne vaut pas « effacer » |

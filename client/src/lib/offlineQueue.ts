@@ -19,6 +19,15 @@ export interface QueuedMutation {
   body: unknown
   /** Ce que l'agent reconnaîtra : « Plein — Tracteur Kubota ». */
   label: string
+  /**
+   * Qui a saisi. Sur une tablette partagée, l'agent A pouvait saisir un
+   * plein hors réseau, fermer sa session, et voir son relevé rejoué avec
+   * le jeton de l'agent B — donc porté au compte de B.
+   *
+   * Absent des saisies mises en file avant cette version : elles restent
+   * rejouables par le premier venu, plutôt que d'être perdues.
+   */
+  userId?: number
   createdAt: number
   attempts: number
 }
@@ -123,7 +132,13 @@ export const offlineQueue = {
     return entree
   },
 
-  async list(): Promise<QueuedMutation[]> {
+  /**
+   * Les saisies en attente, la plus ancienne d'abord.
+   *
+   * `userId` restreint aux saisies de cette personne — et à celles d'avant
+   * la version qui a introduit le champ, qui n'appartiennent à personne.
+   */
+  async list(userId?: number): Promise<QueuedMutation[]> {
     let entrees: QueuedMutation[] = []
     if (indexedDBDisponible()) {
       try {
@@ -132,12 +147,14 @@ export const offlineQueue = {
         entrees = []
       }
     }
-    const toutes = [...entrees, ...memoire.values()]
+    const toutes = [...entrees, ...memoire.values()].filter(
+      (saisie) => userId === undefined || saisie.userId === undefined || saisie.userId === userId
+    )
     return toutes.sort((a, b) => a.createdAt - b.createdAt)
   },
 
-  async count(): Promise<number> {
-    return (await offlineQueue.list()).length
+  async count(userId?: number): Promise<number> {
+    return (await offlineQueue.list(userId)).length
   },
 
   async remove(id: string): Promise<void> {
@@ -172,9 +189,10 @@ export const offlineQueue = {
    * refusée définitivement (4xx) : la rejouer indéfiniment ne servirait à rien.
    */
   async flush(
-    envoyer: (saisie: QueuedMutation) => Promise<{ status: number }>
+    envoyer: (saisie: QueuedMutation) => Promise<{ status: number }>,
+    userId?: number
   ): Promise<{ ok: number; abandonnees: QueuedMutation[]; restantes: number }> {
-    const enAttente = await offlineQueue.list()
+    const enAttente = await offlineQueue.list(userId)
     let ok = 0
     const abandonnees: QueuedMutation[] = []
 
@@ -215,6 +233,6 @@ export const offlineQueue = {
       }
     }
 
-    return { ok, abandonnees, restantes: await offlineQueue.count() }
+    return { ok, abandonnees, restantes: await offlineQueue.count(userId) }
   },
 }

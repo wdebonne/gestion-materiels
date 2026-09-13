@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
 import { ROLES, isRole } from '../config/roles';
 import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.service';
 import { notifierWebhooks } from '../services/webhook.service';
@@ -59,6 +59,79 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
     });
   } catch (error: any) {
     console.error('Erreur get users:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * GET /api/users/annuaire - Liste réduite, pour désigner quelqu'un.
+ *
+ * L'écran des réservations demande à qui prêter le matériel, et remplissait
+ * sa liste avec `GET /api/users`, réservé à l'administrateur. Un superviseur
+ * recevait donc un 403 silencieux, une liste vide, et un bouton « Créer »
+ * définitivement désactivé : il ne pouvait enregistrer aucune réservation.
+ *
+ * D'où cette vue étroite — de quoi afficher un nom, rien de plus. Ni rôle, ni
+ * état du compte, ni dernière connexion : désigner un emprunteur n'exige pas
+ * de connaître l'organigramme.
+ */
+router.get('/annuaire', authenticateToken, requireSupervisor, async (_req: AuthRequest, res: Response) => {
+  try {
+    const utilisateurs = await db.query(
+      `SELECT id, first_name, last_name FROM users
+       WHERE is_active = 1 AND anonymized_at IS NULL
+       ORDER BY last_name, first_name`
+    );
+
+    res.json({
+      success: true,
+      users: utilisateurs.map((u: any) => ({
+        id: u.id,
+        firstName: u.first_name,
+        lastName: u.last_name,
+      })),
+    });
+  } catch (error: any) {
+    console.error('Erreur annuaire utilisateurs:', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * POST /api/users/:id/revoke-sessions - Couper les sessions d'un compte.
+ *
+ * Le seul recours était jusqu'ici de désactiver le compte, donc d'empêcher
+ * la personne de travailler — puis de le réactiver, ce qui rouvrait la même
+ * faille, l'ancien jeton redevenant valable. Ici le compte reste actif : il
+ * faut simplement se reconnecter.
+ */
+router.post('/:id/revoke-sessions', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const compte = await db.queryOne('SELECT id, email FROM users WHERE id = ?', [id]);
+    if (!compte) {
+      return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
+    }
+
+    await db.execute(
+      'UPDATE users SET token_version = token_version + 1, updated_at = ? WHERE id = ?',
+      [new Date().toISOString(), id]
+    );
+
+    await logService.warning('auth', `Sessions révoquées pour ${compte.email}`, {}, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email,
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.json({
+      success: true,
+      message: `Les sessions de ${compte.email} ont été fermées.`,
+    });
+  } catch (error: any) {
+    console.error('Erreur revoke-sessions:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });

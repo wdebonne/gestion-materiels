@@ -45,6 +45,7 @@ import {
   notifierChangementMateriel,
   redeposerSuivi,
 } from '../services/manifestationNotify.service';
+import { tourneeDe } from '../services/tourneeManifestation.service';
 import { notifierWebhooks } from '../services/webhook.service';
 import {
   aujourdHui,
@@ -452,6 +453,36 @@ router.get('/sorties', authenticateToken, async (req: AuthRequest, res: Response
     }
 
     res.json({ success: true, data: lignes, periode: { debut, fin } });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * GET /tournee - Ce qui part et ce qui rentre aujourd'hui.
+ *
+ * Les sorties répondent à « où est le matériel ». La tournée répond à « qu'est-ce
+ * que je fais ce matin » : un ordre de passage, un contact par arrêt, et les deux
+ * gisements de matériel réunis sous la même forme.
+ *
+ * `jusqu_au` permet de préparer la veille pour le lendemain. Les retards, eux,
+ * remontent toujours : c'est ce qu'on a oublié d'aller rechercher qui fausse un
+ * stock, pas ce qu'on va livrer tout à l'heure.
+ *
+ * `manifestation` réduit la tournée à un seul dossier, sans condition de date :
+ * c'est ce que demande l'écran de saisie ouvert depuis la liste, où l'on vient
+ * pointer une livraison prévue dans trois semaines.
+ */
+router.get('/tournee', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const tournee = await tourneeDe(req, {
+      jusqu_au: req.query.jusqu_au,
+      manifestation: req.query.manifestation,
+    });
+    if (tournee === null) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+    res.json({ success: true, data: tournee });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -1087,7 +1118,11 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
         }
       }
 
-      // Si on passe en "delivered", enregistrer les quantités livrées depuis les quantités demandées si pas déjà fait
+      // Marquer une manifestation livrée vaut constat de sortie pour ce qui
+      // n'a pas encore été saisi ligne à ligne. Les deux gisements sont traités,
+      // et non le seul stock : le parc restait à zéro livré, si bien qu'un
+      // camion physiquement parti n'apparaissait nulle part comme sorti — et que
+      // la tournée du lendemain n'avait rien à aller rechercher.
       if (status === 'delivered') {
         const materials = await db.query(
           'SELECT * FROM manifestation_materials WHERE manifestation_id = ?', [req.params.id]
@@ -1100,6 +1135,12 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
             );
           }
         }
+        await db.execute(
+          `UPDATE manifestation_items
+           SET quantity_delivered = CASE WHEN quantity IS NULL OR quantity < 1 THEN 1 ELSE quantity END
+           WHERE manifestation_id = ? AND COALESCE(quantity_delivered, 0) = 0`,
+          [req.params.id]
+        );
       }
 
       // CURRENT_TIMESTAMP plutôt que datetime('now') : les deux moteurs le
@@ -1141,6 +1182,21 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
   }
 );
 
+/**
+ * L'agent de terrain constate, il n'arbitre pas.
+ *
+ * Il dit ce qui est parti, ce qui est revenu, ce qui s'est cassé — le réel, dont
+ * il est le seul témoin. Il ne dit pas ce qui *aurait dû* partir : ramener une
+ * demande de dix tables à huit est une décision qui engage la collectivité vis-à-vis
+ * du demandeur, et elle revient à qui a validé la manifestation.
+ *
+ * Sans ce partage, ouvrir la saisie aux agents leur donnait au passage le droit
+ * de réécrire la demande — et l'écart entre le promis et le livré, qui est
+ * précisément ce qu'on veut pouvoir constater, disparaissait de lui-même.
+ */
+const peutCorrigerLaDemande = (role: string | undefined): boolean =>
+  role === 'admin' || role === 'supervisor';
+
 // PUT /:id/materials - Quantités réellement demandées, livrées, récupérées, perdues
 //
 // C'est ici que le stock cesse d'être théorique. Un agent revient de terrain
@@ -1148,8 +1204,16 @@ router.put('/:id/status', authenticateToken, requireSupervisor,
 // 11 revenues, 1 cassée ». La casse et le vol diminuent le stock physique : sans
 // cette écriture, le total resterait celui de l'achat et s'éloignerait un peu
 // plus du réel à chaque manifestation.
-router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.put('/:id/materials', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
+    // La saisie n'était ouverte qu'aux superviseurs, qui voient tout : le
+    // périmètre du compte n'avait donc jamais à être vérifié ici. Un agent, lui,
+    // ne voit qu'une partie des manifestations — écrire sur les autres lui
+    // serait refusé en lecture et accordé en écriture.
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
     const { materials } = req.body;
     if (!materials || !Array.isArray(materials)) {
       return res.status(400).json({ success: false, message: 'Données de matériaux requises' });
@@ -1178,7 +1242,9 @@ router.put('/:id/materials', authenticateToken, requireSupervisor, async (req: A
       const avant = parLigne.get(mat.id);
       if (!avant) continue;
 
-      const demande = mat.quantity_requested ?? avant.quantity_requested;
+      const demande = peutCorrigerLaDemande(req.user!.role)
+        ? mat.quantity_requested ?? avant.quantity_requested
+        : avant.quantity_requested;
       const livre = mat.quantity_delivered ?? avant.quantity_delivered;
       const recupere = mat.quantity_recovered ?? avant.quantity_recovered;
       const perdu = mat.quantity_lost ?? avant.quantity_lost ?? 0;
@@ -1648,9 +1714,17 @@ router.put('/:id/objects', authenticateToken, requireSupervisor, async (req: Aut
  * `delivered_quantity` et `returned_quantity` — là où un exemplaire se contente
  * d'un oui ou d'un non. Dire « revenu » d'un lot dont il manque deux chaises
  * ferait rentrer au stock du matériel qui n'existe plus.
+ *
+ * Ouverte à l'agent de terrain sans restriction supplémentaire : cette route
+ * n'écrit que le constat — sorti, revenu, état — et jamais `quantity`, qui porte
+ * la demande. C'est `PUT /:id/objects` qui la modifie, et lui reste au superviseur.
  */
-router.put('/:id/objects/:itemId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.put('/:id/objects/:itemId', authenticateToken, requireFieldWrite, async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await peutVoirManifestation(req, req.params.id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
     const { delivered, returned, delivered_quantity, returned_quantity, return_state, notes } =
       req.body;
 

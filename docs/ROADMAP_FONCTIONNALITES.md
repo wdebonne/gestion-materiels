@@ -13,7 +13,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
-| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 763 tests (719 backend, 44 frontend) |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 799 tests (755 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
-| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 ; tournée du jour et saisie de terrain ouverte à l'agent — septembre 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | Implantation depuis le parc à prix figé et plan annoté manipulable — septembre 2026 |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -217,14 +217,23 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue, une perte le diminue
   - **Réception de demandes** : dépôt signé depuis une application de formulaires, correspondance des champs configurable
   - **Matériel unique** : un véhicule ou un matériel identifié du parc se rattache à une manifestation, sans passer par une quantité
+  - **Tournée du jour** : ce qui part et ce qui rentre, par arrêt, avec les retards en tête et la saisie en un geste
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
   - **Filtres** : Par statut, dates, recherche textuelle
   - **Stats dashboard** : Total, à venir, en livraison, archivées, articles en stock
 - **Tables BDD :** `manifestation_stock`, `manifestations`, `manifestation_materials`, `manifestation_history`, `manifestation_intake_sources`, `manifestation_intake_requests`, `manifestation_stock_aliases`, `manifestation_stock_movements`, `services`, `service_categories`, `service_members`, `manifestation_approvals`, `manifestation_messages`, `manifestation_watchers`, `manifestation_export_profiles`, `manifestation_items`, `notification_preferences`, `service_delegations`, `manifestation_documents`, `manifestation_doc_types`, `service_templates`
-- **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, stats, disponibilité
-- **Frontend :** 3 onglets (Manifestations, Stock, Archives), modales détail et livraison, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
+- **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, tournée du jour, stats, disponibilité
+- **Frontend :** 4 onglets (Tournée du jour, Manifestations, Stock, Archives), modales détail et saisie de terrain, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
 
+> ✅ **Tournée du jour et saisie de terrain, septembre 2026 :** livrer et récupérer était une affaire de superviseur — toutes les écritures du module étaient gardées par `requireSupervisor`, y compris le constat. Le rôle `agent`, dont la description dit pourtant « saisit sur le terrain », notait ses chiffres sur un papier que quelqu'un d'autre ressaisissait le soir.
+>
+> Le partage retenu : **l'agent constate, il n'arbitre pas.** Livré, récupéré, cassé, état au retour lui reviennent ; ramener une demande de dix tables à huit engage la collectivité vis-à-vis du demandeur, et prononcer une livraison est un acte administratif — les deux restent au superviseur. Les deux routes ouvertes vérifient désormais le périmètre du compte, ce dont elles se dispensaient tant qu'un superviseur seul les empruntait.
+>
+> L'écran répond à une autre question que la liste : non pas « où en est ce dossier », mais « qu'est-ce que je fais ce matin ». Un arrêt porte son lieu, son horaire, son contact appelable d'un doigt, et **réunit les deux gisements de matériel** — celui qui charge ne sait pas laquelle des deux tables porte ses chaises. « Tout est parti » et « Tout est rentré » couvrent neuf cas sur dix ; l'écart ne se saisit que quand il existe. Le retard ne disparaît jamais de la liste : c'est ce silence-là qui fait les stocks faux.
+>
+> ⚠️ **Trois écrans mentaient au passage :** déplier une manifestation sans matériel de stock n'affichait rien du tout — la flèche tournait, l'écran ne bougeait pas ; les totaux « Demandé / Livré / Récupéré » ignoraient le parc, si bien qu'une manifestation retenant une remorque et cinquante chaises semblait vide ; et marquer une manifestation livrée ne sortait que le stock, jamais les exemplaires du parc — un camion physiquement parti n'apparaissait nulle part comme sorti.
+>
 > ✅ **Complété en août 2026 :** chaque action est consignée dans `manifestation_history` — création, modification, validation, livraison, récupération, mise à jour des quantités — avec son auteur, sa date et un commentaire facultatif. La timeline s'affiche dans le détail, et `GET /:id/history` la sert seule.
 >
 > La fiche PDF est branchée. Le composant existait sans être importé nulle part, et il était écrit contre une forme de données qui n'a jamais existé : `name` au lieu de `title`, `items` au lieu de `materials`, `res.data` au lieu de `res.data.data`, des statuts en français là où le serveur en stocke d'autres. Chaque champ serait ressorti vide et la génération se serait arrêtée sur `detail.name.replace`.

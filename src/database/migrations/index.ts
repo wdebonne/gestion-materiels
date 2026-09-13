@@ -19,6 +19,9 @@ import cadrageDuPlan from './017_cadrage_du_plan';
 import mobilierUrbain from './018_mobilier_urbain';
 import jardinieresHorsParc from './019_jardinieres_hors_parc';
 import agendasExternes from './020_agendas_externes';
+import liensSauvegarde from './021_liens_sauvegarde';
+import revocationSessions from './022_revocation_sessions';
+import alertesEnDouble from './023_alertes_en_double';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -50,6 +53,9 @@ export const MIGRATIONS: readonly Migration[] = [
   mobilierUrbain,
   jardinieresHorsParc,
   agendasExternes,
+  liensSauvegarde,
+  revocationSessions,
+  alertesEnDouble,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

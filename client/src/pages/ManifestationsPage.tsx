@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
 import {
   PartyPopper, Plus, Search, Package, Archive, FileDown, Truck, RotateCcw,
-  Check, X, Edit, Trash2, Eye, ChevronDown, ChevronUp, ChevronsUpDown, Filter, Calendar, MapPin, Tag
+  Check, X, Edit, Trash2, Eye, ChevronDown, ChevronUp, ChevronsUpDown, Filter, Calendar, MapPin, Tag,
+  ClipboardList
 } from 'lucide-react'
 import {
   Button, Input, Select, Modal, ModalBody, ModalFooter,
@@ -14,6 +15,8 @@ import ManifestationPDFExport from '@/components/ManifestationPDFExport'
 import ManifestationSuivi from '@/components/ManifestationSuivi'
 import ManifestationDocuments from '@/components/ManifestationDocuments'
 import ManifestationObjetsParc, { type ObjetChoisi } from '@/components/ManifestationObjetsParc'
+import ManifestationTournee from '@/components/ManifestationTournee'
+import { SaisieTerrainDeLaManifestation } from '@/components/SaisieTerrain'
 import { objetManifestationApi, documentManifestationApi, suiviApi,
   type CoutManifestation,
   type LigneCout,
@@ -28,6 +31,7 @@ import {
   type Manifestation,
   type ManifestationStockItem as StockItem,
   type ManifestationMaterial as ManifMaterial,
+  type ObjetManifestation,
   type ServiceBref
 } from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -117,7 +121,13 @@ export default function ManifestationsPage() {
   const { user } = useAuthStore()
   const queryClient = useQueryClient()
   const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor'
-  const [activeTab, setActiveTab] = useState('manifestations')
+  // Constater ce qui part et ce qui rentre est le métier de l'agent de terrain :
+  // le lui refuser obligeait un superviseur à ressaisir le soir ce qu'un autre
+  // avait vu le matin — et c'est à la ressaisie que les quantités se perdent.
+  const { canFieldWrite } = usePermissions()
+  // La tournée est ce qu'on vient faire quand on prend son service : elle
+  // s'ouvre la première pour qui n'a pas la main sur les dossiers.
+  const [activeTab, setActiveTab] = useState(isSupervisor ? 'manifestations' : 'tournee')
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [showArchived, _setShowArchived] = useState(false)
@@ -267,25 +277,24 @@ export default function ManifestationsPage() {
   })
 
   const statusMutation = useMutation({
-    mutationFn: ({ id, status }: { id: number; status: string }) =>
+    /**
+     * `silencieux` laisse l'appelant annoncer lui-même le résultat.
+     *
+     * La tournée enchaîne le constat et la transition en un seul geste : deux
+     * messages de succès pour un seul clic font douter de ce qui s'est passé, et
+     * « Statut mis à jour » en dit moins que « Manifestation livrée ».
+     */
+    mutationFn: ({ id, status }: { id: number; status: string; silencieux?: boolean }) =>
       manifestationApi.updateStatus(id, status),
-    onSuccess: () => {
+    onSuccess: (_reponse, variables) => {
       queryClient.invalidateQueries({ queryKey: ['manifestations'] })
       queryClient.invalidateQueries({ queryKey: ['manifestation-stats'] })
+      // La tournée se range par statut : valider une manifestation la fait
+      // passer de « à livrer » à « à récupérer ». Sans cette relecture, l'arrêt
+      // restait affiché là où il n'était plus, et l'agent le repointait.
+      queryClient.invalidateQueries({ queryKey: ['tournee'] })
       rafraichirCatalogue()
-      toast.success('Statut mis à jour')
-    },
-    onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
-  })
-
-  const updateMaterialsMutation = useMutation({
-    mutationFn: ({ id, materials }: { id: number; materials: any[] }) =>
-      manifestationApi.updateMaterials(id, materials),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['manifestations'] })
-      rafraichirCatalogue()
-      setShowDeliveryModal(null)
-      toast.success('Matériel mis à jour')
+      if (!variables.silencieux) toast.success('Statut mis à jour')
     },
     onError: (err: any) => toast.error(err.response?.data?.message || 'Erreur')
   })
@@ -476,12 +485,21 @@ export default function ManifestationsPage() {
 
       {/* Onglets */}
       <Tabs value={activeTab} onChange={setActiveTab}>
+        <Tab value="tournee" label="Tournée du jour" icon={<ClipboardList className="w-4 h-4" />} />
         <Tab value="manifestations" label="Manifestations" icon={<PartyPopper className="w-4 h-4" />} />
         <Tab value="stock" label="Stock matériel" icon={<Package className="w-4 h-4" />} />
         <Tab value="archives" label="Archives" icon={<Archive className="w-4 h-4" />} />
       </Tabs>
 
       {/* Contenu des onglets */}
+      {activeTab === 'tournee' && (
+        <ManifestationTournee
+          modifiable={canFieldWrite}
+          peutValider={isSupervisor}
+          onStatut={(id, status) => statusMutation.mutateAsync({ id, status, silencieux: true })}
+        />
+      )}
+
       {activeTab === 'manifestations' && (
         <ManifestationsTab
           manifestations={manifestations} isLoading={isLoading} isSupervisor={isSupervisor}
@@ -489,6 +507,7 @@ export default function ManifestationsPage() {
           showFilters={showFilters} setShowFilters={setShowFilters}
           dateFrom={dateFrom} setDateFrom={setDateFrom} dateTo={dateTo} setDateTo={setDateTo}
           onEdit={openEditManif} onView={setShowDetailModal} onDelivery={setShowDeliveryModal}
+          peutSaisir={canFieldWrite}
           onStatusChange={(id: number, status: string) => statusMutation.mutate({ id, status })}
           onDelete={(id: number, name: string) => setDeleteConfirm({ type: 'manif', id, name })}
         />
@@ -760,13 +779,12 @@ export default function ManifestationsPage() {
         <ManifDetailModal manif={showDetailModal} onClose={() => setShowDetailModal(null)} />
       )}
 
-      {/* Modale gestion livraison / récupération */}
+      {/* Saisie de ce qui part et de ce qui rentre, la même que dans la tournée. */}
       {showDeliveryModal && (
-        <DeliveryModal
-          manif={showDeliveryModal}
+        <SaisieTerrainDeLaManifestation
+          manifestationId={showDeliveryModal.id}
+          modifiable={canFieldWrite}
           onClose={() => setShowDeliveryModal(null)}
-          onSave={(materials) => updateMaterialsMutation.mutate({ id: showDeliveryModal.id, materials })}
-          loading={updateMaterialsMutation.isPending}
         />
       )}
 
@@ -841,7 +859,7 @@ function MaterialFilter({ stock, stockCategories, stockTypes, materials, onAdd }
 // ==================== ONGLET MANIFESTATIONS ====================
 
 function ManifestationsTab({
-  manifestations, isLoading, isSupervisor, search, setSearch,
+  manifestations, isLoading, isSupervisor, peutSaisir, search, setSearch,
   statusFilter, setStatusFilter, showFilters, setShowFilters,
   dateFrom, setDateFrom, dateTo, setDateTo,
   onEdit, onView, onDelivery, onStatusChange, onDelete
@@ -894,7 +912,7 @@ function ManifestationsTab({
       ) : (
         <div className="space-y-3">
           {manifestations.map((m: Manifestation) => (
-            <ManifCard key={m.id} manif={m} isSupervisor={isSupervisor}
+            <ManifCard key={m.id} manif={m} isSupervisor={isSupervisor} peutSaisir={peutSaisir}
               onEdit={onEdit} onView={onView} onDelivery={onDelivery}
               onStatusChange={onStatusChange} onDelete={onDelete} />
           ))}
@@ -906,13 +924,28 @@ function ManifestationsTab({
 
 // ==================== CARTE MANIFESTATION ====================
 
-function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatusChange, onDelete }: any) {
+function ManifCard({ manif: m, isSupervisor, peutSaisir, onEdit, onView, onDelivery, onStatusChange, onDelete }: any) {
   const [expanded, setExpanded] = useState(false)
   const formatD = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR') : ''
 
-  const totalRequested = m.materials?.reduce((s: number, mat: ManifMaterial) => s + mat.quantity_requested, 0) || 0
-  const totalDelivered = m.materials?.reduce((s: number, mat: ManifMaterial) => s + mat.quantity_delivered, 0) || 0
-  const totalRecovered = m.materials?.reduce((s: number, mat: ManifMaterial) => s + mat.quantity_recovered, 0) || 0
+  const objets: ObjetManifestation[] = m.objects ?? []
+
+  // Les deux gisements comptés ensemble. Le stock seul faisait annoncer « aucun
+  // matériel » sur une manifestation qui retenait une remorque et cinquante
+  // chaises du parc — et la carte semblait alors décrire un dossier vide.
+  const somme = (champ: 'quantity_requested' | 'quantity_delivered' | 'quantity_recovered') =>
+    (m.materials ?? []).reduce((t: number, mat: ManifMaterial) => t + (mat[champ] ?? 0), 0)
+  const sommeParc = (champ: 'quantity' | 'quantity_delivered' | 'quantity_returned') =>
+    objets.reduce((t: number, o: ObjetManifestation) => t + (Number(o[champ]) || 0), 0)
+
+  const totalRequested = somme('quantity_requested') + sommeParc('quantity')
+  const totalDelivered = somme('quantity_delivered') + sommeParc('quantity_delivered')
+  const totalRecovered = somme('quantity_recovered') + sommeParc('quantity_returned')
+  const aDuMateriel = (m.materials?.length ?? 0) + objets.length > 0
+
+  /** Ce que la manifestation attend de celui qui la regarde, en un mot. */
+  const saisieDuJour =
+    m.status === 'validated' ? 'Livrer' : m.status === 'delivered' ? 'Récupérer' : null
 
   return (
     <Card className="hover:shadow-md transition-shadow">
@@ -933,7 +966,7 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
               {m.contact_name && <span>Contact: {m.contact_name}</span>}
               {m.expected_people > 0 && <span>{m.expected_people} pers.</span>}
             </div>
-            {m.materials?.length > 0 && (
+            {aDuMateriel && (
               <div className="flex gap-4 mt-1 text-xs text-gray-500 dark:text-gray-400">
                 <span>Demandé: <strong>{totalRequested}</strong></span>
                 <span>Livré: <strong className="text-yellow-600">{totalDelivered}</strong></span>
@@ -944,16 +977,23 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
 
           {/* Actions */}
           <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Le geste du jour porte son nom. Une rangée d'icônes muettes oblige
+                à survoler chacune pour trouver laquelle enregistre une livraison
+                — un réflexe que personne n'a sur un téléphone. */}
+            {peutSaisir && saisieDuJour && m.status !== 'archived' && (
+              <Button size="sm" variant="outline" className="mr-1"
+                icon={saisieDuJour === 'Livrer'
+                  ? <Truck className="w-4 h-4" />
+                  : <RotateCcw className="w-4 h-4" />}
+                onClick={() => onDelivery(m)}>
+                {saisieDuJour}
+              </Button>
+            )}
             <button onClick={() => onView(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Voir détails" aria-label="Voir détails">
               <Eye className="w-4 h-4 text-gray-500 dark:text-gray-400" />
             </button>
             {isSupervisor && m.status !== 'archived' && (
               <>
-                {(m.status === 'delivered' || m.status === 'validated') && (
-                  <button onClick={() => onDelivery(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Gérer matériel" aria-label="Gérer matériel">
-                    <Truck className="w-4 h-4 text-yellow-600" />
-                  </button>
-                )}
                 {m.status !== 'delivered' && m.status !== 'recovered' && (
                   <button onClick={() => onEdit(m)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target" title="Modifier" aria-label="Modifier">
                     <Edit className="w-4 h-4 text-blue-600" />
@@ -972,41 +1012,118 @@ function ManifCard({ manif: m, isSupervisor, onEdit, onView, onDelivery, onStatu
                 )}
               </>
             )}
-            <button onClick={() => setExpanded(!expanded)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
+            <button onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              aria-label={expanded ? 'Replier le détail' : 'Déplier le détail'}
+              title={expanded ? 'Replier le détail' : 'Déplier le détail'}
+              className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
               {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </button>
           </div>
         </div>
 
-        {/* Matériaux détaillés */}
-        {expanded && m.materials?.length > 0 && (
-          <div className="mt-3 pt-3 border-t dark:border-gray-700">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-gray-500 dark:text-gray-400 text-xs">
-                  <th className="pb-1">Matériel</th>
-                  <th className="pb-1 text-center">Demandé</th>
-                  <th className="pb-1 text-center">Livré</th>
-                  <th className="pb-1 text-center">Récupéré</th>
-                  <th className="pb-1 text-right">Val. TTC</th>
-                </tr>
-              </thead>
-              <tbody>
-                {m.materials.map((mat: ManifMaterial, i: number) => (
-                  <tr key={i} className="border-t dark:border-gray-700">
-                    <td className="py-1">{mat.stock_name}</td>
-                    <td className="py-1 text-center">{mat.quantity_requested} {mat.unit}</td>
-                    <td className="py-1 text-center">{mat.quantity_delivered}</td>
-                    <td className="py-1 text-center">{mat.quantity_recovered}</td>
-                    <td className="py-1 text-right">{mat.unit_value ? `${(mat.unit_value * mat.quantity_requested).toFixed(2)} €` : '-'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {expanded && <DetailDeplie manif={m} objets={objets} formatD={formatD} />}
       </CardBody>
     </Card>
+  )
+}
+
+/**
+ * Ce que le chevron montre.
+ *
+ * Il ne rendait le tableau du stock que si `materials` n'était pas vide : sur un
+ * brouillon sans matériel, ou sur une manifestation qui ne retient que du parc,
+ * déplier n'affichait rien du tout — pas même un mot pour dire qu'il n'y avait
+ * rien. On cliquait, la flèche tournait, l'écran ne bougeait pas.
+ *
+ * Il montre donc toujours quelque chose : d'abord ce qu'on vient vérifier — où,
+ * quand, chez qui — puis les deux gisements de matériel, et à défaut la raison
+ * de ce vide.
+ */
+function DetailDeplie({ manif: m, objets, formatD }: {
+  manif: Manifestation
+  objets: ObjetManifestation[]
+  formatD: (d: string) => string
+}) {
+  const materiels = m.materials ?? []
+  const pratique: Array<[string, string]> = [
+    ['Livraison', formatD(m.delivery_date) || '—'],
+    ['Récupération', formatD(m.recovery_date) || '—'],
+    ['Horaires', [m.start_time, m.end_time].filter(Boolean).join(' → ') || '—'],
+    ['Lieu', m.delivery_address || '—'],
+    ['Contact', [m.contact_name, m.contact_phone].filter(Boolean).join(' · ') || '—'],
+  ]
+
+  return (
+    <div className="mt-3 pt-3 border-t dark:border-gray-700 space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm">
+        {pratique.map(([libelle, valeur]) => (
+          <div key={libelle} className="min-w-0">
+            <span className="block text-xs text-gray-500 dark:text-gray-400">{libelle}</span>
+            <span className="text-gray-800 dark:text-gray-200 break-words">{valeur}</span>
+          </div>
+        ))}
+      </div>
+
+      {materiels.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-gray-500 dark:text-gray-400 text-xs">
+                <th className="pb-1">Matériel</th>
+                <th className="pb-1 text-center">Demandé</th>
+                <th className="pb-1 text-center">Livré</th>
+                <th className="pb-1 text-center">Récupéré</th>
+                <th className="pb-1 text-right">Val. TTC</th>
+              </tr>
+            </thead>
+            <tbody>
+              {materiels.map((mat: ManifMaterial, i: number) => (
+                <tr key={i} className="border-t dark:border-gray-700">
+                  <td className="py-1">{mat.stock_name}</td>
+                  <td className="py-1 text-center">{mat.quantity_requested} {mat.unit}</td>
+                  <td className="py-1 text-center">{mat.quantity_delivered}</td>
+                  <td className="py-1 text-center">{mat.quantity_recovered}</td>
+                  <td className="py-1 text-right">{mat.unit_value ? `${(mat.unit_value * mat.quantity_requested).toFixed(2)} €` : '-'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {objets.length > 0 && (
+        <div>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Matériel du parc</p>
+          <div className="space-y-1">
+            {objets.map((o) => (
+              <div key={o.id}
+                className="flex flex-wrap items-center justify-between gap-2 text-sm px-2 py-1 rounded bg-gray-50 dark:bg-gray-800">
+                <span className="min-w-0 text-gray-800 dark:text-gray-200">
+                  {o.object_name}
+                  {o.quantity > 1 && <span className="text-gray-500 dark:text-gray-400"> × {o.quantity}</span>}
+                  {o.reference && <span className="text-xs text-gray-500 dark:text-gray-400 ml-2">{o.reference}</span>}
+                </span>
+                <span className="text-xs text-gray-500 dark:text-gray-400">
+                  {o.quantity_delivered > 0 ? 'sorti' : 'non sorti'}
+                  {' · '}
+                  {o.quantity_returned > 0 ? 'revenu' : 'non revenu'}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {materiels.length === 0 && objets.length === 0 && (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Aucun matériel ni prestation demandé.{' '}
+          {m.intake_unmatched
+            ? 'Des lignes reçues du formulaire restent à rattacher : ouvrez le détail.'
+            : 'Ajoutez-en en modifiant la manifestation.'}
+        </p>
+      )}
+    </div>
   )
 }
 
@@ -2158,116 +2275,6 @@ function MaterielARattacher({ brut }: { brut?: string | null }) {
         </p>
       </div>
     </Alert>
-  )
-}
-
-// ==================== MODALE LIVRAISON / RÉCUPÉRATION ====================
-
-function DeliveryModal({ manif, onClose, onSave, loading }: {
-  manif: Manifestation; onClose: () => void
-  onSave: (materials: any[]) => void; loading: boolean
-}) {
-  const [materials, setMaterials] = useState(
-    manif.materials?.map(m => ({
-      id: m.id, stock_name: m.stock_name, unit: m.unit,
-      quantity_requested: m.quantity_requested,
-      quantity_delivered: m.quantity_delivered,
-      quantity_recovered: m.quantity_recovered,
-      quantity_lost: m.quantity_lost ?? 0,
-      loss_reason: m.loss_reason ?? ''
-    })) || []
-  )
-
-  const update = (idx: number, field: string, value: number | string) => {
-    const updated = [...materials]
-    updated[idx] = { ...updated[idx], [field]: value }
-    setMaterials(updated)
-  }
-
-  /**
-   * Écart entre ce qui est sorti et ce qui est revenu ou déclaré perdu.
-   *
-   * C'est le chiffre qui trahit une saisie incomplète : 12 chaises livrées, 11
-   * récupérées et rien de déclaré perdu, c'est une chaise que personne ne
-   * cherche.
-   */
-  const manquant = (m: typeof materials[number]) =>
-    m.quantity_delivered - m.quantity_recovered - m.quantity_lost
-
-  const aDesEcarts = materials.some(m => manquant(m) > 0)
-
-  return (
-    <Modal isOpen onClose={onClose} title={`Matériel — ${manif.title}`} size="lg">
-      <ModalBody>
-        <Alert type="info">
-          <span className="text-sm">
-            {manif.status === 'validated'
-              ? "Saisissez ce qui part réellement. Si seules 8 tables sur 10 sont nécessaires, corrigez la quantité demandée."
-              : "Saisissez ce qui revient. Ce qui est déclaré cassé, perdu ou volé est retiré du stock physique et reste tracé."}
-          </span>
-        </Alert>
-
-        <div className="mt-4 space-y-3">
-          {materials.map((m, i) => (
-            <div key={i} className="p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-medium text-sm text-gray-900 dark:text-gray-100">{m.stock_name}</span>
-                <span className="text-xs text-gray-500 dark:text-gray-400">{m.unit}</span>
-              </div>
-
-              <div className="flex flex-wrap items-start gap-3">
-                <div className="w-28">
-                  <Input label="Demandé" type="number" min="0"
-                    inputMode="numeric" size="sm" value={String(m.quantity_requested)}
-                    onChange={e => update(i, 'quantity_requested', parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="w-28">
-                  <Input label="Livré" type="number" min="0"
-                    inputMode="numeric" size="sm" value={String(m.quantity_delivered)}
-                    onChange={e => update(i, 'quantity_delivered', parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="w-28">
-                  <Input label="Récupéré" type="number" min="0"
-                    inputMode="numeric" size="sm" value={String(m.quantity_recovered)}
-                    onChange={e => update(i, 'quantity_recovered', parseInt(e.target.value) || 0)} />
-                </div>
-                <div className="w-28">
-                  <Input label="Perdu / cassé" type="number" min="0"
-                    inputMode="numeric" size="sm" value={String(m.quantity_lost)}
-                    onChange={e => update(i, 'quantity_lost', parseInt(e.target.value) || 0)} />
-                </div>
-                {m.quantity_lost > 0 && (
-                  <div className="flex-1 min-w-[12rem]">
-                    <Input label="Motif" size="sm" value={m.loss_reason}
-                      placeholder="Cassée au transport, volée…"
-                      onChange={e => update(i, 'loss_reason', e.target.value)} />
-                  </div>
-                )}
-              </div>
-
-              {manquant(m) > 0 && (
-                <p className="mt-2 text-xs text-yellow-700 dark:text-yellow-500">
-                  {manquant(m)} {m.unit} ni récupéré(s) ni déclaré(s) perdu(s).
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-
-        {aDesEcarts && (
-          <Alert type="warning" className="mt-4">
-            <span className="text-sm">
-              Des articles sortis ne sont ni revenus ni déclarés perdus. Tant qu'ils
-              ne le sont pas, le stock les considère comme encore dehors.
-            </span>
-          </Alert>
-        )}
-      </ModalBody>
-      <ModalFooter>
-        <Button variant="outline" onClick={onClose}>Annuler</Button>
-        <Button loading={loading} onClick={() => onSave(materials)}>Enregistrer</Button>
-      </ModalFooter>
-    </Modal>
   )
 }
 

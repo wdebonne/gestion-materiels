@@ -6,6 +6,42 @@ import extract from 'extract-zip';
 const PLUGINS_DIR = './plugins';
 const PLUGIN_PAGES_DIR = './plugins/pages';
 
+/**
+ * Le slug d'un plugin sert à construire un chemin sur le disque. Faute de
+ * contrôle, `..%2F..%2Fdata%2Fconfidentiel` arrivait tel quel dans
+ * `path.join` : un compte en consultation seule pouvait lire le premier
+ * fichier `.json` venu sur le serveur, bien au-delà du dossier des plugins.
+ *
+ * Un slug est engendré par `slugify` : minuscules, chiffres, tiret ou
+ * souligné, rien d'autre. Tout le reste — séparateur de chemin, point,
+ * caractère encodé — est refusé avant que le disque ne soit touché.
+ *
+ * Le même motif borne les noms de pages, qui deviennent des noms de
+ * fichiers dans `savePluginPages`.
+ */
+const SLUG_PLUGIN = /^[a-z0-9_-]+$/;
+
+/**
+ * Un nom de table de plugin part brut dans `CREATE TABLE` et `DROP TABLE` :
+ * il vient du `plugin.json` d'une archive téléversée. Installer un plugin
+ * suppose déjà d'accorder sa confiance, et la route est réservée à
+ * l'administrateur — mais borner le nom ne coûte qu'une ligne, là où le
+ * laisser libre coûterait la base.
+ */
+export function nomTableSur(nom: unknown): string {
+  if (typeof nom !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(nom)) {
+    throw new Error(`Nom de table de plugin invalide : ${nom}`);
+  }
+  return nom;
+}
+
+function dossierDesPages(pluginSlug: string): string {
+  if (typeof pluginSlug !== 'string' || !SLUG_PLUGIN.test(pluginSlug)) {
+    throw new Error(`Slug de plugin invalide : ${pluginSlug}`);
+  }
+  return path.join(PLUGIN_PAGES_DIR, pluginSlug);
+}
+
 // Types pour la configuration des plugins
 export interface PluginTableColumn {
   name: string;
@@ -124,7 +160,7 @@ function generateCreateTableSQL(table: PluginTable): string {
   }
 
   const allColumns = [...columns, ...foreignKeys].join(',\n        ');
-  return `CREATE TABLE IF NOT EXISTS ${table.name} (\n        ${allColumns}\n      )`;
+  return `CREATE TABLE IF NOT EXISTS ${nomTableSur(table.name)} (\n        ${allColumns}\n      )`;
 }
 
 // Créer les tables d'un plugin
@@ -156,7 +192,7 @@ export async function dropPluginTables(pluginSlug: string): Promise<void> {
     if (config.database?.tables) {
       for (const table of config.database.tables) {
         console.log(`🗑️ Suppression table: ${table.name}`);
-        await db.execute(`DROP TABLE IF EXISTS ${table.name}`);
+        await db.execute(`DROP TABLE IF EXISTS ${nomTableSur(table.name)}`);
       }
     }
   } catch (error) {
@@ -166,8 +202,17 @@ export async function dropPluginTables(pluginSlug: string): Promise<void> {
 
 // Sauvegarder les pages du plugin
 export function savePluginPages(pluginSlug: string, pages: Record<string, PluginPage>): void {
-  const pluginPagesDir = path.join(PLUGIN_PAGES_DIR, pluginSlug);
-  
+  const pluginPagesDir = dossierDesPages(pluginSlug);
+
+  // Tout est contrôlé avant la moindre écriture : un lot dont une seule page
+  // porte un nom hostile ne doit rien laisser derrière lui, pas même le
+  // dossier du plugin.
+  for (const pageName of Object.keys(pages)) {
+    if (!SLUG_PLUGIN.test(pageName)) {
+      throw new Error(`Nom de page invalide : ${pageName}`);
+    }
+  }
+
   if (!fs.existsSync(pluginPagesDir)) {
     fs.mkdirSync(pluginPagesDir, { recursive: true });
   }
@@ -180,7 +225,7 @@ export function savePluginPages(pluginSlug: string, pages: Record<string, Plugin
 
 // Charger les pages d'un plugin
 export function loadPluginPages(pluginSlug: string): Record<string, PluginPage> {
-  const pluginPagesDir = path.join(PLUGIN_PAGES_DIR, pluginSlug);
+  const pluginPagesDir = dossierDesPages(pluginSlug);
   const pages: Record<string, PluginPage> = {};
 
   if (!fs.existsSync(pluginPagesDir)) {
@@ -205,7 +250,7 @@ export function loadPluginPages(pluginSlug: string): Record<string, PluginPage> 
 
 // Supprimer les pages d'un plugin
 export function deletePluginPages(pluginSlug: string): void {
-  const pluginPagesDir = path.join(PLUGIN_PAGES_DIR, pluginSlug);
+  const pluginPagesDir = dossierDesPages(pluginSlug);
   
   if (fs.existsSync(pluginPagesDir)) {
     fs.rmSync(pluginPagesDir, { recursive: true });

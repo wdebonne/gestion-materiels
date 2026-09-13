@@ -1,4 +1,6 @@
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import jwt from 'jsonwebtoken';
+import { getJwtSecret } from '../config/secrets';
 import { Request, Response, NextFunction } from 'express';
 import { logService } from '../services/log.service';
 
@@ -7,10 +9,43 @@ import { logService } from '../services/log.service';
  * Protège l'API contre les attaques par force brute et les abus
  */
 
+/**
+ * À qui imputer une requête : la personne si elle est connue, l'adresse IP
+ * sinon.
+ *
+ * Le compte global était tenu par adresse. Derrière le NAT d'une mairie —
+ * une seule adresse publique pour tout le monde — les mille requêtes par
+ * quart d'heure étaient partagées entre tous les agents, soit environ
+ * soixante-six par minute pour l'ensemble du service, alors qu'une seule
+ * page en déclenche une dizaine. Le premier à travailler consommait le
+ * budget des autres.
+ *
+ * Le jeton est *vérifié*, non pas seulement décodé : un identifiant forgé
+ * ouvrirait sinon un compteur neuf à volonté, ce qui reviendrait à retirer
+ * la limite. Une signature invalide retombe sur l'adresse, qui reste la
+ * bonne unité pour le trafic anonyme — celui dont viennent les abus.
+ */
+function cleParPersonne(req: Request): string {
+  const entete = req.headers.authorization;
+  const jeton = entete?.startsWith('Bearer ') ? entete.slice(7) : null;
+
+  if (jeton) {
+    try {
+      const charge = jwt.verify(jeton, getJwtSecret()) as { userId?: number };
+      if (charge?.userId) return `u:${charge.userId}`;
+    } catch {
+      // Jeton absent, expiré ou signé d'un autre secret : on compte par IP.
+    }
+  }
+
+  return `ip:${ipKeyGenerator(req.ip || '')}`;
+}
+
 // Rate limiter global pour toutes les routes API
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Limite de 1000 requêtes par fenêtre de 15 minutes
+  max: 1000, // par personne connectée, ou par adresse pour le trafic anonyme
+  keyGenerator: cleParPersonne,
   message: {
     success: false,
     message: 'Trop de requêtes, veuillez réessayer plus tard.'

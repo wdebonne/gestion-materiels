@@ -267,6 +267,16 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
     onError: surErreur,
   })
 
+  const identite = useMutation({
+    mutationFn: (champs: { name: string; email: string; description: string }) =>
+      serviceApi.update(serviceId, { ...(service as Service), ...champs }),
+    onSuccess: () => {
+      rafraichir()
+      toast.success('Service enregistré')
+    },
+    onError: surErreur,
+  })
+
   const ajoutMembre = useMutation({
     mutationFn: (userId: number) => serviceApi.addMember(serviceId, userId),
     onSuccess: () => {
@@ -312,6 +322,13 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
           <div className="flex justify-center py-10"><Spinner /></div>
         ) : (
           <div className="space-y-4">
+            <IdentiteService
+              service={service}
+              loading={identite.isPending}
+              onSave={(champs) => identite.mutate(champs)}
+              onActivation={(is_active) => reglages.mutate({ is_active })}
+            />
+
             <Card>
               <CardHeader><CardTitle className="text-sm">Rôle du service</CardTitle></CardHeader>
               <CardBody className="space-y-2">
@@ -475,6 +492,77 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
         <Button onClick={onClose}>Fermer</Button>
       </ModalFooter>
     </Modal>
+  )
+}
+
+/**
+ * Nom, boîte partagée et description d'un service.
+ *
+ * Ces trois champs se saisissent à la création, mais c'est ici qu'ils se
+ * corrigent : une boîte partagée change au gré des réorganisations, et rien ne
+ * justifie de supprimer un service — donc sa traçabilité — pour rectifier une
+ * adresse. Ils s'enregistrent ensemble, d'un geste, contrairement aux cases à
+ * cocher de la modale : une saisie en cours n'a pas à partir à chaque frappe.
+ */
+function IdentiteService({ service, onSave, onActivation, loading }: {
+  service: Service
+  onSave: (champs: { name: string; email: string; description: string }) => void
+  onActivation: (is_active: number) => void
+  loading: boolean
+}) {
+  const [nom, setNom] = useState(service.name)
+  const [email, setEmail] = useState(service.email ?? '')
+  const [description, setDescription] = useState(service.description ?? '')
+
+  const modifie =
+    nom.trim() !== service.name ||
+    email.trim() !== (service.email ?? '') ||
+    description.trim() !== (service.description ?? '')
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Identité</CardTitle></CardHeader>
+      <CardBody className="space-y-3">
+        <Input label="Nom" value={nom} onChange={(e) => setNom(e.target.value)} />
+
+        <div>
+          <Input label="Boîte partagée (facultatif)" type="email" value={email}
+            placeholder="informatique@ville.fr"
+            onChange={(e) => setEmail(e.target.value)} />
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            Une boîte partagée survit aux départs, contrairement à l'adresse d'un agent.
+            Les membres reçoivent les messages dans tous les cas. Vider le champ retire
+            l'adresse.
+          </p>
+        </div>
+
+        <TextArea label="Description" rows={2} value={description}
+          onChange={(e) => setDescription(e.target.value)} />
+
+        <div className="flex justify-end">
+          <Button size="sm" loading={loading} disabled={!modifie || !nom.trim()}
+            onClick={() =>
+              onSave({ name: nom.trim(), email: email.trim(), description: description.trim() })
+            }>
+            Enregistrer
+          </Button>
+        </div>
+
+        <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 pt-1 border-t border-gray-100 dark:border-gray-700">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={Boolean(service.is_active)}
+            onChange={(e) => onActivation(e.target.checked ? 1 : 0)}
+          />
+          <span>
+            <strong>Service actif</strong> — décocher l'écarte des prochaines sollicitations
+            sans toucher aux manifestations qu'il a déjà décidées. C'est aussi l'état d'un
+            service qu'on a voulu supprimer alors qu'il avait déjà approuvé.
+          </span>
+        </label>
+      </CardBody>
+    </Card>
   )
 }
 

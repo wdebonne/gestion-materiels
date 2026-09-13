@@ -918,7 +918,22 @@ async function trouverEntreeExistante(table: string, nom: string): Promise<{ id:
   );
 }
 
-router.post('/fuel-stations', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+/*
+ * Écrire dans le référentiel du parc — points de ravitaillement, types
+ * d'entretien, prestataires, centres de contrôle — relève du superviseur.
+ *
+ * Ces douze routes exigeaient un administrateur, alors que le tableau des
+ * droits du README attribue « Gérer le référentiel » au superviseur, et que
+ * `ReferenceSelect` affiche le bouton « Ajouter » dès `canManage`, lequel
+ * comprend ce rôle. Le superviseur voyait donc l'action, la déclenchait, et
+ * récoltait un 403.
+ *
+ * C'est ce qui gardait les listes vides : le gestionnaire de parc ne pouvait
+ * pas y poser la station où ses agents font le plein, et les rapports de
+ * coûts par station restaient inutilisables faute de stations.
+ */
+
+router.post('/fuel-stations', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { name, address, kind } = req.body;
 
@@ -956,7 +971,7 @@ router.post('/fuel-stations', authenticateToken, requireAdmin, async (req: AuthR
 });
 
 // PUT /api/objects/fuel-stations/:id - Modifier une station
-router.put('/fuel-stations/:stationId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/fuel-stations/:stationId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { stationId } = req.params;
     const { name, address, kind } = req.body;
@@ -987,7 +1002,7 @@ router.put('/fuel-stations/:stationId', authenticateToken, requireAdmin, async (
 });
 
 // DELETE /api/objects/fuel-stations/:id - Supprimer une station
-router.delete('/fuel-stations/:stationId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/fuel-stations/:stationId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { stationId } = req.params;
 
@@ -1021,7 +1036,7 @@ router.get('/maintenance-types/list', authenticateToken, async (req: AuthRequest
 });
 
 // POST /api/objects/maintenance-types - Ajouter un type d'entretien
-router.post('/maintenance-types', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.post('/maintenance-types', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { name } = req.body;
     
@@ -1057,7 +1072,7 @@ router.post('/maintenance-types', authenticateToken, requireAdmin, async (req: A
 });
 
 // PUT /api/objects/maintenance-types/:id - Modifier un type d'entretien
-router.put('/maintenance-types/:typeId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/maintenance-types/:typeId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { typeId } = req.params;
     const { name } = req.body;
@@ -1086,7 +1101,7 @@ router.put('/maintenance-types/:typeId', authenticateToken, requireAdmin, async 
 });
 
 // DELETE /api/objects/maintenance-types/:id - Supprimer un type d'entretien
-router.delete('/maintenance-types/:typeId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/maintenance-types/:typeId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { typeId } = req.params;
 
@@ -1120,7 +1135,7 @@ router.get('/maintenance-providers/list', authenticateToken, async (req: AuthReq
 });
 
 // POST /api/objects/maintenance-providers - Ajouter un prestataire
-router.post('/maintenance-providers', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.post('/maintenance-providers', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { name, address, phone } = req.body;
     
@@ -1156,7 +1171,7 @@ router.post('/maintenance-providers', authenticateToken, requireAdmin, async (re
 });
 
 // PUT /api/objects/maintenance-providers/:id - Modifier un prestataire
-router.put('/maintenance-providers/:providerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/maintenance-providers/:providerId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { providerId } = req.params;
     const { name, address, phone } = req.body;
@@ -1185,7 +1200,7 @@ router.put('/maintenance-providers/:providerId', authenticateToken, requireAdmin
 });
 
 // DELETE /api/objects/maintenance-providers/:id - Supprimer un prestataire
-router.delete('/maintenance-providers/:providerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/maintenance-providers/:providerId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { providerId } = req.params;
 
@@ -1219,7 +1234,7 @@ router.get('/control-centers/list', authenticateToken, async (req: AuthRequest, 
 });
 
 // POST /api/objects/control-centers - Ajouter un centre de contrôle
-router.post('/control-centers', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.post('/control-centers', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { name, address, phone } = req.body;
     
@@ -1255,7 +1270,7 @@ router.post('/control-centers', authenticateToken, requireAdmin, async (req: Aut
 });
 
 // PUT /api/objects/control-centers/:id - Modifier un centre de contrôle
-router.put('/control-centers/:centerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/control-centers/:centerId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { centerId } = req.params;
     const { name, address, phone } = req.body;
@@ -1284,7 +1299,7 @@ router.put('/control-centers/:centerId', authenticateToken, requireAdmin, async 
 });
 
 // DELETE /api/objects/control-centers/:id - Supprimer un centre de contrôle
-router.delete('/control-centers/:centerId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/control-centers/:centerId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { centerId } = req.params;
 

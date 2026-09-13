@@ -5,6 +5,7 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateToken, requireSupervisor, requireFieldWrite } from '../middleware/auth.middleware';
 import { normalizeImage } from '../services/imageNormalize.service';
+import { resoudreSous } from '../utils/cheminSous';
 
 const router = Router();
 
@@ -171,10 +172,14 @@ router.post('/images', authenticateToken, requireFieldWrite, uploadImage.array('
 router.delete('/:filename', authenticateToken, requireSupervisor, (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
-    const filePath = path.join(__dirname, '../../uploads', filename);
+    // Le nom arrivait tel quel dans `path.join` : `..%2Fdata%2Fdatabase.sqlite`
+    // sortait du dossier des uploads et supprimait la base.
+    const filePath = resoudreSous(path.join(__dirname, '../../uploads'), filename);
 
     // Vérifier que le fichier existe
-    if (!fs.existsSync(filePath)) {
+    // Un chemin hors du dossier ne mérite pas d’explication : on répond
+    // comme pour un fichier absent, sans renseigner sur ce qui existe.
+    if (!filePath || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
       return res.status(404).json({ success: false, message: 'Fichier non trouvé' });
     }
 
