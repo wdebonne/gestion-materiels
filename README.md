@@ -29,6 +29,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔐 Authentification sécurisée (JWT)
 - 👥 **Quatre rôles** : Administrateur, Superviseur, **Agent de terrain**, Utilisateur
 - 🔑 Réinitialisation de mot de passe par email
+- 🔏 **Passkeys** : se connecter avec l'empreinte, le visage ou le code de son appareil, ou une clé USB. Chacun gère les siennes depuis *Mon profil > Passkeys* — plusieurs par personne, nommées et datées, pour savoir laquelle retirer le jour d'une perte
 - 👤 Profil utilisateur personnalisable
 - ✅ **Rester connecté** : coché, la session survit à la fermeture du navigateur ; décoché, elle disparaît avec l'onglet — à utiliser sur un poste partagé
 
@@ -626,6 +627,25 @@ POST /api/auth/refresh        # Refresh token
 GET  /api/auth/me             # Utilisateur courant
 ```
 
+#### Passkeys (WebAuthn / FIDO2)
+
+Les routes vont par paires : la première remet un défi à signer, la seconde vérifie la signature.
+
+```
+GET    /api/auth/passkey/status           # Le bouton doit-il s'afficher ? (public)
+POST   /api/auth/passkey/login/options    # Défi de connexion, sans identifiant (public)
+POST   /api/auth/passkey/login/verify     # Connexion sans mot de passe (public)
+POST   /api/auth/passkey/2fa/verify       # Second facteur, avec le ticket rendu par /login
+GET    /api/auth/passkey                  # Mes passkeys
+POST   /api/auth/passkey/register/options # Défi d'enregistrement
+POST   /api/auth/passkey/register/verify  # Enregistre la clé publique
+PATCH  /api/auth/passkey/:id              # Renommer une des miennes
+DELETE /api/auth/passkey/:id              # Supprimer une des miennes
+DELETE /api/auth/passkey/user/:userId     # Retirer celles d'un agent (admin)
+```
+
+Quand le second facteur est exigé, `POST /api/auth/login` ne rend aucun jeton : il rend `secondFacteur: { ticket, options }`, et c'est `/2fa/verify` qui ouvre la session.
+
 ### Catégories
 
 ```
@@ -1119,6 +1139,8 @@ POST   /api/backup/migrate    # Migrer vers MySQL
 - **Politique de mot de passe appliquée** : longueur et complexité configurables, vérifiées aux six endroits où un mot de passe est défini (inscription, réinitialisation, changement, création et modification par un administrateur)
 - **Blocage du compte** après N échecs pendant une durée configurable, indépendamment du rate limiting qui protège l'API dans son ensemble. Un administrateur débloque en réattribuant un mot de passe
 - **Expiration du mot de passe** signalée par un bandeau, sans bloquer l'accès
+- **Passkeys (WebAuthn / FIDO2) appliquées** : connexion sans mot de passe, ou passkey exigée après le mot de passe, selon les deux interrupteurs de *Paramètres > Authentification > Passkey*. La clé privée ne quitte jamais l'appareil et le serveur ne conserve que des clés publiques — la table peut fuiter sans que personne ne puisse entrer avec. Le RP ID et l'origine, laissés vides, sont déduits du domaine servi
+- Le blocage après N tentatives n'est pas opposé à une passkey : il compte des mots de passe faux, et une signature ne se devine pas. Un compte désactivé, lui, reste fermé
 - Journal d'audit : connexions, échecs, déconnexions, changements de configuration
 
 ### Écrans de configuration sans effet ⚠️
@@ -1130,11 +1152,10 @@ Ces écrans existent dans **Paramètres > Authentification**, enregistrent leur 
 | SSO SAML 2.0 | Écran de configuration uniquement — aucun flux d'authentification |
 | SSO OpenID Connect | Écran de configuration uniquement |
 | LDAP / Active Directory | Écran de configuration uniquement |
-| Passkey (WebAuthn / FIDO2) | Écran de configuration uniquement |
 
-Chacun de ces quatre écrans affiche désormais un bandeau qui l'indique : la configuration est conservée, mais la connexion continue de passer exclusivement par email et mot de passe. Le bouton « Tester » ne fait que vérifier la forme des valeurs saisies, pas une connexion réelle au fournisseur.
+Chacun de ces trois écrans affiche un bandeau qui l'indique : la configuration est conservée, mais la connexion continue de passer exclusivement par email et mot de passe. Le bouton « Tester » ne fait que vérifier la forme des valeurs saisies, pas une connexion réelle au fournisseur.
 
-La politique de mot de passe et le blocage après N tentatives, qui étaient dans le même cas, sont désormais appliqués. Les trois réglages qui ne peuvent pas l'être — connexion locale, 2FA, timeout de session — ont été retirés du formulaire et remplacés par un encart qui dit pourquoi, plutôt que par des interrupteurs sans effet.
+La politique de mot de passe, le blocage après N tentatives et **les passkeys**, qui étaient dans le même cas, sont désormais appliqués. Les trois réglages de l'onglet *Général* qui ne peuvent pas l'être — connexion locale, 2FA, timeout de session — ont été retirés du formulaire et remplacés par un encart qui dit pourquoi, plutôt que par des interrupteurs sans effet. Le second facteur qui, lui, existe se règle dans l'onglet *Passkey*.
 
 ## 🚧 État réel
 
@@ -1142,8 +1163,8 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 
 | Fonction | Ce qui existe | Ce qui manque |
 |----------|---------------|---------------|
-| **SSO SAML / OIDC / LDAP / Passkey** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local |
-| **2FA, timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Aucun second facteur n'est implémenté ; le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
+| **SSO SAML / OIDC / LDAP** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local. Les passkeys, qui étaient dans le même cas, sont désormais appliquées |
+| **2FA (interrupteur « Général »), timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Le second facteur existant se règle dans l'onglet Passkey et ne s'applique qu'aux comptes ayant enregistré une clé ; cet interrupteur-ci n'est relu par personne. Le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | Deux manques. La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse : il faudrait viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres. Et l'**envoi** n'est pas implémenté — y écrire demande le consentement délégué, que le secret d'application ne porte pas. Un carnet Outlook est donc en réception seule, et l'écran le dit. CalDAV n'a ni l'un ni l'autre problème |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 

@@ -24,6 +24,7 @@ assertSecretsConfigured();
 
 // Import des routes
 import authRoutes from './routes/auth.routes';
+import passkeyRoutes from './routes/passkey.routes';
 import userRoutes from './routes/user.routes';
 import categoryRoutes, { subcategoryRouter } from './routes/category.routes';
 import objectRoutes from './routes/object.routes';
@@ -254,6 +255,9 @@ app.get('/api/api-info', (req: Request, res: Response) => {
 // client appelle à chaque ouverture de l'application. Dix appels par quart
 // d'heure — et la clé étant l'adresse IP faute d'e-mail dans le corps, ce
 // budget était partagé par toute la commune derrière son NAT.
+// Monté avant `authRoutes` : les cérémonies WebAuthn ont leur propre limiteur,
+// et n'ont rien à faire dans un routeur qui ne connaît que les mots de passe.
+app.use('/api/auth/passkey', passkeyRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/categories', categoryRoutes);

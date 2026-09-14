@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Edit2, Trash2, User, Search, ShieldOff } from 'lucide-react'
+import { Plus, Edit2, Trash2, User, Search, ShieldOff, Fingerprint } from 'lucide-react'
 import { 
   Card, CardBody, Button, Input, Select,
   Modal, ModalBody, ModalFooter, Badge, LoadingInline,
-  Alert
+  Alert, useConfirm
 } from '@/components/ui'
 import { useAuthStore } from '@/stores/auth.store'
 import api, { User as UserType } from '@/lib/api'
@@ -15,6 +15,7 @@ import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '@/lib/permissions'
 
 export default function UsersPage() {
   const queryClient = useQueryClient()
+  const confirm = useConfirm()
   const { user: currentUser } = useAuthStore()
   const [search, setSearch] = useState('')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -102,6 +103,32 @@ export default function UsersPage() {
     },
     onError: (err: any) => toast.error(err.response?.data?.message || "Impossible d'anonymiser")
   })
+
+  /**
+   * Retirer les passkeys d'un agent.
+   *
+   * Quand le second facteur est exigé, perdre son téléphone revient à perdre
+   * l'accès : le mot de passe ne suffit plus, et l'écran où l'on supprimerait
+   * la clé devenue inutilisable se trouve derrière la connexion. Désactiver le
+   * compte n'y change rien — cela enferme davantage. Ce bouton est la sortie.
+   */
+  const retirerPasskeys = useMutation({
+    mutationFn: (id: number) => api.delete(`/auth/passkey/user/${id}`),
+    onSuccess: (res: any) => toast.success(res.data.message, { duration: 8000 }),
+    onError: (err: any) =>
+      toast.error(err.response?.data?.message || 'Impossible de retirer les passkeys'),
+  })
+
+  const demanderRetraitPasskeys = async (user: UserType) => {
+    const ok = await confirm({
+      title: `Retirer les passkeys de ${user.firstName} ${user.lastName} ?`,
+      message:
+        'Tous ses appareils enregistrés perdront leur accès. Le compte se reconnectera avec son seul mot de passe, et pourra réenregistrer une passkey ensuite.',
+      confirmLabel: 'Retirer',
+      variant: 'danger',
+    })
+    if (ok) retirerPasskeys.mutate(user.id)
+  }
 
   const openModal = (user?: UserType) => {
     if (user) {
@@ -246,6 +273,14 @@ export default function UsersPage() {
                             className="p-2 text-gray-600 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
                           >
                             <Edit2 className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => demanderRetraitPasskeys(user)}
+                            title="Retirer ses passkeys"
+                            aria-label={`Retirer les passkeys de ${user.firstName} ${user.lastName}`}
+                            className="p-2 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                          >
+                            <Fingerprint className="w-4 h-4" />
                           </button>
                           {user.id !== currentUser?.id && (
                             <button

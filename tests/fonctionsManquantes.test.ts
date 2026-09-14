@@ -131,6 +131,10 @@ describe('2 — une session peut être coupée', () => {
   const auth = lire('src', 'routes', 'auth.routes.ts');
   const users = lire('src', 'routes', 'user.routes.ts');
   const migration = lire('src', 'database', 'migrations', '022_revocation_sessions.ts');
+  // La signature des jetons a quitté `auth.routes.ts` pour `session.service.ts`
+  // quand une deuxième porte — la passkey — a dû ouvrir des sessions à
+  // l'identique. Le contrat vérifié ici est le même, à un fichier près.
+  const session = lire('src', 'services', 'session.service.ts');
 
   it('porte un numéro de version par compte', () => {
     expect(migration).toMatch(/ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0/);
@@ -138,7 +142,7 @@ describe('2 — une session peut être coupée', () => {
   });
 
   it('inscrit ce numéro dans le jeton et le vérifie à chaque requête', () => {
-    expect(auth).toMatch(/tv: user\.token_version \?\? 0/);
+    expect(session).toMatch(/tv: user\.token_version \?\? 0/);
     expect(mw).toMatch(/\(decoded\.tv \?\? 0\) !== \(user\.token_version \?\? 0\)/);
     expect(mw).toMatch(/token_version FROM users/);
   });
@@ -154,7 +158,7 @@ describe('2 — une session peut être coupée', () => {
     const debut = auth.indexOf("router.post('/revoke-sessions'");
     const bloc = auth.slice(debut, auth.indexOf('});', auth.indexOf('res.json', debut)));
     expect(bloc).toMatch(/token_version = token_version \+ 1/);
-    expect(bloc).toMatch(/generateTokens\(compte\)/);
+    expect(bloc).toMatch(/genererJetons\(compte\)/);
   });
 
   it('laisse l’administrateur couper celles d’un autre compte', () => {

@@ -170,3 +170,30 @@ export const intakeLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false
 });
+
+/**
+ * Cérémonies WebAuthn.
+ *
+ * `authLimiter` serait trop serré ici, et pour une mauvaise raison. Ses dix
+ * tentatives par quart d'heure comptent des essais de mot de passe, qui se
+ * devinent ; une passkey ne se devine pas — il faudrait produire la signature
+ * d'un défi aléatoire par une clé privée qu'on ne possède pas. De plus une
+ * connexion coûte deux appels, et la clé du limiteur d'authentification
+ * comprend l'email, que la connexion sans mot de passe ne demande pas : tous
+ * les agents d'une mairie derrière la même adresse publique partageraient le
+ * même compteur, soit cinq connexions par quart d'heure pour tout le monde.
+ *
+ * Le seuil ci-dessous ne protège donc pas d'un devinage, mais du coût :
+ * chaque défi émis est une ligne écrite en base.
+ */
+export const passkeyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: {
+    success: false,
+    message: 'Trop de tentatives. Veuillez réessayer dans quelques minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req: Request) => `passkey:${ipKeyGenerator(req.ip || '')}`
+});

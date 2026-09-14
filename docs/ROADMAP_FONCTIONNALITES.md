@@ -23,7 +23,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 10 | 🟢 Optionnel | Dark Mode | ✅ Fait | Étendu à l'ensemble des pages |
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
-| 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Écrans seulement | La configuration SSO est enregistrée dans `auth_config` et **relue par personne** : la connexion reste en bcrypt local. En revanche la politique de mot de passe, le blocage après N tentatives et l'expiration sont désormais appliqués |
+| 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Partiel | **Passkeys appliquées** depuis septembre 2026 : connexion sans mot de passe, second facteur, gestion des clés par chaque agent. SAML, OIDC et LDAP restent des écrans dont la configuration est **relue par personne**. La politique de mot de passe, le blocage après N tentatives et l'expiration sont appliqués |
 | 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 ; tournée du jour et saisie de terrain ouverte à l'agent — septembre 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | Implantation depuis le parc à prix figé et plan annoté manipulable — septembre 2026 |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
@@ -192,17 +192,21 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **LDAP / Active Directory** : Connexion annuaire, mapping attributs et groupes, création auto d'utilisateurs, STARTTLS
   - **SAML 2.0 SSO** : Compatible Azure AD, Google Workspace, Okta, OneLogin, Keycloak — certificat X.509, mapping attributs, algorithme signature
   - **OpenID Connect** : URL de découverte, scopes, Authorization Code / Implicit, mapping claims
-  - **Passkey (WebAuthn / FIDO2)** : Empreinte digitale, reconnaissance faciale, clés USB — mode principal ou 2FA
+  - **Passkey (WebAuthn / FIDO2)** ✅ : Empreinte digitale, reconnaissance faciale, clés USB — mode principal ou second facteur. Seul fournisseur de cette page réellement branché
   - Bouton de test de connexion pour chaque fournisseur
   - Préservation des secrets lors de la mise à jour
-- **Tables BDD :** `auth_config` (provider, is_active, config JSON)
-- **Routes API :** `/api/settings/auth` — GET, GET/:provider, PUT/:provider, POST/:provider/test
+- **Tables BDD :** `auth_config` (provider, is_active, config JSON), `user_passkeys`, `passkey_challenges`
+- **Routes API :** `/api/settings/auth` — GET, GET/:provider, PUT/:provider, POST/:provider/test ; `/api/auth/passkey` — status, register/options, register/verify, login/options, login/verify, 2fa/verify, liste, renommage, suppression, suppression par un administrateur
 
-> ⚠️ **État réel des fournisseurs SSO :** seuls les écrans de configuration existent. Chacun affiche désormais un bandeau qui le dit — la décision de finir ou de retirer ces écrans reste ouverte, mais ils ne laissent plus croire que l'authentification est déléguée. La partie de `auth_config` qui les concerne est écrite par cette page et **relue par personne** — aucun fichier de `src/` ne l'interroge en dehors de sa propre route. La connexion reste en bcrypt local, et le bouton « Tester » ne fait que vérifier la forme de l'URL saisie.
+> ✅ **Passkeys, septembre 2026 :** la configuration `auth_config.passkey` est lue à chaque connexion. Un agent enregistre ses clés depuis *Mon profil > Passkeys* ; selon les deux interrupteurs de l'écran, la passkey remplace le mot de passe ou s'y ajoute. Le serveur ne stocke que des clés publiques, et les défis vivent en base pour survivre à un redémarrage. Le RP ID et l'origine, laissés vides, sont déduits du domaine servi — ils ne sont plus décoratifs mais restent facultatifs.
+>
+> Le second facteur crée une impasse que le mot de passe seul ne connaissait pas : perdre son unique appareil ferme l'accès, y compris à l'écran où l'on supprimerait la clé. D'où le bouton « Retirer ses passkeys » dans *Paramètres > Utilisateurs*, réservé à l'administrateur.
+
+> ⚠️ **État réel des fournisseurs SSO :** seuls les écrans de configuration existent pour SAML, OIDC et LDAP. Chacun affiche un bandeau qui le dit — la décision de finir ou de retirer ces écrans reste ouverte, mais ils ne laissent plus croire que l'authentification est déléguée. La partie de `auth_config` qui les concerne est écrite par cette page et **relue par personne** — aucun fichier de `src/` ne l'interroge en dehors de sa propre route. La connexion reste en bcrypt local, et le bouton « Tester » ne fait que vérifier la forme de l'URL saisie.
 >
 > Un écran qui *simule* un SSO est plus dangereux qu'une absence de SSO : il fait croire à un administrateur que l'authentification est déléguée alors qu'elle ne l'est pas. À finir ou à retirer.
 >
-> ✅ **Appliqué depuis août 2026 :** longueur et complexité du mot de passe, vérifiées aux six endroits où un mot de passe est défini ; blocage du compte après N échecs pendant une durée configurable, avec déblocage par réattribution d'un mot de passe ; expiration signalée par un bandeau. Les trois réglages qui ne pouvaient pas l'être — connexion locale, 2FA, timeout de session — ont été retirés du formulaire et remplacés par un encart qui explique pourquoi.
+> ✅ **Appliqué depuis août 2026 :** longueur et complexité du mot de passe, vérifiées aux six endroits où un mot de passe est défini ; blocage du compte après N échecs pendant une durée configurable, avec déblocage par réattribution d'un mot de passe ; expiration signalée par un bandeau. Les trois réglages de l'onglet *Général* qui ne pouvaient pas l'être — connexion locale, 2FA, timeout de session — ont été retirés du formulaire et remplacés par un encart qui explique pourquoi. Le second facteur existe depuis septembre 2026, mais il se règle dans l'onglet *Passkey* : cet interrupteur-ci reste sans effet.
 >
 > L'expiration signale au lieu de bloquer : refuser l'accès à un agent au fond d'un parc parce que son mot de passe a 91 jours l'empêcherait de travailler sans rien protéger de plus.
 

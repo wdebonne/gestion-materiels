@@ -131,9 +131,10 @@ function ReglagesNonAppliques({ titre, elements }: { titre: string; elements: [s
 /**
  * Fournisseur configurable mais jamais consulté à la connexion.
  *
- * Les écrans SAML, OIDC, LDAP et Passkey enregistrent leur configuration dans
+ * Les écrans SAML, OIDC et LDAP enregistrent leur configuration dans
  * `auth_config`, qu'aucun fichier de `src/` n'interroge en dehors de sa propre
- * route. La connexion reste en bcrypt local.
+ * route. La connexion reste en bcrypt local — ou en passkey, désormais, le
+ * seul de ces quatre fournisseurs à être réellement branché.
  *
  * Un écran qui *simule* un SSO est plus dangereux qu'une absence de SSO : il
  * fait croire à un administrateur que l'authentification est déléguée à son
@@ -233,7 +234,7 @@ function GeneralAuthSection({ config, queryClient }: { config: any; queryClient:
             elements={[
               ['Connexion locale', "Seule méthode de connexion existante. La désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne."],
               ['Inscription publique', "Il n'existe pas de page d'inscription : la création de comptes passe par un administrateur."],
-              ['Authentification à deux facteurs', "Aucun second facteur n'est implémenté."],
+              ['Authentification à deux facteurs', "Cet interrupteur-ci n'est relu par personne. Le second facteur existant se règle dans l'onglet Passkey, et ne s'applique qu'aux comptes ayant enregistré une clé."],
               ['Timeout de session', "Non appliqué. La durée de vie des jetons est réglée par JWT_EXPIRES_IN."],
             ]}
           />
@@ -1038,7 +1039,7 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
     origin: '',
     attestation: 'none',
     authenticator_selection: {
-      authenticator_attachment: 'platform',
+      authenticator_attachment: 'any',
       resident_key: 'preferred',
       user_verification: 'preferred'
     },
@@ -1100,8 +1101,6 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
           </div>
         </CardHeader>
         <CardBody className="space-y-4">
-          <FournisseurNonBranche nom="Passkey" />
-
           <ToggleSwitch
             enabled={isActive}
             onChange={setIsActive}
@@ -1110,8 +1109,11 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
 
           <Alert type="info">
             <div className="text-sm">
-              Les Passkeys permettent une authentification sans mot de passe via empreinte digitale, reconnaissance faciale ou clé de sécurité USB (YubiKey, etc.).
-              Compatible Windows Hello, Touch ID, Face ID, Android biometrics.
+              Les passkeys remplacent le mot de passe par l'empreinte, le visage ou le code de
+              l'appareil, ou par une clé de sécurité USB. Compatible Windows Hello, Touch ID,
+              Face ID et Android. Chaque agent enregistre les siennes depuis Mon profil &gt;
+              Passkeys ; le serveur ne conserve que des clés publiques, qui ne permettent pas de
+              se connecter si elles fuitaient.
             </div>
           </Alert>
 
@@ -1127,17 +1129,25 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
               label="Identifiant RP (RP ID)"
               value={formData.rp_id}
               onChange={(e) => setFormData({ ...formData, rp_id: e.target.value })}
-              placeholder="votre-domaine.example.com"
-              hint="Domaine de votre application (sans protocole)"
+              placeholder="Déduit du domaine servi"
+              hint="Facultatif. Domaine sans protocole. Les passkeys y sont scellées : le changer rend inutilisables celles déjà enregistrées."
             />
           </div>
           <Input
             label="Origine"
             value={formData.origin}
             onChange={(e) => setFormData({ ...formData, origin: e.target.value })}
-            placeholder="https://votre-domaine.example.com"
-            hint="URL complète de votre application (avec https://)"
+            placeholder="Déduite de l'adresse d'appel"
+            hint="Facultatif. URL complète, avec https://. Séparez par des virgules si le site répond sur plusieurs adresses."
           />
+
+          <Alert type="info">
+            <div className="text-sm">
+              Laissés vides, ces deux champs sont déduits du domaine réellement servi — ce qui
+              convient à la plupart des installations. « Vérifier la configuration » affiche
+              l'identité effective avant que les agents n'enregistrent leurs clés.
+            </div>
+          </Alert>
         </CardBody>
       </Card>
 
@@ -1155,9 +1165,8 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
               value={formData.attestation}
               onChange={(e) => setFormData({ ...formData, attestation: e.target.value })}
               options={[
-                { value: 'none', label: 'None (recommandé)' },
-                { value: 'indirect', label: 'Indirect' },
-                { value: 'direct', label: 'Direct' }
+                { value: 'none', label: 'Aucune (recommandé)' },
+                { value: 'direct', label: 'Directe (modèle de l\'appareil transmis)' }
               ]}
             />
             <Input
@@ -1181,6 +1190,7 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
                 }
               })}
               options={[
+                { value: 'any', label: 'Indifférent (recommandé)' },
                 { value: 'platform', label: 'Plateforme (biométrie intégrée)' },
                 { value: 'cross-platform', label: 'Multi-plateforme (clé USB)' }
               ]}
@@ -1237,15 +1247,28 @@ function PasskeySection({ config, queryClient }: { config: any; queryClient: any
           <ToggleSwitch
             enabled={formData.allow_as_2fa}
             onChange={(v) => setFormData({ ...formData, allow_as_2fa: v })}
-            label="Autoriser comme second facteur (2FA)"
+            label="Exiger la passkey après le mot de passe (second facteur)"
           />
 
           {formData.allow_as_primary && (
+            <Alert type="info">
+              <div className="flex items-start gap-2 text-sm">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                Un bouton « Se connecter avec une passkey » s'ajoute à l'écran de connexion.
+                Le mot de passe reste accepté : personne n'est enfermé dehors faute d'avoir
+                enregistré une clé.
+              </div>
+            </Alert>
+          )}
+
+          {formData.allow_as_2fa && (
             <Alert type="warning">
-              <div className="flex items-center gap-2 text-sm">
-                <AlertTriangle className="w-4 h-4 flex-shrink-0" />
-                En mode principal, les utilisateurs pourront se connecter uniquement avec leur Passkey, sans saisir de mot de passe.
-                Assurez-vous que tous les utilisateurs ont enregistré au moins un Passkey.
+              <div className="flex items-start gap-2 text-sm">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                Le second facteur ne s'applique qu'aux comptes ayant enregistré une passkey — les
+                autres continuent d'entrer avec leur seul mot de passe. En contrepartie, un agent
+                qui perd son unique appareil ne peut plus se connecter du tout : ses passkeys
+                doivent alors lui être retirées depuis Paramètres &gt; Utilisateurs.
               </div>
             </Alert>
           )}
