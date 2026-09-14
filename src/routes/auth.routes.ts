@@ -14,8 +14,9 @@ import { logService } from '../services/log.service';
 import { getJwtSecret } from '../config/secrets';
 import { authLimiter } from '../middleware/rateLimiter.middleware';
 import { resoudreSous } from '../utils/cheminSous';
-import { lirePolitique, verifierMotDePasse, motDePasseExpire } from '../services/passwordPolicy.service';
-import { notifierWebhooks } from '../services/webhook.service';
+import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.service';
+import { genererJetons, ouvrirSession, poserCookieSession } from '../services/session.service';
+import { preparerSecondFacteur } from './passkey.routes';
 
 const router = Router();
 
@@ -73,25 +74,6 @@ const registerValidation = [
   body('lastName').optional().trim().escape()
 ];
 
-// Générer les tokens JWT
-function generateTokens(user: any): { accessToken: string; refreshToken: string } {
-  const payload: JwtPayload = {
-    userId: user.id,
-    email: user.email,
-    role: user.role,
-    tv: user.token_version ?? 0,
-  };
-
-  const accessToken = jwt.sign(payload, getJwtSecret(), {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d'
-  } as jwt.SignOptions);
-
-  const refreshToken = jwt.sign(payload, getJwtSecret(), {
-    expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d'
-  } as jwt.SignOptions);
-
-  return { accessToken, refreshToken };
-}
 
 // POST /api/auth/login - Connexion
 router.post('/login', authLimiter, loginValidation, async (req: AuthRequest, res: Response) => {
@@ -178,59 +160,34 @@ router.post('/login', authLimiter, loginValidation, async (req: AuthRequest, res
       return res.status(401).json({ success: false, message: 'Email ou mot de passe incorrect' });
     }
 
-    // Connexion réussie : le compteur d'échecs repart de zéro
+    /*
+     * Second facteur : le mot de passe est bon, mais l'installation exige en
+     * plus la passkey de qui en a enregistré une. Aucun jeton n'est délivré
+     * ici — seulement un ticket de cinq minutes et un défi à signer.
+     *
+     * Le compteur d'échecs est tout de même remis à zéro : il compte des
+     * mots de passe faux, et celui-ci ne l'était pas. Le laisser courir
+     * bloquerait au bout de cinq essais un agent qui se trompe seulement
+     * d'appareil.
+     */
     await db.execute(
-      'UPDATE users SET last_login = ?, failed_login_attempts = 0, locked_until = NULL WHERE id = ?',
-      [new Date().toISOString(), user.id]
+      'UPDATE users SET failed_login_attempts = 0, locked_until = NULL WHERE id = ?',
+      [user.id]
     );
 
-    // Générer les tokens
-    const tokens = generateTokens(user);
+    const secondFacteur = await preparerSecondFacteur(user, req);
+    if (secondFacteur) {
+      await logService.info('auth', 'Mot de passe validé, passkey demandée', {}, {
+        userId: user.id,
+        userEmail: user.email,
+        ipAddress: req.ip,
+        userAgent: req.headers['user-agent']
+      });
 
-    // Log de l'activité
-    try {
-      await db.execute(
-        'INSERT INTO activity_logs (user_id, action, details, ip_address) VALUES (?, ?, ?, ?)',
-        [user.id, 'login', 'Connexion réussie', req.ip]
-      );
-    } catch (e) {
-      // La table activity_logs n'existe peut-être pas
+      return res.json({ success: true, secondFacteur });
     }
 
-    // Log avec le nouveau système
-    await logService.success('auth', 'Connexion réussie', { role: user.role }, {
-      userId: user.id,
-      userEmail: user.email,
-      ipAddress: req.ip,
-      userAgent: req.headers['user-agent']
-    });
-
-    notifierWebhooks('user.login', { id: user.id, email: user.email, role: user.role });
-
-    // Définir un cookie HttpOnly pour l'accès aux fichiers uploadés
-    res.cookie('auth_token', tokens.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
-    });
-
-    res.json({
-      success: true,
-      user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.first_name,
-        lastName: user.last_name,
-        role: user.role,
-        avatar: user.avatar
-      },
-      // Signalé, pas bloquant : refuser l'accès à un agent en extérieur parce
-      // que son mot de passe a 91 jours coûte plus qu'il ne protège. Le client
-      // affiche un bandeau tant que le mot de passe n'est pas renouvelé.
-      passwordExpired: motDePasseExpire(user.password_changed_at, politique),
-      ...tokens
-    });
+    res.json(await ouvrirSession(user, req, res, 'mot de passe', politique));
   } catch (error: any) {
     console.error('Erreur login:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
@@ -539,7 +496,7 @@ router.put('/change-password', authenticateToken, [
       'SELECT id, email, role, token_version FROM users WHERE id = ?',
       [req.user?.userId]
     );
-    const jetons = generateTokens(compte);
+    const jetons = genererJetons(compte);
 
     // Log du changement de mot de passe
     await logService.success('auth', 'Mot de passe changé', {}, {
@@ -593,7 +550,7 @@ router.post('/revoke-sessions', authenticateToken, async (req: AuthRequest, res:
     res.json({
       success: true,
       message: 'Vos autres sessions ont été fermées.',
-      ...generateTokens(compte),
+      ...genererJetons(compte),
     });
   } catch (error: any) {
     console.error('Erreur revoke-sessions:', error);
@@ -624,7 +581,7 @@ router.post('/refresh', async (req: AuthRequest, res: Response) => {
       return res.status(401).json({ success: false, message: 'Utilisateur non trouvé' });
     }
 
-    const tokens = generateTokens(user);
+    const tokens = genererJetons(user);
     
     // Log du rafraîchissement de token
     await logService.info('auth', 'Token rafraîchi', {}, {

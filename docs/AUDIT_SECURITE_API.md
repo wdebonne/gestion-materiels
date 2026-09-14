@@ -259,7 +259,7 @@ Aucune de ces règles n'était appliquée : zéro référence dans `auth.routes.
 
 Colonnes ajoutées par la migration `002_politique_connexion` : `failed_login_attempts`, `locked_until`, `password_changed_at`.
 
-**Trois réglages restent inapplicables** et ont été retirés du formulaire, remplacés par un encart qui dit pourquoi plutôt que par des interrupteurs sans effet : la 2FA (aucun second facteur n'existe), le timeout de session (demanderait un suivi d'inactivité), et la connexion locale (la désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne).
+**Trois réglages de l'onglet *Général* restent inapplicables** et ont été retirés du formulaire, remplacés par un encart qui dit pourquoi plutôt que par des interrupteurs sans effet : la 2FA (cet interrupteur-ci n'est relu par personne — le second facteur qui existe se règle dans l'onglet *Passkey*, et ne vaut que pour les comptes ayant enregistré une clé), le timeout de session (demanderait un suivi d'inactivité), et la connexion locale (la désactiver rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne).
 
 **Vérifié** : blocage au 3ᵉ échec avec le seuil réglé à 3, bon mot de passe refusé pendant le blocage, déblocage par un administrateur, et signalement d'expiration sur un mot de passe daté de 100 jours avec un seuil à 90. 21 tests figent le contrat.
 
@@ -415,7 +415,8 @@ Enfin, l'onglet du plan proposait toutes ses commandes d'édition à n'importe q
 ### Ouvert après la révision d'août 2026
 
 - [x] ~~**Appliquer ou retirer la politique de mot de passe et le blocage après N tentatives**~~ ✅ Août 2026 — appliqués ; les trois réglages inapplicables ont été retirés du formulaire
-- [ ] **Finir ou retirer les écrans SSO SAML / OIDC / LDAP / Passkey** — `auth_config` est écrite et relue par personne
+- [x] ~~**Finir ou retirer l'écran Passkey**~~ ✅ Septembre 2026 — fini : WebAuthn est branché, en connexion principale comme en second facteur
+- [ ] **Finir ou retirer les écrans SSO SAML / OIDC / LDAP** — leur part d'`auth_config` est écrite et relue par personne
 - [ ] **Séparer le secret du jeton de rafraîchissement** — `JWT_REFRESH_SECRET` est déclaré dans `docker-compose.yml` et lu par personne : les deux jetons sont signés avec `JWT_SECRET`, donc une fuite du secret d'accès permet aussi de forger des jetons de rafraîchissement
 - [ ] Exécuter `npm audit` et corriger les vulnérabilités
 
@@ -447,9 +448,11 @@ La leçon tient en une phrase : **une route protégée n'est pas une route qui p
 
 **Le point ouvert le plus sérieux n'est pas un défaut de code mais un écart entre l'interface et la réalité.** La politique de mot de passe et le blocage après N tentatives, qui étaient dans ce cas, sont désormais appliqués ; les réglages inapplicables ont été retirés du formulaire.
 
-Restent les **écrans SSO SAML, OIDC, LDAP et Passkey**, qui enregistrent une configuration que personne ne relit. Ils affichent désormais un bandeau disant que le flux n'est pas implémenté et que la connexion reste locale : ils ne font plus croire que l'authentification est déléguée, ce qui était le vrai risque — un administrateur rassuré à tort cherche moins d'autres protections.
+L'écran **Passkey** a été tranché dans l'autre sens : il est fini plutôt que retiré. WebAuthn est branché en connexion principale comme en second facteur, et son bandeau a disparu parce qu'il n'avait plus rien à avouer. Le gain dépasse le rangement — une passkey ne peut être ni devinée, ni rejouée, ni hameçonnée, ce qu'aucune politique de mot de passe n'obtiendra jamais.
 
-**Priorité suivante** : décider de finir ou de retirer ces quatre écrans. Les implémenter suppose trois dépendances supplémentaires, des routes de rappel et une gestion de certificats ; les retirer prend une heure. Tant que la décision n'est pas prise, le bandeau tient lieu d'avertissement.
+Restent les **écrans SSO SAML, OIDC et LDAP**, qui enregistrent une configuration que personne ne relit. Ils affichent un bandeau disant que le flux n'est pas implémenté et que la connexion reste locale : ils ne font plus croire que l'authentification est déléguée, ce qui était le vrai risque — un administrateur rassuré à tort cherche moins d'autres protections.
+
+**Priorité suivante** : décider de finir ou de retirer ces trois écrans. Les implémenter suppose trois dépendances supplémentaires, des routes de rappel et une gestion de certificats ; les retirer prend une heure. Tant que la décision n'est pas prise, le bandeau tient lieu d'avertissement.
 
 ---
 

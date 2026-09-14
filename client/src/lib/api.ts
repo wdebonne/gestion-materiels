@@ -58,7 +58,17 @@ function handleExpiredSession() {
  * `/api/auth` à 10 requêtes par quart d'heure, se déconnecter — ou simplement
  * se tromper de mot de passe — interdisait de se reconnecter pendant 15 minutes.
  */
-const ROUTES_SANS_REPRISE_DE_SESSION = ['/auth/logout', '/auth/refresh', '/auth/login']
+const ROUTES_SANS_REPRISE_DE_SESSION = [
+  '/auth/logout',
+  '/auth/refresh',
+  '/auth/login',
+  // Les cérémonies WebAuthn répondent 401 quand la signature est refusée. Ce
+  // 401 ne décrit pas une session à récupérer : c'est le résultat même de la
+  // tentative de connexion, et vouloir la rafraîchir ferait tomber l'écran de
+  // connexion dans la cascade que ces exclusions existent pour éviter.
+  '/auth/passkey/login',
+  '/auth/passkey/2fa',
+]
 
 function estUneRouteDAuthentification(url: string): boolean {
   return ROUTES_SANS_REPRISE_DE_SESSION.some((route) => url.includes(route))

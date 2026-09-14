@@ -7,6 +7,8 @@
  * silencieusement. On refuse désormais de démarrer en production dans ce cas.
  */
 
+import crypto from 'crypto';
+
 const MIN_SECRET_LENGTH = 32;
 
 /**
@@ -36,6 +38,20 @@ function isWeak(secret: string | undefined): secret is undefined {
   if (!secret) return true;
   if (secret.length < MIN_SECRET_LENGTH) return true;
   return isPlaceholder(secret);
+}
+
+/**
+ * Secret dérivé, pour un jeton qui n'est pas un jeton de session.
+ *
+ * Le ticket remis entre le mot de passe et la passkey porte un `userId` et une
+ * version de compte — exactement ce que `authenticateToken` attend. Signé avec
+ * le secret des sessions, il aurait fait un jeton d'accès parfaitement valable
+ * pendant cinq minutes : présenter son seul mot de passe aurait suffi à sauter
+ * le second facteur. La dérivation rend les deux familles de jetons
+ * mutuellement illisibles, sans second secret à configurer.
+ */
+export function getDerivedSecret(usage: string): string {
+  return crypto.createHmac('sha256', getJwtSecret()).update(usage).digest('hex');
 }
 
 export function getJwtSecret(): string {

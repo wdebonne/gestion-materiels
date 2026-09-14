@@ -114,6 +114,15 @@ export const useAuthStore = create<AuthState>()(
         const response = await api.post('/auth/login', { email, password })
         const { user, accessToken, refreshToken } = response.data
 
+        // Second facteur réclamé : le serveur n'a remis aucun jeton, seulement
+        // un défi à faire signer par l'appareil. Poursuivre écrirait une session
+        // authentifiée sans jeton, dont chaque requête repartirait en 401.
+        // Cette action n'a pas d'écran : c'est `LoginPage` qui mène la
+        // cérémonie, et elle appelle l'API directement.
+        if (response.data.secondFacteur) {
+          throw new Error('Une passkey est requise : passez par l’écran de connexion.')
+        }
+
         set({
           user,
           token: accessToken,

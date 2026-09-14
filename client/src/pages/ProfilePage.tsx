@@ -1,15 +1,16 @@
 import { useState, useRef } from 'react'
 import { useMutation } from '@tanstack/react-query'
-import { User, Mail, Lock, Eye, EyeOff, Save, Camera, Trash2, Loader2 } from 'lucide-react'
+import { User, Mail, Lock, Eye, EyeOff, Save, Camera, Trash2, Loader2, Fingerprint } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { Card, CardBody, CardHeader, CardTitle, Input, Button, Alert } from '@/components/ui'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
 import PreferencesNotification from '@/components/PreferencesNotification'
+import MesPasskeys from '@/components/MesPasskeys'
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuthStore()
-  const [activeTab, setActiveTab] = useState<'info' | 'password'>('info')
+  const [activeTab, setActiveTab] = useState<'info' | 'password' | 'passkeys'>('info')
   
   // État du formulaire profil
   const [profileData, setProfileData] = useState({
@@ -252,8 +253,22 @@ export default function ProfilePage() {
             <Lock className="w-4 h-4 inline-block mr-2" />
             Mot de passe
           </button>
+          <button
+            onClick={() => setActiveTab('passkeys')}
+            className={`py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+              activeTab === 'passkeys'
+                ? 'border-primary-600 text-primary-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Fingerprint className="w-4 h-4 inline-block mr-2" />
+            Passkeys
+          </button>
         </nav>
       </div>
+
+      {/* Se connecter sans mot de passe, avec l'appareil qu'on a déjà en main */}
+      {activeTab === 'passkeys' && <MesPasskeys />}
 
       {/* Formulaire informations */}
       {activeTab === 'info' && (

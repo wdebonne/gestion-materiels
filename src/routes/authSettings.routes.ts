@@ -3,6 +3,11 @@ import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
 import { logService } from '../services/log.service';
 import { invaliderPolitique } from '../services/passwordPolicy.service';
+import {
+  identiteDuSite,
+  invaliderConfigPasskey,
+  normaliserConfigPasskey,
+} from '../services/passkeys.service';
 
 const router = Router();
 
@@ -70,7 +75,10 @@ const DEFAULT_CONFIGS: Record<string, Record<string, any>> = {
     origin: '',
     attestation: 'none',
     authenticator_selection: {
-      authenticator_attachment: 'platform',
+      // « Indifférent » par défaut : une commune mélange les téléphones de
+      // service, les postes de l'atelier et une clé USB dans le coffre, et
+      // rien ne justifie d'exclure l'un des trois avant même d'avoir essayé.
+      authenticator_attachment: 'any',
       resident_key: 'preferred',
       user_verification: 'preferred'
     },
@@ -211,6 +219,7 @@ router.put('/:provider', authenticateToken, requireAdmin, async (req: AuthReques
     // invalidation, un administrateur enregistrerait un nouveau seuil et le
     // verrait ignoré, ce qui est exactement ce que ce lot corrige.
     invaliderPolitique();
+    invaliderConfigPasskey();
 
     // L'appel précédent passait `action` et omettait `level` : `log()` filtre sur
     // les niveaux activés, `includes(undefined)` est faux, et l'entrée était
@@ -301,14 +310,33 @@ router.post('/:provider/test', authenticateToken, requireAdmin, async (req: Auth
         return;
       }
 
+      /*
+       * Les passkeys, elles, sont réellement branchées : ce bouton dit donc
+       * sous quelle identité les clés seront enregistrées, plutôt que de
+       * confirmer la forme de deux champs. C'est la seule question qui se pose
+       * ici — une clé enregistrée sous le mauvais domaine ne se représentera
+       * jamais, et l'erreur ne se voit qu'au moment de se reconnecter.
+       */
       case 'passkey': {
-        if (!config.rp_id || !config.origin) {
-          res.status(400).json({ success: false, message: 'RP ID et Origine requis' });
+        const passkey = normaliserConfigPasskey(config, !!row.is_active);
+        const identite = identiteDuSite(passkey, req);
+
+        if (!identite) {
+          res.status(400).json({
+            success: false,
+            message: 'Impossible de déterminer le domaine. Renseignez l\'identifiant RP et l\'origine.'
+          });
           return;
         }
-        res.json({ 
-          success: true, 
-          message: `Configuration Passkey valide. RP: ${config.rp_name} (${config.rp_id})` 
+
+        const dit = identite.configuree
+          ? 'Identité prise dans cet écran'
+          : 'Identité déduite du domaine servi (champs laissés vides)';
+
+        res.json({
+          success: true,
+          message: `${dit} — domaine « ${identite.rpId} », origine(s) ${identite.origines.join(', ')}. `
+            + `Les passkeys déjà enregistrées sous un autre domaine ne fonctionneront pas.`
         });
         return;
       }

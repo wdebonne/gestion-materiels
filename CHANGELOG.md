@@ -7,6 +7,82 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Se connecter sans mot de passe, avec l'appareil qu'on a déjà en main
+
+> L'écran *Paramètres > Authentification* proposait depuis longtemps d'activer
+> les passkeys, de choisir le type d'authentificateur et le mode d'emploi —
+> principal ou second facteur. Rien ne relisait cette configuration : la
+> connexion restait en bcrypt local, et l'écran portait un bandeau l'avouant.
+>
+> Le mot de passe est pourtant le point faible qui reste. On le choisit court,
+> on le réutilise, on l'écrit sous le clavier de l'atelier, et il se hameçonne.
+> Une passkey ne se devine pas, ne se rejoue pas et ne se présente pas à un site
+> qui imite celui-ci : la clé privée ne quitte jamais le téléphone ou la clé USB,
+> et le serveur ne détient que la moitié publique — une table qui peut fuiter
+> sans que personne ne puisse s'en servir pour entrer.
+
+#### Ajouté
+
+- **La connexion par passkey**, réglée par les deux interrupteurs qui existaient
+  déjà. En mode principal, un bouton « Se connecter avec une passkey » s'ajoute à
+  l'écran de connexion : aucun identifiant à saisir, c'est l'appareil qui désigne
+  le compte — ce qui évite au passage de répondre « ce compte existe-t-il ? » à
+  qui le demande. En second facteur, la passkey est réclamée après le mot de
+  passe, et seulement aux comptes qui en ont enregistré une.
+- **Un onglet « Passkeys » dans Mon profil** : ajouter, renommer, supprimer. La
+  liste est nominative et datée parce qu'on en a plusieurs — le téléphone de
+  service, le poste du bureau, la clé au coffre — et que la question posée le
+  jour d'une perte est « laquelle retirer ».
+- **« Retirer ses passkeys » dans Paramètres > Utilisateurs.** Le second facteur
+  crée une impasse que le mot de passe seul ne connaissait pas : perdre son
+  unique appareil ferme l'accès, y compris à l'écran où l'on supprimerait la clé
+  devenue inutilisable. Désactiver le compte n'y change rien — cela enferme
+  davantage. Ce bouton est la sortie, et il appartient à l'administrateur.
+- Deux tables, `user_passkeys` et `passkey_challenges` (migration
+  `027_passkeys`). Le défi tient en base et non dans une variable du processus :
+  il est émis par une requête et vérifié par la suivante, et doit donc survivre à
+  un redémarrage comme valoir pour deux instances derrière le même nginx.
+
+#### Modifié
+
+- **Le RP ID et l'origine deviennent facultatifs.** Laissés vides — le cas
+  courant, ces champs étant restés décoratifs — ils sont déduits du domaine
+  réellement servi. Mal renseignés, ils ne produisent pas une faille mais une
+  panne : le navigateur refuse la clé avant même d'appeler le serveur, avec un
+  message que personne ne relie à un champ d'administration. Le bouton
+  « Vérifier la configuration » affiche désormais l'identité effective au lieu de
+  confirmer la forme de deux champs.
+- Le type d'authentificateur accepte « Indifférent », et c'est le nouveau défaut.
+  Il fallait jusqu'ici trancher pour toute la commune entre la biométrie intégrée
+  et la clé USB, alors que les deux usages coexistent.
+- L'attestation « Indirect » disparaît : la bibliothèque de vérification ne la
+  connaît pas. Une valeur déjà enregistrée est lue comme « Aucune ».
+- L'ouverture d'une session — remise à zéro du compteur d'échecs, date de
+  dernière venue, journaux, webhook, cookie des pièces jointes — a quitté le
+  corps de `POST /auth/login` pour `session.service.ts`. Trois portes mènent
+  désormais à une session ; recopier ces gestes à chacune, c'était se garantir
+  qu'une finirait par en oublier un.
+
+#### Sécurité
+
+- Le ticket remis entre le mot de passe et la passkey est signé avec un secret
+  **dérivé**, et non celui des sessions. Il porte un `userId` et une version de
+  compte, soit exactement ce qu'attend `authenticateToken` : signé du même
+  secret, il aurait fait un jeton d'accès valable cinq minutes, et présenter son
+  seul mot de passe aurait suffi à sauter le second facteur.
+- Le blocage après N tentatives n'est **pas** opposé à une passkey. Il compte des
+  mots de passe faux et ne protège que du devinage ; une signature ne se devine
+  pas. L'opposer n'écarterait personne de dangereux, mais offrirait à un inconnu
+  un moyen de mettre un agent dehors — cinq mots de passe faux sur son adresse,
+  et son téléphone ne lui servirait plus à rien. Un compte **désactivé**, lui,
+  reste fermé : c'est une décision d'administrateur, pas une conséquence
+  d'attaque.
+- Les cérémonies WebAuthn ont leur propre limiteur, plus large que celui des mots
+  de passe et indexé sur la seule adresse IP. Celui de l'authentification compte
+  dix tentatives par quart d'heure et inclut l'e-mail dans sa clé — que la
+  connexion sans mot de passe ne demande pas : toute une mairie derrière la même
+  adresse publique aurait partagé cinq connexions par quart d'heure.
+
 ### L'agent de terrain pointe enfin ce qu'il charge
 
 > Livrer et récupérer du matériel était une affaire de superviseur. Le rôle

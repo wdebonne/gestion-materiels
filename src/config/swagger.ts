@@ -157,6 +157,7 @@ const options: swaggerJSDoc.Options = {
       { name: 'Manifestations', description: 'Gestion des manifestations et événements' },
       { name: 'Manifestations Stock', description: 'Stock matériel dédié aux manifestations' },
       { name: 'Auth Settings', description: 'Configuration SSO, LDAP et Passkey' },
+      { name: 'Passkey', description: 'Connexion WebAuthn / FIDO2 et gestion des clés' },
     ],
     paths: {
       // ─── Auth ───
@@ -167,6 +168,68 @@ const options: swaggerJSDoc.Options = {
           security: [],
           requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } } },
           responses: { '200': { description: 'Connexion réussie', content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginResponse' } } } }, '401': { description: 'Identifiants invalides' } },
+        },
+      },
+      // ─── Passkey (WebAuthn) ───
+      // Les routes vont par paires : la première remet un défi à signer, la
+      // seconde vérifie la signature. Le corps des cérémonies est celui de la
+      // spécification WebAuthn, transmis tel quel par @simplewebauthn/browser.
+      '/auth/passkey/status': {
+        get: {
+          tags: ['Passkey'], summary: 'Les passkeys sont-elles ouvertes sur cette installation ?', security: [],
+          responses: { '200': { description: 'Fournisseur actif, connexion sans mot de passe, second facteur' } },
+        },
+      },
+      '/auth/passkey': {
+        get: { tags: ['Passkey'], summary: 'Mes passkeys enregistrées', responses: { '200': { description: 'Liste des clés, sans leur contenu cryptographique' } } },
+      },
+      '/auth/passkey/register/options': {
+        post: { tags: ['Passkey'], summary: 'Défi d\'enregistrement', responses: { '200': { description: 'Options à passer à navigator.credentials.create()' }, '400': { description: 'Passkeys non activées' } } },
+      },
+      '/auth/passkey/register/verify': {
+        post: {
+          tags: ['Passkey'], summary: 'Enregistrer la clé publique produite par l\'appareil',
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { response: { type: 'object' }, name: { type: 'string' } } } } } },
+          responses: { '201': { description: 'Passkey enregistrée' }, '400': { description: 'Signature ou défi refusé' }, '409': { description: 'Déjà enregistrée' } },
+        },
+      },
+      '/auth/passkey/{id}': {
+        patch: {
+          tags: ['Passkey'], summary: 'Renommer une de mes passkeys',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { name: { type: 'string' } } } } } },
+          responses: { '200': { description: 'Renommée' }, '404': { description: 'Introuvable' } },
+        },
+        delete: {
+          tags: ['Passkey'], summary: 'Supprimer une de mes passkeys',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: { '200': { description: 'Supprimée' }, '404': { description: 'Introuvable' } },
+        },
+      },
+      '/auth/passkey/user/{userId}': {
+        delete: {
+          tags: ['Passkey'], summary: 'Retirer les passkeys d\'un agent (admin requis)',
+          description: 'Sortie de secours : un agent qui perd son unique appareil ne peut plus atteindre l\'écran où il supprimerait sa clé.',
+          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'integer' } }],
+          responses: { '200': { description: 'Passkeys retirées' }, '404': { description: 'Utilisateur non trouvé' } },
+        },
+      },
+      '/auth/passkey/login/options': {
+        post: { tags: ['Passkey'], summary: 'Défi de connexion, sans identifiant', security: [], responses: { '200': { description: 'Options à passer à navigator.credentials.get()' }, '400': { description: 'Connexion par passkey non autorisée' } } },
+      },
+      '/auth/passkey/login/verify': {
+        post: {
+          tags: ['Passkey'], summary: 'Connexion sans mot de passe', security: [],
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { response: { type: 'object' } } } } } },
+          responses: { '200': { description: 'Session ouverte', content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginResponse' } } } }, '401': { description: 'Passkey non reconnue' } },
+        },
+      },
+      '/auth/passkey/2fa/verify': {
+        post: {
+          tags: ['Passkey'], summary: 'Second facteur, après un mot de passe validé', security: [],
+          description: 'Le ticket est celui que POST /auth/login renvoie dans « secondFacteur » au lieu des jetons.',
+          requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { ticket: { type: 'string' }, response: { type: 'object' } } } } } },
+          responses: { '200': { description: 'Session ouverte' }, '401': { description: 'Ticket expiré ou passkey refusée' } },
         },
       },
       '/auth/register': {
