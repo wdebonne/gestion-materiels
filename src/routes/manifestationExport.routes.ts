@@ -9,12 +9,7 @@ import {
   type ColonneProfil,
   type FiltresExport,
 } from '../services/manifestationExport.service';
-import {
-  deposerFichier,
-  lireConfiguration,
-  verifierConfiguration,
-  type ConfigurationNextcloud,
-} from '../services/webdav.service';
+import { deposerFichier, lireConfiguration } from '../services/webdav.service';
 
 /**
  * Export des manifestations, et dépôt sur Nextcloud.
@@ -247,104 +242,6 @@ router.post('/profiles/:id/run', authenticateToken, requireSupervisor, async (re
     res.json({ success: true, data: { chemin, lignes } });
   } catch (error: any) {
     await noterResultat(req.params.id, 'echec', error.message);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// ======================== CONFIGURATION NEXTCLOUD ========================
-
-/** Le mot de passe d'application ne ressort jamais. */
-router.get('/nextcloud', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
-  try {
-    const config = await lireConfiguration();
-    res.json({
-      success: true,
-      data: config
-        ? { url: config.url, username: config.username, folder: config.folder ?? 'Manifestations', configured: true }
-        : { url: '', username: '', folder: 'Manifestations', configured: false },
-    });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-router.put('/nextcloud', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const { url, username, password, folder } = req.body;
-    if (!url || !username) {
-      return res.status(400).json({ success: false, message: 'Adresse et identifiant requis' });
-    }
-
-    // Un mot de passe vide à la modification veut dire « garde celui-ci » :
-    // l'écran ne le réaffiche pas, il ne peut donc pas le renvoyer.
-    const existante = await lireConfiguration();
-    const motDePasse = password || existante?.password;
-    if (!motDePasse) {
-      return res.status(400).json({ success: false, message: "Mot de passe d'application requis" });
-    }
-
-    const config: ConfigurationNextcloud = {
-      url: String(url).trim(),
-      username: String(username).trim(),
-      password: motDePasse,
-      folder: folder?.trim() || 'Manifestations',
-    };
-
-    const maintenant = new Date().toISOString();
-    const existant = await db.queryOne(
-      "SELECT id FROM settings WHERE setting_key = 'nextcloud_config'"
-    );
-    if (existant) {
-      await db.execute(
-        'UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?',
-        [JSON.stringify(config), maintenant, 'nextcloud_config']
-      );
-    } else {
-      await db.execute(
-        `INSERT INTO settings (setting_key, setting_value, setting_type, description, created_at, updated_at)
-         VALUES (?, ?, 'json', ?, ?, ?)`,
-        [
-          'nextcloud_config',
-          JSON.stringify(config),
-          'Dépôt WebDAV des exports de manifestations',
-          maintenant,
-          maintenant,
-        ]
-      );
-    }
-
-    await logService.success('api', 'Configuration Nextcloud enregistrée', {}, { userId: req.user?.userId });
-    res.json({ success: true });
-  } catch (error: any) {
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-/**
- * Vérifie la configuration en déposant réellement un fichier témoin.
- *
- * Valider seulement la forme des champs laisserait croire que tout est branché —
- * c'est le défaut des écrans SSO de ce projet, qui « testent » sans rien prouver.
- */
-router.post('/nextcloud/test', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
-  try {
-    const { url, username, password, folder } = req.body;
-    const existante = await lireConfiguration();
-
-    const config: ConfigurationNextcloud = {
-      url: (url || existante?.url || '').trim(),
-      username: (username || existante?.username || '').trim(),
-      password: password || existante?.password || '',
-      folder: folder?.trim() || existante?.folder || 'Manifestations',
-    };
-
-    if (!config.url || !config.username || !config.password) {
-      return res.status(400).json({ success: false, message: 'Configuration incomplète' });
-    }
-
-    const resultat = await verifierConfiguration(config);
-    res.status(resultat.success ? 200 : 502).json({ success: resultat.success, message: resultat.message });
-  } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
 });

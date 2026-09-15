@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   Plus, Trash2, Download, UploadCloud, Cloud, CheckCircle, XCircle,
@@ -8,7 +9,7 @@ import {
   Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert, Badge,
   Modal, ModalBody, ModalFooter, Spinner
 } from '@/components/ui'
-import api, { exportManifestationApi, type ColonneProfil, type ProfilExport } from '@/lib/api'
+import api, { exportManifestationApi, nextcloudApi, type ColonneProfil, type ProfilExport } from '@/lib/api'
 import toast from 'react-hot-toast'
 
 /**
@@ -92,7 +93,7 @@ export default function ManifestationExportPage() {
         </div>
       </div>
 
-      <ConfigurationNextcloud />
+      <EtatNextcloud />
 
       {isLoading ? (
         <div className="flex justify-center py-10"><Spinner /></div>
@@ -179,108 +180,41 @@ export default function ManifestationExportPage() {
 
 // ==================== NEXTCLOUD ====================
 
-function ConfigurationNextcloud() {
-  const queryClient = useQueryClient()
-  const [motDePasse, setMotDePasse] = useState('')
-  const [brouillon, setBrouillon] = useState<{ url: string; username: string; folder: string } | null>(null)
-
+/**
+ * Où en est la connexion, sans la régler ici.
+ *
+ * Le formulaire vivait sur cet écran, parce que c'est le dépôt du suivi qui
+ * l'avait rendu nécessaire. Il sert depuis aux modèles de document, et deux
+ * formulaires pour un même réglage finissent par se contredire : celui-ci
+ * renvoie à l'écran qui en a la charge, et dit surtout ce que l'absence de
+ * connexion coûte — un profil « Nextcloud » qui ne dépose rien, en silence.
+ */
+function EtatNextcloud() {
   const { data: config } = useQuery({
     queryKey: ['nextcloud-config'],
-    queryFn: async () => {
-      const res = (await exportManifestationApi.getNextcloud()).data.data
-      setBrouillon({ url: res.url, username: res.username, folder: res.folder })
-      return res
-    },
+    queryFn: async () => (await nextcloudApi.getConfig()).data.data,
   })
 
-  const surErreur = (err: any) => toast.error(err.response?.data?.message || 'Erreur')
-
-  const enregistrement = useMutation({
-    mutationFn: () =>
-      exportManifestationApi.saveNextcloud({
-        url: brouillon!.url,
-        username: brouillon!.username,
-        password: motDePasse || undefined,
-        folder: brouillon!.folder,
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['nextcloud-config'] })
-      setMotDePasse('')
-      toast.success('Configuration enregistrée')
-    },
-    onError: surErreur,
-  })
-
-  const verification = useMutation({
-    mutationFn: () =>
-      exportManifestationApi.testNextcloud({
-        url: brouillon?.url,
-        username: brouillon?.username,
-        password: motDePasse || undefined,
-        folder: brouillon?.folder,
-      }),
-    onSuccess: (res) => toast.success(res.data.message),
-    onError: (err: any) => toast.error(err.response?.data?.message || 'Dépôt refusé'),
-  })
-
-  if (!brouillon) return null
+  if (!config) return null
 
   return (
-    <Card>
-      <CardHeader className="flex items-center justify-between">
-        <CardTitle className="text-sm flex items-center gap-2">
-          <Cloud className="w-4 h-4" /> Nextcloud
-        </CardTitle>
-        {config?.configured && <Badge variant="success">Configuré</Badge>}
-      </CardHeader>
-      <CardBody className="space-y-4">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          Utilisez un <strong>mot de passe d'application</strong> Nextcloud, jamais le mot de passe
-          du compte : il se révoque sans changer les identifiants de la personne.
-        </p>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Input
-            label="Adresse WebDAV"
-            value={brouillon.url}
-            placeholder="https://cloud.ville.fr/remote.php/dav/files/mairie"
-            onChange={(e) => setBrouillon({ ...brouillon, url: e.target.value })}
-          />
-          <Input
-            label="Identifiant"
-            value={brouillon.username}
-            onChange={(e) => setBrouillon({ ...brouillon, username: e.target.value })}
-          />
-          <Input
-            label={config?.configured ? "Mot de passe d'application (inchangé si vide)" : "Mot de passe d'application"}
-            type="password"
-            value={motDePasse}
-            onChange={(e) => setMotDePasse(e.target.value)}
-          />
-          <Input
-            label="Dossier"
-            value={brouillon.folder}
-            placeholder="Manifestations"
-            onChange={(e) => setBrouillon({ ...brouillon, folder: e.target.value })}
-          />
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button loading={enregistrement.isPending}
-            disabled={!brouillon.url || !brouillon.username}
-            onClick={() => enregistrement.mutate()}>
-            Enregistrer
-          </Button>
-          <Button variant="outline" loading={verification.isPending} onClick={() => verification.mutate()}>
-            Vérifier le dépôt
-          </Button>
-        </div>
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          La vérification dépose réellement un fichier témoin puis le retire : elle prouve que le
-          dépôt fonctionne, au lieu de se contenter de valider la forme des champs.
-        </p>
-      </CardBody>
-    </Card>
+    <Alert type={config.configured ? 'info' : 'warning'}>
+      <span className="text-sm flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Cloud className="w-4 h-4 flex-shrink-0" />
+        {config.configured ? (
+          <span>
+            Dépôt sur <strong>{config.url}</strong>, dossier « {config.folder} ».
+          </span>
+        ) : (
+          <span>
+            Aucun Nextcloud connecté : un profil réglé sur « Nextcloud » ne déposera rien.
+          </span>
+        )}
+        <Link to="/settings/nextcloud" className="font-medium underline">
+          Paramètres › Nextcloud
+        </Link>
+      </span>
+    </Alert>
   )
 }
 

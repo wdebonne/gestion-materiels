@@ -839,13 +839,32 @@ POST   /api/manifestations/export/profiles  # Créer un profil
 PUT    /api/manifestations/export/profiles/:id
 DELETE /api/manifestations/export/profiles/:id
 POST   /api/manifestations/export/profiles/:id/run   # Produit et dépose sur Nextcloud
-GET    /api/manifestations/export/nextcloud       # Configuration (sans le mot de passe)
-PUT    /api/manifestations/export/nextcloud       # Enregistrer la configuration
-POST   /api/manifestations/export/nextcloud/test  # Dépose un fichier témoin, puis le retire
 ```
 
 Le sens est unique : l'application reste la source de vérité, le fichier déposé sert à consulter
-et à annoter à côté. Utilisez un **mot de passe d'application** Nextcloud, jamais celui du compte.
+et à annoter à côté.
+
+**Connexion Nextcloud** — *Paramètres > Nextcloud*
+
+```
+GET    /api/nextcloud            # Connexion enregistrée (sans le mot de passe)
+PUT    /api/nextcloud            # Enregistrer la connexion
+POST   /api/nextcloud/test       # Dépose un fichier témoin dans le dossier de travail, puis le retire
+GET    /api/nextcloud/browse     # Contenu d'un dossier (?path=), dossiers d'abord
+GET    /api/nextcloud/download   # Télécharge un fichier distant (?path=)
+```
+
+Utilisez un **mot de passe d'application** Nextcloud, jamais celui du compte : il se révoque sans
+changer les identifiants de la personne. L'adresse du site suffit — la racine WebDAV
+(`/remote.php/dav/files/identifiant`) est complétée à l'enregistrement, car elle ne s'affiche nulle
+part dans Nextcloud. Le test **dépose réellement** un fichier témoin puis le retire, au lieu de
+valider la forme des champs ; l'explorateur sert à désigner un dossier plutôt qu'à l'épeler, le
+dépôt étant silencieux par construction — un Nextcloud injoignable ne fait jamais échouer la
+validation d'une manifestation.
+
+La connexion sert aussi aux **modèles de document** (`/api/services/nextcloud-templates`) : un
+modèle tenu dans Nextcloud est relu à chaque génération, si bien qu'une correction faite le matin
+s'applique l'après-midi.
 
 **Réception des demandes**
 

@@ -55,6 +55,7 @@ import manifestationIntakeRoutes from './routes/manifestationIntake.routes';
 import serviceRoutes from './routes/service.routes';
 import notificationRoutes from './routes/notification.routes';
 import manifestationExportRoutes from './routes/manifestationExport.routes';
+import nextcloudRoutes from './routes/nextcloud.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
 import mobilierUrbainRoutes from './routes/mobilierUrbain.routes';
 
@@ -292,6 +293,9 @@ app.use('/api/manifestations/intake', intakeLimiter, manifestationIntakeRoutes);
 app.use('/api/manifestations/export', manifestationExportRoutes);
 app.use('/api/manifestations', manifestationRoutes);
 app.use('/api/services', serviceRoutes);
+// La connexion Nextcloud ne dépend d'aucun module : le suivi des manifestations
+// l'a rendue nécessaire, les modèles de document s'en servent depuis.
+app.use('/api/nextcloud', nextcloudRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
 app.use('/api/mobilier-urbain', mobilierUrbainRoutes);

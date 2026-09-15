@@ -1062,13 +1062,38 @@ export const exportManifestationApi = {
   /** URL de téléchargement direct, avec ou sans profil. */
   downloadUrl: (profileId?: number) =>
     `/manifestations/export${profileId ? `?profile=${profileId}` : ''}`,
+}
 
-  getNextcloud: () =>
-    api.get<{ success: boolean; data: ConfigNextcloud }>('/manifestations/export/nextcloud'),
-  saveNextcloud: (data: { url: string; username: string; password?: string; folder?: string }) =>
-    api.put<{ success: boolean }>('/manifestations/export/nextcloud', data),
-  testNextcloud: (data: { url?: string; username?: string; password?: string; folder?: string }) =>
-    api.post<{ success: boolean; message: string }>('/manifestations/export/nextcloud/test', data),
+/** Une ligne de l'explorateur : un fichier, ou un dossier où descendre. */
+export interface EntreeNextcloud {
+  nom: string
+  /** Chemin relatif à la racine WebDAV, sans barre initiale. */
+  chemin: string
+  dossier: boolean
+  taille?: number
+  modifie?: string
+  typeMime?: string
+}
+
+/**
+ * Connexion au Nextcloud de la commune.
+ *
+ * Réglée sous `/manifestations/export` tant que seul le suivi s'y déposait ;
+ * elle sert depuis aux modèles de document, et ne dépend plus d'un module.
+ */
+export const nextcloudApi = {
+  getConfig: () => api.get<{ success: boolean; data: ConfigNextcloud }>('/nextcloud'),
+  saveConfig: (data: { url: string; username: string; password?: string; folder?: string }) =>
+    api.put<{ success: boolean; data: { url: string; folder: string } }>('/nextcloud', data),
+  /** Dépose réellement un fichier témoin, puis le retire. */
+  test: (data: { url?: string; username?: string; password?: string; folder?: string }) =>
+    api.post<{ success: boolean; message: string; data?: { url: string } }>('/nextcloud/test', data),
+  browse: (chemin: string) =>
+    api.get<{ success: boolean; data: { chemin: string; entrees: EntreeNextcloud[] } }>(
+      `/nextcloud/browse?path=${encodeURIComponent(chemin)}`
+    ),
+  /** Passe par l'instance axios : le jeton voyage en en-tête, pas dans l'URL. */
+  downloadUrl: (chemin: string) => `/nextcloud/download?path=${encodeURIComponent(chemin)}`,
 }
 
 

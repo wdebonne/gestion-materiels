@@ -28,6 +28,9 @@ const DELAI_MAX_MS = 30_000;
 const IDENTIFIANTS_REFUSES =
   "Identifiants refusés — vérifiez l'identifiant et le mot de passe d'application";
 
+/** Renvoie vers l'écran qui règle la connexion, plutôt que vers le symptôme. */
+const NON_CONFIGURE = "Nextcloud n'est pas configuré (Paramètres › Nextcloud)";
+
 export interface ConfigurationNextcloud {
   /** Racine WebDAV, par exemple `https://cloud.ville.fr/remote.php/dav/files/mairie`. */
   url: string;
@@ -56,6 +59,78 @@ export async function lireConfiguration(): Promise<ConfigurationNextcloud | null
   }
 }
 
+/**
+ * Complète une adresse d'instance en racine WebDAV.
+ *
+ * `https://cloud.ville.fr/remote.php/dav/files/mairie` ne s'affiche nulle part
+ * dans Nextcloud : ce qu'on a sous les yeux, et donc ce qu'on recopie, c'est
+ * l'adresse du site — parfois même celle de l'écran des fichiers, avec son
+ * `/apps/files/?dir=…`. Refuser aurait demandé d'expliquer une syntaxe que
+ * personne n'a à connaître ; on complète.
+ */
+export function normaliserUrl(url: string, username: string): string {
+  const saisie = url.trim();
+  if (!saisie) return '';
+
+  let adresse: URL;
+  try {
+    adresse = new URL(/^https?:\/\//i.test(saisie) ? saisie : `https://${saisie}`);
+  } catch {
+    return saisie.replace(/\/+$/, '');
+  }
+
+  const chemin = adresse.pathname.replace(/\/+$/, '');
+
+  // Déjà une racine WebDAV — y compris un `remote.php/webdav` d'ancienne
+  // génération : on ne la réécrit pas.
+  if (/\/remote\.php\//i.test(chemin)) return `${adresse.origin}${chemin}`;
+
+  // L'adresse recopiée du navigateur porte l'écran consulté, qui n'a rien à
+  // faire dans une racine WebDAV.
+  const base = chemin.replace(/\/(index\.php|apps|login|settings)(\/.*)?$/i, '');
+  const compte = username.trim();
+
+  return compte
+    ? `${adresse.origin}${base}/remote.php/dav/files/${encodeURIComponent(compte)}`
+    : `${adresse.origin}${base}`;
+}
+
+/** Nettoie un chemin saisi ou reçu : ni barres vides, ni remontée. */
+export function normaliserChemin(chemin?: string | null): string {
+  return (chemin ?? '')
+    .split('/')
+    .filter((segment) => segment && segment !== '.' && segment !== '..')
+    .join('/');
+}
+
+/** Enregistre la configuration, en créant le réglage s'il n'existe pas. */
+export async function enregistrerConfiguration(config: ConfigurationNextcloud): Promise<void> {
+  const maintenant = new Date().toISOString();
+  const existant = await db.queryOne(
+    "SELECT id FROM settings WHERE setting_key = 'nextcloud_config'"
+  );
+
+  if (existant) {
+    await db.execute(
+      'UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?',
+      [JSON.stringify(config), maintenant, 'nextcloud_config']
+    );
+    return;
+  }
+
+  await db.execute(
+    `INSERT INTO settings (setting_key, setting_value, setting_type, description, created_at, updated_at)
+     VALUES (?, ?, 'json', ?, ?, ?)`,
+    [
+      'nextcloud_config',
+      JSON.stringify(config),
+      'Connexion WebDAV au Nextcloud de la commune',
+      maintenant,
+      maintenant,
+    ]
+  );
+}
+
 /** En-tête d'authentification Basic. */
 function entetes(config: ConfigurationNextcloud): Record<string, string> {
   const jeton = Buffer.from(`${config.username}:${config.password}`).toString('base64');
@@ -74,7 +149,9 @@ export function construireUrl(base: string, ...segments: string[]): string {
   const suite = segments
     .filter(Boolean)
     .flatMap((s) => s.split('/'))
-    .filter(Boolean)
+    // `..` remonte d'un cran : `fetch` normalise le chemin avant de l'envoyer,
+    // si bien qu'un chemin d'exploration sortirait du dossier du compte.
+    .filter((s) => s && s !== '.' && s !== '..')
     .map((s) => encodeURIComponent(s));
 
   return [racine, ...suite].join('/');
@@ -123,7 +200,7 @@ export async function deposerFichier(
 ): Promise<ResultatDepot> {
   const config = configuration ?? (await lireConfiguration());
   if (!config) {
-    return { success: false, error: "Nextcloud n'est pas configuré (Paramètres › Nextcloud)" };
+    return { success: false, error: NON_CONFIGURE };
   }
 
   const morceaux = chemin.split('/').filter(Boolean);
@@ -213,7 +290,7 @@ export async function lireFichier(
 ): Promise<ResultatLecture> {
   const config = configuration ?? (await lireConfiguration());
   if (!config) {
-    return { success: false, error: "Nextcloud n'est pas configuré (Paramètres › Nextcloud)" };
+    return { success: false, error: NON_CONFIGURE };
   }
 
   try {
@@ -235,49 +312,137 @@ export async function lireFichier(
   }
 }
 
+/** Une ligne de l'explorateur : un fichier, ou un dossier où descendre. */
+export interface EntreeDistante {
+  nom: string;
+  /** Chemin relatif à la racine WebDAV, sans barre initiale. */
+  chemin: string;
+  dossier: boolean;
+  /** Taille en octets, absente sur un dossier. */
+  taille?: number;
+  /** Dernière modification, en ISO. */
+  modifie?: string;
+  typeMime?: string;
+}
+
 /**
- * Liste les fichiers d'un dossier, par `PROPFIND`.
+ * Lit la valeur d'une balise, quel que soit son préfixe de domaine.
  *
- * Sert à proposer les modèles présents plutôt qu'à faire recopier un chemin à la
- * main, où la moindre faute de frappe ne se verrait qu'à la première génération
- * ratée. La réponse est du XML : on n'en extrait que les chemins, sans
- * bibliothèque, car c'est tout ce dont l'écran a besoin.
+ * Les serveurs ne s'accordent pas : `d:`, `D:` ou `lp1:` selon l'implémentation
+ * et selon la propriété. Une comparaison sur `d:href` marcherait chez les uns et
+ * rendrait un dossier vide chez les autres.
  */
-export async function listerDossier(
+function valeurBalise(bloc: string, nom: string): string | undefined {
+  const trouve = bloc.match(new RegExp(`<[a-z0-9]*:?${nom}[^>]*>([^<]*)<`, 'i'));
+  return trouve?.[1]?.trim() || undefined;
+}
+
+/** Ramène un `href` absolu au chemin relatif à la racine du compte. */
+function relativiser(href: string, racine: string): string {
+  const brut = /^https?:\/\//i.test(href) ? new URL(href).pathname : href;
+
+  // Le serveur encode le `href` ; « Fête de la musique » y figure en
+  // `F%C3%AAte%20de%20la%20musique`, et c'est le nom lisible qui s'affiche.
+  const chemin = decodeURIComponent(brut);
+
+  return (chemin.startsWith(racine) ? chemin.slice(racine.length) : chemin)
+    .replace(/^\/+/, '')
+    .replace(/\/+$/, '');
+}
+
+/**
+ * Extrait les entrées d'une réponse `PROPFIND`.
+ *
+ * Sans bibliothèque XML : on ne lit que quatre propriétés, toutes textuelles, et
+ * la seule structure qui compte est le découpage en `<response>`.
+ */
+export function analyserPropfind(xml: string, base: string, dossier: string): EntreeDistante[] {
+  const racine = decodeURIComponent(new URL(base).pathname).replace(/\/+$/, '');
+
+  return xml
+    .split(/<[a-z0-9]*:?response[\s>]/i)
+    .slice(1)
+    .map((bloc): EntreeDistante | null => {
+      const href = valeurBalise(bloc, 'href');
+      if (!href) return null;
+
+      const chemin = relativiser(href, racine);
+      // Le dossier interrogé figure en tête de sa propre réponse.
+      if (!chemin || chemin === dossier) return null;
+
+      const taille = valeurBalise(bloc, 'getcontentlength');
+      const modifie = valeurBalise(bloc, 'getlastmodified');
+      const date = modifie ? new Date(modifie) : null;
+
+      return {
+        nom: chemin.split('/').pop() ?? chemin,
+        chemin,
+        dossier: /<[a-z0-9]*:?collection\s*\/?>/i.test(bloc),
+        taille: taille ? Number(taille) : undefined,
+        modifie: date && !Number.isNaN(date.getTime()) ? date.toISOString() : undefined,
+        typeMime: valeurBalise(bloc, 'getcontenttype'),
+      };
+    })
+    .filter((entree): entree is EntreeDistante => entree !== null)
+    .sort((a, b) => (a.dossier === b.dossier ? a.nom.localeCompare(b.nom, 'fr') : a.dossier ? -1 : 1));
+}
+
+/**
+ * Contenu d'un dossier, par `PROPFIND`.
+ *
+ * Un chemin se recopie à la main dans les profils d'export comme dans les
+ * modèles de document, et la faute de frappe ne se voyait qu'à la première
+ * génération ratée — voire jamais, le dépôt étant silencieux par construction.
+ * Parcourir l'arborescence permet de désigner un dossier au lieu de l'épeler.
+ */
+export async function explorerDossier(
   chemin: string,
   configuration?: ConfigurationNextcloud | null
-): Promise<{ success: boolean; fichiers?: string[]; error?: string }> {
+): Promise<{ success: boolean; chemin?: string; entrees?: EntreeDistante[]; error?: string }> {
   const config = configuration ?? (await lireConfiguration());
-  if (!config) {
-    return { success: false, error: "Nextcloud n'est pas configuré (Paramètres › Nextcloud)" };
-  }
+  if (!config) return { success: false, error: NON_CONFIGURE };
+
+  const dossier = normaliserChemin(chemin);
 
   try {
-    const reponse = await fetch(construireUrl(config.url, chemin), {
+    const reponse = await fetch(construireUrl(config.url, dossier), {
       method: 'PROPFIND',
       headers: { ...entetes(config), Depth: '1', 'Content-Type': 'application/xml' },
       signal: AbortSignal.timeout(DELAI_MAX_MS),
     });
 
     if (reponse.status === 404) {
-      return { success: false, error: `Dossier introuvable sur Nextcloud : ${chemin}` };
+      return { success: false, error: `Dossier introuvable sur Nextcloud : ${dossier || '/'}` };
     }
     if (reponse.status === 401) return { success: false, error: IDENTIFIANTS_REFUSES };
     if (!reponse.ok) return { success: false, error: `HTTP ${reponse.status}` };
 
-    const xml = await reponse.text();
-    const fichiers = [...xml.matchAll(/<[^>]*href[^>]*>([^<]+)<\/[^>]*href>/gi)]
-      .map((m) => decodeURIComponent(m[1]))
-      // Le dossier lui-même figure dans sa propre réponse, et les
-      // sous-dossiers finissent par une barre.
-      .filter((h) => !h.endsWith('/'))
-      .map((h) => h.split('/').pop() ?? '')
-      .filter((nom) => nom.toLowerCase().endsWith('.docx'));
-
-    return { success: true, fichiers: [...new Set(fichiers)].sort((a, b) => a.localeCompare(b, 'fr')) };
+    return { success: true, chemin: dossier, entrees: analyserPropfind(await reponse.text(), config.url, dossier) };
   } catch (erreur: any) {
     return { success: false, error: messageLisible(erreur) };
   }
+}
+
+/**
+ * Modèles `.docx` d'un dossier.
+ *
+ * Sert à proposer les modèles présents plutôt qu'à faire recopier un chemin à la
+ * main, où la moindre faute de frappe ne se verrait qu'à la première génération
+ * ratée.
+ */
+export async function listerDossier(
+  chemin: string,
+  configuration?: ConfigurationNextcloud | null
+): Promise<{ success: boolean; fichiers?: string[]; error?: string }> {
+  const resultat = await explorerDossier(chemin, configuration);
+  if (!resultat.success) return { success: false, error: resultat.error };
+
+  return {
+    success: true,
+    fichiers: (resultat.entrees ?? [])
+      .filter((entree) => !entree.dossier && entree.nom.toLowerCase().endsWith('.docx'))
+      .map((entree) => entree.nom),
+  };
 }
 
 /**
