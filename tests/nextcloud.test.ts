@@ -33,6 +33,7 @@ import {
   construireUrl,
   normaliserChemin,
   normaliserUrl,
+  racineInstance,
 } from '../src/services/webdav.service';
 
 const RACINE = 'https://cloud.ville.fr/remote.php/dav/files/mairie';
@@ -73,6 +74,30 @@ describe("l'adresse du serveur", () => {
     expect(normaliserUrl('https://cloud.ville.fr', 'mairie pavilly')).toBe(
       'https://cloud.ville.fr/remote.php/dav/files/mairie%20pavilly'
     );
+  });
+});
+
+describe("la racine de l'instance", () => {
+  // L'API OCS et les routes d'application ne vivent pas sous la racine WebDAV.
+  // S'y tromper donnerait un 404 muet, indiscernable d'une application absente.
+  it('retire la partie WebDAV', () => {
+    expect(racineInstance(RACINE)).toBe('https://cloud.ville.fr');
+  });
+
+  it('garde le sous-répertoire quand Nextcloud y est installé', () => {
+    expect(racineInstance('https://serveur.ville.fr/nextcloud/remote.php/dav/files/mairie')).toBe(
+      'https://serveur.ville.fr/nextcloud'
+    );
+  });
+
+  it("respecte un remote.php/webdav d'ancienne génération", () => {
+    expect(racineInstance('https://cloud.ville.fr/remote.php/webdav')).toBe(
+      'https://cloud.ville.fr'
+    );
+  });
+
+  it('laisse une adresse déjà nue telle quelle', () => {
+    expect(racineInstance('https://cloud.ville.fr/')).toBe('https://cloud.ville.fr');
   });
 });
 

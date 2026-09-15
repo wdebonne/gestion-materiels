@@ -11,6 +11,8 @@ import {
   verifierConfiguration,
   type ConfigurationNextcloud,
 } from '../services/webdav.service';
+import { convertirEnPdf } from '../services/conversionPdf.service';
+import { docxMinimal } from '../services/modeleDocx.service';
 
 /**
  * Connexion au Nextcloud de la commune.
@@ -103,6 +105,45 @@ router.post('/test', authenticateToken, requireAdmin, async (req: AuthRequest, r
       success: resultat.success,
       message: resultat.message,
       data: { url: config.url },
+    });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Vérifie que le Nextcloud sait convertir un `.docx` en PDF.
+ *
+ * Même exigence que le test de connexion : on convertit un vrai document
+ * témoin, parce qu'interroger la liste des applications installées ne dirait
+ * rien de ce qui se passera au moment de produire un arrêté. Deux chemins sont
+ * possibles selon la variante installée — EuroOffice, ONLYOFFICE, Nextcloud
+ * Office — et le seul moyen de savoir lequel répond est de le demander.
+ *
+ * Sans cette sonde, un administrateur règlerait un modèle sur PDF et ne
+ * l'apprendrait qu'à la première demande reçue, quand la conversion échoue en
+ * silence derrière une manifestation déjà partie.
+ */
+router.post('/test-pdf', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const temoin = await docxMinimal('Vérification de la conversion en PDF.');
+    const resultat = await convertirEnPdf(temoin);
+
+    if (!resultat.success) {
+      return res.status(502).json({ success: false, message: resultat.error });
+    }
+
+    await logService.success(
+      'user',
+      `Conversion en PDF vérifiée (${resultat.methode})`,
+      undefined,
+      { userId: req.user?.userId }
+    );
+
+    res.json({
+      success: true,
+      message: `Conversion réussie par le ${resultat.methode}`,
+      data: { methode: resultat.methode, octets: resultat.pdf?.length ?? 0 },
     });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });

@@ -28,6 +28,7 @@ import entitesHtmlImportees from './026_entites_html_importees';
 import passkeys from './027_passkeys';
 import personnesSansCompte from './028_personnes_sans_compte';
 import detailsDemandeManifestation from './029_details_demande_manifestation';
+import formatSortieModele from './030_format_sortie_modele';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -68,6 +69,7 @@ export const MIGRATIONS: readonly Migration[] = [
   passkeys,
   personnesSansCompte,
   detailsDemandeManifestation,
+  formatSortieModele,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

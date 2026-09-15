@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import {
   completerDonneesManquantes,
   detecterChamps,
+  docxMinimal,
   estDocxValide,
   remplirModele,
 } from '../src/services/modeleDocx.service';
@@ -209,5 +210,31 @@ describe('Complément des données', () => {
     expect(completerDonneesManquantes({ materiels: [{ nom: 'Chaise' }] }, [])).toEqual({
       materiels: [{ nom: 'Chaise' }],
     });
+  });
+});
+
+describe('Document témoin', () => {
+  // La sonde de conversion en PDF dépose un vrai document plutôt que
+  // d'interroger la liste des applications installées : un serveur qui dit
+  // savoir convertir et un serveur qui convertit sont deux choses.
+  it('produit un .docx que le reste du code accepte', async () => {
+    const temoin = await docxMinimal('Vérification de la conversion en PDF.');
+
+    expect(await estDocxValide(temoin)).toBe(true);
+  });
+
+  it('porte le texte demandé, lisible dans le corps du document', async () => {
+    const archive = await JSZip.loadAsync(await docxMinimal('Fête de la musique'));
+
+    expect(await archive.file('word/document.xml')!.async('string')).toContain(
+      'Fête de la musique'
+    );
+  });
+
+  it('échappe ce qui casserait le XML, sans quoi le fichier serait illisible', async () => {
+    const archive = await JSZip.loadAsync(await docxMinimal('Casse & <balise>'));
+    const xml = await archive.file('word/document.xml')!.async('string');
+
+    expect(xml).toContain('Casse &amp; &lt;balise&gt;');
   });
 });

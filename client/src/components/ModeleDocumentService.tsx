@@ -6,7 +6,7 @@ import {
 import {
   Alert, Badge, Button, Card, CardBody, CardHeader, CardTitle, Input, Select, Spinner,
 } from '@/components/ui'
-import api, { modeleServiceApi, type ValeurModele } from '@/lib/api'
+import api, { modeleServiceApi, type FormatModele, type ValeurModele } from '@/lib/api'
 import toast from 'react-hot-toast'
 
 /**
@@ -79,7 +79,11 @@ export default function ModeleDocumentService({
   })
 
   const enregistrer = useMutation({
-    mutationFn: (donnees: { name?: string; field_mapping?: Record<string, string> }) =>
+    mutationFn: (donnees: {
+      name?: string
+      field_mapping?: Record<string, string>
+      output_format?: FormatModele
+    }) =>
       modeleServiceApi.enregistrer(serviceId, donnees),
     onSuccess: rafraichir,
     onError: surErreur,
@@ -143,10 +147,18 @@ export default function ModeleDocumentService({
 
   const apercu = async () => {
     try {
-      await modeleServiceApi.apercu(serviceId, `apercu-${serviceName}`)
+      await modeleServiceApi.apercu(
+        serviceId,
+        `apercu-${serviceName}`,
+        undefined,
+        modele?.output_format
+      )
       toast.success('Aperçu téléchargé')
-    } catch {
-      toast.error("L'aperçu n'a pas pu être produit — vérifiez le modèle")
+    } catch (erreur: any) {
+      // L'aperçu sert à vérifier avant d'activer : la phrase du serveur dit si
+      // c'est le modèle ou la conversion qui refuse, ce qu'un conseil générique
+      // ne dirait pas.
+      toast.error(erreur?.message ?? "L'aperçu n'a pas pu être produit — vérifiez le modèle")
     }
   }
 
@@ -223,6 +235,32 @@ export default function ModeleDocumentService({
                   aria-label="Retirer le modèle" />
               </div>
             </div>
+
+            <div className="flex flex-wrap items-center gap-3 px-3">
+              <label
+                htmlFor={`format-${serviceId}`}
+                className="text-xs text-gray-600 dark:text-gray-300 shrink-0"
+              >
+                Format rendu
+              </label>
+              <Select
+                id={`format-${serviceId}`}
+                className="w-56"
+                value={modele.output_format ?? 'docx'}
+                onChange={(e) => enregistrer.mutate({ output_format: e.target.value as FormatModele })}
+                options={[
+                  { value: 'docx', label: 'Word (.docx)' },
+                  { value: 'pdf', label: 'PDF' },
+                  { value: 'docx+pdf', label: 'Word et PDF' },
+                ]}
+              />
+              <p className="text-xs text-gray-500 dark:text-gray-400 flex-1 min-w-[16rem]">
+                Le PDF est produit par le Nextcloud de la commune. S'il est injoignable, le
+                document part quand même, en Word : un service qui ne reçoit rien est plus gênant
+                qu'un service qui reçoit le mauvais format.
+              </p>
+            </div>
+
 
             {modele.last_error && (
               <Alert type="error">
