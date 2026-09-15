@@ -19,7 +19,11 @@ import {
  * Quatre natures de détenteur, parce que les clés d'une commune ne vont pas
  * qu'à des agents :
  *
- *   une **personne**  l'agent d'astreinte, le gardien ;
+ *   une **personne**  l'agent d'astreinte, le gardien. La liste vient de
+ *                     l'annuaire — `users` — où figurent aussi bien les comptes
+ *                     de l'application que les gens qui ne s'y connectent
+ *                     jamais. Un nom écrit une fois y est le même partout, là
+ *                     où « un externe » en produit une orthographe par saisie ;
  *   un **service**    le trousseau appartient à l'équipe, pas à quelqu'un —
  *                     il survit aux départs et n'a pas à être réattribué à
  *                     chaque changement de poste ;
@@ -57,12 +61,21 @@ export default function AttribuerTrousseau({ objectId, estLot, disponibles, onCl
   const [quantite, setQuantite] = useState(1)
   const [notes, setNotes] = useState('')
 
+  /*
+   * `GET /api/users/annuaire`, et non `GET /api/users`.
+   *
+   * Deux défauts se cumulaient ici. La liste lisait `res.data.data`, alors que
+   * la route répond `{ users }` : elle était donc vide quoi qu'il arrive, et le
+   * champ « Personne » ne proposait jamais personne. Et `GET /api/users` est
+   * réservé à l'administrateur, si bien qu'un agent — qui a pourtant le droit
+   * de remettre une clé — n'aurait de toute façon reçu qu'un 403 silencieux.
+   *
+   * L'annuaire répond aux deux : ouvert à la saisie de terrain, il ne rend que
+   * des noms, et il rend aussi les personnes sans compte.
+   */
   const { data: utilisateurs = [] } = useQuery<any[]>({
-    queryKey: ['users-actifs'],
-    queryFn: async () => {
-      const res = await api.get('/users?limit=500')
-      return res.data.data ?? []
-    },
+    queryKey: ['annuaire'],
+    queryFn: async () => (await api.get('/users/annuaire')).data.users ?? [],
     enabled: nature === 'user',
   })
 
@@ -105,7 +118,7 @@ export default function AttribuerTrousseau({ objectId, estLot, disponibles, onCl
     nature === 'user'
       ? utilisateurs.map((u) => ({
           value: String(u.id),
-          label: [u.first_name, u.last_name].filter(Boolean).join(' ') || u.email,
+          label: [u.firstName, u.lastName].filter(Boolean).join(' ') || `Compte n° ${u.id}`,
         }))
       : nature === 'service'
         ? services.map((s) => ({ value: String(s.id), label: s.name }))
@@ -167,6 +180,11 @@ export default function AttribuerTrousseau({ objectId, estLot, disponibles, onCl
               onChange={(e) => setCible(e.target.value)}
               placeholder="Choisir"
               options={optionsCible}
+              hint={
+                nature === 'user' && optionsCible.length === 0
+                  ? "Personne dans l'annuaire. Un administrateur les ajoute dans Paramètres > Utilisateurs — une personne qui ne se connecte pas y tient en un nom."
+                  : undefined
+              }
             />
           )}
 

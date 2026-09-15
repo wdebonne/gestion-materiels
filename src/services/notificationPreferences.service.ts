@@ -324,9 +324,13 @@ export async function destinatairesParRole(evenement: string): Promise<Destinata
   const roles = defauts[evenement as EvenementNotification]?.roles ?? [];
   if (roles.length === 0) return [];
 
+  // `can_login = 1` : une fiche d'annuaire porte un rôle par défaut, qui ne
+  // décrit aucun pouvoir. La notifier reviendrait à écrire à quelqu'un dont
+  // tous les liens du message mènent à un écran de connexion qu'il ne passera pas.
   const comptes = await db.query(
     `SELECT id, email, role FROM users
-     WHERE is_active = 1 AND email IS NOT NULL AND role IN (${roles.map(() => '?').join(',')})`,
+     WHERE is_active = 1 AND can_login = 1 AND email IS NOT NULL
+       AND role IN (${roles.map(() => '?').join(',')})`,
     roles
   );
 

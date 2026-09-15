@@ -387,16 +387,23 @@ class DatabaseManager {
     // accepte la forme expression, que SQLite comprend aussi. Retirer les
     // parenthèses casserait la création du schema sur MySQL.
     const tables = [
-      // Table des utilisateurs
+      // Table des utilisateurs — et des personnes qui n'ont pas de compte.
+      //
+      // `email` et `password` sont facultatifs : le gardien à qui on remet un
+      // trousseau figure à l'annuaire sans jamais ouvrir l'application, et lui
+      // inventer une adresse en ferait un compte que personne n'a voulu.
+      // `can_login` dit qui se connecte, et n'est pas déduit de la présence
+      // d'un mot de passe : une passkey s'en passe. Voir la migration 028.
       `CREATE TABLE IF NOT EXISTS users (
         id INTEGER PRIMARY KEY ${autoIncrement},
-        email VARCHAR(255) UNIQUE NOT NULL,
-        password VARCHAR(255) NOT NULL,
+        email VARCHAR(255) UNIQUE,
+        password VARCHAR(255),
         first_name VARCHAR(100),
         last_name VARCHAR(100),
         role VARCHAR(50) DEFAULT 'user',
         avatar VARCHAR(500),
         is_active ${boolType} DEFAULT 1,
+        can_login ${boolType} NOT NULL DEFAULT 1,
         anonymized_at DATETIME,
         reset_token VARCHAR(255),
         reset_token_expires DATETIME,

@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requireAdmin, requireFieldWrite, requireSupervisor } from '../middleware/auth.middleware';
 import { ROLES, isRole } from '../config/roles';
 import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.service';
 import { notifierWebhooks } from '../services/webhook.service';
@@ -11,13 +11,65 @@ import { anonymiser, desactiver, estDernierAdmin, tracesDe } from '../services/c
 
 const router = Router();
 
-// GET /api/users - Liste des utilisateurs (admin)
-router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+/**
+ * Un même annuaire pour deux sortes de gens.
+ *
+ * `users` ne contient plus seulement des comptes : depuis la migration 028,
+ * une **personne** peut y figurer sans adresse ni mot de passe, pour être
+ * désignée — détentrice d'un trousseau, emprunteuse de matériel — sans jamais
+ * ouvrir l'application. Un seul endroit où saisir les gens, et un agent qui
+ * obtient un accès garde l'historique qu'il avait déjà.
+ *
+ * `can_login` sépare les deux, et rien d'autre : ni le rôle, ni la présence
+ * d'un mot de passe. Le déduire de l'absence de mot de passe ouvrirait l'accès
+ * à qui a enregistré une passkey, qui s'en passe.
+ */
+function peutSeConnecter(corps: any): boolean {
+  return corps?.canLogin !== false && corps?.canLogin !== 0 && corps?.canLogin !== 'false';
+}
+
+/** Adresse normalisée, ou `null` quand le champ est vide — jamais `''`. */
+function adresse(valeur: unknown): string | null {
+  const texte = typeof valeur === 'string' ? valeur.trim() : '';
+  return texte === '' ? null : texte;
+}
+
+/**
+ * Qui tient l'annuaire, et jusqu'où.
+ *
+ * Le superviseur inscrit et corrige les **personnes sans compte** : c'est lui
+ * qui remet les clés, et le renvoyer vers l'administrateur pour un nom manquant
+ * revient à le renvoyer vers « un externe » — du texte libre, où le même nom
+ * s'écrit de trois façons. C'est exactement ce que cet annuaire existe pour
+ * éviter.
+ *
+ * Tout ce qui touche à un **accès** reste à l'administrateur : créer un compte,
+ * en modifier un, accorder ou retirer la connexion, distribuer un rôle, poser
+ * un mot de passe, supprimer, anonymiser, couper les sessions. La frontière
+ * n'est pas « quels champs », mais « est-ce que cela ouvre une porte ».
+ */
+function estAdmin(req: AuthRequest): boolean {
+  return req.user?.role === 'admin';
+}
+
+/**
+ * GET /api/users - Liste des utilisateurs et des personnes.
+ *
+ * Le superviseur n'y voit que les personnes sans compte. Lui montrer les
+ * comptes lui donnerait les adresses, les rôles et les dernières connexions de
+ * toute la collectivité, alors qu'il n'a rien à en faire : il tient un annuaire
+ * de noms, pas l'organigramme des accès.
+ */
+router.get('/', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
-    let query = `SELECT id, email, first_name, last_name, role, avatar, is_active, created_at, last_login 
+    let query = `SELECT id, email, first_name, last_name, role, avatar, is_active, can_login, created_at, last_login
        FROM users`;
     const conditions: string[] = [];
     const params: any[] = [];
+
+    if (!estAdmin(req)) {
+      conditions.push('can_login = 0');
+    }
 
     // Filtre par recherche (nom, prénom, email)
     if (req.query.search) {
@@ -33,6 +85,14 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
         conditions.push(`role IN (${roles.map(() => '?').join(',')})`);
         params.push(...roles);
       }
+    }
+
+    // Filtre comptes / personnes. Les écrans qui distribuent des droits — Droits,
+    // membres d'un service, permissions de plugin — n'ont rien à proposer à qui
+    // ne se connecte pas : leur liste demande `canLogin=1`.
+    if (req.query.canLogin !== undefined) {
+      conditions.push('can_login = ?');
+      params.push(req.query.canLogin === '0' || req.query.canLogin === 'false' ? 0 : 1);
     }
 
     if (conditions.length > 0) {
@@ -53,6 +113,7 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
         role: u.role,
         avatar: u.avatar,
         isActive: !!u.is_active,
+        canLogin: !!u.can_login,
         createdAt: u.created_at,
         lastLogin: u.last_login
       }))
@@ -74,8 +135,17 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
  * D'où cette vue étroite — de quoi afficher un nom, rien de plus. Ni rôle, ni
  * état du compte, ni dernière connexion : désigner un emprunteur n'exige pas
  * de connaître l'organigramme.
+ *
+ * Les personnes sans compte y figurent au même titre que les autres : c'est
+ * tout l'objet de l'annuaire, et le gardien à qui on remet un trousseau est
+ * précisément quelqu'un qu'on désigne sans qu'il se connecte jamais.
+ *
+ * Ouvert à l'agent de terrain, et non au seul superviseur : remettre une clé
+ * est un geste de terrain, et une liste vide y renverrait chaque détenteur vers
+ * « un externe », c'est-à-dire vers du texte libre où trois orthographes d'un
+ * même nom deviennent trois personnes.
  */
-router.get('/annuaire', authenticateToken, requireSupervisor, async (_req: AuthRequest, res: Response) => {
+router.get('/annuaire', authenticateToken, requireFieldWrite, async (_req: AuthRequest, res: Response) => {
   try {
     const utilisateurs = await db.query(
       `SELECT id, first_name, last_name FROM users
@@ -142,7 +212,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
     const { id } = req.params;
 
     const user = await db.queryOne(
-      `SELECT id, email, first_name, last_name, role, avatar, is_active, created_at, last_login 
+      `SELECT id, email, first_name, last_name, role, avatar, is_active, can_login, created_at, last_login
        FROM users WHERE id = ?`,
       [id]
     );
@@ -167,6 +237,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
         role: user.role,
         avatar: user.avatar,
         isActive: !!user.is_active,
+        canLogin: !!user.can_login,
         createdAt: user.created_at,
         lastLogin: user.last_login,
         permissions
@@ -178,14 +249,27 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
   }
 });
 
-// POST /api/users - Créer un utilisateur
-router.post('/', authenticateToken, requireAdmin, [
-  body('email').isEmail().normalizeEmail().withMessage('Email invalide'),
-  // La longueur relève de la politique configurée, pas d'une constante :
-  // sinon un minimum réglé à 10 laisserait passer 8, et un minimum réglé
-  // à 6 serait refusé ici avec un message qui contredirait l'écran.
-  body('password').notEmpty().withMessage('Le mot de passe est obligatoire'),
-  body('role').isIn(ROLES).withMessage('Rôle invalide')
+/**
+ * POST /api/users - Créer un compte, ou une personne sans compte.
+ *
+ * `canLogin: false` décrit quelqu'un qu'on désigne sans qu'il se connecte : un
+ * nom suffit alors, et c'est bien le nom qui devient obligatoire à la place de
+ * l'adresse. Une adresse reste acceptée — on la connaît souvent — mais elle
+ * n'ouvre aucun accès tant que la case n'est pas cochée.
+ *
+ * Le rôle d'une personne sans compte est ramené à `user` : il ne décrit alors
+ * plus aucun pouvoir, et laisser passer `admin` poserait une promotion prête à
+ * prendre effet le jour où la connexion serait accordée, sans que personne
+ * l'ait relue.
+ *
+ * Le superviseur s'arrête là : il inscrit des personnes, il ne crée pas de
+ * comptes.
+ */
+router.post('/', authenticateToken, requireSupervisor, [
+  body('email').optional({ values: 'falsy' }).isEmail().normalizeEmail().withMessage('Email invalide'),
+  // Facultatif depuis qu'une personne peut n'avoir aucun pouvoir à décrire.
+  // `user` — la consultation seule — est le défaut le moins surprenant.
+  body('role').optional().isIn(ROLES).withMessage('Rôle invalide')
 ], async (req: AuthRequest, res: Response) => {
   try {
     const errors = validationResult(req);
@@ -193,36 +277,74 @@ router.post('/', authenticateToken, requireAdmin, [
       return res.status(400).json({ success: false, errors: errors.array(), message: errors.array()[0]?.msg });
     }
 
-    const { email, password, firstName, lastName, role } = req.body;
+    const { password, firstName, lastName, role } = req.body;
+    const email = adresse(req.body?.email);
+    const connexion = peutSeConnecter(req.body);
+
+    if (connexion && !estAdmin(req)) {
+      return res.status(403).json({
+        success: false,
+        message: "Seul un administrateur ouvre un accès à l'application. Décochez « Se connecte à l'application » pour inscrire une personne."
+      });
+    }
+
+    if (connexion && !email) {
+      return res.status(400).json({ success: false, message: 'Email invalide' });
+    }
+    // La longueur relève de la politique configurée, pas d'une constante :
+    // sinon un minimum réglé à 10 laisserait passer 8, et un minimum réglé
+    // à 6 serait refusé ici avec un message qui contredirait l'écran.
+    if (connexion && !password) {
+      return res.status(400).json({ success: false, message: 'Le mot de passe est obligatoire' });
+    }
+    if (!connexion && !`${firstName ?? ''}${lastName ?? ''}`.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Sans adresse ni connexion, le nom est la seule chose qui désigne cette personne : il est obligatoire"
+      });
+    }
 
     // Vérifier si l'email existe
-    const existing = await db.queryOne('SELECT id FROM users WHERE email = ?', [email]);
-    if (existing) {
-      return res.status(400).json({ success: false, message: 'Cet email est déjà utilisé' });
+    if (email) {
+      const existing = await db.queryOne('SELECT id FROM users WHERE email = ?', [email]);
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'Cet email est déjà utilisé' });
+      }
     }
 
-    const controle = verifierMotDePasse(password, await lirePolitique());
-    if (!controle.valide) {
-      return res.status(400).json({ success: false, message: controle.message, manquements: controle.manquements });
-    }
+    let hashedPassword: string | null = null;
+    if (connexion) {
+      const controle = verifierMotDePasse(password, await lirePolitique());
+      if (!controle.valide) {
+        return res.status(400).json({ success: false, message: controle.message, manquements: controle.manquements });
+      }
 
-    // Hasher le mot de passe
-    const hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS || '12'));
+      // Hasher le mot de passe
+      hashedPassword = await bcrypt.hash(password, parseInt(process.env.BCRYPT_ROUNDS || '12'));
+    }
 
     // Créer l'utilisateur
     const result = await db.execute(
-      `INSERT INTO users (email, password, first_name, last_name, role, password_changed_at)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-      [email, hashedPassword, firstName || '', lastName || '', role, new Date().toISOString()]
+      `INSERT INTO users (email, password, first_name, last_name, role, can_login, password_changed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        email,
+        hashedPassword,
+        firstName || '',
+        lastName || '',
+        connexion ? (role ?? 'user') : 'user',
+        connexion ? 1 : 0,
+        connexion ? new Date().toISOString() : null
+      ]
     );
 
     // Ni le mot de passe ni son empreinte ne sortent : un webhook part vers un
     // service tiers, sur lequel personne ici n'a la main.
-    notifierWebhooks('user.created', { id: result.lastInsertRowid, email, role });
+    notifierWebhooks('user.created', { id: result.lastInsertRowid, email, role, canLogin: connexion });
 
     res.status(201).json({
       success: true,
-      message: 'Utilisateur créé',
+      message: connexion ? 'Utilisateur créé' : 'Personne ajoutée à l’annuaire',
       userId: result.lastInsertRowid
     });
   } catch (error: any) {
@@ -347,20 +469,99 @@ router.put('/me/password', authenticateToken, async (req: AuthRequest, res: Resp
   }
 });
 
-// PUT /api/users/:id - Modifier un utilisateur
-router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+/**
+ * PUT /api/users/:id - Modifier un compte, ou basculer d'une forme à l'autre.
+ *
+ * Les deux sens comptent autant l'un que l'autre :
+ *
+ * - **accorder la connexion** à une personne déjà connue — un saisonnier
+ *   embauché, un agent qui reprend un poste — exige à ce moment-là une adresse
+ *   et un mot de passe, les deux choses dont on s'était passé jusqu'ici. Son
+ *   identifiant ne change pas : les clés qu'elle détient, les réservations à son
+ *   nom et son passage dans l'historique la suivent ;
+ * - **la retirer** ferme l'accès sans effacer personne. Les jetons en cours sont
+ *   périmés au passage : sans cela, une session ouverte resterait valable
+ *   jusqu'à sept jours après la décision.
+ *
+ * Le mot de passe est conservé en base plutôt qu'effacé. Il ne sert plus à rien
+ * tant que `can_login` vaut 0 — la connexion est refusée avant même de le lire —
+ * et le garder évite qu'un retrait par erreur, corrigé dans la minute, oblige à
+ * en redistribuer un.
+ *
+ * Le superviseur corrige les personnes sans compte, et rien d'autre. Sans ce
+ * droit, une faute de frappe le laisserait devant un nom qu'il ne peut pas
+ * réparer, et il en créerait un second — le doublon que cet annuaire existe
+ * pour empêcher. Un compte, en revanche, ne se touche qu'en administrateur : il
+ * porte un accès.
+ */
+router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { email, firstName, lastName, role, isActive, password } = req.body;
+    const { firstName, lastName, role, isActive, password } = req.body;
+    const emailFourni = req.body?.email !== undefined;
+    const email = adresse(req.body?.email);
 
     // Vérifier que l'utilisateur existe
-    const user = await db.queryOne('SELECT id FROM users WHERE id = ?', [id]);
+    const user = await db.queryOne(
+      'SELECT id, email, password, can_login FROM users WHERE id = ?',
+      [id]
+    );
     if (!user) {
       return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
     }
 
+    const connexion = req.body?.canLogin === undefined ? !!user.can_login : peutSeConnecter(req.body);
+    const administre = estAdmin(req);
+
+    if (!administre) {
+      if (user.can_login) {
+        return res.status(403).json({
+          success: false,
+          message: "Ce compte a un accès à l'application : seul un administrateur le modifie"
+        });
+      }
+      if (connexion) {
+        return res.status(403).json({
+          success: false,
+          message: "Seul un administrateur ouvre un accès à l'application"
+        });
+      }
+    }
+
+    if (connexion) {
+      const adresseRetenue = emailFourni ? email : user.email;
+      if (!adresseRetenue) {
+        return res.status(400).json({
+          success: false,
+          message: "Un compte se connecte avec son adresse : renseignez-la avant d'autoriser la connexion"
+        });
+      }
+      if (!password && !user.password) {
+        return res.status(400).json({
+          success: false,
+          message: "Cette personne n'a pas de mot de passe : donnez-lui-en un pour lui ouvrir la connexion"
+        });
+      }
+    } else {
+      if (Number(id) === req.user?.userId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Vous ne pouvez pas retirer votre propre accès'
+        });
+      }
+      if (user.can_login && (await estDernierAdmin(id))) {
+        return res.status(400).json({
+          success: false,
+          message: "C'est le dernier administrateur actif : plus personne ne pourrait configurer l'application"
+        });
+      }
+    }
+
     // Vérifier l'unicité de l'email
     if (email) {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ success: false, message: 'Email invalide' });
+      }
       const existing = await db.queryOne('SELECT id FROM users WHERE email = ? AND id != ?', [email, id]);
       if (existing) {
         return res.status(400).json({ success: false, message: 'Cet email est déjà utilisé' });
@@ -371,9 +572,18 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
     let updateFields = [];
     let values = [];
 
-    if (email) {
+    if (emailFourni) {
       updateFields.push('email = ?');
       values.push(email);
+    }
+    if (req.body?.canLogin !== undefined && !!user.can_login !== connexion) {
+      updateFields.push('can_login = ?');
+      values.push(connexion ? 1 : 0);
+      if (!connexion) {
+        // Un jeton vaut sept jours par lui-même : sans ce coup de compteur,
+        // l'accès retiré resterait ouvert jusqu'à son expiration.
+        updateFields.push('token_version = token_version + 1');
+      }
     }
     if (firstName !== undefined) {
       updateFields.push('first_name = ?');
@@ -383,7 +593,11 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       updateFields.push('last_name = ?');
       values.push(lastName);
     }
-    if (role) {
+    // Rôle et mot de passe ne sont lus que d'un administrateur. Le superviseur
+    // ne modifie ici que des personnes sans compte, dont le rôle ne décrit aucun
+    // pouvoir et dont le mot de passe n'ouvrirait rien : les ignorer vaut mieux
+    // que de refuser l'enregistrement pour un champ que le formulaire recopie.
+    if (role && administre) {
       updateFields.push('role = ?');
       values.push(role);
     }
@@ -391,7 +605,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
       updateFields.push('is_active = ?');
       values.push(isActive ? 1 : 0);
     }
-    if (password) {
+    if (password && administre) {
       const controle = verifierMotDePasse(password, await lirePolitique());
       if (!controle.valide) {
         return res.status(400).json({ success: false, message: controle.message, manquements: controle.manquements });
@@ -465,8 +679,8 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
         desactive: true,
         traces,
         message:
-          'Ce compte a participé à des manifestations : il a été désactivé, pas supprimé. ' +
-          "L'effacer retirerait de l'historique le nom de qui a validé, livré ou échangé. " +
+          "Cette personne a laissé des traces dans l'application : elle a été désactivée, pas supprimée. " +
+          "L'effacer retirerait de l'historique le nom de qui a validé, livré, échangé ou détenu une clé. " +
           "Utilisez l'anonymisation si le RGPD l'exige."
       });
     }

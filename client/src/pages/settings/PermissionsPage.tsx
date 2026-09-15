@@ -302,6 +302,9 @@ function UserPermissionsTab() {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
       params.append('roles', 'user,supervisor')
+      // Les droits se distribuent à qui se connecte : une personne inscrite
+      // à l'annuaire sans accès n'a pas d'écran où les exercer.
+      params.append('canLogin', '1')
       const response = await api.get(`/users?${params}`)
       return response.data
     }
@@ -816,11 +819,11 @@ function PluginPermissionsTab() {
     }
   })
 
-  // Récupérer la liste des utilisateurs non-admin
+  // Récupérer la liste des utilisateurs non-admin, parmi ceux qui se connectent
   const { data: usersData } = useQuery({
     queryKey: ['users-for-plugins'],
     queryFn: async () => {
-      const response = await api.get('/users')
+      const response = await api.get('/users?canLogin=1')
       return response.data
     },
     enabled: activeSubTab === 'individual'
@@ -1028,7 +1031,7 @@ function PluginPermissionsTab() {
                 { value: '', label: '— Choisir un utilisateur —' },
                 ...nonAdminUsers.map((u: any) => ({
                   value: u.id,
-                  label: `${u.first_name || ''} ${u.last_name || ''} (${u.email}) — ${u.role}`
+                  label: `${u.firstName || ''} ${u.lastName || ''} (${u.email ?? 'sans adresse'}) — ${u.role}`
                 }))
               ]}
             />

@@ -443,7 +443,7 @@ export async function destinatairesDuService(serviceId: number): Promise<Destina
   const membres = await db.query(
     `SELECT u.id, u.email, u.role FROM users u
      JOIN service_members sm ON sm.user_id = u.id
-     WHERE sm.service_id = ? AND u.is_active = 1 AND u.email IS NOT NULL`,
+     WHERE sm.service_id = ? AND u.is_active = 1 AND u.can_login = 1 AND u.email IS NOT NULL`,
     [serviceId]
   );
 

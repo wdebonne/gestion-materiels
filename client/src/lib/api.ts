@@ -150,14 +150,25 @@ api.interceptors.response.use(
 export default api
 
 // Types
+/**
+ * Un compte, ou une personne qui n'en a pas.
+ *
+ * `users` est l'annuaire unique de l'application : on y saisit aussi bien
+ * l'agent qui s'y connecte que le gardien à qui on remet un trousseau. C'est
+ * `canLogin` qui les sépare, et de là vient que `email` puisse manquer — une
+ * personne sans compte n'en a pas besoin, et lui en inventer une produirait un
+ * faux affiché partout.
+ */
 export interface User {
   id: number
-  email: string
+  email: string | null
   firstName?: string
   lastName?: string
   role: 'admin' | 'supervisor' | 'agent' | 'user'
   avatar?: string
   isActive: boolean
+  /** Faux pour une fiche d'annuaire : elle est désignable, jamais connectée. */
+  canLogin: boolean
   createdAt: string
   lastLogin?: string
 }
@@ -1308,6 +1319,9 @@ export interface TracesCompte {
   decisions: number
   messages: number
   services: number
+  /** Clés et trousseaux remis à son nom, rendus ou non. */
+  cles: number
+  reservations: number
   total: number
 }
 

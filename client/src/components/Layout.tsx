@@ -52,7 +52,7 @@ import PasswordExpiredBanner from '@/components/PasswordExpiredBanner'
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
-  const { isService } = usePermissions()
+  const { isService, canManage } = usePermissions()
   const { settings, fetchSettings } = useSettingsStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -373,7 +373,10 @@ export default function Layout() {
                         Contraste élevé
                       </button>
                     </div>
-                    {user?.role === 'admin' && (
+                    {/* Ouvert au superviseur : il y tient l'annuaire des
+                        personnes sans compte. Chaque onglet se filtre
+                        ensuite selon le rôle, et le serveur tranche. */}
+                    {canManage && (
                       <NavLink
                         to="/settings"
                         onClick={() => setUserMenuOpen(false)}
@@ -495,8 +498,8 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
         ))}
       </nav>
 
-      {/* Admin settings link */}
-      {user?.role === 'admin' && (
+      {/* Paramètres : administrateur, et superviseur pour l'annuaire */}
+      {(user?.role === 'admin' || user?.role === 'supervisor') && (
         <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-700">
           <NavLink
             to="/settings"

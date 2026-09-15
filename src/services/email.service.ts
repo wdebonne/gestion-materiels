@@ -147,7 +147,9 @@ async function destinatairesAlerte(categorieId: number | null): Promise<string[]
   // pas de périmètre à déduire : on s'en tient aux responsables.
   if (categorieId === null || categorieId === undefined) {
     const responsables = await db.query(
-      "SELECT email FROM users WHERE role IN ('admin', 'supervisor') AND is_active = 1"
+      `SELECT email FROM users
+       WHERE role IN ('admin', 'supervisor')
+         AND is_active = 1 AND can_login = 1 AND email IS NOT NULL`
     );
     return responsables.map((u: any) => u.email);
   }
@@ -155,6 +157,7 @@ async function destinatairesAlerte(categorieId: number | null): Promise<string[]
   const users = await db.query(
     `SELECT DISTINCT u.email FROM users u
      WHERE u.is_active = 1
+       AND u.can_login = 1
        AND u.email IS NOT NULL
        AND (
          u.role IN ('admin', 'supervisor')

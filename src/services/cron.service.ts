@@ -819,9 +819,14 @@ async function generateWeeklyReport(): Promise<void> {
       </div>
     `;
 
-    // Envoyer aux admins et superviseurs
+    // Envoyer aux admins et superviseurs. `can_login` et l'adresse non nulle
+    // écartent les fiches d'annuaire : une personne qui n'ouvre jamais
+    // l'application n'a pas à recevoir son rapport hebdomadaire, et un `to`
+    // vide ferait échouer l'envoi de toute la tournée.
     const users = await db.query(
-      "SELECT email FROM users WHERE role IN ('admin', 'supervisor') AND is_active = 1"
+      `SELECT email FROM users
+       WHERE role IN ('admin', 'supervisor')
+         AND is_active = 1 AND can_login = 1 AND email IS NOT NULL`
     );
 
     for (const user of users) {

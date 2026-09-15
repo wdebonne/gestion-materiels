@@ -11,32 +11,70 @@ import api, { User as UserType } from '@/lib/api'
 import { compteApi } from '@/lib/api'
 import toast from 'react-hot-toast'
 import { formatDate } from '@/lib/utils'
-import { ROLE_DESCRIPTIONS, ROLE_LABELS } from '@/lib/permissions'
+import { ROLE_DESCRIPTIONS, ROLE_LABELS, usePermissions } from '@/lib/permissions'
 
+/** Ce que le formulaire manipule, avant d'être envoyé au serveur. */
+const FICHE_VIERGE = {
+  firstName: '',
+  lastName: '',
+  email: '',
+  password: '',
+  role: 'user',
+  isActive: true,
+  canLogin: true,
+}
+
+type Filtre = 'tous' | 'comptes' | 'fiches'
+
+const FILTRES: Array<{ valeur: Filtre; label: string }> = [
+  { valeur: 'tous', label: 'Tout le monde' },
+  { valeur: 'comptes', label: 'Comptes' },
+  { valeur: 'fiches', label: 'Sans connexion' },
+]
+
+/**
+ * Un seul annuaire, pour deux sortes de gens.
+ *
+ * Cet écran ne gérait que des comptes : une adresse et un mot de passe étaient
+ * obligatoires, si bien qu'y inscrire le gardien à qui on remet un trousseau
+ * — et qui n'ouvrira jamais l'application — obligeait à lui inventer les deux.
+ * Faute de quoi il n'existait nulle part, et « Remettre le matériel » le
+ * renvoyait vers « un externe », c'est-à-dire vers du texte libre où
+ * « A. Marie », « Marie André » et « André MARIE » deviennent trois personnes.
+ *
+ * La case « Se connecte à l'application » sépare désormais les deux, sans
+ * séparer les listes : la même personne est ici qu'elle ait un accès ou non, et
+ * lui en accorder un plus tard ne la recopie pas ailleurs — elle garde son
+ * identifiant, donc ses clés, ses réservations et son historique.
+ *
+ * **Le superviseur y entre aussi, et n'y voit que les personnes sans compte.**
+ * C'est lui qui remet les clés : le renvoyer vers l'administrateur pour un nom
+ * manquant le renverrait en pratique vers « un externe ». Il inscrit et
+ * corrige — sans corriger, une faute de frappe produirait un doublon, ce que
+ * cet annuaire existe pour éviter. Tout ce qui ouvre une porte — créer un
+ * compte, accorder un accès, distribuer un rôle, supprimer, anonymiser — reste
+ * à l'administrateur, ici comme sur le serveur.
+ */
 export default function UsersPage() {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
   const { user: currentUser } = useAuthStore()
+  const { canAdmin } = usePermissions()
   const [search, setSearch] = useState('')
+  const [filtre, setFiltre] = useState<Filtre>('tous')
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<UserType | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<UserType | null>(null)
-  
-  const [formData, setFormData] = useState({
-    firstName: '',
-    lastName: '',
-    email: '',
-    password: '',
-    role: 'user',
-    isActive: true
-  })
+
+  const [formData, setFormData] = useState({ ...FICHE_VIERGE })
 
   // Récupérer les utilisateurs
   const { data, isLoading } = useQuery({
-    queryKey: ['users', search],
+    queryKey: ['users', search, filtre],
     queryFn: async () => {
       const params = new URLSearchParams()
       if (search) params.append('search', search)
+      if (filtre !== 'tous') params.append('canLogin', filtre === 'comptes' ? '1' : '0')
       const response = await api.get(`/users?${params}`)
       return response.data
     }
@@ -52,13 +90,24 @@ export default function UsersPage() {
       }
       return api.post('/users', data)
     },
-    onSuccess: () => {
+    onSuccess: (_res, variables: any) => {
       queryClient.invalidateQueries({ queryKey: ['users'] })
-      toast.success(editingUser ? 'Utilisateur modifié' : 'Utilisateur créé')
+      // L'annuaire des autres écrans — remise de clé, emprunteur d'une
+      // réservation — vient de changer lui aussi.
+      queryClient.invalidateQueries({ queryKey: ['annuaire'] })
+      toast.success(
+        editingUser
+          ? 'Fiche modifiée'
+          : variables?.canLogin === false
+            ? 'Personne ajoutée à l’annuaire'
+            : 'Utilisateur créé'
+      )
       closeModal()
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || 'Une erreur est survenue')
+      toast.error(
+        err.response?.data?.message || err.response?.data?.error || 'Une erreur est survenue'
+      )
     }
   })
 
@@ -136,21 +185,17 @@ export default function UsersPage() {
       setFormData({
         firstName: user.firstName ?? '',
         lastName: user.lastName ?? '',
-        email: user.email,
+        email: user.email ?? '',
         password: '',
         role: user.role,
-        isActive: user.isActive
+        isActive: user.isActive,
+        canLogin: user.canLogin
       })
     } else {
       setEditingUser(null)
-      setFormData({
-        firstName: '',
-        lastName: '',
-        email: '',
-        password: '',
-        role: 'user',
-        isActive: true
-      })
+      // Le superviseur n'ouvre pas d'accès : la case part décochée et ne
+      // s'affiche pas, plutôt que de proposer un geste que le serveur refusera.
+      setFormData({ ...FICHE_VIERGE, canLogin: canAdmin })
     }
     setIsModalOpen(true)
   }
@@ -158,27 +203,49 @@ export default function UsersPage() {
   const closeModal = () => {
     setIsModalOpen(false)
     setEditingUser(null)
-    setFormData({
-      firstName: '',
-      lastName: '',
-      email: '',
-      password: '',
-      role: 'user',
-      isActive: true
-    })
+    setFormData({ ...FICHE_VIERGE, canLogin: canAdmin })
   }
 
+  /**
+   * Ce que le formulaire refuse avant même d'appeler le serveur.
+   *
+   * Les mêmes règles y sont tenues, mot pour mot : une personne sans connexion
+   * n'est désignable que par son nom, et un compte ne se connecte qu'avec une
+   * adresse et un mot de passe. Les dire ici évite un aller-retour pour une
+   * faute que l'écran voyait déjà.
+   */
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!editingUser && !formData.password) {
-      toast.error('Le mot de passe est requis pour un nouvel utilisateur')
-      return
+
+    if (!formData.canLogin) {
+      if (!`${formData.firstName}${formData.lastName}`.trim()) {
+        toast.error('Un nom est nécessaire pour retrouver cette personne dans les listes')
+        return
+      }
+    } else {
+      if (!formData.email.trim()) {
+        toast.error("Un compte se connecte avec son adresse : elle est obligatoire")
+        return
+      }
+      const aDejaUnMotDePasse = editingUser?.canLogin === true
+      if (!formData.password && !aDejaUnMotDePasse) {
+        toast.error(
+          editingUser
+            ? "Donnez un mot de passe à cette personne pour lui ouvrir la connexion"
+            : 'Le mot de passe est requis pour un nouvel utilisateur'
+        )
+        return
+      }
     }
+
     saveMutation.mutate(formData)
   }
 
-  const getRoleBadge = (role: string) => {
-    switch (role) {
+  const getRoleBadge = (user: UserType) => {
+    if (!user.canLogin) {
+      return <Badge variant="default">Sans connexion</Badge>
+    }
+    switch (user.role) {
       case 'admin':
         return <Badge variant="danger">Administrateur</Badge>
       case 'supervisor':
@@ -197,22 +264,61 @@ export default function UsersPage() {
       {/* En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Utilisateurs</h1>
-          <p className="text-gray-500 mt-1">Gérez les comptes utilisateurs</p>
+          <h1 className="text-2xl font-bold text-gray-900">
+            {canAdmin ? 'Utilisateurs' : 'Annuaire des personnes'}
+          </h1>
+          <p className="text-gray-500 mt-1">
+            {canAdmin ? (
+              <>
+                L'annuaire de la collectivité : les comptes qui se connectent, et les personnes
+                qu'on désigne sans qu'elles se connectent — détentrices d'une clé, emprunteuses
+                de matériel.
+              </>
+            ) : (
+              <>
+                Les personnes qu'on désigne sans qu'elles se connectent : détentrices d'une clé,
+                emprunteuses de matériel. Les inscrire ici leur donne un nom unique, au lieu de
+                trois orthographes dans « un externe ». Les comptes de l'application relèvent de
+                l'administrateur.
+              </>
+            )}
+          </p>
         </div>
         <Button icon={<Plus className="w-4 h-4" />} onClick={() => openModal()}>
-          Nouvel utilisateur
+          {canAdmin ? "Ajouter quelqu'un" : 'Ajouter une personne'}
         </Button>
       </div>
 
-      {/* Recherche */}
-      <div className="max-w-md">
-        <Input
-          placeholder="Rechercher un utilisateur..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          icon={<Search className="w-5 h-5" />}
-        />
+      {/* Recherche et filtre */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="w-full max-w-md">
+          <Input
+            placeholder="Rechercher un nom, une adresse..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            icon={<Search className="w-5 h-5" />}
+          />
+        </div>
+        {/* Sans les comptes, il n'y a rien à trier : le serveur ne rend au
+            superviseur que les personnes sans connexion. */}
+        {canAdmin && (
+          <div className="flex flex-wrap gap-2">
+            {FILTRES.map(({ valeur, label }) => (
+              <button
+                key={valeur}
+                type="button"
+                onClick={() => setFiltre(valeur)}
+                className={`rounded-lg border px-3 py-2 text-sm transition-colors ${
+                  filtre === valeur
+                    ? 'border-primary-600 bg-primary-50 text-primary-700'
+                    : 'border-gray-300 text-gray-700 hover:bg-gray-50'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Liste des utilisateurs */}
@@ -223,17 +329,27 @@ export default function UsersPage() {
           ) : users.length === 0 ? (
             <div className="text-center py-12">
               <User className="w-12 h-12 text-gray-300 mx-auto mb-4" />
-              <p className="text-gray-500">Aucun utilisateur trouvé</p>
+              <p className="text-gray-500">
+                {filtre === 'fiches' || !canAdmin
+                  ? "Personne sans connexion pour l'instant. C'est ici qu'on inscrit le gardien ou l'élu à qui on remet une clé."
+                  : 'Aucun utilisateur trouvé'}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Utilisateur</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Rôle</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Personne</th>
+                    {/* Pour le superviseur, ces deux colonnes répéteraient
+                        « Sans connexion » et « — » sur chaque ligne. */}
+                    {canAdmin && (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Accès</th>
+                    )}
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Statut</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dernière connexion</th>
+                    {canAdmin && (
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Dernière connexion</th>
+                    )}
                     <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
                   </tr>
                 </thead>
@@ -251,21 +367,27 @@ export default function UsersPage() {
                             <p className="font-medium text-gray-900">
                               {user.firstName} {user.lastName}
                             </p>
-                            <p className="text-sm text-gray-500">{user.email}</p>
+                            <p className="text-sm text-gray-500">
+                              {user.email || <span className="italic">Pas d'adresse</span>}
+                            </p>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        {getRoleBadge(user.role)}
-                      </td>
+                      {canAdmin && (
+                        <td className="px-6 py-4">
+                          {getRoleBadge(user)}
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <Badge variant={user.isActive ? 'success' : 'default'}>
                           {user.isActive ? 'Actif' : 'Inactif'}
                         </Badge>
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-500">
-                        {user.lastLogin ? formatDate(user.lastLogin) : 'Jamais'}
-                      </td>
+                      {canAdmin && (
+                        <td className="px-6 py-4 text-sm text-gray-500">
+                          {!user.canLogin ? '—' : user.lastLogin ? formatDate(user.lastLogin) : 'Jamais'}
+                        </td>
+                      )}
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
                           <button
@@ -274,15 +396,21 @@ export default function UsersPage() {
                           >
                             <Edit2 className="w-4 h-4" />
                           </button>
-                          <button
-                            onClick={() => demanderRetraitPasskeys(user)}
-                            title="Retirer ses passkeys"
-                            aria-label={`Retirer les passkeys de ${user.firstName} ${user.lastName}`}
-                            className="p-2 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
-                          >
-                            <Fingerprint className="w-4 h-4" />
-                          </button>
-                          {user.id !== currentUser?.id && (
+                          {/* Rien à retirer à qui ne se connecte pas — et
+                              retirer une passkey relève de l'administrateur. */}
+                          {user.canLogin && canAdmin && (
+                            <button
+                              onClick={() => demanderRetraitPasskeys(user)}
+                              title="Retirer ses passkeys"
+                              aria-label={`Retirer les passkeys de ${user.firstName} ${user.lastName}`}
+                              className="p-2 text-gray-600 hover:text-amber-600 hover:bg-amber-50 rounded-lg"
+                            >
+                              <Fingerprint className="w-4 h-4" />
+                            </button>
+                          )}
+                          {/* Retirer quelqu'un touche à l'historique : le
+                              superviseur décoche « Figure dans les listes ». */}
+                          {user.id !== currentUser?.id && canAdmin && (
                             <button
                               onClick={() => setDeleteConfirm(user)}
                               className="p-2 text-gray-600 hover:text-red-600 hover:bg-red-50 rounded-lg"
@@ -305,7 +433,9 @@ export default function UsersPage() {
       <Modal
         isOpen={isModalOpen}
         onClose={closeModal}
-        title={editingUser ? 'Modifier l\'utilisateur' : 'Nouvel utilisateur'}
+        title={
+          editingUser ? 'Modifier la fiche' : canAdmin ? "Ajouter quelqu'un" : 'Ajouter une personne'
+        }
       >
         <form onSubmit={handleSubmit}>
           <ModalBody className="space-y-4">
@@ -324,35 +454,83 @@ export default function UsersPage() {
               />
             </div>
 
+            {/*
+              La case qui décide de tout le reste du formulaire. Décochée, il ne
+              reste qu'un nom — ce qui suffit à désigner quelqu'un dans une
+              remise de clé ou une réservation, et n'ouvre aucun accès.
+
+              Elle ne s'affiche pas au superviseur : elle est le geste même
+              qu'il n'a pas le droit de faire, et un bouton qui ment est pire
+              que pas de bouton du tout.
+            */}
+            {canAdmin && (
+              <label className="flex items-start gap-3 rounded-lg border border-gray-200 p-3 cursor-pointer hover:bg-gray-50">
+                <input
+                  type="checkbox"
+                  id="canLogin"
+                  checked={formData.canLogin}
+                  onChange={(e) => setFormData({ ...formData, canLogin: e.target.checked })}
+                  className="mt-0.5 w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span className="text-sm">
+                  <span className="font-medium text-gray-900">Se connecte à l'application</span>
+                  <span className="block text-gray-500 mt-0.5">
+                    {formData.canLogin
+                      ? 'Adresse et mot de passe obligatoires : ce sont ses identifiants.'
+                      : "Ni adresse ni mot de passe. Cette personne figure à l'annuaire pour qu'on puisse lui remettre une clé ou lui prêter du matériel — elle n'ouvre jamais l'application. La case se recoche le jour où elle a besoin d'un accès."}
+                  </span>
+                </span>
+              </label>
+            )}
+
             <Input
-              label="Email"
+              label={formData.canLogin ? 'Email' : 'Email (facultatif)'}
               type="email"
               value={formData.email}
               onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              required
+              required={formData.canLogin}
+              hint={
+                formData.canLogin
+                  ? undefined
+                  : canAdmin
+                    ? "Notée si on la connaît. Elle ne donne aucun accès tant que la case est décochée."
+                    : "Notée si on la connaît. Elle ne donne aucun accès : ouvrir un compte relève de l'administrateur."
+              }
             />
 
-            <Input
-              label={editingUser ? 'Nouveau mot de passe (laisser vide pour ne pas changer)' : 'Mot de passe'}
-              type="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              required={!editingUser}
-              hint="Minimum 8 caractères"
-            />
+            {formData.canLogin && (
+              <>
+                <Input
+                  label={
+                    editingUser?.canLogin
+                      ? 'Nouveau mot de passe (laisser vide pour ne pas changer)'
+                      : 'Mot de passe'
+                  }
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required={!editingUser?.canLogin}
+                  hint={
+                    editingUser && !editingUser.canLogin
+                      ? "Cette personne n'en avait pas : il lui en faut un pour se connecter."
+                      : 'Minimum 8 caractères'
+                  }
+                />
 
-            <Select
-              label="Rôle"
-              value={formData.role}
-              onChange={(e) => setFormData({ ...formData, role: e.target.value })}
-              hint={ROLE_DESCRIPTIONS[formData.role as keyof typeof ROLE_DESCRIPTIONS]}
-              options={[
-                { value: 'user', label: ROLE_LABELS.user },
-                { value: 'agent', label: ROLE_LABELS.agent },
-                { value: 'supervisor', label: ROLE_LABELS.supervisor },
-                { value: 'admin', label: ROLE_LABELS.admin }
-              ]}
-            />
+                <Select
+                  label="Rôle"
+                  value={formData.role}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                  hint={ROLE_DESCRIPTIONS[formData.role as keyof typeof ROLE_DESCRIPTIONS]}
+                  options={[
+                    { value: 'user', label: ROLE_LABELS.user },
+                    { value: 'agent', label: ROLE_LABELS.agent },
+                    { value: 'supervisor', label: ROLE_LABELS.supervisor },
+                    { value: 'admin', label: ROLE_LABELS.admin }
+                  ]}
+                />
+              </>
+            )}
 
             <div className="flex items-center gap-2">
               <input
@@ -363,7 +541,9 @@ export default function UsersPage() {
                 className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
               />
               <label htmlFor="isActive" className="text-sm text-gray-700">
-                Compte actif
+                {formData.canLogin
+                  ? 'Compte actif'
+                  : "Figure dans les listes (décocher retire cette personne des choix, sans l'effacer)"}
               </label>
             </div>
           </ModalBody>
@@ -373,7 +553,7 @@ export default function UsersPage() {
               Annuler
             </Button>
             <Button type="submit" loading={saveMutation.isPending}>
-              {editingUser ? 'Modifier' : 'Créer'}
+              {editingUser ? 'Modifier' : formData.canLogin ? 'Créer le compte' : 'Ajouter'}
             </Button>
           </ModalFooter>
         </form>
@@ -395,9 +575,10 @@ export default function UsersPage() {
             <div className="mt-3 space-y-3">
               <Alert type="warning">
                 <div className="text-sm">
-                  Ce compte a participé à des manifestations. Il sera <strong>désactivé</strong>,
-                  pas supprimé : l'effacer retirerait de l'historique le nom de qui a validé, livré
-                  ou échangé — ce qu'un litige exige de retrouver, des mois plus tard.
+                  Cette personne a laissé des traces dans l'application. Elle sera{' '}
+                  <strong>désactivée</strong>, pas supprimée : l'effacer retirerait de
+                  l'historique le nom de qui a validé, livré, échangé ou détenu une clé — ce
+                  qu'un litige exige de retrouver, des mois plus tard.
                   <ul className="mt-2 list-disc list-inside text-xs">
                     {traces.traces.manifestations_creees > 0 && (
                       <li>{traces.traces.manifestations_creees} manifestation(s) créée(s)</li>
@@ -408,6 +589,14 @@ export default function UsersPage() {
                     )}
                     {traces.traces.messages > 0 && <li>{traces.traces.messages} message(s)</li>}
                     {traces.traces.services > 0 && <li>membre de {traces.traces.services} service(s)</li>}
+                    {traces.traces.cles > 0 && (
+                      <li className="font-medium">
+                        {traces.traces.cles} clé(s) ou trousseau(x) remis à son nom
+                      </li>
+                    )}
+                    {traces.traces.reservations > 0 && (
+                      <li>{traces.traces.reservations} réservation(s)</li>
+                    )}
                   </ul>
                 </div>
               </Alert>

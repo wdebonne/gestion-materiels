@@ -69,6 +69,18 @@ export function getRedirectTarget(location: { state?: unknown }): string {
 }
 
 // Route protégée
+/**
+ * Premier onglet des paramètres, selon ce qu'on a le droit d'y faire.
+ *
+ * *Général* est réservé à l'administrateur ; le superviseur, lui, n'y
+ * vient que pour l'annuaire des personnes sans compte. L'y envoyer
+ * directement évite de le faire rebondir sur un écran vide.
+ */
+function AccueilParametres() {
+  const role = useAuthStore((etat) => etat.user?.role)
+  return <Navigate to={role === 'admin' ? 'general' : 'users'} replace />
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuthStore()
   const location = useLocation()
@@ -161,7 +173,7 @@ function App() {
 
           {/* Routes des paramètres */}
           <Route path="settings" element={<SettingsPage />}>
-            <Route index element={<Navigate to="general" replace />} />
+            <Route index element={<AccueilParametres />} />
             <Route path="general" element={<GeneralSettingsPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="permissions" element={<PermissionsPage />} />

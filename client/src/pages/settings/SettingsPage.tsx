@@ -15,18 +15,35 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
-const settingsNavItems = [
-  { 
-    to: '/settings/general', 
-    icon: Settings, 
+interface EntreeParametres {
+  to: string
+  icon: typeof Settings
+  label: string
+  /** Réservé à l'administrateur. */
+  adminOnly?: boolean
+  /**
+   * Ouvert au superviseur en plus de l'administrateur, dans une forme réduite
+   * que l'écran lui-même se charge de tenir — et que le serveur impose.
+   */
+  manageOnly?: boolean
+}
+
+const settingsNavItems: EntreeParametres[] = [
+  {
+    to: '/settings/general',
+    icon: Settings,
     label: 'Général',
     adminOnly: true
   },
-  { 
-    to: '/settings/users', 
-    icon: Users, 
+  {
+    to: '/settings/users',
+    icon: Users,
+    // Le superviseur n'y voit que les personnes sans compte : c'est lui qui
+    // remet les clés, et le renvoyer vers l'administrateur pour inscrire un nom
+    // manquant le renverrait en pratique vers « un externe », donc vers du
+    // texte libre — ce que cet annuaire existe pour éviter.
     label: 'Utilisateurs',
-    adminOnly: true
+    manageOnly: true
   },
   { 
     to: '/settings/permissions', 
@@ -135,9 +152,12 @@ const settingsNavItems = [
 export default function SettingsPage() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
+  const canManage = isAdmin || user?.role === 'supervisor'
 
   // Filtrer les éléments selon le rôle
-  const visibleItems = settingsNavItems.filter(item => !item.adminOnly || isAdmin)
+  const visibleItems = settingsNavItems.filter(
+    (item) => (!item.adminOnly || isAdmin) && (!item.manageOnly || canManage)
+  )
 
   return (
     <div className="flex flex-col lg:flex-row gap-6">

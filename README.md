@@ -32,6 +32,36 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 - 🔏 **Passkeys** : se connecter avec l'empreinte, le visage ou le code de son appareil, ou une clé USB. Chacun gère les siennes depuis *Mon profil > Passkeys* — plusieurs par personne, nommées et datées, pour savoir laquelle retirer le jour d'une perte
 - 👤 Profil utilisateur personnalisable
 - ✅ **Rester connecté** : coché, la session survit à la fermeture du navigateur ; décoché, elle disparaît avec l'onglet — à utiliser sur un poste partagé
+- 🧑‍🤝‍🧑 **Des personnes sans compte** : le gardien de la salle des fêtes, l'élu, l'employé du CLSH figurent au même annuaire que les agents, sans adresse ni mot de passe
+
+#### Un seul annuaire : les comptes et les personnes
+
+*Paramètres > Utilisateurs* ne gérait que des comptes : une adresse et un mot de passe étaient obligatoires. Y inscrire quelqu'un qui n'ouvrira jamais l'application — le gardien à qui on remet un trousseau — obligeait à lui inventer les deux, donc à créer un accès que personne n'avait voulu. Faute de quoi cette personne n'existait nulle part, et « Remettre le matériel » la renvoyait vers **un externe**, c'est-à-dire vers du texte libre : « A. Marie », « Marie André » et « André MARIE » y devenaient trois détenteurs distincts, qu'aucun écran ne peut rapprocher.
+
+Une case, **« Se connecte à l'application »**, sépare désormais les deux formes :
+
+| | Personne sans compte | Compte |
+|---|---|---|
+| Ce qu'il faut saisir | un nom | un nom, une adresse, un mot de passe |
+| Peut se connecter | non — mot de passe, passkey et lien de réinitialisation sont refusés | oui |
+| Peut être désignée | oui : détentrice d'une clé, emprunteuse de matériel | oui |
+| Reçoit les notifications | non | selon son rôle |
+| Rôle | `Utilisateur`, sans effet | celui qu'on lui donne |
+
+Les deux vivent dans la même table : **accorder un accès plus tard ne recopie personne**. La fiche garde son identifiant, donc les clés qu'elle détient, les réservations à son nom et son passage dans l'historique. Le geste inverse — retirer l'accès — ferme la porte sans effacer personne, et périme au passage les sessions en cours plutôt que d'attendre l'expiration du jeton.
+
+> Supprimer quelqu'un qui détient une clé ne l'efface pas : le compte est désactivé, et l'écran annonce d'abord ce qu'il s'apprête à retirer — manifestations, décisions, messages, **clés remises à son nom**, réservations.
+
+**Qui tient l'annuaire.** *Paramètres > Utilisateurs* s'ouvre au superviseur, dans une forme réduite : il n'y voit que les personnes sans compte, les inscrit et corrige leur nom. C'est lui qui remet les clés — le renvoyer vers l'administrateur pour un nom manquant le renverrait en pratique vers « un externe », et sans le droit de corriger, une faute de frappe produirait un doublon. La frontière n'est pas « quels champs », mais **« est-ce que cela ouvre une porte »** :
+
+| | Superviseur | Administrateur |
+|---|:---:|:---:|
+| Inscrire une personne sans compte | ✓ | ✓ |
+| Corriger son nom, son adresse, sa présence dans les listes | ✓ | ✓ |
+| Voir les comptes de l'application | | ✓ |
+| Créer un compte, accorder ou retirer un accès | | ✓ |
+| Distribuer un rôle, poser un mot de passe, retirer les passkeys | | ✓ |
+| Supprimer, anonymiser, couper les sessions | | ✓ |
 
 #### Le rôle « Agent de terrain »
 
@@ -48,7 +78,8 @@ L'agent de terrain peut faire les gestes du quotidien — relevé de plein, entr
 | Joindre une photo | | ✓ | ✓ | ✓ |
 | Créer / modifier un matériel | | | ✓ | ✓ |
 | Gérer le référentiel et supprimer | | | ✓ | ✓ |
-| Utilisateurs, sauvegardes, permissions | | | | ✓ |
+| Inscrire et corriger une personne sans compte | | | ✓ | ✓ |
+| Comptes, accès, sauvegardes, permissions | | | | ✓ |
 
 ### Gestion du matériel
 - 📁 Organisation par catégories et sous-catégories
@@ -530,8 +561,9 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 41 suites
+├── tests/                  # Tests backend (Jest) — 57 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
+│   ├── personnes.test.ts  # Annuaire : reconstruction de `users`, accès accordé ou retiré
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain
 │   ├── apiTokens.test.ts  # Portée des tokens API
 │   ├── migrations.test.ts # Système de migration
@@ -764,6 +796,7 @@ POST   /api/services/:id/delegations       # Déléguer ses approbations
 DELETE /api/services/:id/delegations/:did  # Révoquer
 PUT    /api/services/:id/members/:userId   # Désigner ou retirer le responsable
 
+GET    /api/users/annuaire        # Noms seuls, pour désigner quelqu'un (agent et au-dessus)
 GET    /api/users/:id/traces      # Ce qu'un compte laisserait derrière lui
 POST   /api/users/:id/anonymize   # Retire l'identité, conserve les liens (RGPD)
 DELETE /api/users/:id             # Supprime, ou désactive si le compte a des traces
@@ -1121,11 +1154,12 @@ GET  /api/dashboard/depreciation # Données de dépréciation des matériels
 GET  /api/settings            # Tous les paramètres
 PUT  /api/settings            # Modifier les paramètres
 
-# Utilisateurs
-GET    /api/users             # Liste des utilisateurs
-POST   /api/users             # Créer un utilisateur
-PUT    /api/users/:id         # Modifier un utilisateur
-DELETE /api/users/:id         # Supprimer un utilisateur
+# Utilisateurs et personnes — le superviseur n'y voit que les personnes sans compte
+GET    /api/users             # Liste ; ?canLogin=1 les comptes, ?canLogin=0 les fiches
+GET    /api/users/annuaire    # Noms seuls, pour désigner quelqu'un
+POST   /api/users             # Créer ; canLogin:false = une personne, un nom suffit
+PUT    /api/users/:id         # Modifier, accorder ou retirer la connexion
+DELETE /api/users/:id         # Supprimer, ou désactiver si des traces existent
 
 # Sauvegardes
 GET    /api/backup            # Liste des sauvegardes

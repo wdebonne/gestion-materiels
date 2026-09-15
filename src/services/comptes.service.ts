@@ -30,6 +30,8 @@ export interface TracesCompte {
   decisions: number;
   messages: number;
   services: number;
+  cles: number;
+  reservations: number;
   total: number;
 }
 
@@ -62,11 +64,25 @@ export async function tracesDe(userId: number | string): Promise<TracesCompte> {
     ),
     messages: await compter('SELECT COUNT(*) as cnt FROM manifestation_messages WHERE user_id = ?'),
     services: await compter('SELECT COUNT(*) as cnt FROM service_members WHERE user_id = ?'),
+    // Une clé remise, rendue ou non : `holder_user_id` est en `ON DELETE SET
+    // NULL`, si bien qu'effacer la personne laisserait une détention sans
+    // détenteur. « Qui a ce trousseau ? » est la seule question que l'écran des
+    // clés existe pour répondre, et la réponse disparaîtrait sans bruit.
+    cles: await compter('SELECT COUNT(*) as cnt FROM cle_attributions WHERE holder_user_id = ?'),
+    // Celles-ci sont en `ON DELETE CASCADE` : elles ne seraient pas vidées mais
+    // emportées, et le planning perdrait des créneaux au lieu d'un nom.
+    reservations: await compter('SELECT COUNT(*) as cnt FROM reservations WHERE user_id = ?'),
     total: 0,
   };
 
   traces.total =
-    traces.manifestations_creees + traces.historique + traces.decisions + traces.messages + traces.services;
+    traces.manifestations_creees +
+    traces.historique +
+    traces.decisions +
+    traces.messages +
+    traces.services +
+    traces.cles +
+    traces.reservations;
 
   return traces;
 }
