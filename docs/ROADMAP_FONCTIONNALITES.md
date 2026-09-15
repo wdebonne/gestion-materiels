@@ -13,7 +13,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
-| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 799 tests (755 backend, 44 frontend) |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 1134 tests (1090 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Partiel | **Passkeys appliquées** depuis septembre 2026 : connexion sans mot de passe, second facteur, gestion des clés par chaque agent. SAML, OIDC et LDAP restent des écrans dont la configuration est **relue par personne**. La politique de mot de passe, le blocage après N tentatives et l'expiration sont appliqués |
-| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 ; tournée du jour et saisie de terrain ouverte à l'agent — septembre 2026 |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 ; tournée du jour et saisie de terrain ouverte à l'agent, demande de formulaire reçue entière et redistribuée aux documents de service — septembre 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | Implantation depuis le parc à prix figé et plan annoté manipulable — septembre 2026 |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -219,7 +219,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Contact livraison** : Nom, téléphone, email, adresse de livraison, dates de livraison et de récupération
   - **Matériel par manifestation** : Quantités demandées, livrées, récupérées et perdues, avec suivi unitaire
   - **Impact stock automatique** : Validation réserve le stock, livraison l'engage, récupération le restitue, une perte le diminue
-  - **Réception de demandes** : dépôt signé depuis une application de formulaires, correspondance des champs configurable
+  - **Réception de demandes** : dépôt signé depuis une application de formulaires, correspondance des champs configurable — une quarantaine de champs reconnus, questions par branches, groupes et répéteurs compris ; ce qu’aucune colonne ne porte est conservé avec la demande et offert aux modèles de document
   - **Matériel unique** : un véhicule ou un matériel identifié du parc se rattache à une manifestation, sans passer par une quantité
   - **Tournée du jour** : ce qui part et ce qui rentre, par arrêt, avec les retards en tête et la saisie en un geste
   - **Archivage** : Manifestations terminées archivables et consultables en lecture seule
@@ -229,6 +229,12 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, tournée du jour, stats, disponibilité
 - **Frontend :** 4 onglets (Tournée du jour, Manifestations, Stock, Archives), modales détail et saisie de terrain, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
+
+> ✅ **La demande arrive entière, septembre 2026 :** la réception ne retenait d'un formulaire que les quatorze champs pour lesquels `manifestations` a une colonne. Le formulaire, lui, en pose une quarantaine — qualité du demandeur, pôle et service, association et président, bâtiments et salles, voies fermées à la circulation, agents techniques, informatique, restauration, communication, débit de boissons. Tout le reste était lu, puis jeté : le document envoyé au service ne pouvait rien dire de ce qui le concerne — un arrêté de circulation sans le nom de la rue n'est pas un arrêté — et l'agent rouvrait le formulaire d'origine pour savoir qui demandait quoi.
+>
+> Trois habitudes de formulaire y échappaient de toute façon. Les questions **par branches** — une par pôle, une par qualité de demandeur — dont une seule est remplie : un champ accepte désormais plusieurs chemins, et le premier qui porte une valeur l'emporte. Les **groupes** et les **répétitions**, qui se règlent d'un seul chemin et se lisent à plat : « Mairie : Salle des mariages ; Complexe Sportif : Club House ». Et un intitulé finissant par un point — « Nom de la manifestation. » — dont le nom se perdait dans le découpage des chemins, ce qui faisait refuser la demande pour titre manquant.
+>
+> Ce qu'aucune colonne ne porte est conservé avec la demande dans `manifestations.intake_details`, avec son intitulé et sa section — plutôt qu'une colonne par question, dans un schéma qu'un formulaire changé chaque année aurait fait migrer à chaque saison. Ces réponses s'affichent sous « Demande d'origine » et deviennent autant de valeurs de modèle : `{pole}`, `{lieux_exterieurs}`, `{debit_boissons}`. Le catalogue proposé aux modèles est **dérivé** de celui de la réception : deux listes tenues à la main auraient divergé au premier champ ajouté.
 
 > ✅ **Tournée du jour et saisie de terrain, septembre 2026 :** livrer et récupérer était une affaire de superviseur — toutes les écritures du module étaient gardées par `requireSupervisor`, y compris le constat. Le rôle `agent`, dont la description dit pourtant « saisit sur le terrain », notait ses chiffres sur un papier que quelqu'un d'autre ressaisissait le soir.
 >

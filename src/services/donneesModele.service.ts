@@ -1,4 +1,9 @@
 import { db } from '../database';
+import {
+  CHAMPS_DETAILS,
+  CHAMPS_INTAKE,
+  type DetailDemande,
+} from './manifestationIntake.service';
 import { expressionPrestation, jointuresPrestation } from './prestationParc.service';
 
 /**
@@ -22,52 +27,101 @@ export interface DefinitionValeur {
   cle: string;
   libelle: string;
   exemple: string;
+  /** Section d'origine, pour que l'écran propose les valeurs par groupes. */
+  section?: string;
   /** Une liste se répète dans le modèle : `{#materiels}…{/materiels}`. */
   liste?: boolean;
 }
 
+/**
+ * Valeurs venues de la demande elle-même.
+ *
+ * Elles ne sont pas réécrites ici : elles sont **dérivées** du catalogue de
+ * réception, qui dit déjà ce qu'une demande porte, sous quel intitulé et avec
+ * quel exemple. Deux listes tenues à la main auraient divergé au premier champ
+ * ajouté au formulaire, et un champ proposé sans jamais être rempli ressortirait
+ * vide dans un arrêté municipal.
+ */
+const VALEURS_DE_LA_DEMANDE: DefinitionValeur[] = CHAMPS_INTAKE.map((champ) => ({
+  cle: champ.cleModele,
+  libelle: champ.libelle,
+  exemple: champ.exemple,
+  section: champ.section,
+}));
+
 /** Valeurs offertes à un modèle, dans l'ordre où l'écran les propose. */
 export const VALEURS_MODELE: DefinitionValeur[] = [
-  { cle: 'manifestation', libelle: 'Nom de la manifestation', exemple: 'Fête de la musique' },
-  { cle: 'date_debut', libelle: 'Date de début', exemple: '14/07/2026' },
-  { cle: 'date_fin', libelle: 'Date de fin', exemple: '14/07/2026' },
-  { cle: 'heure_debut', libelle: 'Heure de début', exemple: '09:00' },
-  { cle: 'heure_fin', libelle: 'Heure de fin', exemple: '23:00' },
-  { cle: 'date_livraison', libelle: 'Date de livraison', exemple: '13/07/2026' },
-  { cle: 'date_recuperation', libelle: 'Date de récupération', exemple: '15/07/2026' },
-  { cle: 'lieu', libelle: 'Lieu de livraison', exemple: 'Place du marché' },
-  { cle: 'contact_nom', libelle: 'Nom du contact', exemple: 'Martin Dubois' },
-  { cle: 'contact_telephone', libelle: 'Téléphone du contact', exemple: '01 02 03 04 05' },
-  { cle: 'contact_email', libelle: 'Courriel du contact', exemple: 'martin@ville.fr' },
-  { cle: 'personnes_attendues', libelle: 'Personnes attendues', exemple: '250' },
-  { cle: 'demandeur', libelle: 'Demandeur', exemple: 'Service des fêtes' },
-  { cle: 'statut', libelle: 'Statut de la manifestation', exemple: 'À confirmer' },
-  { cle: 'notes', libelle: 'Notes de la demande', exemple: 'Prévoir une rallonge' },
-  { cle: 'service', libelle: 'Nom du service destinataire', exemple: 'Service urbanisme' },
-  { cle: 'date_du_jour', libelle: 'Date du jour', exemple: '30/08/2026' },
+  ...VALEURS_DE_LA_DEMANDE,
+  { cle: 'demandeur', libelle: 'Créée par', exemple: 'Service des fêtes', section: 'Suivi' },
+  { cle: 'statut', libelle: 'Statut de la manifestation', exemple: 'À confirmer', section: 'Suivi' },
+  {
+    cle: 'notes',
+    libelle: 'Notes de la demande, intérieures et extérieures réunies',
+    exemple: 'Prévoir une rallonge',
+    section: 'Suivi',
+  },
+  { cle: 'service', libelle: 'Nom du service destinataire', exemple: 'Service urbanisme', section: 'Suivi' },
+  { cle: 'date_du_jour', libelle: 'Date du jour', exemple: '30/08/2026', section: 'Suivi' },
   {
     cle: 'materiels',
     libelle: 'Matériel demandé (liste, votre part)',
     exemple: '{#materiels}{nom} × {quantite}{/materiels}',
+    section: 'Matériel',
     liste: true,
   },
   {
     cle: 'prestations',
     libelle: 'Prestations demandées (liste, votre part)',
     exemple: '{#prestations}{nom} × {quantite}{/prestations}',
+    section: 'Matériel',
     liste: true,
   },
   {
     cle: 'materiel_resume',
-    libelle: 'Matériel demandé, en une ligne',
+    libelle: 'Matériel rattaché au stock, en une ligne',
     exemple: '50 × Chaise, 10 × Table',
+    section: 'Matériel',
   },
   {
     cle: 'prestations_resume',
     libelle: 'Prestations demandées, en une ligne',
     exemple: 'Raccordement électrique, Débit de boissons',
+    section: 'Matériel',
   },
 ];
+
+/**
+ * Détails d'une demande, prêts pour un modèle.
+ *
+ * Toutes les valeurs du catalogue sont posées, y compris celles que cette
+ * demande-là ne portait pas : un champ sans réponse doit ressortir **vide**, et
+ * non en accolades. Un arrêté municipal portant « {debit_boissons} » en toutes
+ * lettres serait signé tel quel par quelqu'un qui ne l'a pas relu.
+ *
+ * Une demande enregistrée avant qu'une question n'existe n'a rien à dire dessus,
+ * et une demande qui porte une réponse devenue inconnue du catalogue la garde
+ * quand même : c'est ce qu'elle disait le jour où elle est arrivée.
+ */
+function detailsPourModele(brut: unknown): Record<string, string> {
+  const valeurs: Record<string, string> = {};
+  for (const champ of CHAMPS_DETAILS) valeurs[champ.cleModele] = '';
+
+  for (const detail of lireDetails(brut)) {
+    if (detail?.cle) valeurs[detail.cle] = String(detail.valeur ?? '');
+  }
+  return valeurs;
+}
+
+/** Une colonne illisible ne doit pas empêcher d'imprimer le reste du document. */
+function lireDetails(brut: unknown): DetailDemande[] {
+  if (!brut) return [];
+  try {
+    const lu = typeof brut === 'string' ? JSON.parse(brut) : brut;
+    return Array.isArray(lu) ? (lu as DetailDemande[]) : [];
+  } catch {
+    return [];
+  }
+}
 
 const LIBELLES_STATUT: Record<string, string> = {
   pending: 'À confirmer',
@@ -220,6 +274,11 @@ export async function donneesPourModele(
   });
 
   return {
+    // Ce que la demande disait et qu'aucune colonne ne porte : le pôle, la
+    // salle, la rue fermée, le vin d'honneur. Posé en premier pour qu'une
+    // colonne garde le dernier mot si les deux nommaient la même valeur.
+    ...detailsPourModele(m.intake_details),
+
     manifestation: m.title ?? '',
     date_debut: jour(m.date_start),
     date_fin: jour(m.date_end),

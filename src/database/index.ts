@@ -889,6 +889,10 @@ class DatabaseManager {
         recovery_date DATE,
         intake_request_id INTEGER,
         intake_unmatched ${textType},
+        -- Réponses du formulaire qu'aucune colonne ne porte : le pôle demandeur,
+        -- les salles réservées, les rues fermées, le vin d'honneur. Voir la
+        -- migration 029, qui l'ajoute aux bases déjà déployées.
+        intake_details ${textType},
         created_at DATETIME ${timestampDefault},
         updated_at DATETIME ${timestampDefault},
         FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL

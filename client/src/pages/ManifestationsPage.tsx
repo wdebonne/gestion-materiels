@@ -26,6 +26,7 @@ import api from '@/lib/api'
 import {
   manifestationApi,
   type ArticleCatalogue,
+  type DetailDemande,
   type EtatSortie,
   type LigneSortie,
   type Manifestation,
@@ -1845,6 +1846,8 @@ function OngletResume({ manif: m }: { manif: Manifestation }) {
         </CardBody>
       </Card>
 
+      <DetailsDeLaDemande brut={m.intake_details} />
+
       <CoutManifestationCard cout={m.cout} />
 
       {(m.notes_interior || m.notes_exterior) && (
@@ -2249,6 +2252,60 @@ function SuiviObjetsParc({ manifestationId, modifiable }: {
  * Le rattachement se fait à la main, en modifiant la manifestation — ou une fois
  * pour toutes en ajoutant un alias à l'article concerné.
  */
+/**
+ * Ce que le formulaire disait, et que la manifestation n'a pas de case pour
+ * ranger : la qualité du demandeur, le pôle, les salles réservées, les rues
+ * fermées, le vin d'honneur, le débit de boissons.
+ *
+ * Ces réponses partent déjà dans les documents envoyés aux services. Les montrer
+ * ici évite d'avoir à rouvrir le formulaire d'origine pour répondre à « qui
+ * demande, et pour quoi faire ? ».
+ */
+function DetailsDeLaDemande({ brut }: { brut?: string | null }) {
+  if (!brut) return null
+
+  let details: DetailDemande[] = []
+  try {
+    const lu = JSON.parse(brut)
+    details = Array.isArray(lu) ? lu : []
+  } catch {
+    return null
+  }
+  if (details.length === 0) return null
+
+  // Les sections gardent l'ordre du formulaire : c'est celui dans lequel la
+  // demande a été remplie, donc celui dans lequel elle se relit.
+  const sections = new Map<string, DetailDemande[]>()
+  for (const detail of details) {
+    sections.set(detail.section, [...(sections.get(detail.section) ?? []), detail])
+  }
+
+  return (
+    <Card>
+      <CardHeader><CardTitle className="text-sm">Demande d'origine</CardTitle></CardHeader>
+      <CardBody>
+        <div className="space-y-3">
+          {[...sections.entries()].map(([section, lignes]) => (
+            <div key={section}>
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                {section}
+              </h4>
+              <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                {lignes.map((ligne) => (
+                  <div key={ligne.cle}>
+                    <span className="text-gray-500 dark:text-gray-400">{ligne.libelle} :</span>{' '}
+                    <span className="text-gray-900 dark:text-gray-100">{ligne.valeur}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CardBody>
+    </Card>
+  )
+}
+
 function MaterielARattacher({ brut }: { brut?: string | null }) {
   if (!brut) return null
 

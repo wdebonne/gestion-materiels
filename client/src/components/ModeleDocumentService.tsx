@@ -172,6 +172,8 @@ export default function ModeleDocumentService({
           reçoit l'ensemble du dossier.
         </p>
 
+        <ValeursDisponibles valeurs={valeurs} />
+
         {isLoading ? (
           <div className="flex justify-center py-6"><Spinner /></div>
         ) : !modele ? (
@@ -420,9 +422,14 @@ function Correspondance({
   }
 
   const connus = new Set(valeurs.map((v) => v.cle))
+  // La section en tête de chaque intitulé : une soixantaine de valeurs sans
+  // repère se parcourt mal, et « Formule » ne dit rien hors du vin d'honneur.
   const options = [
     { value: '', label: '— Non relié —' },
-    ...valeurs.map((v) => ({ value: v.cle, label: `${v.libelle} (${v.cle})` })),
+    ...valeurs.map((v) => ({
+      value: v.cle,
+      label: v.section ? `${v.section} › ${v.libelle} (${v.cle})` : `${v.libelle} (${v.cle})`,
+    })),
   ]
 
   return (
@@ -463,5 +470,63 @@ function Correspondance({
         })}
       </div>
     </div>
+  )
+}
+
+/**
+ * Toutes les valeurs qu'un modèle peut écrire, groupées comme le formulaire les
+ * pose.
+ *
+ * Elles n'apparaissaient jusqu'ici que dans la liste déroulante de
+ * correspondance, c'est-à-dire **après** avoir déposé un modèle. Or l'ordre réel
+ * des choses est l'inverse : on écrit d'abord le document dans Word, et il faut
+ * alors savoir quoi taper entre accolades. Un clic copie le champ, prêt à être
+ * collé.
+ */
+function ValeursDisponibles({ valeurs }: { valeurs: ValeurModele[] }) {
+  if (valeurs.length === 0) return null
+
+  const sections = new Map<string, ValeurModele[]>()
+  for (const valeur of valeurs) {
+    const section = valeur.section ?? 'Demande'
+    sections.set(section, [...(sections.get(section) ?? []), valeur])
+  }
+
+  const copier = (cle: string) => {
+    navigator.clipboard.writeText(`{${cle}}`)
+    toast.success(`{${cle}} copié`)
+  }
+
+  return (
+    <details className="text-xs">
+      <summary className="cursor-pointer select-none text-gray-500 dark:text-gray-400">
+        Valeurs à écrire dans le document ({valeurs.length})
+      </summary>
+      <div className="mt-2 space-y-3">
+        {[...sections.entries()].map(([section, lignes]) => (
+          <div key={section}>
+            <h5 className="font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+              {section}
+            </h5>
+            <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5">
+              {lignes.map((valeur) => (
+                <button
+                  key={valeur.cle}
+                  type="button"
+                  onClick={() => copier(valeur.cle)}
+                  title={`Copier — exemple : ${valeur.exemple}`}
+                  className="flex items-baseline gap-2 text-left hover:text-primary-600"
+                >
+                  <code className="px-1 rounded bg-gray-100 dark:bg-gray-800 shrink-0">
+                    {valeur.liste ? `{#${valeur.cle}}…{/${valeur.cle}}` : `{${valeur.cle}}`}
+                  </code>
+                  <span className="text-gray-500 dark:text-gray-400 truncate">{valeur.libelle}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   )
 }

@@ -16,7 +16,17 @@ import { expressionPrestation } from './prestationParc.service';
  * la forme et la règle de normalisation.
  */
 
+/**
+ * Champs qu'une demande peut porter.
+ *
+ * Les quatorze premiers portent le nom de la **colonne** de `manifestations`
+ * qui les reçoit. Les suivants n'ont pas de colonne : ils portent le nom sous
+ * lequel un **modèle de document** les affiche, parce que c'est là qu'ils
+ * servent. Les distinguer d'un coup d'œil évite d'aller chercher en base une
+ * valeur qui n'y est pas, et inversement.
+ */
 export type ChampIntake =
+  // Portés par une colonne de `manifestations`.
   | 'title'
   | 'date_start'
   | 'date_end'
@@ -31,15 +41,92 @@ export type ChampIntake =
   | 'expected_people'
   | 'notes_interior'
   | 'notes_exterior'
-  | 'external_id';
+  // Détails de la demande, conservés tels quels dans `intake_details`.
+  | 'external_id'
+  | 'plusieurs_jours'
+  | 'horaires_definis'
+  | 'lieu_manifestation'
+  | 'type_demandeur'
+  | 'pole'
+  | 'service_demandeur'
+  | 'ecole'
+  | 'association'
+  | 'president'
+  | 'organisme'
+  | 'lieux_interieurs'
+  | 'lieux_exterieurs'
+  | 'fermeture_circulation'
+  | 'type_fermeture'
+  | 'precisions_circulation'
+  | 'materiel_technique'
+  | 'materiel_informatique'
+  | 'autre_besoin_informatique'
+  | 'autre_demande_informatique'
+  | 'contact_livraison_est_demandeur'
+  | 'livraison_contact_nom'
+  | 'livraison_contact_telephone'
+  | 'besoins_reseaux'
+  | 'personnel_technique'
+  | 'personnel_technique_nombre'
+  | 'personnel_technique_horaires'
+  | 'besoin_restauration'
+  | 'catering'
+  | 'catering_detail'
+  | 'vin_honneur'
+  | 'formule_vin_honneur'
+  | 'besoin_verres'
+  | 'type_verres'
+  | 'personnel_service'
+  | 'personnel_service_horaires'
+  | 'besoin_invitations'
+  | 'besoin_affiches'
+  | 'besoin_goodies'
+  | 'autre_demande_communication'
+  | 'debit_boissons';
 
-export type TypeChamp = 'texte' | 'date' | 'heure' | 'entier';
+/**
+ * Nature de la valeur attendue.
+ *
+ * `composee` désigne une réponse en plusieurs morceaux — un répéteur (« un
+ * bâtiment, puis un autre »), un groupe (« Nom » et « Prénom »), une plage
+ * horaire (`{ start, end }`). Elle est ramenée à une ligne lisible : un modèle
+ * de document imprime du texte, pas une structure.
+ */
+export type TypeChamp = 'texte' | 'date' | 'heure' | 'entier' | 'composee';
+
+/**
+ * Regroupement d'affichage, dans l'ordre où un formulaire pose ses questions.
+ *
+ * Une quarantaine de champs alignés sans séparation ne se règle pas : l'écran
+ * de correspondance les présente par section, et le modèle de document les
+ * propose dans le même ordre.
+ */
+export type SectionIntake =
+  | 'Manifestation'
+  | 'Demandeur'
+  | 'Lieux'
+  | 'Matériel'
+  | 'Livraison'
+  | 'Besoins techniques'
+  | 'Restauration'
+  | 'Communication'
+  | 'Suivi';
 
 export interface DefinitionChampIntake {
   champ: ChampIntake;
   libelle: string;
+  section: SectionIntake;
   obligatoire: boolean;
   type: TypeChamp;
+  /**
+   * Colonne de `manifestations` qui reçoit la valeur. Absente : la valeur est
+   * un détail de la demande, conservé dans `intake_details`.
+   */
+  colonne?: string;
+  /** Nom sous lequel un modèle de document affiche la valeur. */
+  cleModele: string;
+  /** Valeur d'exemple, pour vérifier un modèle avant la première demande. */
+  exemple: string;
   /** Noms de clés acceptés, déjà normalisés. */
   alias: string[];
 }
@@ -50,13 +137,25 @@ export interface DefinitionChampIntake {
  * Seuls le titre et la date de début sont obligatoires : ce sont les deux que la
  * table `manifestations` exige. Tout le reste peut manquer et être complété à la
  * main — une demande incomplète vaut mieux qu'une demande perdue.
+ *
+ * Le catalogue couvre ce qu'un formulaire de demande pose réellement : qui
+ * demande, au nom de quel pôle ou de quelle association, dans quels bâtiments
+ * et sur quelles voies, avec quel matériel, combien d'agents, et ce que les
+ * pôles Communication et Restauration ont à instruire. Ces réponses étaient
+ * perdues à la réception : la manifestation créée n'en gardait rien, et le
+ * service destinataire recevait un document muet sur la moitié de la demande.
  */
 export const CHAMPS_INTAKE: DefinitionChampIntake[] = [
+  // ==================== MANIFESTATION ====================
   {
     champ: 'title',
     libelle: 'Nom de la manifestation',
+    section: 'Manifestation',
     obligatoire: true,
     type: 'texte',
+    colonne: 'title',
+    cleModele: 'manifestation',
+    exemple: 'Fête de la musique',
     alias: [
       'titre', 'title', 'nom', 'name', 'nom de la manifestation', 'manifestation',
       'evenement', 'event', 'intitule', 'objet',
@@ -65,76 +164,202 @@ export const CHAMPS_INTAKE: DefinitionChampIntake[] = [
   {
     champ: 'date_start',
     libelle: 'Date de la manifestation',
+    section: 'Manifestation',
     obligatoire: true,
     type: 'date',
+    colonne: 'date_start',
+    cleModele: 'date_debut',
+    exemple: '14/07/2026',
     alias: [
       'date de debut', 'date debut', 'date start', 'start date', 'date',
       'date de la manifestation', 'date manifestation', 'date de l evenement',
+      'date debut manifestation',
+    ],
+  },
+  {
+    champ: 'plusieurs_jours',
+    libelle: 'Manifestation sur plusieurs jours',
+    section: 'Manifestation',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'plusieurs_jours',
+    exemple: 'Oui',
+    alias: [
+      'la manifestation dure plus d une journee', 'plusieurs jours',
+      'manifestation sur plusieurs jours',
     ],
   },
   {
     champ: 'date_end',
     libelle: 'Date de fin',
+    section: 'Manifestation',
     obligatoire: false,
     type: 'date',
-    alias: ['date de fin', 'date fin', 'end date', 'date end'],
+    colonne: 'date_end',
+    cleModele: 'date_fin',
+    exemple: '15/07/2026',
+    alias: [
+      'date de fin', 'date fin', 'end date', 'date end',
+      'date de fin de la manifestation', 'date fin manifestation',
+    ],
+  },
+  {
+    champ: 'horaires_definis',
+    libelle: 'Horaires définis',
+    section: 'Manifestation',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'horaires_definis',
+    exemple: 'Oui',
+    alias: ['a t elle des horaires definis', 'horaires definis'],
   },
   {
     champ: 'start_time',
     libelle: 'Heure de début',
+    section: 'Manifestation',
     obligatoire: false,
     type: 'heure',
+    colonne: 'start_time',
+    cleModele: 'heure_debut',
+    exemple: '09:00',
     alias: ['heure de debut', 'heure debut', 'start time', 'debut'],
   },
   {
     champ: 'end_time',
     libelle: 'Heure de fin',
+    section: 'Manifestation',
     obligatoire: false,
     type: 'heure',
+    colonne: 'end_time',
+    cleModele: 'heure_fin',
+    exemple: '23:00',
     alias: ['heure de fin', 'heure fin', 'end time', 'fin'],
   },
   {
-    champ: 'delivery_date',
-    libelle: 'Date de livraison',
+    champ: 'expected_people',
+    libelle: 'Personnes attendues',
+    section: 'Manifestation',
     obligatoire: false,
-    type: 'date',
-    alias: ['date de livraison', 'date livraison', 'delivery date', 'livraison'],
-  },
-  {
-    champ: 'recovery_date',
-    libelle: 'Date de récupération',
-    obligatoire: false,
-    type: 'date',
+    type: 'entier',
+    colonne: 'expected_people',
+    cleModele: 'personnes_attendues',
+    exemple: '250',
     alias: [
-      'date de recuperation', 'date recuperation', 'recovery date', 'recuperation',
-      'date de reprise', 'date reprise', 'date de retour', 'retour',
+      'personnes attendues', 'nombre de personnes', 'nombre de personnes attendues',
+      'nb personnes', 'effectif', 'participants', 'expected people', 'public attendu',
     ],
   },
   {
-    champ: 'delivery_address',
-    libelle: 'Lieu de livraison',
+    champ: 'lieu_manifestation',
+    libelle: 'Lieu de la manifestation',
+    section: 'Manifestation',
     obligatoire: false,
     type: 'texte',
+    cleModele: 'lieu_manifestation',
+    exemple: 'Place du marché',
+    alias: ['indiquer le lieu', 'lieu de la manifestation', 'lieu de l evenement'],
+  },
+
+  // ==================== DEMANDEUR ====================
+  {
+    champ: 'type_demandeur',
+    libelle: 'Qualité du demandeur',
+    section: 'Demandeur',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'type_demandeur',
+    exemple: 'Association',
+    alias: ['vous etes', 'type de demandeur', 'qualite du demandeur'],
+  },
+  {
+    champ: 'pole',
+    libelle: 'Pôle',
+    section: 'Demandeur',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'pole',
+    exemple: 'Culture - Communication',
+    alias: ['quel pole', 'pole', 'pole demandeur'],
+  },
+  {
+    champ: 'service_demandeur',
+    libelle: 'Service demandeur',
+    section: 'Demandeur',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'service_demandeur',
+    exemple: 'Animation',
     alias: [
-      'lieu de livraison', 'adresse de livraison', 'adresse livraison', 'lieu',
-      'adresse', 'delivery address', 'location', 'emplacement', 'site',
+      'quel service', 'service demandeur', 'service du pole',
+      'quel service du pole temps de l enfant et de la famille',
+      'quel service du pole administration generale',
+      'quel service du pole service a la population',
     ],
+  },
+  {
+    champ: 'ecole',
+    libelle: 'École concernée',
+    section: 'Demandeur',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'ecole',
+    exemple: 'André Marie',
+    alias: ['quelle ecole', 'ecole', 'ecole concernee'],
+  },
+  {
+    champ: 'association',
+    libelle: 'Association',
+    section: 'Demandeur',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'association',
+    exemple: 'Comité des fêtes',
+    alias: ['nom de l association', 'association'],
+  },
+  {
+    champ: 'president',
+    libelle: 'Président de l’association',
+    section: 'Demandeur',
+    obligatoire: false,
+    type: 'composee',
+    cleModele: 'president',
+    exemple: 'Dubois Martin',
+    alias: ['nom et prenom du president', 'president', 'nom du president'],
+  },
+  {
+    champ: 'organisme',
+    libelle: 'Organisme',
+    section: 'Demandeur',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'organisme',
+    exemple: 'Centre de loisirs',
+    alias: ['nom de l organisme', 'organisme', 'raison sociale'],
   },
   {
     champ: 'contact_name',
-    libelle: 'Contact',
+    libelle: 'Nom du demandeur',
+    section: 'Demandeur',
     obligatoire: false,
     type: 'texte',
+    colonne: 'contact_name',
+    cleModele: 'contact_nom',
+    exemple: 'Martin Dubois',
     alias: [
       'contact', 'nom du contact', 'contact name', 'demandeur', 'nom du demandeur',
+      'nom du demandeur organisateur de la manifestation',
       'responsable', 'organisateur', 'contact de livraison',
     ],
   },
   {
     champ: 'contact_phone',
-    libelle: 'Téléphone du contact',
+    libelle: 'Téléphone du demandeur',
+    section: 'Demandeur',
     obligatoire: false,
     type: 'texte',
+    colonne: 'contact_phone',
+    cleModele: 'contact_telephone',
+    exemple: '01 02 03 04 05',
     alias: [
       'telephone', 'tel', 'phone', 'contact phone', 'telephone du contact',
       'portable', 'mobile', 'numero de telephone',
@@ -142,49 +367,461 @@ export const CHAMPS_INTAKE: DefinitionChampIntake[] = [
   },
   {
     champ: 'contact_email',
-    libelle: 'Courriel du contact',
+    libelle: 'Courriel du demandeur',
+    section: 'Demandeur',
     obligatoire: false,
     type: 'texte',
+    colonne: 'contact_email',
+    cleModele: 'contact_email',
+    exemple: 'martin@ville.fr',
     alias: ['email', 'e mail', 'mail', 'courriel', 'contact email', 'adresse email'],
   },
+
+  // ==================== LIEUX ====================
   {
-    champ: 'expected_people',
-    libelle: 'Personnes attendues',
+    champ: 'lieux_interieurs',
+    libelle: 'Bâtiments et salles demandés',
+    section: 'Lieux',
     obligatoire: false,
-    type: 'entier',
+    type: 'composee',
+    cleModele: 'lieux_interieurs',
+    exemple: 'Mairie : Salle des mariages ; Maison Pour Tous : Le hall',
     alias: [
-      'personnes attendues', 'nombre de personnes', 'nb personnes', 'effectif',
-      'participants', 'expected people', 'public attendu',
+      'la manifestation se deroule t elle en interieur', 'quel batiment', 'batiment',
+      'batiments', 'interieur', 'lieux interieurs', 'salles',
     ],
   },
   {
-    champ: 'notes_interior',
-    libelle: 'Notes',
+    champ: 'lieux_exterieurs',
+    libelle: 'Voies et espaces publics demandés',
+    section: 'Lieux',
+    obligatoire: false,
+    type: 'composee',
+    cleModele: 'lieux_exterieurs',
+    exemple: 'Rue Adolphe Lasne ; Place du marché',
+    alias: [
+      'la manifestation se deroule t elle en exterieur', 'quelle avenue rue place',
+      'exterieur', 'lieux exterieurs', 'voie publique', 'voies publiques', 'rues',
+    ],
+  },
+  {
+    champ: 'fermeture_circulation',
+    libelle: 'Fermeture de la circulation',
+    section: 'Lieux',
     obligatoire: false,
     type: 'texte',
-    alias: ['notes', 'note', 'commentaire', 'commentaires', 'remarques', 'precisions', 'message'],
+    cleModele: 'fermeture_circulation',
+    exemple: 'Oui',
+    alias: ['fermeture de la circulation', 'fermeture circulation', 'circulation'],
+  },
+  {
+    champ: 'type_fermeture',
+    libelle: 'Nature de la fermeture',
+    section: 'Lieux',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'type_fermeture',
+    exemple: 'Partielle',
+    alias: ['fermeture', 'type de fermeture', 'nature de la fermeture'],
+  },
+  {
+    champ: 'precisions_circulation',
+    libelle: 'Précisions sur la fermeture',
+    section: 'Lieux',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'precisions_circulation',
+    exemple: 'De la place du marché au parvis de la mairie',
+    alias: ['precisez', 'precisions', 'precisions sur la fermeture'],
+  },
+
+  // ==================== MATÉRIEL ====================
+  {
+    champ: 'materiel_technique',
+    libelle: 'Matériel technique demandé, tel que reçu',
+    section: 'Matériel',
+    obligatoire: false,
+    type: 'composee',
+    cleModele: 'materiel_technique',
+    exemple: 'Tables Kermesse : 10 ; Chaises Coques : 50',
+    alias: [
+      'besoin de materiel technique', 'quel materiel technique', 'materiel technique',
+      'combien avez vous besoin de materiel technique',
+    ],
+  },
+  {
+    champ: 'materiel_informatique',
+    libelle: 'Matériel informatique demandé',
+    section: 'Matériel',
+    obligatoire: false,
+    type: 'composee',
+    cleModele: 'materiel_informatique',
+    exemple: 'Vidéo projecteur : 1 ; Ecran : 1',
+    alias: [
+      'materiel informatique', 'de quoi avez vous besoin comme materiel informatique',
+      'indiquez les quantites souhaitees pour le materiel informatique',
+    ],
+  },
+  {
+    champ: 'autre_besoin_informatique',
+    libelle: 'Autre besoin informatique',
+    section: 'Matériel',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'autre_besoin_informatique',
+    exemple: 'Oui',
+    alias: ['autre besoin en informatique', 'autre besoin informatique'],
+  },
+  {
+    champ: 'autre_demande_informatique',
+    libelle: 'Détail de la demande informatique',
+    section: 'Matériel',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'autre_demande_informatique',
+    exemple: 'Un câble RJ45 de 20 m',
+    alias: [
+      'quelle est votre autre demande pour le materielle informatique',
+      'autre demande informatique', 'detail de la demande informatique',
+    ],
+  },
+
+  // ==================== LIVRAISON ====================
+  {
+    champ: 'contact_livraison_est_demandeur',
+    libelle: 'Contact de livraison identique au demandeur',
+    section: 'Livraison',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'contact_livraison_est_demandeur',
+    exemple: 'Non',
+    alias: [
+      'le contact pour la livraison est t il le demandeur',
+      'contact de livraison identique au demandeur',
+    ],
+  },
+  {
+    champ: 'livraison_contact_nom',
+    libelle: 'Nom du contact de livraison',
+    section: 'Livraison',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'livraison_contact_nom',
+    exemple: 'Claire Petit',
+    alias: ['nom du contact', 'contact de livraison', 'nom du contact de livraison'],
+  },
+  {
+    champ: 'livraison_contact_telephone',
+    libelle: 'Téléphone du contact de livraison',
+    section: 'Livraison',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'livraison_contact_telephone',
+    exemple: '06 12 34 56 78',
+    alias: [
+      'numero de telephone du contact', 'telephone du contact de livraison',
+      'telephone du contact',
+    ],
+  },
+  {
+    champ: 'delivery_address',
+    libelle: 'Lieu de livraison',
+    section: 'Livraison',
+    obligatoire: false,
+    type: 'texte',
+    colonne: 'delivery_address',
+    cleModele: 'lieu',
+    exemple: 'Place du marché',
+    alias: [
+      'lieu de livraison', 'adresse de livraison', 'adresse livraison', 'lieu',
+      'veuillez indiquez le lieu de livraison', 'adresse', 'delivery address',
+      'location', 'emplacement', 'site',
+    ],
+  },
+  {
+    champ: 'delivery_date',
+    libelle: 'Date de livraison',
+    section: 'Livraison',
+    obligatoire: false,
+    type: 'date',
+    colonne: 'delivery_date',
+    cleModele: 'date_livraison',
+    exemple: '13/07/2026',
+    alias: [
+      'date de livraison', 'date livraison', 'delivery date', 'livraison',
+      'veuillez indiquez la date de livraison',
+    ],
+  },
+  {
+    champ: 'recovery_date',
+    libelle: 'Date de récupération',
+    section: 'Livraison',
+    obligatoire: false,
+    type: 'date',
+    colonne: 'recovery_date',
+    cleModele: 'date_recuperation',
+    exemple: '15/07/2026',
+    alias: [
+      'date de recuperation', 'date recuperation', 'recovery date', 'recuperation',
+      'date de reprise', 'date reprise', 'date de retour', 'retour',
+    ],
+  },
+
+  // ==================== BESOINS TECHNIQUES ====================
+  {
+    champ: 'besoins_reseaux',
+    libelle: 'Eau, électricité',
+    section: 'Besoins techniques',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'besoins_reseaux',
+    exemple: 'Eau, Electricité',
+    alias: ['besoin', 'besoin d eau ou electricite', 'eau ou electricite', 'eau electricite'],
+  },
+  {
+    champ: 'personnel_technique',
+    libelle: 'Besoin de personnel technique',
+    section: 'Besoins techniques',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'personnel_technique',
+    exemple: 'Oui',
+    alias: ['besoin de personnel technique', 'personnel technique'],
+  },
+  {
+    champ: 'personnel_technique_nombre',
+    libelle: 'Nombre d’agents techniques',
+    section: 'Besoins techniques',
+    obligatoire: false,
+    type: 'entier',
+    cleModele: 'personnel_technique_nombre',
+    exemple: '3',
+    alias: ['nombre d agents souhaite', 'nombre d agents', 'nombre d agents techniques'],
+  },
+  {
+    champ: 'personnel_technique_horaires',
+    libelle: 'Horaires du personnel technique',
+    section: 'Besoins techniques',
+    obligatoire: false,
+    type: 'composee',
+    cleModele: 'personnel_technique_horaires',
+    exemple: '08:00 12:00',
+    alias: [
+      'selectionnez la plage horaire', 'plage horaire',
+      'horaires du personnel technique',
+    ],
+  },
+
+  // ==================== RESTAURATION ====================
+  {
+    champ: 'besoin_restauration',
+    libelle: 'Besoin de restauration',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'besoin_restauration',
+    exemple: 'Oui',
+    alias: ['besoin de restauration', 'restauration'],
+  },
+  {
+    champ: 'catering',
+    libelle: 'Catering',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'catering',
+    exemple: 'Oui',
+    alias: ['catering'],
+  },
+  {
+    champ: 'catering_detail',
+    libelle: 'Détail du catering',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'catering_detail',
+    exemple: 'Café, jus de fruits et viennoiseries pour 30 personnes',
+    alias: ['que voulez vous', 'detail du catering'],
+  },
+  {
+    champ: 'vin_honneur',
+    libelle: 'Vin d’honneur',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'vin_honneur',
+    exemple: 'Oui',
+    alias: ['vin d honneur'],
+  },
+  {
+    champ: 'formule_vin_honneur',
+    libelle: 'Formule du vin d’honneur',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'formule_vin_honneur',
+    exemple: '2',
+    alias: ['quelle formule', 'formule', 'formule du vin d honneur'],
+  },
+  {
+    champ: 'besoin_verres',
+    libelle: 'Besoin de verres',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'besoin_verres',
+    exemple: 'Oui',
+    alias: ['besoin de verre', 'besoin de verres'],
+  },
+  {
+    champ: 'type_verres',
+    libelle: 'Type de verres',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'type_verres',
+    exemple: 'Ecocup',
+    alias: ['quelle type de verre', 'type de verre', 'type de verres'],
+  },
+  {
+    champ: 'personnel_service',
+    libelle: 'Besoin de personnel de service',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'personnel_service',
+    exemple: 'Oui',
+    alias: ['besoin de personnel de service', 'personnel de service'],
+  },
+  {
+    champ: 'personnel_service_horaires',
+    libelle: 'Horaires du personnel de service',
+    section: 'Restauration',
+    obligatoire: false,
+    type: 'composee',
+    cleModele: 'personnel_service_horaires',
+    exemple: '18:00 22:00',
+    alias: ['horaire du personnel de service', 'horaires du personnel de service'],
+  },
+
+  // ==================== COMMUNICATION ====================
+  {
+    champ: 'besoin_invitations',
+    libelle: 'Besoin d’invitations',
+    section: 'Communication',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'besoin_invitations',
+    exemple: 'Oui',
+    alias: ['besoin d invitation', 'besoin d invitations', 'invitations'],
+  },
+  {
+    champ: 'besoin_affiches',
+    libelle: 'Besoin d’affiches',
+    section: 'Communication',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'besoin_affiches',
+    exemple: 'Oui',
+    alias: ['besoin d affiches', 'affiches'],
+  },
+  {
+    champ: 'besoin_goodies',
+    libelle: 'Besoin de goodies',
+    section: 'Communication',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'besoin_goodies',
+    exemple: 'Non',
+    alias: ['besoin de goodies', 'goodies'],
+  },
+  {
+    champ: 'autre_demande_communication',
+    libelle: 'Autre demande au pôle Communication',
+    section: 'Communication',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'autre_demande_communication',
+    exemple: 'Une publication sur la page Facebook de la ville',
+    alias: [
+      'autre demande au pole communication',
+      'veuillez indiquer votre autre demande au pole communication',
+    ],
+  },
+  {
+    champ: 'debit_boissons',
+    libelle: 'Demande de débit de boissons',
+    section: 'Communication',
+    obligatoire: false,
+    type: 'texte',
+    cleModele: 'debit_boissons',
+    exemple: 'Oui',
+    alias: [
+      'souhaitez vous formuler une demande de debit de boisson',
+      'debit de boisson', 'debit de boissons',
+    ],
+  },
+
+  // ==================== SUIVI ====================
+  {
+    champ: 'notes_interior',
+    libelle: 'Commentaire de la demande',
+    section: 'Suivi',
+    obligatoire: false,
+    type: 'texte',
+    colonne: 'notes_interior',
+    cleModele: 'notes_interieur',
+    exemple: 'Prévoir une rallonge',
+    alias: ['notes', 'note', 'commentaire', 'commentaires', 'remarques', 'message'],
   },
   {
     champ: 'notes_exterior',
     libelle: 'Notes extérieures',
+    section: 'Suivi',
     obligatoire: false,
     type: 'texte',
+    colonne: 'notes_exterior',
+    cleModele: 'notes_exterieur',
+    exemple: 'Accès livraison par la rue de derrière',
     alias: ['notes exterieures', 'note exterieure', 'observations'],
   },
   {
     champ: 'external_id',
-    libelle: "Identifiant d'origine",
+    libelle: 'Identifiant d’origine',
+    section: 'Suivi',
     obligatoire: false,
     type: 'texte',
+    cleModele: 'reference',
+    exemple: 'DEM-2026-014',
     alias: [
       'id', 'identifiant', 'reference', 'ref', 'external id', 'form id',
       'submission id', 'numero de demande', 'numero',
+      // Nom que porte l'identifiant de réponse quand le formulaire envoie tout
+      // ce qu'il a, sans correspondance réglée de son côté.
+      'responseid', 'response id',
     ],
   },
 ];
 
-/** Correspondance champ → chemin pointé dans la charge utile reçue. */
-export type CorrespondanceIntake = Partial<Record<ChampIntake, string>>;
+/** Champs conservés en détail, dans l'ordre où le formulaire les pose. */
+export const CHAMPS_DETAILS = CHAMPS_INTAKE.filter((d) => !d.colonne);
+
+/**
+ * Correspondance champ → chemin pointé dans la charge utile reçue.
+ *
+ * Plusieurs chemins sont acceptés pour un même champ, et le premier qui porte
+ * une valeur l'emporte. Un formulaire pose ses questions par branches : « quel
+ * service du pôle Temps de l'Enfant », « quel service du pôle Administration
+ * Générale »… Une seule est remplie, les autres arrivent vides. N'en retenir
+ * qu'une revenait à ne lire la réponse que d'un demandeur sur trois.
+ */
+export type CorrespondanceIntake = Partial<Record<ChampIntake, string | string[]>>;
+
+/** Les chemins d'un champ, qu'il en porte un ou plusieurs. */
+export function cheminsDuChamp(valeur: string | string[] | undefined): string[] {
+  if (!valeur) return [];
+  return (Array.isArray(valeur) ? valeur : [valeur]).filter(Boolean);
+}
 
 /**
  * Comment lire les lignes de matériel dans la charge utile.
@@ -209,66 +846,158 @@ export interface CorrespondanceMateriel {
  * Les index de tableau s'écrivent comme des segments : `reponses.0.valeur`.
  */
 export function valeurAuChemin(source: unknown, chemin: string): unknown {
-  if (!chemin) return undefined;
-
-  let courant: any = source;
-  for (const segment of chemin.split('.')) {
-    if (courant === null || courant === undefined) return undefined;
-    courant = courant[segment];
+  if (!chemin || source === null || source === undefined || typeof source !== 'object') {
+    return undefined;
   }
-  return courant;
+
+  // Un intitulé de question contient parfois un point — « Nom de la
+  // manifestation. », « Veuillez indiquez la date de livraison. ». La clé
+  // entière est donc essayée avant de redécouper : sans cela, ces champs-là,
+  // dont le titre obligatoire, restaient désespérément vides.
+  const direct = (source as Record<string, unknown>)[chemin];
+  if (direct !== undefined) return direct;
+
+  const separateur = chemin.indexOf('.');
+  if (separateur === -1) return undefined;
+
+  return valeurAuChemin(
+    (source as Record<string, unknown>)[chemin.slice(0, separateur)],
+    chemin.slice(separateur + 1)
+  );
 }
 
 const PROFONDEUR_MAX = 6;
 
+/** Un chemin proposable, et s'il désigne une réponse composée. */
+interface CheminTrouve {
+  chemin: string;
+  /**
+   * Clé sous laquelle la valeur se trouve, telle quelle.
+   *
+   * Elle est portée plutôt que redécoupée du chemin : un intitulé de question
+   * contient parfois un point — « Nom de la manifestation. » — et le dernier
+   * segment d'un tel chemin est vide. Le champ obligatoire du formulaire n'était
+   * alors reconnu par aucun alias.
+   */
+  cle: string;
+  /** Vrai pour un groupe ou un répéteur : plusieurs valeurs sous une question. */
+  conteneur: boolean;
+}
+
+/** Un segment de tableau : `reponses.0.valeur` a le sien en deuxième position. */
+const estIndice = (segment: string): boolean => /^\d+$/.test(segment);
+
 /**
- * Tous les chemins menant à une valeur simple.
+ * Chemin ramené au conteneur qui le porte : `interieur.0.Quel bâtiment` devient
+ * `interieur`.
  *
- * Sert à peupler l'écran de correspondance avec les chemins réellement présents
- * dans la dernière demande reçue, plutôt que de laisser l'administrateur les
- * deviner. La profondeur est bornée : une charge utile cyclique ou absurdement
- * imbriquée ne doit pas faire tourner le serveur en rond.
+ * Une question répétable ne se lit pas répétition par répétition — un document
+ * qui n'annoncerait que le premier bâtiment réservé serait pire qu'un document
+ * muet. On vise donc le tableau entier, et la mise à plat rend les autres.
  */
-export function cheminsDe(source: unknown, prefixe = '', profondeur = 0): string[] {
+function jusquAuConteneur(chemin: string): string {
+  const segments = chemin.split('.');
+  const premierIndice = segments.findIndex(estIndice);
+  return premierIndice <= 0 ? chemin : segments.slice(0, premierIndice).join('.');
+}
+
+/**
+ * Tous les chemins qu'une charge utile propose.
+ *
+ * Deux sortes : les **valeurs simples**, et les **conteneurs** — un groupe
+ * (« Nom », « Prénom » sous « Nom et Prénom du Président ») ou un répéteur
+ * (« un bâtiment, puis un autre »). Les conteneurs sont proposés parce qu'ils
+ * sont une réponse à part entière : ne proposer que leurs feuilles obligerait
+ * à régler un champ par morceau, et à en oublier au premier formulaire modifié.
+ *
+ * Les entrées d'un tableau n'en sont pas : viser `interieur.0` plutôt que
+ * `interieur` ne retiendrait que la première répétition.
+ *
+ * La profondeur est bornée : une charge utile cyclique ou absurdement imbriquée
+ * ne doit pas faire tourner le serveur en rond.
+ */
+function parcourir(source: unknown, prefixe = '', profondeur = 0, cle = ''): CheminTrouve[] {
   if (profondeur >= PROFONDEUR_MAX || source === null || source === undefined) return [];
 
   if (Array.isArray(source)) {
-    return source.flatMap((valeur, i) =>
-      cheminsDe(valeur, prefixe ? `${prefixe}.${i}` : String(i), profondeur + 1)
+    const entrees = source.flatMap((valeur, i) =>
+      parcourir(valeur, prefixe ? `${prefixe}.${i}` : String(i), profondeur + 1, String(i))
     );
+    return prefixe && entrees.length > 0
+      ? [{ chemin: prefixe, cle, conteneur: true }, ...entrees]
+      : entrees;
   }
 
   if (typeof source === 'object') {
-    return Object.entries(source as Record<string, unknown>).flatMap(([cle, valeur]) =>
-      cheminsDe(valeur, prefixe ? `${prefixe}.${cle}` : cle, profondeur + 1)
+    const entrees = Object.entries(source as Record<string, unknown>).flatMap(
+      ([cleInterne, valeur]) =>
+        parcourir(
+          valeur,
+          prefixe ? `${prefixe}.${cleInterne}` : cleInterne,
+          profondeur + 1,
+          cleInterne
+        )
     );
+
+    // Un objet ne se propose que s'il porte lui-même des valeurs, et qu'il n'est
+    // pas l'entrée d'un tableau.
+    const porteDesValeurs = Object.values(source as Record<string, unknown>).some(
+      (valeur) => valeur !== null && valeur !== undefined && typeof valeur !== 'object'
+    );
+    return prefixe && porteDesValeurs && !estIndice(cle)
+      ? [{ chemin: prefixe, cle, conteneur: true }, ...entrees]
+      : entrees;
   }
 
-  return prefixe ? [prefixe] : [];
+  return prefixe ? [{ chemin: prefixe, cle, conteneur: false }] : [];
+}
+
+/** Chemins proposables à l'écran de correspondance, conteneurs compris. */
+export function cheminsDe(source: unknown, prefixe = '', profondeur = 0): string[] {
+  const vus = new Set<string>();
+  return parcourir(source, prefixe, profondeur)
+    .map((trouve) => trouve.chemin)
+    .filter((chemin) => !vus.has(chemin) && vus.add(chemin));
 }
 
 /**
  * Reconnaît les champs d'après le nom de la dernière clé du chemin.
  *
  * Le chemin complet importe peu : `data.reponses.contact_email` et
- * `contact_email` désignent la même chose. Le premier chemin qui correspond
- * gagne, pour qu'une charge utile comportant deux clés proches n'écrase pas la
- * bonne.
+ * `contact_email` désignent la même chose.
+ *
+ * Tous les chemins qui conviennent sont retenus, dans l'ordre reçu, et non le
+ * premier seulement : un formulaire à branches pose la même question sous trois
+ * intitulés — un par pôle, un par qualité de demandeur — et n'en remplit qu'une.
+ * À la lecture, le premier chemin qui porte une valeur l'emporte.
+ *
+ * Un conteneur n'est retenu que pour un champ **composé**. Sans cette garde, le
+ * groupe « Demandeur » répondrait à lui seul au nom du demandeur, et le document
+ * afficherait son nom, son téléphone et son courriel collés sur une ligne.
  */
 export function detecterChamps(payload: unknown): CorrespondanceIntake {
-  const correspondance: CorrespondanceIntake = {};
+  const trouves = new Map<ChampIntake, string[]>();
 
-  for (const chemin of cheminsDe(payload)) {
-    const derniereCle = chemin.split('.').pop() ?? '';
-    const normalise = normaliserLibelle(derniereCle);
+  for (const { chemin, cle, conteneur } of parcourir(payload)) {
+    const normalise = normaliserLibelle(cle);
     if (!normalise) continue;
 
-    const definition = CHAMPS_INTAKE.find((d) => d.alias.includes(normalise));
-    if (definition && correspondance[definition.champ] === undefined) {
-      correspondance[definition.champ] = chemin;
+    for (const definition of CHAMPS_INTAKE) {
+      if (!definition.alias.includes(normalise)) continue;
+      if (conteneur && definition.type !== 'composee') continue;
+
+      const cible = definition.type === 'composee' ? jusquAuConteneur(chemin) : chemin;
+      const deja = trouves.get(definition.champ) ?? [];
+      if (!deja.includes(cible)) trouves.set(definition.champ, [...deja, cible]);
     }
   }
 
+  // Un seul chemin reste une chaîne : c'est la forme que l'écran de
+  // correspondance enregistre, et celle que les réglages déjà en base portent.
+  const correspondance: CorrespondanceIntake = {};
+  for (const [champ, chemins] of trouves) {
+    correspondance[champ] = chemins.length === 1 ? chemins[0] : chemins;
+  }
   return correspondance;
 }
 
@@ -336,6 +1065,92 @@ export function normaliserEntier(brut: unknown): number | null {
   return Number.isNaN(valeur) ? null : valeur;
 }
 
+/**
+ * Réponse composée ramenée à une ligne lisible.
+ *
+ * Un répéteur arrive en tableau d'objets, un groupe en objet, une plage horaire
+ * en `{ start, end }`, une question à quantités en `{ « Tables » : 10 }`. Un
+ * modèle de document imprime du texte : rendu tel quel, un `JSON.stringify`
+ * mettrait des accolades dans un arrêté municipal.
+ *
+ * Les répétitions se séparent au point-virgule, et ce qui va ensemble à
+ * l'intérieur d'une répétition au deux-points — « Mairie : Salle des mariages ;
+ * Complexe Sportif : Club House » se lit, là où une énumération à plat ne dirait
+ * plus quelle salle appartient à quel bâtiment.
+ */
+export function texteLisible(valeur: unknown): string {
+  if (valeur === null || valeur === undefined) return '';
+
+  if (Array.isArray(valeur)) {
+    const rendus = valeur
+      .map((entree) =>
+        entree !== null && typeof entree === 'object' && !Array.isArray(entree)
+          ? // Dans une répétition, la première réponse nomme les suivantes :
+            // « Mairie : Salle des mariages » dit quelle salle de quel bâtiment.
+            objetLisible(entree as Record<string, unknown>, ' : ')
+          : texteLisible(entree)
+      )
+      .filter(Boolean);
+
+    // Des cases cochées s'énumèrent ; des répétitions se séparent plus nettement.
+    const repetitions = valeur.some((entree) => entree !== null && typeof entree === 'object');
+    return rendus.join(repetitions ? ' ; ' : ', ');
+  }
+
+  // Un groupe ou une plage se lit d'un trait : « Dubois Martin », « 18:00 23:30 ».
+  if (typeof valeur === 'object') return objetLisible(valeur as Record<string, unknown>, ' ');
+
+  return String(valeur).trim();
+}
+
+/**
+ * Objet rendu lisible, selon ce qu'il est.
+ *
+ * Une **question à quantités** — `{ « Tables » : 10 }` — garde ses libellés,
+ * seuls ils disent ce qui est compté. Un **groupe** ou une **répétition** n'a
+ * que ses valeurs à donner : ses clés sont les intitulés des questions, déjà
+ * connus de qui lit le document.
+ */
+function objetLisible(objet: Record<string, unknown>, separateur: string): string {
+  const entrees = Object.entries(objet);
+  if (entrees.length === 0) return '';
+
+  if (entrees.every(([, valeur]) => estQuantite(valeur))) {
+    return entrees.map(([cle, valeur]) => `${cle} : ${String(valeur).trim()}`).join(' ; ');
+  }
+
+  // Ce que cette répétition nomme déjà : une quantité qui répète l'un de ces
+  // libellés n'a que son nombre à ajouter, sans quoi la ligne dirait deux fois
+  // « Tables Kermesse ».
+  const dejaNommes = new Set(
+    entrees
+      .filter(([, valeur]) => valeur !== null && valeur !== undefined && typeof valeur !== 'object')
+      .map(([, valeur]) => String(valeur).trim())
+  );
+
+  return entrees
+    .map(([, valeur]) => quantiteDejaNommee(valeur, dejaNommes) ?? texteLisible(valeur))
+    .filter(Boolean)
+    .join(separateur);
+}
+
+/** Le nombre seul, quand ce qu'il compte est déjà écrit à côté. */
+function quantiteDejaNommee(valeur: unknown, dejaNommes: Set<string>): string | null {
+  if (!valeur || typeof valeur !== 'object' || Array.isArray(valeur)) return null;
+
+  const entrees = Object.entries(valeur as Record<string, unknown>);
+  if (entrees.length === 0) return null;
+  if (!entrees.every(([cle, nombre]) => estQuantite(nombre) && dejaNommes.has(cle.trim()))) {
+    return null;
+  }
+
+  return entrees.map(([, nombre]) => String(nombre).trim()).join(', ');
+}
+
+/** Une valeur qui ne dit rien sans le nom de ce qu'elle compte. */
+const estQuantite = (valeur: unknown): boolean =>
+  typeof valeur === 'number' || /^\d+$/.test(String(valeur ?? '').trim());
+
 function convertir(valeur: unknown, type: TypeChamp): string | number | null {
   switch (type) {
     case 'date':
@@ -345,10 +1160,8 @@ function convertir(valeur: unknown, type: TypeChamp): string | number | null {
     case 'entier':
       return normaliserEntier(valeur);
     default: {
-      if (valeur === null || valeur === undefined) return null;
-      const texte = typeof valeur === 'object' ? JSON.stringify(valeur) : String(valeur);
-      const nettoye = texte.trim();
-      return nettoye === '' ? null : nettoye;
+      const texte = texteLisible(valeur);
+      return texte === '' ? null : texte;
     }
   }
 }
@@ -367,11 +1180,15 @@ export function extraireManifestation(
   const champs: Partial<Record<ChampIntake, string | number>> = {};
 
   for (const definition of CHAMPS_INTAKE) {
-    const chemin = correspondance[definition.champ];
-    if (!chemin) continue;
-
-    const valeur = convertir(valeurAuChemin(payload, chemin), definition.type);
-    if (valeur !== null) champs[definition.champ] = valeur;
+    // Le premier chemin qui porte une valeur l'emporte : les branches non
+    // suivies du formulaire arrivent vides, elles ne doivent pas faire écran.
+    for (const chemin of cheminsDuChamp(correspondance[definition.champ])) {
+      const valeur = convertir(valeurAuChemin(payload, chemin), definition.type);
+      if (valeur !== null && valeur !== '') {
+        champs[definition.champ] = valeur;
+        break;
+      }
+    }
   }
 
   const manquants = CHAMPS_INTAKE.filter(
@@ -379,6 +1196,34 @@ export function extraireManifestation(
   );
 
   return { champs, manquants };
+}
+
+/** Une réponse conservée telle qu'elle est arrivée, avec de quoi la relire. */
+export interface DetailDemande {
+  /** Nom sous lequel un modèle de document l'affiche. */
+  cle: string;
+  libelle: string;
+  section: SectionIntake;
+  valeur: string;
+}
+
+/**
+ * Réponses qu'aucune colonne de `manifestations` ne porte.
+ *
+ * Elles sont conservées avec leur intitulé et leur section, et non comme un
+ * simple dictionnaire : l'écran qui les affiche n'a alors rien à connaître du
+ * catalogue, et une demande reçue l'an dernier se relit telle qu'elle a été
+ * posée, même si le formulaire a changé de questions depuis.
+ */
+export function detailsDeLaDemande(
+  champs: Partial<Record<ChampIntake, string | number>>
+): DetailDemande[] {
+  return CHAMPS_DETAILS.filter((d) => champs[d.champ] !== undefined).map((d) => ({
+    cle: d.cleModele,
+    libelle: d.libelle,
+    section: d.section,
+    valeur: String(champs[d.champ]),
+  }));
 }
 
 // ======================== MATÉRIEL DEMANDÉ ========================
@@ -417,7 +1262,44 @@ export function extraireMateriels(
     if (lignes.length > 0) return lignes;
   }
 
-  return [];
+  return correspondance?.chemin ? [] : questionsAQuantites(payload);
+}
+
+/**
+ * Répéteurs qui demandent un article **et** son nombre.
+ *
+ * Un formulaire ne range pas ses demandes sous une clé `materiels` : il pose
+ * « Besoin de matériel technique ? », puis « Matériel informatique ? », chacune
+ * répétable. Sans cette lecture, une demande de dix tables et deux
+ * vidéoprojecteurs arrivait vide, et tout était à ressaisir.
+ *
+ * La condition est stricte — une question à quantité — et c'est ce qui la rend
+ * sûre : « Quel bâtiment ? » et « Quelle rue ? » sont des répéteurs eux aussi,
+ * mais ils ne comptent rien. Les prendre pour du matériel ferait chercher au
+ * stock un article nommé « Mairie », puis laisserait la ligne à rattacher à la
+ * main sur chaque demande.
+ */
+function questionsAQuantites(payload: unknown): LigneMaterielRecue[] {
+  if (!payload || typeof payload !== 'object') return [];
+
+  const lignes: LigneMaterielRecue[] = [];
+  for (const valeur of Object.values(payload as Record<string, unknown>)) {
+    if (!Array.isArray(valeur)) continue;
+
+    const entrees = valeur.filter((e) => e && typeof e === 'object' && !Array.isArray(e));
+    if (entrees.length === 0) continue;
+
+    const compte = entrees.every((entree) => {
+      const objet = entree as Record<string, unknown>;
+      return (
+        trouverCle(objet, ALIAS_LIBELLE, MOTIF_LIBELLE) !== undefined &&
+        trouverCle(objet, ALIAS_QUANTITE, MOTIF_QUANTITE) !== undefined
+      );
+    });
+    if (compte) lignes.push(...entrees.map((entree) => lireEntree(entree)).filter(estUtile));
+  }
+
+  return lignes;
 }
 
 function lireLignes(
@@ -457,11 +1339,13 @@ function lireEntree(
   if (typeof entree === 'object' && entree !== null) {
     const objet = entree as Record<string, unknown>;
 
-    const cleLibelle = correspondance?.champ_libelle ?? trouverCle(objet, ALIAS_LIBELLE);
-    const cleQuantite = correspondance?.champ_quantite ?? trouverCle(objet, ALIAS_QUANTITE);
+    const cleLibelle =
+      correspondance?.champ_libelle ?? trouverCle(objet, ALIAS_LIBELLE, MOTIF_LIBELLE);
+    const cleQuantite =
+      correspondance?.champ_quantite ?? trouverCle(objet, ALIAS_QUANTITE, MOTIF_QUANTITE);
 
-    const libelle = cleLibelle ? String(objet[cleLibelle] ?? '').trim() : '';
-    const quantite = cleQuantite ? normaliserEntier(objet[cleQuantite]) : null;
+    const libelle = cleLibelle ? texteLisible(objet[cleLibelle]) : '';
+    const quantite = cleQuantite ? quantiteDe(objet[cleQuantite], libelle) : null;
 
     return { libelle, quantite: quantite ?? 1 };
   }
@@ -472,8 +1356,41 @@ function lireEntree(
 const ALIAS_LIBELLE = ['libelle', 'nom', 'name', 'materiel', 'article', 'designation', 'label', 'intitule'];
 const ALIAS_QUANTITE = ['quantite', 'quantity', 'qte', 'qty', 'nombre', 'nb'];
 
-function trouverCle(objet: Record<string, unknown>, alias: string[]): string | undefined {
-  return Object.keys(objet).find((cle) => alias.includes(normaliserLibelle(cle)));
+/**
+ * Un formulaire n'intitule pas ses questions comme une base de données : il
+ * demande « Quel matériel technique ? » et « Combien en avez-vous besoin ? ».
+ * Ces deux tournures sont donc reconnues au même titre qu'un champ `libelle`.
+ */
+const MOTIF_LIBELLE = /^(quel|quelle|quels|quelles)\b/;
+const MOTIF_QUANTITE = /\b(combien|quantite|quantites|nombre)\b/;
+
+function trouverCle(
+  objet: Record<string, unknown>,
+  alias: string[],
+  motif?: RegExp
+): string | undefined {
+  const normalisees = Object.keys(objet).map((cle) => ({ cle, normalise: normaliserLibelle(cle) }));
+  const exact = normalisees.find(({ normalise }) => alias.includes(normalise));
+  if (exact) return exact.cle;
+
+  return motif ? normalisees.find(({ normalise }) => motif.test(normalise))?.cle : undefined;
+}
+
+/**
+ * Quantité demandée, quelle que soit la forme du bloc qui la porte.
+ *
+ * Une question à quantités rend `{ « Vidéo projecteur » : 2 }` : c'est le
+ * nombre qui compte, pas la clé, que la ligne nomme déjà. Réglée sur « valeur »,
+ * la même question rend « 2 » tout court.
+ */
+function quantiteDe(valeur: unknown, libelle: string): number | null {
+  if (valeur && typeof valeur === 'object' && !Array.isArray(valeur)) {
+    const entrees = Object.entries(valeur as Record<string, unknown>);
+    const pourCeLibelle = entrees.find(([cle]) => normaliserLibelle(cle) === normaliserLibelle(libelle));
+    return normaliserEntier((pourCeLibelle ?? entrees[0])?.[1]);
+  }
+
+  return normaliserEntier(valeur);
 }
 
 /** « 10 tables » → 10 × « tables ». Sans nombre en tête, la quantité vaut 1. */

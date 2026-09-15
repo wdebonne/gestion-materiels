@@ -1,7 +1,9 @@
 import crypto from 'crypto';
 import {
+  CHAMPS_DETAILS,
   CHAMPS_INTAKE,
   cheminsDe,
+  detailsDeLaDemande,
   detecterChamps,
   extraireManifestation,
   extraireMateriels,
@@ -11,6 +13,7 @@ import {
   normaliserHeure,
   resoudreCorrespondance,
   signatureValide,
+  texteLisible,
   valeurAuChemin,
 } from '../src/services/manifestationIntake.service';
 
@@ -96,8 +99,22 @@ describe('Lecture de la charge utile', () => {
     const chemins = cheminsDe(payload);
     expect(chemins).toContain('data.contact.email');
     expect(chemins).toContain('reponses.0.valeur');
-    // Les nœuds intermédiaires ne sont pas des cibles.
-    expect(chemins).not.toContain('data.contact');
+  });
+
+  it('propose aussi les groupes et les répéteurs, qui sont des réponses entières', () => {
+    // « Nom et Prénom du Président » est une question, posée en deux morceaux ;
+    // « un bâtiment, puis un autre » en est une aussi. Ne proposer que leurs
+    // feuilles obligerait à régler un champ par morceau — et à n'annoncer que le
+    // premier bâtiment réservé.
+    const chemins = cheminsDe({
+      data: { contact: { nom: 'Martin Dubois', email: 'martin@ville.fr' } },
+      reponses: [{ valeur: 'salle des fêtes' }],
+    });
+
+    expect(chemins).toContain('data.contact');
+    expect(chemins).toContain('reponses');
+    // Une répétition isolée n'en est pas une : la viser perdrait les suivantes.
+    expect(chemins).not.toContain('reponses.0');
   });
 
   it('borne la profondeur pour ne pas parcourir une charge utile absurde', () => {
@@ -237,5 +254,195 @@ describe('Matériel demandé', () => {
 
   it('rend une liste vide quand la demande ne porte aucun matériel', () => {
     expect(extraireMateriels({ titre: 'Réunion' })).toEqual([]);
+  });
+});
+
+/**
+ * Une demande telle qu'un formulaire l'envoie vraiment.
+ *
+ * Le formulaire de demande de manifestation ne pose pas quinze questions mais
+ * une quarantaine, et il les pose **par branches** : « quel service du pôle
+ * Temps de l'Enfant », « quel service du pôle Administration Générale »… Une
+ * seule est remplie, les autres arrivent vides. Il les pose aussi **en
+ * groupes** — « Nom » et « Prénom » du président — et **en répétitions** — un
+ * bâtiment, puis un autre, chacun avec ses salles.
+ *
+ * Sans correspondance réglée côté formulaire, les clés sont les intitulés
+ * eux-mêmes : c'est la forme la plus difficile à lire, et c'est celle qu'on
+ * reçoit tant que personne n'a rien réglé. Ce jeu d'essai la reproduit au
+ * caractère près, ponctuation comprise.
+ */
+const DEMANDE_FORMULAIRE = {
+  'Nom de la manifestation.': 'Fête de la musique',
+  'Date de la manifestation': '21/06/2026',
+  "La manifestation dure plus d'une journée ?": 'Non',
+  'Date de fin de la manifestation': '',
+  'A-t-elle des horaires définis ?': 'Oui',
+  'Heure de la manifestation': { 'Début ?': '18:00', 'Fin ?': '23:30' },
+  'Nombre de personnes attendues ?': '280',
+  'Vous êtes ?': 'Association',
+  "Quel service du pôle Temps de l'Enfant et de la Famille ?": '',
+  'Quel service du pôle Administration Générale ?': 'Finances & Commande Publique',
+  "Nom de l'association": 'Comité des fêtes',
+  'Nom et Prénom du Président': { Nom: 'Dubois', Prénom: 'Martin' },
+  Demandeur: {
+    'Nom du Demandeur / Organisateur de la manifestation': 'Martin Dubois',
+    'Numéro de téléphone': '06 12 34 56 78',
+    Mail: 'martin@ville.fr',
+  },
+  'La manifestation se déroule t-elle en intérieur ?': [
+    { 'Quel Bâtiment ?': 'Mairie', Mairie: 'Salle des mariages, Foyer des Anciens' },
+    { 'Quel Bâtiment ?': 'Complexe Sportif', 'Complexe Sportif': 'Club House' },
+  ],
+  'La manifestation se déroule t-elle en extérieur ?': [
+    { 'Quelle avenue, rue, place… ?': 'Rue Adolphe Lasne' },
+  ],
+  'Fermeture de la circulation ?': 'Oui',
+  'Fermeture ?': 'Partielle',
+  'Besoin de Matériel Technique ?': [
+    {
+      'Quel matériel technique ?': 'Tables Kermesse',
+      'Combien avez vous besoin de Matériel Technique ??': { 'Tables Kermesse': 10 },
+    },
+    {
+      'Quel matériel technique ?': 'Chaises Coques',
+      'Combien avez vous besoin de Matériel Technique ??': { 'Chaises Coques': 50 },
+    },
+  ],
+  'Veuillez indiquez le lieu de livraison.': 'Place du marché',
+  'Veuillez indiquez la date de livraison.': '20/06/2026',
+  "Besoin d'Affiches ?": 'Oui',
+  'Souhaitez vous formuler une demande de débit de boisson ?': 'Oui',
+  Commentaire: 'Prévoir une rallonge',
+  _responseId: 'DEM-2026-014',
+};
+
+const extraitDuFormulaire = () =>
+  extraireManifestation(DEMANDE_FORMULAIRE, detecterChamps(DEMANDE_FORMULAIRE)).champs;
+
+describe('Demande telle qu’un formulaire l’envoie', () => {
+  it('lit ce que la table exige, sans correspondance réglée', () => {
+    const champs = extraitDuFormulaire();
+
+    expect(champs.title).toBe('Fête de la musique');
+    expect(champs.date_start).toBe('2026-06-21');
+    expect(champs.expected_people).toBe(280);
+  });
+
+  it('lit les deux moitiés d’un groupe là où elles sont posées', () => {
+    // « Début ? » et « Fin ? » vivent sous « Heure de la manifestation » : un
+    // chemin de premier niveau ne les aurait jamais trouvées.
+    const champs = extraitDuFormulaire();
+
+    expect(champs.start_time).toBe('18:00');
+    expect(champs.end_time).toBe('23:30');
+    expect(champs.contact_name).toBe('Martin Dubois');
+    expect(champs.contact_phone).toBe('06 12 34 56 78');
+    expect(champs.contact_email).toBe('martin@ville.fr');
+  });
+
+  it('retient la branche remplie, pas la première posée', () => {
+    // Trois questions portent le service demandeur, une par pôle, et le
+    // demandeur n'en remplit qu'une. S'arrêter à la première laisserait le
+    // service vide pour deux demandeurs sur trois.
+    expect(extraitDuFormulaire().service_demandeur).toBe('Finances & Commande Publique');
+  });
+
+  it('rend un groupe d’un trait, sans accolades', () => {
+    expect(extraitDuFormulaire().president).toBe('Dubois Martin');
+  });
+
+  it('garde toutes les répétitions, et ce qui va ensemble', () => {
+    // Un document qui n'annoncerait que le premier bâtiment réservé serait pire
+    // qu'un document muet : la salle du second resterait occupée sans le savoir.
+    expect(extraitDuFormulaire().lieux_interieurs).toBe(
+      'Mairie : Salle des mariages, Foyer des Anciens ; Complexe Sportif : Club House'
+    );
+    expect(extraitDuFormulaire().lieux_exterieurs).toBe('Rue Adolphe Lasne');
+  });
+
+  it('lit les questions que la manifestation n’a pas de colonne pour porter', () => {
+    const champs = extraitDuFormulaire();
+
+    expect(champs.type_demandeur).toBe('Association');
+    expect(champs.association).toBe('Comité des fêtes');
+    expect(champs.fermeture_circulation).toBe('Oui');
+    expect(champs.type_fermeture).toBe('Partielle');
+    expect(champs.besoin_affiches).toBe('Oui');
+    expect(champs.debit_boissons).toBe('Oui');
+    expect(champs.notes_interior).toBe('Prévoir une rallonge');
+  });
+
+  it('reconnaît l’identifiant de réponse, pour ne pas créer deux fois la demande', () => {
+    expect(extraitDuFormulaire().external_id).toBe('DEM-2026-014');
+  });
+
+  it('ne retient pas une branche laissée vide', () => {
+    expect(extraitDuFormulaire().date_end).toBeUndefined();
+  });
+
+  it('rattache le matériel d’une question répétable à quantités', () => {
+    // Le formulaire ne range rien sous une clé « materiels » : il demande
+    // « Quel matériel technique ? », puis « Combien ? », autant de fois qu'il
+    // faut. Sans cette lecture, tout était à ressaisir à la main.
+    expect(extraireMateriels(DEMANDE_FORMULAIRE)).toEqual([
+      { libelle: 'Tables Kermesse', quantite: 10 },
+      { libelle: 'Chaises Coques', quantite: 50 },
+    ]);
+  });
+
+  it('ne prend pas un lieu pour du matériel', () => {
+    // « Quel bâtiment ? » est un répéteur lui aussi, mais il ne compte rien.
+    // Le confondre avec du matériel ferait chercher au stock un article nommé
+    // « Mairie », et laisserait la ligne à rattacher sur chaque demande.
+    const libelles = extraireMateriels(DEMANDE_FORMULAIRE).map((l) => l.libelle);
+    expect(libelles).not.toContain('Mairie');
+    expect(libelles).not.toContain('Rue Adolphe Lasne');
+  });
+
+  it('sépare ce qui va en colonne de ce qui reste un détail de la demande', () => {
+    const details = detailsDeLaDemande(extraitDuFormulaire());
+    const parCle = Object.fromEntries(details.map((d) => [d.cle, d.valeur]));
+
+    // Un détail porte le nom sous lequel un modèle de document l'affiche, et son
+    // intitulé : l'écran qui le montre n'a rien d'autre à connaître.
+    expect(parCle.type_demandeur).toBe('Association');
+    expect(parCle.materiel_technique).toBe('Tables Kermesse : 10 ; Chaises Coques : 50');
+    expect(details.find((d) => d.cle === 'association')?.libelle).toBe('Association');
+
+    // Ce qu'une colonne porte déjà n'est pas recopié dans les détails.
+    expect(parCle.manifestation).toBeUndefined();
+    expect(parCle.contact_nom).toBeUndefined();
+  });
+
+  it('n’invente pas de détail pour une question sans réponse', () => {
+    const cles = detailsDeLaDemande(extraitDuFormulaire()).map((d) => d.cle);
+    expect(cles).not.toContain('catering');
+    expect(CHAMPS_DETAILS.some((d) => d.cleModele === 'catering')).toBe(true);
+  });
+});
+
+describe('Réponses composées', () => {
+  it('énumère des cases cochées, sépare des répétitions', () => {
+    expect(texteLisible(['Eau', 'Electricité'])).toBe('Eau, Electricité');
+    expect(texteLisible([{ a: 'Mairie' }, { a: 'Colombier' }])).toBe('Mairie ; Colombier');
+  });
+
+  it('garde le libellé d’une quantité qui, seule, ne dirait rien', () => {
+    expect(texteLisible({ 'Vidéo projecteur': 2, Ecran: 1 })).toBe(
+      'Vidéo projecteur : 2 ; Ecran : 1'
+    );
+  });
+
+  it('ne répète pas un libellé déjà écrit à côté', () => {
+    expect(texteLisible([{ quoi: 'Tables Kermesse', combien: { 'Tables Kermesse': 10 } }])).toBe(
+      'Tables Kermesse : 10'
+    );
+  });
+
+  it('rend vide ce qui est vide, plutôt qu’une structure', () => {
+    expect(texteLisible({})).toBe('');
+    expect(texteLisible([])).toBe('');
+    expect(texteLisible(null)).toBe('');
   });
 });
