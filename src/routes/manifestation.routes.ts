@@ -1,3 +1,4 @@
+import fs from 'fs';
 import { Router, Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import { db } from '../database';
@@ -46,6 +47,7 @@ import {
   redeposerSuivi,
 } from '../services/manifestationNotify.service';
 import { tourneeDe } from '../services/tourneeManifestation.service';
+import { convertirEnPdf } from '../services/conversionPdf.service';
 import { notifierWebhooks } from '../services/webhook.service';
 import {
   aujourdHui,
@@ -59,6 +61,7 @@ import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 import { normaliserLibelle } from '../utils/normaliserLibelle';
 import slugify from '../utils/slugify';
 import {
+  cheminSurDisque,
   detacher,
   documentPrecis,
   documentsDe,
@@ -1425,6 +1428,64 @@ router.delete('/documents/:docId', authenticateToken, requireFieldWrite, async (
     });
 
     res.json({ success: true, data: await documentsDe(document.manifestation_id) });
+  } catch (error: any) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * POST /documents/:docId/pdf - Convertir une pièce `.docx` en PDF, à la demande.
+ *
+ * Le format est réglé sur le modèle, une fois pour toutes ; il arrive pourtant
+ * qu'un seul document doive partir en PDF — celui qu'on fait signer aujourd'hui
+ * — sans changer le réglage du service ni tout regénérer, ce qui écraserait les
+ * retouches déjà faites.
+ *
+ * Le PDF est rendu au navigateur sans être enregistré : c'est une copie pour
+ * l'usage du moment, et l'ajouter à l'onglet Documents ferait deux pièces là où
+ * l'agent n'en voulait qu'une.
+ */
+router.post('/documents/:docId/pdf', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const document = await documentPrecis(req.params.docId);
+    if (!document) return res.status(404).json({ success: false, message: 'Document non trouvé' });
+    if (!(await peutVoirManifestation(req, document.manifestation_id))) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    // Le cloisonnement des documents de service vaut ici comme dans la liste :
+    // un service qui ne voit pas la pièce d'un autre ne doit pas pouvoir la
+    // convertir non plus, ce qui reviendrait à la lui livrer.
+    const visibles = await documentsVisiblesPar([document], req.user!.userId, req.user!.role);
+    if (visibles.length === 0) {
+      return res.status(403).json({ success: false, message: REFUS_PORTEE_MANIFESTATION });
+    }
+
+    if (!String(document.file_path ?? '').toLowerCase().endsWith('.docx')) {
+      return res
+        .status(400)
+        .json({ success: false, message: 'Seul un document Word (.docx) peut être converti' });
+    }
+
+    const chemin = cheminSurDisque(document.file_path);
+    if (!chemin) {
+      return res.status(404).json({ success: false, message: 'Fichier introuvable sur le serveur' });
+    }
+
+    const conversion = await convertirEnPdf(fs.readFileSync(chemin));
+    if (!conversion.success || !conversion.pdf) {
+      return res
+        .status(502)
+        .json({ success: false, message: `Conversion en PDF impossible — ${conversion.error}` });
+    }
+
+    const nom = `${String(document.name ?? '').trim() || 'document'}.pdf`;
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${nom.replace(/"/g, '')}"; filename*=UTF-8''${encodeURIComponent(nom)}`
+    );
+    res.send(conversion.pdf);
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

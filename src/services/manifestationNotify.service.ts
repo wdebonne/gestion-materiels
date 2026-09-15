@@ -97,7 +97,7 @@ export async function destinatairesPour(
 }
 
 /**
- * Document pré-rempli produit pour ce service, s'il en existe un.
+ * Documents pré-remplis produits pour ce service, s'il en existe.
  *
  * Il part en pièce jointe de la demande d'approbation : le service reçoit sa
  * part déjà remplie, plutôt qu'un lien qui l'obligerait à se connecter pour
@@ -108,23 +108,36 @@ async function documentDuService(
   manifestationId: number | string,
   serviceId: number
 ): Promise<Array<{ filename: string; path: string }> | undefined> {
-  const document = await db.queryOne(
+  // Un modèle peut rendre deux pièces — celle qu'on retouche et celle qu'on
+  // fait signer. Les deux partent : choisir pour le service reviendrait à
+  // décider à sa place ce qu'il compte en faire.
+  const documents = await db.query(
     `SELECT name, file_path FROM manifestation_documents
      WHERE manifestation_id = ? AND service_id = ? AND generated_from_template = 1
-     ORDER BY id DESC LIMIT 1`,
+     ORDER BY id`,
     [manifestationId, serviceId]
   );
-  if (!document) return undefined;
 
-  // Le fichier a pu être supprimé entre la production et l'envoi : joindre un
-  // chemin mort ferait échouer tout le message, donc toute la sollicitation.
-  const chemin = cheminSurDisque(document.file_path);
-  if (!chemin) return undefined;
+  const pieces = documents.flatMap((document: any) => {
+    // Le fichier a pu être supprimé entre la production et l'envoi : joindre un
+    // chemin mort ferait échouer tout le message, donc toute la sollicitation.
+    const chemin = cheminSurDisque(document.file_path);
+    if (!chemin) return [];
 
-  // Le libellé sert de nom de fichier : les caractères interdits par Windows
-  // y sont remplacés, sinon la pièce jointe arrive sans nom lisible.
-  const nomFichier = document.name.replace(/[\\/:*?"<>|]/g, '-').trim();
-  return [{ filename: `${nomFichier}.docx`, path: chemin }];
+    // Le libellé sert de nom de fichier : les caractères interdits par Windows
+    // y sont remplacés, sinon la pièce jointe arrive sans nom lisible.
+    const nomFichier = document.name.replace(/[\\/:*?"<>|]/g, '-').trim();
+
+    // L'extension est lue sur le fichier produit plutôt que supposée : depuis
+    // que les modèles peuvent rendre un PDF, un `.docx` écrit en dur ferait
+    // arriver un PDF sous un nom qui annonce du Word.
+    const point = document.file_path.lastIndexOf('.');
+    const extension = point > 0 ? document.file_path.slice(point) : '.docx';
+
+    return [{ filename: `${nomFichier}${extension}`, path: chemin }];
+  });
+
+  return pieces.length > 0 ? pieces : undefined;
 }
 
 /** Lance un envoi sans faire attendre l'appelant ni risquer de le faire échouer. */

@@ -14,6 +14,7 @@ import {
   remplirModele,
 } from './modeleDocx.service';
 import { cheminSurDisque, supprimerFichier } from './manifestationDocuments.service';
+import { convertirEnPdf } from './conversionPdf.service';
 import { notifierServicesConcernes } from './manifestationNotify.service';
 
 /**
@@ -40,6 +41,14 @@ import { notifierServicesConcernes } from './manifestationNotify.service';
 
 const TYPE_MIME_DOCX =
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+const TYPE_MIME_PDF = 'application/pdf';
+
+/** Une pièce prête à être écrite sur le disque et jointe à la manifestation. */
+interface PieceProduite {
+  extension: 'docx' | 'pdf';
+  typeMime: string;
+  contenu: Buffer;
+}
 
 function lireJson<T>(brut: unknown, defaut: T): T {
   if (!brut) return defaut;
@@ -96,7 +105,44 @@ export interface ResultatGeneration {
   success: boolean;
   document_id?: number;
   file_path?: string;
+  /** Toutes les pièces produites : le `.docx`, le PDF, ou les deux. */
+  fichiers?: string[];
+  /** Produit, mais pas comme demandé — une conversion en PDF qui a échoué. */
+  warning?: string;
   error?: string;
+}
+
+/**
+ * Les pièces à produire pour ce modèle, selon le format qu'il demande.
+ *
+ * Une conversion ratée ne fait pas échouer la génération : le `.docx` tient
+ * lieu de PDF manquant. Un service qui reçoit sa convention au mauvais format
+ * peut travailler ; un service qui ne reçoit rien est bloqué sans le savoir,
+ * et c'est précisément ce que ce module s'interdit.
+ */
+async function formatsDemandes(
+  modele: any,
+  produit: Buffer
+): Promise<{ pieces: PieceProduite[]; avertissement: string | null }> {
+  const format = String(modele.output_format ?? 'docx');
+  const enDocx: PieceProduite = { extension: 'docx', typeMime: TYPE_MIME_DOCX, contenu: produit };
+
+  if (format !== 'pdf' && format !== 'docx+pdf') {
+    return { pieces: [enDocx], avertissement: null };
+  }
+
+  const pieces: PieceProduite[] = format === 'docx+pdf' ? [enDocx] : [];
+  const conversion = await convertirEnPdf(produit);
+
+  if (conversion.success && conversion.pdf) {
+    pieces.push({ extension: 'pdf', typeMime: TYPE_MIME_PDF, contenu: conversion.pdf });
+    return { pieces, avertissement: null };
+  }
+
+  return {
+    pieces: pieces.length > 0 ? pieces : [enDocx],
+    avertissement: `Conversion en PDF impossible, le document reste en .docx — ${conversion.error}`,
+  };
 }
 
 /**
@@ -147,12 +193,20 @@ export async function genererPourService(
     );
 
     const produit = await remplirModele(contenu, pourLeModele);
+    const { pieces, avertissement } = await formatsDemandes(modele, produit);
 
     const dossier = path.resolve(process.cwd(), 'uploads');
     fs.mkdirSync(dossier, { recursive: true });
-    const nomFichier = `${randomUUID()}.docx`;
-    fs.writeFileSync(path.join(dossier, nomFichier), produit);
-    const cheminPublic = `/uploads/${nomFichier}`;
+
+    const ecrites = pieces.map((piece) => {
+      const nomFichier = `${randomUUID()}.${piece.extension}`;
+      fs.writeFileSync(path.join(dossier, nomFichier), piece.contenu);
+      return {
+        file_path: `/uploads/${nomFichier}`,
+        mime_type: piece.typeMime,
+        size: piece.contenu.length,
+      };
+    });
 
     const manifestation = await db.queryOne('SELECT title FROM manifestations WHERE id = ?', [
       manifestationId,
@@ -162,16 +216,18 @@ export async function genererPourService(
     await remplacerDocumentGenere(manifestationId, serviceId, {
       name: libelle,
       description: `Document pré-rempli pour ${nom} — ${manifestation?.title ?? ''}`,
-      file_path: cheminPublic,
-      size: produit.length,
+      pieces: ecrites,
       userId,
     });
 
-    await noterErreur(modele.id, null);
+    // Une conversion ratée s'inscrit là où un modèle cassé s'inscrit déjà :
+    // l'écran du modèle est le seul endroit où un administrateur ira voir.
+    await noterErreur(modele.id, avertissement);
 
-    const document = await db.queryOne(
+    const documents = await db.query(
       `SELECT id FROM manifestation_documents
-       WHERE manifestation_id = ? AND service_id = ? AND generated_from_template = 1`,
+       WHERE manifestation_id = ? AND service_id = ? AND generated_from_template = 1
+       ORDER BY id`,
       [manifestationId, serviceId]
     );
 
@@ -179,8 +235,10 @@ export async function genererPourService(
       service_id: serviceId,
       service_name: nom,
       success: true,
-      document_id: document?.id,
-      file_path: cheminPublic,
+      document_id: documents[0]?.id,
+      file_path: ecrites[0]?.file_path,
+      fichiers: ecrites.map((e) => e.file_path),
+      warning: avertissement ?? undefined,
     };
   } catch (erreur: any) {
     const message = erreur?.message ?? 'Génération interrompue';
@@ -201,8 +259,7 @@ async function remplacerDocumentGenere(
   document: {
     name: string;
     description: string;
-    file_path: string;
-    size: number;
+    pieces: Array<{ file_path: string; mime_type: string; size: number }>;
     userId?: number;
   }
 ): Promise<void> {
@@ -219,23 +276,29 @@ async function remplacerDocumentGenere(
     supprimerFichier(ancien.file_path);
   }
 
-  await db.execute(
-    `INSERT INTO manifestation_documents
-       (manifestation_id, name, doc_type, description, file_path, mime_type, size,
-        service_id, generated_from_template, uploaded_by, created_at)
-     VALUES (?, ?, 'convention', ?, ?, ?, ?, ?, 1, ?, ?)`,
-    [
-      manifestationId,
-      document.name,
-      document.description,
-      document.file_path,
-      TYPE_MIME_DOCX,
-      document.size,
-      serviceId,
-      document.userId ?? null,
-      new Date().toISOString(),
-    ]
-  );
+  // Un même modèle peut rendre deux pièces — le document à retoucher et celui à
+  // faire signer. Elles portent le même libellé : c'est le même document, sous
+  // deux formes, et les distinguer ici obligerait à nommer la forme avant le
+  // contenu.
+  for (const piece of document.pieces) {
+    await db.execute(
+      `INSERT INTO manifestation_documents
+         (manifestation_id, name, doc_type, description, file_path, mime_type, size,
+          service_id, generated_from_template, uploaded_by, created_at)
+       VALUES (?, ?, 'convention', ?, ?, ?, ?, ?, 1, ?, ?)`,
+      [
+        manifestationId,
+        document.name,
+        document.description,
+        piece.file_path,
+        piece.mime_type,
+        piece.size,
+        serviceId,
+        document.userId ?? null,
+        new Date().toISOString(),
+      ]
+    );
+  }
 }
 
 /**

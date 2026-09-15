@@ -29,7 +29,7 @@ const IDENTIFIANTS_REFUSES =
   "Identifiants refusés — vérifiez l'identifiant et le mot de passe d'application";
 
 /** Renvoie vers l'écran qui règle la connexion, plutôt que vers le symptôme. */
-const NON_CONFIGURE = "Nextcloud n'est pas configuré (Paramètres › Nextcloud)";
+export const NON_CONFIGURE = "Nextcloud n'est pas configuré (Paramètres › Nextcloud)";
 
 export interface ConfigurationNextcloud {
   /** Racine WebDAV, par exemple `https://cloud.ville.fr/remote.php/dav/files/mairie`. */
@@ -95,6 +95,30 @@ export function normaliserUrl(url: string, username: string): string {
     : `${adresse.origin}${base}`;
 }
 
+/**
+ * Fait le chemin inverse : d'une racine WebDAV à la racine de l'instance.
+ *
+ * Tout ce qui ne passe pas par WebDAV — l'API OCS, les routes d'application —
+ * s'adresse à `https://cloud.ville.fr`, quand la configuration ne connaît que
+ * `https://cloud.ville.fr/remote.php/dav/files/mairie`. Un Nextcloud installé
+ * dans un sous-répertoire garde le sien : c'est `remote.php` qui marque la
+ * frontière, et non le premier segment du chemin.
+ */
+export function racineInstance(url: string): string {
+  const base = (url ?? '').trim().replace(/\/+$/, '');
+  if (!base) return '';
+
+  let adresse: URL;
+  try {
+    adresse = new URL(base);
+  } catch {
+    return base;
+  }
+
+  const chemin = adresse.pathname.replace(/\/remote\.php(\/.*)?$/i, '').replace(/\/+$/, '');
+  return `${adresse.origin}${chemin}`;
+}
+
 /** Nettoie un chemin saisi ou reçu : ni barres vides, ni remontée. */
 export function normaliserChemin(chemin?: string | null): string {
   return (chemin ?? '')
@@ -132,7 +156,7 @@ export async function enregistrerConfiguration(config: ConfigurationNextcloud): 
 }
 
 /** En-tête d'authentification Basic. */
-function entetes(config: ConfigurationNextcloud): Record<string, string> {
+export function entetesAuth(config: ConfigurationNextcloud): Record<string, string> {
   const jeton = Buffer.from(`${config.username}:${config.password}`).toString('base64');
   return { Authorization: `Basic ${jeton}` };
 }
@@ -166,7 +190,7 @@ export function construireUrl(base: string, ...segments: string[]): string {
 async function creerDossier(config: ConfigurationNextcloud, chemin: string): Promise<void> {
   const reponse = await fetch(construireUrl(config.url, chemin), {
     method: 'MKCOL',
-    headers: entetes(config),
+    headers: entetesAuth(config),
     signal: AbortSignal.timeout(DELAI_MAX_MS),
   });
 
@@ -216,7 +240,7 @@ export async function deposerFichier(
     const url = construireUrl(config.url, chemin);
     const reponse = await fetch(url, {
       method: 'PUT',
-      headers: { ...entetes(config), 'Content-Type': typeMime },
+      headers: { ...entetesAuth(config), 'Content-Type': typeMime },
       body: new Uint8Array(contenu),
       signal: AbortSignal.timeout(DELAI_MAX_MS),
     });
@@ -240,7 +264,7 @@ export async function deposerFichier(
  * s'est trompé d'adresse, si le serveur est éteint, ou si le certificat est
  * refusé — et n'a aucune piste pour corriger.
  */
-function messageLisible(erreur: any): string {
+export function messageLisible(erreur: any): string {
   if (erreur?.name === 'TimeoutError') {
     return `Pas de réponse après ${DELAI_MAX_MS / 1000} secondes`;
   }
@@ -296,7 +320,7 @@ export async function lireFichier(
   try {
     const reponse = await fetch(construireUrl(config.url, chemin), {
       method: 'GET',
-      headers: entetes(config),
+      headers: entetesAuth(config),
       signal: AbortSignal.timeout(DELAI_MAX_MS),
     });
 
@@ -407,7 +431,7 @@ export async function explorerDossier(
   try {
     const reponse = await fetch(construireUrl(config.url, dossier), {
       method: 'PROPFIND',
-      headers: { ...entetes(config), Depth: '1', 'Content-Type': 'application/xml' },
+      headers: { ...entetesAuth(config), Depth: '1', 'Content-Type': 'application/xml' },
       signal: AbortSignal.timeout(DELAI_MAX_MS),
     });
 
@@ -418,6 +442,53 @@ export async function explorerDossier(
     if (!reponse.ok) return { success: false, error: `HTTP ${reponse.status}` };
 
     return { success: true, chemin: dossier, entrees: analyserPropfind(await reponse.text(), config.url, dossier) };
+  } catch (erreur: any) {
+    return { success: false, error: messageLisible(erreur) };
+  }
+}
+
+/**
+ * Identifiant interne d'un fichier, celui que Nextcloud appelle `fileid`.
+ *
+ * WebDAV désigne un fichier par son chemin, mais tout le reste de Nextcloud le
+ * désigne par ce nombre : la conversion en PDF, en particulier, ne sait pas
+ * travailler autrement. Le corps de la requête est explicite parce qu'un
+ * `PROPFIND` sans corps ne rend que les propriétés du domaine `DAV:`, où
+ * `fileid` ne figure pas.
+ */
+export async function identifiantFichier(
+  chemin: string,
+  configuration?: ConfigurationNextcloud | null
+): Promise<{ success: boolean; fileId?: number; error?: string }> {
+  const config = configuration ?? (await lireConfiguration());
+  if (!config) return { success: false, error: NON_CONFIGURE };
+
+  const demande =
+    '<?xml version="1.0"?>' +
+    '<d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">' +
+    '<d:prop><oc:fileid/></d:prop></d:propfind>';
+
+  try {
+    const reponse = await fetch(construireUrl(config.url, normaliserChemin(chemin)), {
+      method: 'PROPFIND',
+      headers: { ...entetesAuth(config), Depth: '0', 'Content-Type': 'application/xml' },
+      body: demande,
+      signal: AbortSignal.timeout(DELAI_MAX_MS),
+    });
+
+    if (reponse.status === 404) {
+      return { success: false, error: `Fichier introuvable sur Nextcloud : ${chemin}` };
+    }
+    if (reponse.status === 401) return { success: false, error: IDENTIFIANTS_REFUSES };
+    if (!reponse.ok) return { success: false, error: `HTTP ${reponse.status}` };
+
+    const brut = valeurBalise(await reponse.text(), 'fileid');
+    const fileId = Number(brut);
+    if (!brut || !Number.isInteger(fileId)) {
+      return { success: false, error: "Nextcloud n'a pas renvoyé l'identifiant du fichier" };
+    }
+
+    return { success: true, fileId };
   } catch (erreur: any) {
     return { success: false, error: messageLisible(erreur) };
   }
@@ -443,6 +514,31 @@ export async function listerDossier(
       .filter((entree) => !entree.dossier && entree.nom.toLowerCase().endsWith('.docx'))
       .map((entree) => entree.nom),
   };
+}
+
+/**
+ * Retire un fichier distant, sans jamais faire échouer l'appelant.
+ *
+ * Le retrait est toujours accessoire ici : un fichier témoin oublié se voit et
+ * se corrige, alors qu'une exception remonterait jusqu'à l'action qui l'a
+ * déclenchée — ce que ce module s'interdit.
+ */
+export async function supprimerDistant(
+  chemin: string,
+  configuration?: ConfigurationNextcloud | null
+): Promise<void> {
+  const config = configuration ?? (await lireConfiguration());
+  if (!config) return;
+
+  try {
+    await fetch(construireUrl(config.url, chemin), {
+      method: 'DELETE',
+      headers: entetesAuth(config),
+      signal: AbortSignal.timeout(DELAI_MAX_MS),
+    });
+  } catch {
+    /* sans conséquence */
+  }
 }
 
 /**
@@ -473,15 +569,7 @@ export async function verifierConfiguration(
 
   // Le retrait est accessoire : si la suppression échoue, la configuration est
   // valide quand même. Un fichier témoin oublié vaut mieux qu'un faux négatif.
-  try {
-    await fetch(construireUrl(config.url, chemin), {
-      method: 'DELETE',
-      headers: entetes(config),
-      signal: AbortSignal.timeout(DELAI_MAX_MS),
-    });
-  } catch {
-    /* sans conséquence */
-  }
+  await supprimerDistant(chemin, config);
 
   return { success: true, message: `Dépôt réussi dans « ${dossier} »` };
 }

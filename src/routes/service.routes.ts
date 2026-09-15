@@ -23,6 +23,7 @@ import {
 import { contenuDuModele } from '../services/generationDocuments.service';
 import { cheminSurDisque, supprimerFichier } from '../services/manifestationDocuments.service';
 import { lireFichier, listerDossier } from '../services/webdav.service';
+import { convertirEnPdf } from '../services/conversionPdf.service';
 import slugify from '../utils/slugify';
 
 /**
@@ -499,6 +500,20 @@ function lireJsonModele<T>(brut: unknown, defaut: T): T {
   }
 }
 
+/**
+ * Formats qu'un modèle peut rendre ; tout le reste retombe sur le `.docx`.
+ *
+ * Une valeur inconnue — un écran plus récent que le serveur, un appel à la main
+ * — ne doit pas empêcher de produire : elle rend le format qui a toujours
+ * marché, plutôt qu'une erreur au moment où un service attend son document.
+ */
+const FORMATS_RENDUS = ['docx', 'pdf', 'docx+pdf'];
+
+function formatValide(brut: unknown): string {
+  const format = String(brut ?? '').trim();
+  return FORMATS_RENDUS.includes(format) ? format : 'docx';
+}
+
 /** Modèle d'un service, tel que l'écran l'attend. */
 async function lireModele(serviceId: number | string): Promise<any | null> {
   const modele = await db.queryOne(
@@ -589,8 +604,8 @@ router.post('/:id/template', authenticateToken, requireAdmin, async (req: AuthRe
     await db.execute(
       `INSERT INTO service_templates
          (service_id, name, source, file_path, remote_path, detected_fields, field_mapping,
-          is_active, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+          is_active, output_format, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       [
         req.params.id,
         String(name ?? '').trim() || `Modèle ${service.name}`,
@@ -599,6 +614,9 @@ router.post('/:id/template', authenticateToken, requireAdmin, async (req: AuthRe
         provenance === 'nextcloud' ? remote_path : null,
         JSON.stringify(champs),
         JSON.stringify(reprise),
+        // Le format suit le modèle corrigé, comme la correspondance des champs :
+        // remplacer un fichier n'est pas changer d'avis sur ce qu'il doit rendre.
+        formatValide(req.body?.output_format ?? ancien?.output_format),
         maintenant,
         maintenant,
       ]
@@ -641,14 +659,16 @@ router.put('/:id/template', authenticateToken, requireAdmin, async (req: AuthReq
     const modele = await lireModele(req.params.id);
     if (!modele) return res.status(404).json({ success: false, message: 'Aucun modèle sur ce service' });
 
-    const { name, field_mapping, is_active } = req.body;
+    const { name, field_mapping, is_active, output_format } = req.body;
     await db.execute(
-      `UPDATE service_templates SET name = ?, field_mapping = ?, is_active = ?, updated_at = ?
+      `UPDATE service_templates
+         SET name = ?, field_mapping = ?, is_active = ?, output_format = ?, updated_at = ?
        WHERE id = ?`,
       [
         String(name ?? modele.name).trim(),
         JSON.stringify(field_mapping ?? modele.field_mapping),
         is_active === false ? 0 : 1,
+        formatValide(output_format ?? modele.output_format),
         new Date().toISOString(),
         modele.id,
       ]
@@ -731,6 +751,25 @@ router.post('/:id/template/preview', authenticateToken, requireAdmin, async (req
     );
 
     const nom = String(modele.name).replace(/[^A-Za-z0-9 _.-]/g, '-').trim() || 'apercu';
+    const format = formatValide(req.body?.format ?? modele.output_format);
+
+    if (format === 'pdf' || format === 'docx+pdf') {
+      const conversion = await convertirEnPdf(rempli);
+
+      // Ici l'échec remonte, contrairement à la génération : l'aperçu sert à
+      // vérifier avant d'activer, et rendre un .docx en silence ferait croire
+      // le réglage en place jusqu'à la première vraie demande.
+      if (!conversion.success || !conversion.pdf) {
+        return res
+          .status(502)
+          .json({ success: false, message: `Conversion en PDF impossible — ${conversion.error}` });
+      }
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="${nom}.pdf"`);
+      return res.send(conversion.pdf);
+    }
+
     res.setHeader(
       'Content-Type',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document'

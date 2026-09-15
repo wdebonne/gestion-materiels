@@ -120,3 +120,66 @@ export function completerDonneesManquantes(
   }
   return completes;
 }
+
+/** Échappe le texte destiné à un contenu XML. */
+function echapperXml(texte: string): string {
+  return texte
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+/**
+ * Fabrique le plus petit `.docx` valide qui soit, portant une ligne de texte.
+ *
+ * `verifierConfiguration` prouve qu'un Nextcloud est joignable en y déposant un
+ * fichier témoin plutôt qu'en validant la forme des champs, qui ne prouve rien.
+ * Sonder la conversion en PDF demande la même honnêteté : il faut un vrai
+ * document à convertir, et faire dépendre cette vérification d'un modèle réglé
+ * par un service reviendrait à tester deux choses à la fois.
+ *
+ * Quatre pièces suffisent à un document que Word comme ONLYOFFICE acceptent :
+ * les types de contenu, la relation vers le document, le document, et les
+ * relations — vides — de ce dernier.
+ */
+export async function docxMinimal(texte: string): Promise<Buffer> {
+  const entete = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>';
+  const archive = new JSZip();
+
+  archive.file(
+    '[Content_Types].xml',
+    entete +
+      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">' +
+      '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>' +
+      '<Default Extension="xml" ContentType="application/xml"/>' +
+      '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>' +
+      '</Types>'
+  );
+
+  archive.file(
+    '_rels/.rels',
+    entete +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">' +
+      '<Relationship Id="rId1" Target="word/document.xml" ' +
+      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"/>' +
+      '</Relationships>'
+  );
+
+  archive.file(
+    'word/_rels/document.xml.rels',
+    entete +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"/>'
+  );
+
+  archive.file(
+    'word/document.xml',
+    entete +
+      '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>' +
+      '<w:p><w:r><w:t xml:space="preserve">' +
+      echapperXml(texte) +
+      '</w:t></w:r></w:p>' +
+      '</w:body></w:document>'
+  );
+
+  return archive.generateAsync({ type: 'nodebuffer' });
+}

@@ -157,6 +157,21 @@ function Connexion({
       setVerdict({ ok: false, message: err.response?.data?.message || 'Dépôt refusé' }),
   })
 
+  /**
+   * Sonde la conversion en PDF, sur la connexion déjà enregistrée.
+   *
+   * Elle ne prend pas le brouillon : convertir demande de déposer un document
+   * témoin, puis de le faire relire par le serveur bureautique — ce qui suppose
+   * une connexion que le serveur connaît, pas une saisie en cours.
+   */
+  const verificationPdf = useMutation({
+    mutationFn: () => nextcloudApi.testerPdf(),
+    onSuccess: (res) => setVerdict({ ok: true, message: res.data.message }),
+    onError: (err: any) =>
+      setVerdict({ ok: false, message: err.response?.data?.message || 'Conversion refusée' }),
+  })
+
+
   const incomplet = !brouillon.url.trim() || !brouillon.username.trim()
 
   return (
@@ -232,6 +247,19 @@ function Connexion({
           >
             Tester la connexion
           </Button>
+
+          <Button
+            variant="outline"
+            loading={verificationPdf.isPending}
+            disabled={!config?.configured}
+            title="Convertit un document témoin, pour savoir si un modèle peut rendre un PDF"
+            onClick={() => {
+              setVerdict(null)
+              verificationPdf.mutate()
+            }}
+          >
+            Tester la conversion PDF
+          </Button>
         </div>
 
         {verdict && (
@@ -251,6 +279,13 @@ function Connexion({
           Le test dépose réellement un fichier témoin dans le dossier de travail, puis le retire :
           il prouve que l'écriture fonctionne, au lieu de se contenter de valider la forme des
           champs.
+        </p>
+
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          La conversion en PDF passe par le serveur bureautique du Nextcloud — EuroOffice,
+          ONLYOFFICE ou Nextcloud Office. Le test convertit un document témoin sur la connexion{' '}
+          <strong>déjà enregistrée</strong> et nomme le chemin qui a répondu : sans lui, un modèle
+          réglé sur PDF ne se révélerait qu'à la première demande reçue.
         </p>
       </CardBody>
     </Card>

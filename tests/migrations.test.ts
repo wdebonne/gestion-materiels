@@ -246,4 +246,25 @@ describe('Migrations livrées', () => {
     const resultat = await appliquerMigrations(base);
     expect(resultat.appliquees).toEqual(MIGRATIONS.map((m) => m.id));
   });
+
+  it('laisse un schéma où les modèles de service portent leur format', async () => {
+    // Les migrations récentes se gardent d'agir quand la table manque. Cette
+    // garde est utile — une base ancienne n'a pas toutes les tables — mais elle
+    // fait aussi passer le test sans rien avoir fait. On vérifie donc la
+    // colonne, et pas seulement le journal : sans elle, un modèle réglé sur PDF
+    // rendrait silencieusement du .docx.
+    await base.execute(`
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password VARCHAR(255) NOT NULL,
+        role VARCHAR(50) DEFAULT 'user'
+      )
+    `);
+    await schemaManifestations(base);
+    await appliquerMigrations(base);
+
+    const colonnes = await base.query<{ name: string }>('PRAGMA table_info(service_templates)');
+    expect(colonnes.map((c) => c.name)).toContain('output_format');
+  });
 });

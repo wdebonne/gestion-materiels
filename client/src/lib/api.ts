@@ -1135,6 +1135,12 @@ export const nextcloudApi = {
     api.get<{ success: boolean; data: { chemin: string; entrees: EntreeNextcloud[] } }>(
       `/nextcloud/browse?path=${encodeURIComponent(chemin)}`
     ),
+  /** Convertit un document témoin, et dit quel chemin bureautique a répondu. */
+  testerPdf: () =>
+    api.post<{ success: boolean; message: string; data?: { methode: string; octets: number } }>(
+      '/nextcloud/test-pdf',
+      {}
+    ),
   /** Passe par l'instance axios : le jeton voyage en en-tête, pas dans l'URL. */
   downloadUrl: (chemin: string) => `/nextcloud/download?path=${encodeURIComponent(chemin)}`,
 }
@@ -1543,6 +1549,41 @@ export interface DocumentAJoindre {
   object_id?: number | null
 }
 
+/** Enregistre une réponse binaire sous le nom de fichier voulu. */
+function enregistrerFichier(donnees: BlobPart, nomFichier: string) {
+  const url = window.URL.createObjectURL(new Blob([donnees]))
+  const lien = document.createElement('a')
+  lien.href = url
+  lien.setAttribute('download', nomFichier)
+  document.body.appendChild(lien)
+  lien.click()
+  lien.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+/**
+ * Phrase d'erreur d'une réponse demandée en binaire.
+ *
+ * Quand le serveur refuse un téléchargement, axios rend quand même un `Blob` :
+ * lire `data.message` y donne `undefined`, et l'écran affiche « erreur inconnue »
+ * là où le serveur disait précisément quoi corriger — qu'aucune application ne
+ * sache convertir, par exemple.
+ */
+async function messageDuBlob(erreur: any, defaut: string): Promise<string> {
+  const donnees = erreur?.response?.data
+
+  if (donnees instanceof Blob) {
+    try {
+      const json = JSON.parse(await donnees.text())
+      if (json?.message) return String(json.message)
+    } catch {
+      /* le corps n'était pas du JSON */
+    }
+  }
+
+  return donnees?.message ?? erreur?.message ?? defaut
+}
+
 export const documentManifestationApi = {
   /** `q` filtre sur le libellé et la description. */
   lister: (manifestationId: number, q?: string) =>
@@ -1586,6 +1627,27 @@ export const documentManifestationApi = {
       }
     }>(`/manifestations/${manifestationId}/documents/generate`, {}),
 
+  /**
+   * Convertit une pièce `.docx` en PDF, sans l'ajouter à la manifestation.
+   *
+   * Le format est réglé sur le modèle du service ; ce geste sert au document
+   * qu'on fait signer aujourd'hui, sans changer le réglage ni tout regénérer —
+   * ce qui écraserait les retouches déjà faites.
+   */
+  telechargerPdf: async (docId: number, nom: string) => {
+    try {
+      const reponse = await api.post(
+        `/manifestations/documents/${docId}/pdf`,
+        {},
+        { responseType: 'blob' }
+      )
+      enregistrerFichier(reponse.data, `${nom || 'document'}.pdf`)
+    } catch (erreur: any) {
+      throw new Error(await messageDuBlob(erreur, "La conversion en PDF n'a pas abouti"))
+    }
+  },
+
+
   getTypes: (tous = false) =>
     api.get<{ success: boolean; data: TypeDocument[] }>(
       `/manifestations/doc-types${tous ? '?tous=true' : ''}`
@@ -1614,6 +1676,12 @@ export interface ValeurModele {
   liste?: boolean
 }
 
+/**
+ * Ce qu'un modèle rend : le document à retoucher, celui à faire signer, ou les
+ * deux. Le PDF demande une conversion par le Nextcloud de la commune.
+ */
+export type FormatModele = 'docx' | 'pdf' | 'docx+pdf'
+
 export interface ModeleService {
   id: number
   service_id: number
@@ -1624,6 +1692,7 @@ export interface ModeleService {
   detected_fields: string[]
   field_mapping: Record<string, string>
   is_active: boolean
+  output_format: FormatModele
   last_error: string | null
   updated_at: string
 }
@@ -1641,12 +1710,23 @@ export const modeleServiceApi = {
   /** Rattache un modèle, téléversé ou tenu dans Nextcloud. */
   rattacher: (
     serviceId: number,
-    data: { name: string; source: 'upload' | 'nextcloud'; file_path?: string; remote_path?: string }
+    data: {
+      name: string
+      source: 'upload' | 'nextcloud'
+      file_path?: string
+      remote_path?: string
+      output_format?: FormatModele
+    }
   ) => api.post<{ success: boolean; data: ModeleService }>(`/services/${serviceId}/template`, data),
 
   enregistrer: (
     serviceId: number,
-    data: { name?: string; field_mapping?: Record<string, string>; is_active?: boolean }
+    data: {
+      name?: string
+      field_mapping?: Record<string, string>
+      is_active?: boolean
+      output_format?: FormatModele
+    }
   ) => api.put<{ success: boolean; data: ModeleService }>(`/services/${serviceId}/template`, data),
 
   /** Relit les champs : utile après avoir corrigé le modèle dans Nextcloud. */
@@ -1670,20 +1750,27 @@ export const modeleServiceApi = {
    * modèle avant qu'une vraie demande arrive, seul moment où la correction est
    * encore sans conséquence.
    */
-  apercu: async (serviceId: number, nom: string, manifestationId?: number) => {
-    const reponse = await api.post(
-      `/services/${serviceId}/template/preview`,
-      manifestationId ? { manifestation_id: manifestationId } : {},
-      { responseType: 'blob' }
-    )
-    const url = window.URL.createObjectURL(new Blob([reponse.data]))
-    const lien = document.createElement('a')
-    lien.href = url
-    lien.setAttribute('download', `${nom || 'apercu'}.docx`)
-    document.body.appendChild(lien)
-    lien.click()
-    lien.remove()
-    window.URL.revokeObjectURL(url)
+  apercu: async (
+    serviceId: number,
+    nom: string,
+    manifestationId?: number,
+    format?: FormatModele
+  ) => {
+    const corps: Record<string, unknown> = {}
+    if (manifestationId) corps.manifestation_id = manifestationId
+    if (format) corps.format = format
+
+    try {
+      const reponse = await api.post(`/services/${serviceId}/template/preview`, corps, {
+        responseType: 'blob',
+      })
+      // Le PDF demande une conversion par le Nextcloud : l'extension doit suivre
+      // ce qui a été demandé, sinon le fichier s'ouvre sur une erreur.
+      const extension = format === 'pdf' || format === 'docx+pdf' ? 'pdf' : 'docx'
+      enregistrerFichier(reponse.data, `${nom || 'apercu'}.${extension}`)
+    } catch (erreur: any) {
+      throw new Error(await messageDuBlob(erreur, "L'aperçu n'a pas pu être produit"))
+    }
   },
 }
 

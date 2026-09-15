@@ -7,6 +7,59 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Le document d'un service peut partir en PDF, converti par le Nextcloud de la commune
+
+> Un arrêté ou une convention partait en `.docx`, seul format que la bibliothèque
+> de remplissage sache produire. Chez le destinataire, la mise en page dépend
+> alors de son traitement de texte, et le texte se laisse modifier sans qu'il en
+> reste trace — deux défauts qui n'ont pas leur place sur un acte qu'on fait
+> signer.
+>
+> Convertir demande un moteur bureautique, et LibreOffice en dépendance avait
+> déjà été écarté pour ce projet. Le Nextcloud désormais branché en porte un :
+> il est déjà installé, déjà authentifié, et n'ajoute aucune machine à
+> administrer.
+
+#### Ajouté
+
+- **Un format par modèle** — Word, PDF, ou les deux — réglé dans *Paramètres >
+  Services > Document pré-rempli*. Le service qui retouche son document avant de
+  l'envoyer a besoin du `.docx`, celui qui le fait signer a besoin du PDF, et les
+  deux ont raison. Par défaut `.docx` : les modèles déjà réglés rendent
+  exactement ce qu'ils rendaient.
+- **Deux chemins de conversion, essayés dans l'ordre** : la route du connecteur
+  ONLYOFFICE/EuroOffice, puis l'API de conversion de Nextcloud. Le connecteur
+  n'enregistre pas de fournisseur de conversion, si bien que l'API générique ne
+  répond que lorsque Nextcloud Office est installé à côté ; et EuroOffice étant
+  un fork, parier sur l'un revenait à parier sur la variante installée. Ni l'un
+  ni l'autre ne demande de secret supplémentaire : le mot de passe d'application
+  déjà enregistré suffit.
+- **« Tester la conversion PDF »** dans *Paramètres > Nextcloud* : un vrai
+  document témoin est converti, et le chemin qui a répondu est nommé.
+  Interroger la liste des applications installées ne dirait rien de ce qui se
+  passe au moment de produire un arrêté.
+- **« Convertir en PDF »** sur une pièce déjà produite, dans l'onglet
+  *Documents*, pour le document qu'on fait signer aujourd'hui — sans changer le
+  réglage du service ni tout regénérer, ce qui écraserait les retouches déjà
+  faites.
+- **L'aperçu du modèle suit le format réglé**, et dit pourquoi lorsque la
+  conversion refuse. L'aperçu sert à vérifier avant d'activer : rendre un
+  `.docx` en silence ferait croire le réglage en place jusqu'à la première vraie
+  demande.
+
+#### Modifié
+
+- **La pièce jointe du courriel de sollicitation** porte l'extension du fichier
+  réellement produit, au lieu d'un `.docx` écrit en dur — et un modèle qui rend
+  les deux formes les envoie toutes les deux.
+- **Une conversion ratée ne bloque rien** : le `.docx` part quand même, et
+  l'erreur s'inscrit sur le modèle, là où un modèle cassé s'inscrit déjà. Un
+  service qui reçoit le mauvais format peut travailler ; un service qui ne
+  reçoit rien est bloqué sans le savoir.
+- **Le document témoin de la conversion est retiré dans tous les cas**, échec
+  compris : sans cela, un dossier caché se remplirait d'un fichier par
+  tentative, et personne ne pense à l'ouvrir.
+
 ### Une demande de manifestation arrive entière, et le document du service peut la dire
 
 > La réception ne retenait d'un formulaire que les quatorze champs pour lesquels

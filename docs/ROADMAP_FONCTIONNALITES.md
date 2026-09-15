@@ -13,7 +13,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
-| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 1134 tests (1090 backend, 44 frontend) |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 1150 tests (1106 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
@@ -24,7 +24,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 11 | 🟢 Optionnel | Internationalisation (i18n) | ⚠️ Abandonné | `useTranslation` n'est utilisé que dans 1 fichier sur 60. La détection automatique a été **retirée** : elle basculait l'interface en anglais sur une tablette anglophone, sans retour possible. La langue est verrouillée en français |
 | 12 | 🟢 Optionnel | WebSocket temps réel | ✅ Fait | |
 | 13 | 🔴 Haute | Authentification SSO / LDAP / Passkey | ⚠️ Partiel | **Passkeys appliquées** depuis septembre 2026 : connexion sans mot de passe, second facteur, gestion des clés par chaque agent. SAML, OIDC et LDAP restent des écrans dont la configuration est **relue par personne**. La politique de mot de passe, le blocage après N tentatives et l'expiration sont appliqués |
-| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 ; tournée du jour et saisie de terrain ouverte à l'agent, demande de formulaire reçue entière et redistribuée aux documents de service — septembre 2026 |
+| 14 | 🔴 Haute | Manifestations | ✅ Fait | Historique, fiche PDF, réception signée, stock réel/prévisionnel, services et approbations, documents pré-remplis par service, export Nextcloud — août 2026 ; tournée du jour et saisie de terrain ouverte à l'agent, demande de formulaire reçue entière et redistribuée aux documents de service, document de service converti en PDF par le Nextcloud — septembre 2026 |
 | 15 | 🔴 Haute | Espaces Verts | ✅ Fait | Implantation depuis le parc à prix figé et plan annoté manipulable — septembre 2026 |
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
@@ -229,6 +229,14 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 - **Routes API :** `/api/manifestations` — CRUD stock, CRUD manifestations, transitions statut, matériel, tournée du jour, stats, disponibilité
 - **Frontend :** 4 onglets (Tournée du jour, Manifestations, Stock, Archives), modales détail et saisie de terrain, panneau de suivi (approbations, échanges, copies), écrans Réglages › Réception manifestations et Réglages › Services
 - **Impact :** Suivi complet du matériel prêté pour événements, visibilité stock en temps réel
+
+> ✅ **Le document de service part en PDF, septembre 2026 :** un arrêté ou une convention partait en `.docx`, seul format qu'`easy-template-x` sache produire. Chez le destinataire, la mise en page dépend alors de son traitement de texte, et le texte se laisse modifier sans qu'il en reste trace — deux défauts qui n'ont pas leur place sur un acte qu'on fait signer. Convertir demande un moteur bureautique, et LibreOffice en dépendance avait déjà été écarté, en même temps que Carbone ; le Nextcloud désormais branché en porte un, déjà installé et déjà authentifié.
+>
+> Le format se règle **par modèle** — Word, PDF, ou les deux — et non par une préférence générale : le service qui retouche son document avant de l'envoyer a besoin du `.docx`, celui qui le fait signer a besoin du PDF. Par défaut `.docx`, pour que les modèles déjà réglés rendent exactement ce qu'ils rendaient.
+>
+> Deux chemins sont tentés dans l'ordre, parce que le connecteur ONLYOFFICE **n'enregistre pas de fournisseur de conversion** : l'API générique de Nextcloud ne répond donc que si Nextcloud Office est installé à côté, et EuroOffice étant un fork, parier sur l'un revenait à parier sur la variante installée. La route propre au connecteur d'abord, l'API de Nextcloud ensuite ; aucune ne demande de secret supplémentaire, le mot de passe d'application déjà enregistré suffit. Une **sonde** convertit un vrai document témoin et nomme le chemin qui a répondu — interroger la liste des applications installées ne dirait rien de ce qui se passe au moment de produire un arrêté.
+>
+> Le `.docx` doit monter sur Nextcloud pour être converti, la conversion travaillant sur un `fileid` et non sur un flux : il est déposé dans un dossier de travail caché, converti, puis retiré **dans tous les cas** — sinon un échec y laisserait un fichier par tentative. Une conversion ratée ne bloque rien : le `.docx` part quand même et l'erreur s'inscrit sur le modèle, là où un modèle cassé s'inscrit déjà.
 
 > ✅ **La demande arrive entière, septembre 2026 :** la réception ne retenait d'un formulaire que les quatorze champs pour lesquels `manifestations` a une colonne. Le formulaire, lui, en pose une quarantaine — qualité du demandeur, pôle et service, association et président, bâtiments et salles, voies fermées à la circulation, agents techniques, informatique, restauration, communication, débit de boissons. Tout le reste était lu, puis jeté : le document envoyé au service ne pouvait rien dire de ce qui le concerne — un arrêté de circulation sans le nom de la rue n'est pas un arrêté — et l'agent rouvrait le formulaire d'origine pour savoir qui demandait quoi.
 >

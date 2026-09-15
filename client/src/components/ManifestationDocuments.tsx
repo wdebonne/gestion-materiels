@@ -1,8 +1,8 @@
 import { useRef, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Paperclip, Upload, Camera, Search, Trash2, Download, Eye, FileText, Image as ImageIcon,
-  RefreshCw, Sparkles, X
+  Paperclip, Upload, Camera, Search, Trash2, Download, Eye, FileDown, FileText,
+  Image as ImageIcon, RefreshCw, Sparkles, X
 } from 'lucide-react'
 import {
   Card, CardBody, Input, Select, Button, Alert, Badge, Spinner, TextArea, Modal, ModalBody
@@ -311,6 +311,31 @@ function LigneDocument({ doc, onApercu, onRetirer }: {
   onApercu: () => void
   onRetirer: () => void
 }) {
+  const [conversion, setConversion] = useState(false)
+
+  // Un PDF est déjà un PDF, et une photo ne se convertit pas : le bouton ne
+  // s'affiche que là où il a un sens.
+  const enWord = (doc.file_path ?? '').toLowerCase().endsWith('.docx')
+
+  /**
+   * Convertit la pièce sans l'enregistrer.
+   *
+   * Le format est réglé sur le modèle du service ; ce geste sert au document
+   * qu'on fait signer aujourd'hui, sans changer ce réglage ni tout regénérer,
+   * ce qui écraserait les retouches déjà faites.
+   */
+  const convertir = async () => {
+    setConversion(true)
+    try {
+      await documentManifestationApi.telechargerPdf(doc.id, doc.name)
+      toast.success('PDF téléchargé')
+    } catch (erreur: any) {
+      toast.error(erreur?.message ?? "La conversion en PDF n'a pas abouti")
+    } finally {
+      setConversion(false)
+    }
+  }
+
   return (
     <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800">
       <FileText className="w-5 h-5 text-gray-400 shrink-0" />
@@ -342,6 +367,14 @@ function LigneDocument({ doc, onApercu, onRetirer }: {
           className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
           <Eye className="w-4 h-4 text-gray-600 dark:text-gray-300" />
         </button>
+        {enWord && (
+          <button type="button" onClick={convertir} disabled={conversion}
+            aria-label={`Télécharger ${doc.name} en PDF`}
+            title="Convertir en PDF par le Nextcloud, sans toucher à la pièce jointe"
+            className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700 disabled:opacity-50">
+            <FileDown className="w-4 h-4 text-gray-600 dark:text-gray-300" />
+          </button>
+        )}
         <a href={doc.file_path} download={doc.name} aria-label={`Télécharger ${doc.name}`}
           className="p-2 rounded hover:bg-gray-200 dark:hover:bg-gray-700">
           <Download className="w-4 h-4 text-gray-600 dark:text-gray-300" />
