@@ -314,3 +314,71 @@ describe('Prestations venues du parc', () => {
     expect(donnees.prestations_resume).toBe('Débit de boissons, Arrêté de circulation');
   });
 });
+
+/**
+ * Ce que la demande disait, et que le document doit pouvoir dire.
+ *
+ * Un arrêté de circulation sans le nom de la rue n'est pas un arrêté ; une
+ * demande de débit de boissons qui ne dit pas qui la formule ne s'instruit pas.
+ * Ces réponses n'ont pas de colonne dans `manifestations` — elles voyagent avec
+ * la demande, et se retrouvent ici sous le nom que le modèle emploie.
+ */
+describe('Détails de la demande dans un modèle', () => {
+  const DETAILS = JSON.stringify([
+    { cle: 'type_demandeur', libelle: 'Qualité du demandeur', section: 'Demandeur', valeur: 'Association' },
+    { cle: 'association', libelle: 'Association', section: 'Demandeur', valeur: 'Comité des fêtes' },
+    {
+      cle: 'lieux_exterieurs',
+      libelle: 'Voies et espaces publics demandés',
+      section: 'Lieux',
+      valeur: 'Rue Adolphe Lasne',
+    },
+    { cle: 'debit_boissons', libelle: 'Demande de débit de boissons', section: 'Communication', valeur: 'Oui' },
+  ]);
+
+  beforeAll(() => {
+    base.exec('ALTER TABLE manifestations ADD COLUMN intake_details TEXT');
+    base
+      .prepare('UPDATE manifestations SET intake_details = ? WHERE id = 100')
+      .run(DETAILS);
+  });
+
+  it('rend chaque réponse sous le nom que le modèle emploie', async () => {
+    const donnees: any = await donneesPourModele(100, URBANISME);
+
+    expect(donnees.type_demandeur).toBe('Association');
+    expect(donnees.association).toBe('Comité des fêtes');
+    expect(donnees.lieux_exterieurs).toBe('Rue Adolphe Lasne');
+    expect(donnees.debit_boissons).toBe('Oui');
+  });
+
+  it('rend vide une question que la demande n’a pas renseignée', async () => {
+    // Jamais d'accolades : un arrêté portant « {vin_honneur} » en toutes lettres
+    // serait signé tel quel par quelqu'un qui ne l'a pas relu.
+    const donnees: any = await donneesPourModele(100, URBANISME);
+
+    expect(donnees.vin_honneur).toBe('');
+    expect(donnees.pole).toBe('');
+  });
+
+  it('ne laisse pas une colonne illisible emporter tout le document', async () => {
+    base.prepare('UPDATE manifestations SET intake_details = ? WHERE id = 100').run('{pas du json');
+    const donnees: any = await donneesPourModele(100, URBANISME);
+
+    expect(donnees.manifestation).toBe('Fête de la musique');
+    expect(donnees.debit_boissons).toBe('');
+
+    base.prepare('UPDATE manifestations SET intake_details = ? WHERE id = 100').run(DETAILS);
+  });
+
+  it('propose au modèle toutes les questions du formulaire, et pas seulement les colonnes', () => {
+    const cles = VALEURS_MODELE.map((v) => v.cle);
+
+    expect(cles).toContain('manifestation');
+    expect(cles).toContain('lieux_interieurs');
+    expect(cles).toContain('personnel_technique_nombre');
+    expect(cles).toContain('debit_boissons');
+    // Une clé proposée deux fois ferait deux entrées pour une seule valeur.
+    expect(new Set(cles).size).toBe(cles.length);
+  });
+});

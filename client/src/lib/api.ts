@@ -557,8 +557,24 @@ export interface Manifestation {
   objects?: ObjetManifestation[]
   /** Lignes reçues d'un formulaire qu'aucun article du stock n'a permis de rattacher. */
   intake_unmatched?: string | null
+  /** Réponses du formulaire qu'aucune colonne ne porte, telles qu'elles sont arrivées. */
+  intake_details?: string | null
   /** Décompte des coûts, joint au détail. */
   cout?: CoutManifestation
+}
+
+/**
+ * Une réponse du formulaire qu'aucune colonne ne porte.
+ *
+ * Elle voyage avec son intitulé et sa section : l'écran qui l'affiche n'a rien
+ * à connaître du catalogue de réception, et une demande reçue l'an dernier se
+ * relit telle qu'elle a été posée.
+ */
+export interface DetailDemande {
+  cle: string
+  libelle: string
+  section: string
+  valeur: string
 }
 
 export interface ManifestationStats {
@@ -840,10 +856,26 @@ export interface IntakeRequest {
 export interface ChampIntake {
   champ: string
   libelle: string
+  /** Regroupement d'affichage : Manifestation, Demandeur, Lieux, Matériel… */
+  section: string
   obligatoire: boolean
   type: string
+  /** Colonne de la manifestation qui reçoit la valeur ; absente : un détail. */
+  colonne?: string
+  /** Nom sous lequel un modèle de document affiche la valeur. */
+  cleModele: string
+  exemple: string
   alias: string[]
 }
+
+/**
+ * Chemins réglés pour un champ.
+ *
+ * Plusieurs sont acceptés, et le premier qui porte une valeur l'emporte : un
+ * formulaire pose la même question sous plusieurs intitulés — un par pôle, un
+ * par qualité de demandeur — et n'en remplit qu'un.
+ */
+export type CorrespondanceIntake = Record<string, string | string[]>
 
 export const intakeApi = {
   getSources: () =>
@@ -856,7 +888,7 @@ export const intakeApi = {
       data: {
         champs: ChampIntake[]
         chemins: string[]
-        correspondance: Record<string, string>
+        correspondance: CorrespondanceIntake
         origine: 'imposee' | 'detectee'
         derniere_demande: unknown
       }
@@ -870,7 +902,7 @@ export const intakeApi = {
     id: number,
     data: {
       name: string
-      field_mapping?: Record<string, string> | null
+      field_mapping?: CorrespondanceIntake | null
       material_mapping?: Record<string, string> | null
       is_active?: boolean
     }
@@ -1576,6 +1608,8 @@ export interface ValeurModele {
   cle: string
   libelle: string
   exemple: string
+  /** Section d'origine, pour proposer les valeurs par groupes. */
+  section?: string
   /** Une liste se répète dans le modèle : `{#materiels}…{/materiels}`. */
   liste?: boolean
 }
@@ -1657,7 +1691,7 @@ export const modeleServiceApi = {
 export interface EssaiIntake {
   source: { id: number; name: string; slug: string } | null
   origine_correspondance: 'imposee' | 'detectee'
-  correspondance: Record<string, string>
+  correspondance: CorrespondanceIntake
   chemins: string[]
   champs_disponibles: ChampIntake[]
   extrait: Record<string, unknown>

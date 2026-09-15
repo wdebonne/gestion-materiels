@@ -176,7 +176,12 @@ function CompteRendu({ resultat }: { resultat: EssaiIntake }) {
                 <code className="text-xs px-1 rounded bg-gray-100 dark:bg-gray-800 shrink-0">{cle}</code>
                 <span className="text-gray-900 dark:text-gray-100 break-all">{String(valeur)}</span>
                 {resultat.correspondance[cle] && (
-                  <span className="text-xs text-gray-400">← {resultat.correspondance[cle]}</span>
+                  // Un champ peut être réglé sur plusieurs chemins : le
+                  // formulaire pose la même question par branches, et n'en
+                  // remplit qu'une.
+                  <span className="text-xs text-gray-400">
+                    ← {[resultat.correspondance[cle]].flat().join(' ou ')}
+                  </span>
                 )}
               </div>
             ))}

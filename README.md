@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-799-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1134-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -183,6 +183,7 @@ passage la permission de renommer le véhicule.
 - 📊 **Tableau de bord** : Statistiques avec compteurs par statut (brouillons, en cours, archivées)
 - 🔄 **Workflow complet** : Circuit de validation en 6 étapes (À confirmer → Brouillon → Validée → Livrée → Récupérée → Archivée)
 - 📥 **Réception de demandes** : une application de formulaires dépose ses demandes sur une adresse signée (HMAC-SHA256). Elles arrivent « À confirmer » et réservent le matériel au prévisionnel. La correspondance entre le JSON reçu et les champs d'une manifestation se règle dans l'interface, pas dans le code
+- 🗂️ **La demande arrive entière** : une quarantaine de champs reconnus, groupés comme le formulaire les pose — qualité du demandeur, pôle et service, association et président, bâtiments et salles, voies fermées à la circulation, agents techniques, informatique, restauration, communication, débit de boissons. Les questions **par branches** (une par pôle, une par qualité) se règlent sur plusieurs chemins, et le premier qui porte une valeur l'emporte ; les **groupes** et les **répétitions** se lisent d'un seul chemin — « Mairie : Salle des mariages ; Complexe Sportif : Club House ». Ce qu'aucune colonne ne porte est conservé avec la demande et s'affiche sous « Demande d'origine »
 - 📈 **Stock prévisionnel et réel** : ce qui est promis sur une période et ce qui est physiquement sorti sont comptés séparément, jamais deux fois. Interrogeable à une date ou sur une période — « aurai-je 200 chaises le 14 juillet ? »
 - 🪑 **Quantités réelles** : demandé, livré, récupéré et **perdu**. Une chaise cassée ou volée diminue le stock physique et laisse un mouvement tracé
 - 🏛️ **Services concernés** : un service est un groupe de personnes et un périmètre de catégories. Il n'est sollicité, alerté et destinataire que si la manifestation demande du matériel de son périmètre — le service informatique ne reçoit rien d'une brocante sans matériel informatique
@@ -196,7 +197,7 @@ passage la permission de renommer le véhicule.
 - 📦 **Matériel en lot** : un matériel du parc est soit un **exemplaire unique** — un véhicule, qui ne peut pas être à deux endroits — soit un **lot** avec sa quantité : cinquante chaises, dix tables. Le stock réel et prévisionnel se lit alors directement sur la fiche de parc, sans le tenir ailleurs. Un lot n'a ni carburant ni contrôle technique, qui portent sur un exemplaire, mais garde ses **entretiens** — réparation, nettoyage. Ce qui manque sur un lot est un avertissement chiffré, pas un refus
 - 🏛️ **Prestations rangées par service, dans le parc** : la catégorie est le service, et ses sous-catégories mêlent prestations et matériel — Technique porte *Prestation* et *Mobilier*, Urbanisme porte *Prestation*, *Armoires* et *Bureau*, Restauration porte *Prestation* et *Verrerie*. Le réglage se fait sur la branche, avec héritage à trois niveaux, et le service gère ses prestations là où il tient déjà son parc. Une prestation n'immobilise rien : elle ne bloque jamais une autre manifestation
 - 🔌 **Prestations** : raccordement électrique, débit de boissons, personnel pour une cérémonie. Une case à cocher sur un article suffit ; sa catégorie décide du service qui l'approuve. Sans stock ni disponibilité — demandée, puis réalisée
-- 📄 **Document pré-rempli par service** : un modèle `.docx` écrit dans Word est rattaché à un service, ses champs entre accolades sont détectés à l'import, et une liste déroulante relie chacun à une donnée de la demande. Chaque service reçoit **sa seule part** — celui qui instruit un débit de boissons n'a que faire du nombre de chaises — joint à la manifestation et à son courriel d'approbation. Le modèle peut être tenu dans **Nextcloud** et corrigé à un seul endroit : il est relu à chaque génération
+- 📄 **Document pré-rempli par service** : un modèle `.docx` écrit dans Word est rattaché à un service, ses champs entre accolades sont détectés à l'import, et une liste déroulante relie chacun à une donnée de la demande. **Toutes** les réponses du formulaire y sont offertes — `{pole}`, `{lieux_exterieurs}`, `{debit_boissons}`… — et la liste des champs à écrire dans Word s'affiche, groupée par section, avant même d'avoir déposé un modèle. Chaque service reçoit **sa seule part** — celui qui instruit un débit de boissons n'a que faire du nombre de chaises — joint à la manifestation et à son courriel d'approbation. Le modèle peut être tenu dans **Nextcloud** et corrigé à un seul endroit : il est relu à chaque génération
 - 🧪 **Essai de webhook à blanc** : collez ce que votre formulaire envoie, l'application dit si la demande passerait, quel matériel serait reconnu et quels services seraient alertés — sans rien créer ni prévenir personne
 - 📎 **Pièces jointes** : arrêtés, plans, constats, photos. Glisser-déposer ou photo prise au téléphone, description facultative pour les retrouver, et lien vers le matériel concerné. Supprimer une pièce retire aussi le fichier
 - 🎯 **Matériel prêtable au choix** : par catégorie, par sous-catégorie, ou matériel par matériel — le réglage le plus précis l'emporte. Le réfrigérateur part pour la brocante, le grill de la même catégorie reste à la cuisine
@@ -1270,7 +1271,7 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-> **799 tests** : 755 backend (43 suites) + 44 frontend (5 suites).
+> **1134 tests** : 1090 backend (57 suites) + 44 frontend (5 suites).
 >
 > Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas
 > vérifier à l'œil — le reste couvre les routes et les écrans module par module.

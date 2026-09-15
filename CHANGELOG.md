@@ -7,6 +7,67 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Une demande de manifestation arrive entière, et le document du service peut la dire
+
+> La réception ne retenait d'un formulaire que les quatorze champs pour lesquels
+> `manifestations` a une colonne : un titre, deux dates, deux heures, un contact,
+> des notes. Le formulaire, lui, en pose une quarantaine — la qualité du
+> demandeur et son association, le pôle et le service concernés, les bâtiments et
+> les salles réservés, les rues fermées à la circulation, les agents techniques
+> souhaités, le vin d'honneur, les affiches, le débit de boissons. Tout cela
+> était lu, puis jeté.
+>
+> Les services le payaient deux fois. Le document qu'on leur envoie ne pouvait
+> rien dire de ce qui les concerne — un arrêté de circulation sans le nom de la
+> rue n'est pas un arrêté — et l'agent qui recevait la demande devait rouvrir le
+> formulaire d'origine pour savoir qui demandait quoi.
+>
+> Trois habitudes de formulaire y échappaient de toute façon. Les questions **par
+> branches** : « quel service du pôle Temps de l'Enfant », « quel service du pôle
+> Administration Générale », une seule remplie et les autres vides — la première
+> l'emportait, donc deux demandeurs sur trois n'avaient pas de service. Les
+> **répétitions** : un bâtiment, puis un autre, chacun avec ses salles — seule la
+> première était vue. Et un intitulé finissant par un point — « Nom de la
+> manifestation. » — dont le nom se perdait dans le découpage des chemins.
+
+#### Ajouté
+
+- **Une quarantaine de champs reconnus**, dans l'ordre où un formulaire les pose,
+  groupés par section : Manifestation, Demandeur, Lieux, Matériel, Livraison,
+  Besoins techniques, Restauration, Communication, Suivi. Rien n'est obligatoire
+  au-delà du titre et de la date : une demande incomplète vaut mieux qu'une
+  demande perdue.
+- **Ce qu'aucune colonne ne porte est conservé avec la demande**, avec son
+  intitulé et sa section, et s'affiche dans l'onglet *Résumé* sous « Demande
+  d'origine ». Une demande reçue l'an dernier se relit telle qu'elle a été posée,
+  même si le formulaire a changé de questions depuis.
+- **Chaque réponse devient une valeur de modèle** : `{pole}`, `{association}`,
+  `{lieux_interieurs}`, `{lieux_exterieurs}`, `{fermeture_circulation}`,
+  `{personnel_technique_nombre}`, `{debit_boissons}`… Le catalogue des valeurs
+  proposées est désormais **dérivé** de celui de la réception : deux listes
+  tenues à la main auraient divergé au premier champ ajouté.
+- **La liste des valeurs à écrire dans Word** s'affiche dans *Paramètres >
+  Services > Document pré-rempli*, groupée par section, avant même d'avoir déposé
+  un modèle — un clic copie le champ. L'ordre réel des choses est d'écrire le
+  document d'abord.
+- **Plusieurs chemins pour un même champ.** L'écran de correspondance en accepte
+  autant que le formulaire a de branches, et le premier qui porte une valeur
+  l'emporte.
+- **Les groupes et les répéteurs se règlent d'un seul chemin.** « Nom et Prénom
+  du Président » se lit « Dubois Martin » ; « un bâtiment, puis un autre » se lit
+  « Mairie : Salle des mariages ; Complexe Sportif : Club House ». Jamais
+  d'accolades ni de JSON dans un document.
+- **Le matériel d'une question répétable à quantités est rattaché tout seul** :
+  « Quel matériel technique ? » puis « Combien ? », sans avoir à ranger quoi que
+  ce soit sous une clé `materiels`. Un répéteur qui ne compte rien — « Quel
+  bâtiment ? », « Quelle rue ? » — n'est pas pris pour du matériel.
+
+#### Corrigé
+
+- **Un intitulé contenant un point était introuvable.** « Nom de la
+  manifestation. » — le titre, donc le champ obligatoire — se perdait entre deux
+  segments de chemin, et la demande était refusée.
+
 ### Un seul endroit où saisir les gens, qu'ils se connectent ou non
 
 > « Remettre le matériel » proposait quatre natures de détenteur — une personne,

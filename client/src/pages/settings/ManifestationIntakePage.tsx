@@ -7,7 +7,7 @@ import {
   Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert, Badge,
   Modal, ModalBody, ModalFooter, Spinner
 } from '@/components/ui'
-import { intakeApi, type IntakeSource } from '@/lib/api'
+import { intakeApi, type ChampIntake, type CorrespondanceIntake, type IntakeSource } from '@/lib/api'
 import EssaiWebhook from '@/components/EssaiWebhook'
 import toast from 'react-hot-toast'
 
@@ -346,7 +346,7 @@ function ModaleCreation({ onClose, onSave, loading }: {
 
 function ModaleCorrespondance({ source, onClose }: { source: IntakeSource; onClose: () => void }) {
   const queryClient = useQueryClient()
-  const [correspondance, setCorrespondance] = useState<Record<string, string> | null>(null)
+  const [correspondance, setCorrespondance] = useState<CorrespondanceIntake | null>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['intake-champs', source.id],
@@ -398,27 +398,27 @@ function ModaleCorrespondance({ source, onClose }: { source: IntakeSource; onClo
               </span>
             </Alert>
 
-            <div className="mt-4 space-y-3">
-              {data?.champs.map((champ) => (
-                <div key={champ.champ} className="flex flex-wrap items-center gap-3">
-                  <div className="w-56 shrink-0">
-                    <span className="text-sm text-gray-900 dark:text-gray-100">{champ.libelle}</span>
-                    {champ.obligatoire && <span className="text-red-500 ml-1">*</span>}
-                  </div>
-                  <div className="flex-1 min-w-[14rem]">
-                    <Select
-                      value={correspondance?.[champ.champ] ?? ''}
-                      onChange={(e) => {
-                        const suivant = { ...(correspondance ?? {}) }
-                        if (e.target.value) suivant[champ.champ] = e.target.value
-                        else delete suivant[champ.champ]
-                        setCorrespondance(suivant)
-                      }}
-                      options={[
-                        { value: '', label: '— non renseigné —' },
-                        ...chemins.map((c) => ({ value: c, label: c })),
-                      ]}
-                    />
+            <div className="mt-4 space-y-5">
+              {parSection(data?.champs ?? []).map(([section, champs]) => (
+                <div key={section}>
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400 border-b dark:border-gray-700 pb-1 mb-2">
+                    {section}
+                  </h4>
+                  <div className="space-y-3">
+                    {champs.map((champ) => (
+                      <ChampCorrespondance
+                        key={champ.champ}
+                        champ={champ}
+                        chemins={chemins}
+                        valeur={correspondance?.[champ.champ]}
+                        onChange={(suivante) => {
+                          const suivant = { ...(correspondance ?? {}) }
+                          if (suivante.length === 0) delete suivant[champ.champ]
+                          else suivant[champ.champ] = suivante.length === 1 ? suivante[0] : suivante
+                          setCorrespondance(suivant)
+                        }}
+                      />
+                    ))}
                   </div>
                 </div>
               ))}
@@ -437,5 +437,83 @@ function ModaleCorrespondance({ source, onClose }: { source: IntakeSource; onClo
         </Button>
       </ModalFooter>
     </Modal>
+  )
+}
+
+/**
+ * Champs regroupés par section, dans l'ordre où le catalogue les donne.
+ *
+ * Une quarantaine de lignes alignées sans séparation ne se règle pas : on perd
+ * de vue ce qui a déjà été vérifié, et c'est ainsi qu'un champ reste vide.
+ */
+function parSection(champs: ChampIntake[]): Array<[string, ChampIntake[]]> {
+  const sections = new Map<string, ChampIntake[]>()
+  for (const champ of champs) {
+    sections.set(champ.section, [...(sections.get(champ.section) ?? []), champ])
+  }
+  return [...sections.entries()]
+}
+
+/**
+ * Un champ, et le ou les chemins qui le renseignent.
+ *
+ * Plusieurs chemins parce qu'un formulaire pose la même question par branches —
+ * « quel service du pôle Temps de l'Enfant », « quel service du pôle
+ * Administration Générale » — et n'en remplit qu'une. Le premier chemin qui
+ * porte une valeur l'emporte à la lecture ; n'en régler qu'un reviendrait à ne
+ * lire la réponse que d'un demandeur sur trois.
+ */
+function ChampCorrespondance({
+  champ,
+  chemins,
+  valeur,
+  onChange,
+}: {
+  champ: ChampIntake
+  chemins: string[]
+  valeur: string | string[] | undefined
+  onChange: (chemins: string[]) => void
+}) {
+  const reglés = Array.isArray(valeur) ? valeur : valeur ? [valeur] : []
+  // Une ligne vide en fin de liste : c'est là qu'on ajoute un chemin, sans
+  // avoir à chercher un bouton.
+  const lignes = [...reglés, '']
+
+  const options = [
+    { value: '', label: '— non renseigné —' },
+    ...chemins.map((c) => ({ value: c, label: c })),
+  ]
+
+  return (
+    <div className="flex flex-wrap items-start gap-3">
+      <div className="w-56 shrink-0 pt-1.5">
+        <span className="text-sm text-gray-900 dark:text-gray-100">{champ.libelle}</span>
+        {champ.obligatoire && <span className="text-red-500 ml-1">*</span>}
+        {!champ.colonne && (
+          <span className="block text-xs text-gray-400" title="Valeur utilisable dans un modèle de document">
+            {`{${champ.cleModele}}`}
+          </span>
+        )}
+      </div>
+      <div className="flex-1 min-w-[14rem] space-y-1">
+        {lignes.map((chemin, i) => (
+          <Select
+            key={`${champ.champ}-${i}`}
+            value={chemin}
+            onChange={(e) => {
+              const suivants = [...lignes]
+              suivants[i] = e.target.value
+              onChange(suivants.filter(Boolean))
+            }}
+            options={options}
+          />
+        ))}
+        {reglés.length > 1 && (
+          <p className="text-xs text-gray-400">
+            Le premier de ces chemins qui porte une valeur sera retenu.
+          </p>
+        )}
+      </div>
+    </div>
   )
 }

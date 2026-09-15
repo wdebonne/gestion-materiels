@@ -10,6 +10,7 @@ import {
   CorrespondanceMateriel,
   apparierMateriel,
   cheminsDe,
+  detailsDeLaDemande,
   extraireManifestation,
   extraireMateriels,
   genererSecret,
@@ -525,14 +526,19 @@ router.post('/:slug', async (req: Request, res: Response) => {
       else nonApparies.push(ligne);
     }
 
+    // Ce que le formulaire dit et qu'aucune colonne ne porte : le pôle, la
+    // salle, la rue fermée, les agents demandés. Conservé avec la demande, sans
+    // quoi le document envoyé au service resterait muet sur ce qui le concerne.
+    const details = detailsDeLaDemande(champs);
+
     const maintenant = new Date().toISOString();
     const creation = await db.execute(
       `INSERT INTO manifestations
          (title, date_start, date_end, start_time, end_time, expected_people,
           contact_name, contact_phone, contact_email, delivery_address, delivery_date,
           recovery_date, notes_interior, notes_exterior, status, created_by,
-          intake_unmatched, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?)`,
+          intake_unmatched, intake_details, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, ?, ?, ?, ?)`,
       [
         champs.title,
         champs.date_start,
@@ -549,6 +555,7 @@ router.post('/:slug', async (req: Request, res: Response) => {
         champs.notes_interior ?? '',
         champs.notes_exterior ?? '',
         nonApparies.length > 0 ? JSON.stringify(nonApparies) : null,
+        details.length > 0 ? JSON.stringify(details) : null,
         maintenant,
         maintenant,
       ]
