@@ -7,6 +7,59 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Brancher le Nextcloud de la commune, et voir ce qu'on y dépose
+
+> Le dépôt WebDAV existait, mais il se réglait dans *Manifestations > Export* —
+> là où il avait été écrit, parce que c'est le suivi partagé qui l'avait rendu
+> nécessaire. Il sert depuis aux modèles de document, et le trouver supposait de
+> savoir qu'il fallait le chercher dans un onglet d'export.
+>
+> Surtout, rien ne montrait le serveur. Un chemin de dossier se recopie à la
+> main dans un profil comme dans un modèle, et le dépôt est silencieux par
+> construction : un Nextcloud injoignable ne doit jamais faire échouer la
+> validation d'une manifestation. Une faute de frappe ne produisait donc pas une
+> erreur, mais un dossier créé pour l'occasion à côté du bon, et un fichier que
+> personne ne retrouvait.
+
+#### Ajouté
+
+- **Un écran *Paramètres > Nextcloud***, qui règle la connexion pour toute
+  l'application : adresse, identifiant, mot de passe d'application, dossier de
+  travail. Le réglage est le même qu'avant — la même clé `nextcloud_config`, le
+  même compte — il a seulement cessé d'appartenir aux manifestations.
+- **Un explorateur** : l'arborescence du serveur, dossiers d'abord, avec la
+  taille et la date. On y descend, on copie un chemin pour le recoller dans un
+  profil d'export ou un modèle, et on télécharge un fichier pour vérifier qu'un
+  dépôt contient bien ce qu'on croit. Il ouvre sur le dossier de travail, la
+  racine d'un compte municipal en contenant trente autres.
+- `GET /api/nextcloud/browse` et `GET /api/nextcloud/download`, tous deux
+  réservés à l'administrateur.
+
+#### Modifié
+
+- **L'adresse du site suffit désormais.** La racine WebDAV attendue —
+  `https://cloud.ville.fr/remote.php/dav/files/mairie` — ne s'affiche nulle part
+  dans Nextcloud : ce qu'on a sous les yeux, et donc ce qu'on recopie, c'est
+  l'adresse du site, parfois celle de l'écran des fichiers avec son
+  `/apps/files/?dir=…`. Elle est complétée à l'enregistrement, et l'écran affiche
+  l'adresse réellement retenue au lieu de garder la saisie abandonnée.
+- **Le résultat du test s'affiche sur l'écran**, et non plus dans une bulle qui
+  s'efface : c'est la phrase qui dit quoi corriger — nom de domaine introuvable,
+  certificat auto-signé, identifiants refusés. Le test dépose toujours un fichier
+  témoin puis le retire, pour prouver l'écriture au lieu de valider la forme des
+  champs.
+- *Manifestations > Export* ne porte plus le formulaire mais l'état de la
+  connexion, et dit ce que son absence coûte : un profil réglé sur « Nextcloud »
+  qui ne dépose rien, en silence.
+- La configuration passe de `/api/manifestations/export/nextcloud` à
+  `/api/nextcloud`.
+- Un chemin d'exploration ne peut plus remonter d'un cran : `fetch` normalise le
+  chemin avant de l'envoyer, et `..` serait sorti du dossier du compte.
+- La liste des modèles `.docx` d'un dossier passe par le même analyseur
+  `PROPFIND`, qui reconnaît les préfixes de domaine autres que `d:` — un serveur
+  qui répond en `lp1:` rendait jusqu'ici un dossier vide, sans erreur.
+
+
 ### Se connecter sans mot de passe, avec l'appareil qu'on a déjà en main
 
 > L'écran *Paramètres > Authentification* proposait depuis longtemps d'activer

@@ -49,6 +49,7 @@ const NotificationsPage = lazy(() => import('@/pages/settings/NotificationsPage'
 const ApiPage = lazy(() => import('@/pages/settings/ApiPage'))
 const ApiTokensPage = lazy(() => import('@/pages/settings/ApiTokensPage'))
 const AuthSettingsPage = lazy(() => import('@/pages/settings/AuthSettingsPage'))
+const NextcloudPage = lazy(() => import('@/pages/settings/NextcloudPage'))
 const ProfilePage = lazy(() => import('@/pages/ProfilePage'))
 const PluginPage = lazy(() => import('@/pages/PluginPage'))
 const CustomFieldsPage = lazy(() => import('@/pages/CustomFieldsPage'))
@@ -177,6 +178,7 @@ function App() {
             <Route path="cles" element={<ClesSettingsPage />} />
             <Route path="cles/import-snipeit" element={<ImportSnipeItPage />} />
             <Route path="agendas" element={<AgendasExternesPage />} />
+            <Route path="nextcloud" element={<NextcloudPage />} />
             <Route path="notifications" element={<NotificationsPage />} />
 
             {/* Anciennes adresses, regroupées en onglets : on redirige plutôt
