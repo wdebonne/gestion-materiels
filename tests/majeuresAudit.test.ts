@@ -24,8 +24,13 @@ describe('03 — le superviseur peut désigner un emprunteur', () => {
   const routes = lire('src', 'routes', 'user.routes.ts');
   const page = lire('client', 'src', 'pages', 'ReservationsPage.tsx');
 
+  // Ouvert plus largement depuis que l'annuaire sert aussi à remettre une
+  // clé : `requireFieldWrite` est le geste de terrain, et il comprend le
+  // superviseur. Ce qui est interdit, c'est de revenir à `requireAdmin`.
   it('expose un annuaire ouvert au superviseur', () => {
-    expect(routes).toMatch(/router\.get\(\s*'\/annuaire',\s*authenticateToken,\s*requireSupervisor/);
+    expect(routes).toMatch(
+      /router\.get\(\s*'\/annuaire',\s*authenticateToken,\s*require(Supervisor|FieldWrite)/
+    );
   });
 
   it('déclare l’annuaire avant `/:id`, qui capterait le mot', () => {

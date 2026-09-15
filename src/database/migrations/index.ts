@@ -26,6 +26,7 @@ import clesEtTrousseaux from './024_cles_et_trousseaux';
 import importSnipeIt from './025_import_snipeit';
 import entitesHtmlImportees from './026_entites_html_importees';
 import passkeys from './027_passkeys';
+import personnesSansCompte from './028_personnes_sans_compte';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -64,6 +65,7 @@ export const MIGRATIONS: readonly Migration[] = [
   importSnipeIt,
   entitesHtmlImportees,
   passkeys,
+  personnesSansCompte,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

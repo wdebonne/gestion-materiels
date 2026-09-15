@@ -611,7 +611,7 @@ async function verifierAssertion(
   }
 
   const compte = await db.queryOne(
-    `SELECT id, email, role, first_name, last_name, avatar, is_active, password_changed_at, token_version
+    `SELECT id, email, role, first_name, last_name, avatar, is_active, can_login, password_changed_at, token_version
        FROM users WHERE id = ?`,
     [passkey.user_id]
   );
@@ -637,6 +637,23 @@ async function verifierAssertion(
       ipAddress: req.ip,
     });
     return { erreur: 'Compte désactivé', statut: 401 };
+  }
+
+  /*
+   * Et un compte ramené à une fiche d'annuaire reste fermé, lui aussi.
+   *
+   * C'est la raison pour laquelle `can_login` est une colonne, et non la
+   * déduction « pas de mot de passe, donc pas d'accès » : une passkey se passe
+   * justement de mot de passe. Retirer l'accès sans regarder ici laisserait
+   * entrer par l'appareil enregistré quelqu'un à qui on vient de le refuser.
+   */
+  if (!compte.can_login) {
+    await logService.warning('auth', 'Connexion par passkey sur une fiche sans accès', {}, {
+      userId: compte.id,
+      userEmail: compte.email,
+      ipAddress: req.ip,
+    });
+    return { erreur: "Ce compte n'a pas d'accès à l'application", statut: 401 };
   }
 
   let verification;

@@ -47,11 +47,15 @@ export const authenticateToken = async (
     
     // Vérifier que l'utilisateur existe toujours et est actif
     const user = await db.queryOne(
-      'SELECT id, email, role, is_active, token_version FROM users WHERE id = ?',
+      'SELECT id, email, role, is_active, can_login, token_version FROM users WHERE id = ?',
       [decoded.userId]
     );
 
-    if (!user || !user.is_active) {
+    // `can_login` est relu à chaque requête, au même titre que `is_active` :
+    // ramener un compte à une simple fiche d'annuaire doit fermer la porte tout
+    // de suite, et pas à l'expiration du jeton. Le compteur de version est
+    // incrémenté en même temps côté `PUT /users/:id` — ceci en est la ceinture.
+    if (!user || !user.is_active || !user.can_login) {
       res.status(401).json({ success: false, message: 'Utilisateur non trouvé ou désactivé' });
       return;
     }

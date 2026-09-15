@@ -108,6 +108,31 @@ router.post('/login', authLimiter, loginValidation, async (req: AuthRequest, res
       return res.status(401).json({ success: false, message: 'Compte désactivé' });
     }
 
+    /*
+     * Une fiche d'annuaire n'est pas un compte.
+     *
+     * Depuis la migration 028, `users` contient aussi des personnes qu'on
+     * désigne sans qu'elles se connectent — le gardien qui détient un
+     * trousseau, l'élu à qui on a confié une clé. Elles n'ont le plus souvent
+     * pas d'adresse, donc pas de quoi arriver jusqu'ici ; mais un compte dont
+     * l'accès a été retiré en garde une, et c'est lui que ce contrôle arrête.
+     *
+     * L'absence de mot de passe est vérifiée en même temps, et pas seulement
+     * par prudence : `bcrypt.compare` refuse une empreinte nulle en levant, ce
+     * qui rendrait une erreur serveur là où il faut un refus.
+     */
+    if (!user.can_login || !user.password) {
+      await logService.warning('auth', 'Tentative de connexion sur une fiche sans accès', { email }, {
+        userId: user.id,
+        userEmail: user.email,
+        ipAddress: req.ip
+      });
+      return res.status(401).json({
+        success: false,
+        message: "Ce compte n'a pas d'accès à l'application. Demandez à un administrateur de l'ouvrir."
+      });
+    }
+
     const politique = await lirePolitique();
 
     // Blocage temporaire après trop d'échecs. Le rate limiting protège l'API
@@ -308,8 +333,10 @@ router.post('/forgot-password', authLimiter, [
     // Chercher l'utilisateur
     const user = await db.queryOne('SELECT * FROM users WHERE email = ?', [email]);
 
-    // Toujours retourner succès pour éviter les fuites d'information
-    if (!user) {
+    // Toujours retourner succès pour éviter les fuites d'information. Une
+    // personne sans accès reçoit la même phrase et aucun lien : un mot de passe
+    // neuf ne lui ouvrirait rien, et le courriel ne ferait que l'égarer.
+    if (!user || !user.can_login) {
       return res.json({ success: true, message: 'Si cet email existe, un lien de réinitialisation a été envoyé' });
     }
 
@@ -569,8 +596,13 @@ router.post('/refresh', async (req: AuthRequest, res: Response) => {
 
     const decoded = jwt.verify(refreshToken, getJwtSecret()) as JwtPayload;
     
-    const user = await db.queryOne('SELECT * FROM users WHERE id = ? AND is_active = 1', [decoded.userId]);
-    
+    // `can_login` compte ici autant que `is_active` : l'accès retiré à
+    // quelqu'un ne doit pas se prolonger par un jeton qui se renouvelle seul.
+    const user = await db.queryOne(
+      'SELECT * FROM users WHERE id = ? AND is_active = 1 AND can_login = 1',
+      [decoded.userId]
+    );
+
     if (!user) {
       await logService.warning('auth', 'Tentative de rafraîchissement de token pour utilisateur inexistant ou inactif', {
         decodedUserId: decoded.userId

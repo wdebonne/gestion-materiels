@@ -237,12 +237,17 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
     },
   })
 
+  // `canLogin=1` : un membre de service reçoit des demandes à traiter dans
+  // l'application. Proposer ici quelqu'un qui ne s'y connecte pas donnerait un
+  // approbateur qui ne verra jamais ce qu'on attend de lui.
   const { data: utilisateurs = [] } = useQuery({
     queryKey: ['users-simple'],
     queryFn: async () => {
-      const res = await api.get('/users')
+      const res = await api.get('/users?canLogin=1')
+      // La route répond en camelCase : lire `first_name` ici affichait
+      // « undefined undefined » dans la liste des membres à ajouter.
       return (res.data.users || res.data.data || []) as Array<{
-        id: number; email: string; first_name: string; last_name: string
+        id: number; email: string | null; firstName: string; lastName: string
       }>
     },
   })
@@ -450,7 +455,7 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
                       { value: '', label: '— Ajouter une personne —' },
                       ...utilisateurs
                         .filter((u) => !(service.members ?? []).some((m) => m.id === u.id))
-                        .map((u) => ({ value: u.id, label: `${u.first_name} ${u.last_name} (${u.email})` })),
+                        .map((u) => ({ value: u.id, label: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() + (u.email ? ` (${u.email})` : '') })),
                     ]}
                   />
                   <Button size="sm" variant="outline" icon={<UserPlus className="w-4 h-4" />}

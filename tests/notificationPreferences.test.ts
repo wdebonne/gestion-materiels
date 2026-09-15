@@ -56,7 +56,8 @@ beforeAll(() => {
       created_at DATETIME, updated_at DATETIME
     );
     CREATE TABLE users (
-      id INTEGER PRIMARY KEY, email VARCHAR(255), role VARCHAR(50), is_active INTEGER DEFAULT 1
+      id INTEGER PRIMARY KEY, email VARCHAR(255), role VARCHAR(50), is_active INTEGER DEFAULT 1,
+      can_login INTEGER NOT NULL DEFAULT 1
     );
     CREATE TABLE notification_preferences (
       id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, event VARCHAR(50),

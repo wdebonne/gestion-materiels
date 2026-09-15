@@ -7,6 +7,94 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Un seul endroit où saisir les gens, qu'ils se connectent ou non
+
+> « Remettre le matériel » proposait quatre natures de détenteur — une personne,
+> un service, un lieu, un externe — et la première ne proposait personne. Deux
+> défauts s'y cumulaient : la liste lisait `res.data.data` quand la route répond
+> `{ users }`, si bien qu'elle était vide quoi qu'il arrive ; et elle interrogeait
+> `GET /api/users`, réservé à l'administrateur, qu'un agent de terrain n'aurait
+> de toute façon jamais obtenue.
+>
+> Le défaut de fond était ailleurs. `users` n'acceptait que des gens qui se
+> connectent : adresse et mot de passe obligatoires. Y inscrire le gardien de la
+> salle des fêtes, l'élu ou l'employé du CLSH obligeait à leur inventer les deux
+> — donc à créer un accès que personne n'avait voulu. Faute de quoi ils
+> tombaient dans « un externe », c'est-à-dire dans du texte libre, où
+> « A. Marie », « Marie André » et « André MARIE » deviennent trois détenteurs
+> qu'aucune requête ne rapproche. « Quelles clés détient cette personne ? »
+> n'avait pas de réponse.
+
+#### Ajouté
+
+- **Des personnes sans compte, dans le même annuaire que les comptes.** Une case
+  « Se connecte à l'application » dans *Paramètres > Utilisateurs* : décochée, un
+  nom suffit — ni adresse, ni mot de passe. La personne est alors désignable
+  partout où l'application demande quelqu'un, et ne peut se connecter nulle part.
+- **La case se recoche.** Accorder un accès plus tard demande une adresse et un
+  mot de passe à ce moment-là, et **ne recopie personne** : l'identifiant ne
+  change pas, donc les clés détenues, les réservations et l'historique suivent.
+  Le geste inverse referme la porte sans effacer personne.
+- **Un filtre** dans la liste : tout le monde, les comptes, les personnes sans
+  connexion.
+- **Le superviseur tient l'annuaire.** *Paramètres > Utilisateurs* s'ouvre à
+  lui dans une forme réduite : il n'y voit que les personnes sans compte, les
+  inscrit et corrige leur nom. C'est lui qui remet les clés, et le renvoyer
+  vers l'administrateur pour un nom manquant le renverrait en pratique vers
+  « un externe » — sans compter qu'à défaut de pouvoir corriger, il
+  créerait un doublon pour rattraper une faute de frappe.
+
+  Ce qui ouvre une porte reste à l'administrateur, et le serveur le tient
+  seul : créer un compte, en modifier un, accorder ou retirer un accès,
+  distribuer un rôle, poser un mot de passe, retirer des passkeys, supprimer,
+  anonymiser, couper les sessions. `GET /api/users` ne rend au superviseur
+  que les fiches — lui montrer les comptes lui donnerait les adresses, les
+  rôles et les dernières connexions de toute la collectivité, alors qu'il
+  tient un annuaire de noms, pas l'organigramme des accès. Le filtre
+  `?canLogin=1` ne l'ouvre pas : la condition du serveur s'ajoute à la sienne.
+- `GET /api/users?canLogin=1|0`, et `POST /api/users` accepte `canLogin: false`.
+- La migration `028_personnes_sans_compte` rend `email` et `password`
+  facultatifs et ajoute `can_login`. Sur SQLite, qui ne sait pas alléger une
+  colonne, la table est reconstruite : lignes, index, clés étrangères des
+  vingt-cinq tables qui visent `users` et compteur d'auto-incrément sont
+  conservés, puis vérifiés. Personne n'est mis dehors par la mise à jour.
+  Une panne dans la fenêtre de deux instructions où `users` n'existe plus
+  est reprise au démarrage suivant, plutôt que laissée à conclure qu'il n'y
+  a rien à faire — sur une base amputée.
+
+#### Corrigé
+
+- **Le champ « Personne » d'une remise de clé proposait toujours une liste
+  vide**, sans erreur ni explication. Il lit désormais `GET /api/users/annuaire`,
+  ouvert à la saisie de terrain — remettre une clé en est une — et qui rend les
+  personnes sans compte au même titre que les autres.
+- **La liste des membres à ajouter à un service affichait « undefined
+  undefined »** : elle lisait `first_name` là où la route répond `firstName`.
+
+#### Modifié
+
+- **`can_login` est relu à chaque requête**, au même titre que `is_active` :
+  retirer un accès ferme la porte tout de suite et périme les sessions en cours,
+  au lieu d'attendre l'expiration du jeton — jusqu'à sept jours. Le mot de passe,
+  la passkey et le lien de réinitialisation sont refusés séparément : une passkey
+  se passe justement de mot de passe, et déduire l'accès de son absence
+  l'ouvrirait au moment où l'on croit le fermer.
+- **Supprimer quelqu'un qui détient une clé le désactive au lieu de l'effacer.**
+  `holder_user_id` est en `ON DELETE SET NULL` : la détention serait restée, sans
+  détenteur. Les clés remises et les réservations rejoignent donc ce que l'écran
+  annonce avant toute suppression.
+- **Les écrans qui distribuent des droits** — Droits, membres d'un service,
+  permissions de plugin — ne proposent que des comptes : un approbateur qui ne se
+  connecte pas ne verrait jamais ce qu'on attend de lui.
+- **Les notifications ne partent qu'aux comptes** et qu'aux adresses renseignées.
+- Le rôle d'une personne sans compte est ramené à « Utilisateur » : laisser
+  passer « Administrateur » poserait une promotion prête à prendre effet le jour
+  où la connexion serait accordée, sans que personne l'ait relue.
+- Le dernier administrateur actif ne peut pas être privé de connexion, et
+  personne ne peut se retirer son propre accès.
+- **Le lien *Paramètres* apparaît au superviseur**, et `/settings` l'emmène
+  sur l'annuaire plutôt que sur *Général*, qu'il ne peut pas lire.
+
 ### Brancher le Nextcloud de la commune, et voir ce qu'on y dépose
 
 > Le dépôt WebDAV existait, mais il se réglait dans *Manifestations > Export* —

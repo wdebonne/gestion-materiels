@@ -61,7 +61,8 @@ beforeAll(() => {
     CREATE TABLE subcategories (id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255), is_prestation INTEGER);
     CREATE TABLE users (
       id INTEGER PRIMARY KEY, email VARCHAR(255), first_name VARCHAR(255),
-      last_name VARCHAR(255), role VARCHAR(50), is_active INTEGER DEFAULT 1
+      last_name VARCHAR(255), role VARCHAR(50), is_active INTEGER DEFAULT 1,
+      can_login INTEGER NOT NULL DEFAULT 1
     );
     CREATE TABLE services (
       id INTEGER PRIMARY KEY, name VARCHAR(255), slug VARCHAR(100), email VARCHAR(255),
