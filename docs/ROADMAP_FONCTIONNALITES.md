@@ -13,7 +13,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
-| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 1150 tests (1106 backend, 44 frontend) |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 1152 tests (1108 backend, 44 frontend) |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
@@ -234,7 +234,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 >
 > Le format se règle **par modèle** — Word, PDF, ou les deux — et non par une préférence générale : le service qui retouche son document avant de l'envoyer a besoin du `.docx`, celui qui le fait signer a besoin du PDF. Par défaut `.docx`, pour que les modèles déjà réglés rendent exactement ce qu'ils rendaient.
 >
-> Deux chemins sont tentés dans l'ordre, parce que le connecteur ONLYOFFICE **n'enregistre pas de fournisseur de conversion** : l'API générique de Nextcloud ne répond donc que si Nextcloud Office est installé à côté, et EuroOffice étant un fork, parier sur l'un revenait à parier sur la variante installée. La route propre au connecteur d'abord, l'API de Nextcloud ensuite ; aucune ne demande de secret supplémentaire, le mot de passe d'application déjà enregistré suffit. Une **sonde** convertit un vrai document témoin et nomme le chemin qui a répondu — interroger la liste des applications installées ne dirait rien de ce qui se passe au moment de produire un arrêté.
+> Trois chemins sont tentés dans l'ordre, et le premier piège est l'**identifiant de l'application**. Euro-Office est un fork d'ONLYOFFICE Docs, mais son connecteur Nextcloud est une application distincte — `eurooffice`, et non `onlyoffice` : les routes sont les mêmes à l'identifiant près, si bien qu'interroger le seul `onlyoffice` rend un 404 qu'on lirait comme « pas de serveur bureautique » alors qu'il y en a un. Les deux sont donc essayés, et un troisième fork s'ajouterait dans une seule liste. L'API générique de Nextcloud vient en dernier : **aucun de ces connecteurs n'enregistre de fournisseur de conversion**, si bien qu'elle répond « le fichier n'a pas pu être converti » — faute de fournisseur, et non faute de moteur — sauf si Nextcloud Office est installé à côté. Aucun de ces chemins ne demande de secret supplémentaire, le mot de passe d'application déjà enregistré suffit. Une **sonde** convertit un vrai document témoin et nomme le chemin qui a répondu, ou les trois refus quand aucun n'aboutit — interroger la liste des applications installées ne dirait rien de ce qui se passe au moment de produire un arrêté.
 >
 > Le `.docx` doit monter sur Nextcloud pour être converti, la conversion travaillant sur un `fileid` et non sur un flux : il est déposé dans un dossier de travail caché, converti, puis retiré **dans tous les cas** — sinon un échec y laisserait un fichier par tentative. Une conversion ratée ne bloque rien : le `.docx` part quand même et l'erreur s'inscrit sur le modèle, là où un modèle cassé s'inscrit déjà.
 

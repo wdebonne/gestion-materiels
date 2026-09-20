@@ -21,15 +21,21 @@ import {
  * `modeleDocx.service`). Le Nextcloud branché en porte un : il est déjà
  * installé, déjà authentifié, et n'ajoute aucune machine à administrer.
  *
- * **Deux chemins, essayés dans l'ordre.** EuroOffice est un fork d'ONLYOFFICE,
- * dont le connecteur Nextcloud n'enregistre pas de fournisseur de conversion :
- * l'API générique de Nextcloud ne répond donc que si Nextcloud Office est
- * installé à côté. La route propre au connecteur, elle, parle directement au
- * serveur de documents. Parier sur l'une des deux reviendrait à parier sur la
- * variante installée ; on les essaie donc toutes les deux, et la sonde de
- * l'écran des paramètres dit laquelle a répondu.
+ * **Plusieurs chemins, essayés dans l'ordre.** Aucun connecteur bureautique
+ * n'enregistre de fournisseur de conversion auprès de Nextcloud : l'API
+ * générique (`/ocs/v2.php/apps/files/api/v1/convert`) répond, mais échoue faute
+ * de fournisseur — sauf si Nextcloud Office est installé à côté. Ce sont donc
+ * les routes propres aux connecteurs qui travaillent, en parlant directement au
+ * serveur de documents.
  *
- * **Le document doit d'abord monter sur Nextcloud.** Les deux chemins désignent
+ * Encore faut-il frapper à la bonne porte. Euro-Office est un fork d'ONLYOFFICE
+ * Docs, mais son connecteur Nextcloud est une **application distincte** :
+ * `eurooffice`, et non `onlyoffice`. Les routes sont les mêmes à l'identifiant
+ * près, si bien qu'essayer l'une puis l'autre ne coûte qu'un 404 — et évite de
+ * parier sur la variante installée. La sonde de l'écran des paramètres dit
+ * laquelle a répondu.
+ *
+ * **Le document doit d'abord monter sur Nextcloud.** Tous ces chemins désignent
  * le fichier par son `fileid`, jamais par un flux. Le `.docx` est donc déposé
  * dans un dossier de travail, converti, puis retiré — y compris quand la
  * conversion échoue, sans quoi les témoins s'accumuleraient dans un dossier que
@@ -91,7 +97,20 @@ function messageDuRefus(contenu: Buffer): string {
 }
 
 /**
- * Chemin 1 — la route du connecteur ONLYOFFICE/EuroOffice.
+ * Les connecteurs bureautiques connus, dans l'ordre où on les essaie.
+ *
+ * Deux applications Nextcloud pour un même code : le fork Euro-Office a son
+ * propre connecteur, et l'identifiant d'application est tout ce qui les
+ * distingue côté route. Un troisième fork s'ajouterait ici, et nulle part
+ * ailleurs.
+ */
+const CONNECTEURS = [
+  { app: 'eurooffice', libelle: 'Euro-Office' },
+  { app: 'onlyoffice', libelle: 'ONLYOFFICE' },
+];
+
+/**
+ * La route d'un connecteur bureautique.
  *
  * `downloadas` passe la main au serveur de documents et rend les octets du PDF.
  * Ce n'est pas une route OCS, mais une requête en `Basic` sans cookie passe le
@@ -100,10 +119,12 @@ function messageDuRefus(contenu: Buffer): string {
  */
 async function parConnecteur(
   config: ConfigurationNextcloud,
-  fileId: number
+  fileId: number,
+  connecteur: { app: string; libelle: string }
 ): Promise<Tentative> {
   const parametres = new URLSearchParams({ fileId: String(fileId), toExtension: 'pdf' });
-  const url = `${racineInstance(config.url)}/index.php/apps/onlyoffice/downloadas?${parametres}`;
+  const racine = racineInstance(config.url);
+  const url = `${racine}/index.php/apps/${connecteur.app}/downloadas?${parametres}`;
 
   const reponse = await fetch(url, {
     method: 'GET',
@@ -112,7 +133,10 @@ async function parConnecteur(
   });
 
   if (reponse.status === 404) {
-    return { success: false, error: 'route absente — connecteur ONLYOFFICE non installé' };
+    return {
+      success: false,
+      error: `route absente — application « ${connecteur.app} » non installée`,
+    };
   }
   if (reponse.status === 401 || reponse.status === 403) {
     return { success: false, error: `accès refusé (HTTP ${reponse.status})` };
@@ -126,12 +150,14 @@ async function parConnecteur(
 }
 
 /**
- * Chemin 2 — l'API de conversion de Nextcloud.
+ * Le second recours — l'API de conversion de Nextcloud.
  *
  * Elle écrit le PDF dans le compte plutôt que de le rendre : il faut donc le
- * relire, puis l'effacer. Elle ne répond que si une application a déclaré
- * savoir convertir du `.docx`, ce que fait Nextcloud Office et non le
- * connecteur ONLYOFFICE — d'où sa place en second.
+ * relire, puis l'effacer. Elle n'aboutit que si une application a déclaré
+ * savoir convertir du `.docx` — ce que fait Nextcloud Office, et aucun des
+ * connecteurs ci-dessus. D'où sa place en dernier : sur une instance qui n'a
+ * que son serveur de documents, elle répond « le fichier n'a pas pu être
+ * converti », faute de fournisseur et non faute de moteur.
  */
 async function parApiNextcloud(
   config: ConfigurationNextcloud,
@@ -189,7 +215,11 @@ const CHEMINS: Array<{
     dossier: string
   ) => Promise<Tentative>;
 }> = [
-  { nom: 'connecteur ONLYOFFICE', tenter: (config, fileId) => parConnecteur(config, fileId) },
+  ...CONNECTEURS.map((connecteur) => ({
+    nom: `connecteur ${connecteur.libelle}`,
+    tenter: (config: ConfigurationNextcloud, fileId: number) =>
+      parConnecteur(config, fileId, connecteur),
+  })),
   { nom: 'API de conversion Nextcloud', tenter: parApiNextcloud },
 ];
 

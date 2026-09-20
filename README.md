@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-1150-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1152-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -197,7 +197,7 @@ passage la permission de renommer le véhicule.
 - 📦 **Matériel en lot** : un matériel du parc est soit un **exemplaire unique** — un véhicule, qui ne peut pas être à deux endroits — soit un **lot** avec sa quantité : cinquante chaises, dix tables. Le stock réel et prévisionnel se lit alors directement sur la fiche de parc, sans le tenir ailleurs. Un lot n'a ni carburant ni contrôle technique, qui portent sur un exemplaire, mais garde ses **entretiens** — réparation, nettoyage. Ce qui manque sur un lot est un avertissement chiffré, pas un refus
 - 🏛️ **Prestations rangées par service, dans le parc** : la catégorie est le service, et ses sous-catégories mêlent prestations et matériel — Technique porte *Prestation* et *Mobilier*, Urbanisme porte *Prestation*, *Armoires* et *Bureau*, Restauration porte *Prestation* et *Verrerie*. Le réglage se fait sur la branche, avec héritage à trois niveaux, et le service gère ses prestations là où il tient déjà son parc. Une prestation n'immobilise rien : elle ne bloque jamais une autre manifestation
 - 🔌 **Prestations** : raccordement électrique, débit de boissons, personnel pour une cérémonie. Une case à cocher sur un article suffit ; sa catégorie décide du service qui l'approuve. Sans stock ni disponibilité — demandée, puis réalisée
-- 📄 **Document pré-rempli par service** : un modèle `.docx` écrit dans Word est rattaché à un service, ses champs entre accolades sont détectés à l'import, et une liste déroulante relie chacun à une donnée de la demande. **Toutes** les réponses du formulaire y sont offertes — `{pole}`, `{lieux_exterieurs}`, `{debit_boissons}`… — et la liste des champs à écrire dans Word s'affiche, groupée par section, avant même d'avoir déposé un modèle. Chaque service reçoit **sa seule part** — celui qui instruit un débit de boissons n'a que faire du nombre de chaises — joint à la manifestation et à son courriel d'approbation. Le modèle peut être tenu dans **Nextcloud** et corrigé à un seul endroit : il est relu à chaque génération. Chaque modèle dit ce qu'il rend — **Word, PDF, ou les deux** : celui qui retouche son document avant de l'envoyer a besoin du `.docx`, celui qui le fait signer a besoin du PDF. Le PDF est converti par le serveur bureautique du Nextcloud — EuroOffice, ONLYOFFICE ou Nextcloud Office — sans machine supplémentaire à administrer, et s'il est injoignable le document part quand même, en Word
+- 📄 **Document pré-rempli par service** : un modèle `.docx` écrit dans Word est rattaché à un service, ses champs entre accolades sont détectés à l'import, et une liste déroulante relie chacun à une donnée de la demande. **Toutes** les réponses du formulaire y sont offertes — `{pole}`, `{lieux_exterieurs}`, `{debit_boissons}`… — et la liste des champs à écrire dans Word s'affiche, groupée par section, avant même d'avoir déposé un modèle. Chaque service reçoit **sa seule part** — celui qui instruit un débit de boissons n'a que faire du nombre de chaises — joint à la manifestation et à son courriel d'approbation. Le modèle peut être tenu dans **Nextcloud** et corrigé à un seul endroit : il est relu à chaque génération. Chaque modèle dit ce qu'il rend — **Word, PDF, ou les deux** : celui qui retouche son document avant de l'envoyer a besoin du `.docx`, celui qui le fait signer a besoin du PDF. Le PDF est converti par le serveur bureautique du Nextcloud — Euro-Office, ONLYOFFICE ou Nextcloud Office — sans machine supplémentaire à administrer, et s'il est injoignable le document part quand même, en Word
 - 🧪 **Essai de webhook à blanc** : collez ce que votre formulaire envoie, l'application dit si la demande passerait, quel matériel serait reconnu et quels services seraient alertés — sans rien créer ni prévenir personne
 - 📎 **Pièces jointes** : arrêtés, plans, constats, photos. Glisser-déposer ou photo prise au téléphone, description facultative pour les retrouver, et lien vers le matériel concerné. Supprimer une pièce retire aussi le fichier
 - 🎯 **Matériel prêtable au choix** : par catégorie, par sous-catégorie, ou matériel par matériel — le réglage le plus précis l'emporte. Le réfrigérateur part pour la brocante, le grill de la même catégorie reste à la cuisine
@@ -938,11 +938,16 @@ du modèle** — un fichier Word déposé dans un Nextcloud partagé ne doit rie
 sur le serveur.
 
 **Conversion en PDF** — le format est réglé **par modèle** (`output_format` : `docx`, `pdf`, ou les
-deux). La conversion passe par le serveur bureautique du Nextcloud, par deux chemins essayés dans
-l'ordre : la route du connecteur ONLYOFFICE/EuroOffice (`/apps/onlyoffice/downloadas`), puis l'API
-de conversion de Nextcloud (`/ocs/v2.php/apps/files/api/v1/convert`, qui demande Nextcloud Office
-installé à côté — le connecteur ONLYOFFICE n'enregistre pas de fournisseur de conversion). Aucun des
-deux ne demande de secret supplémentaire. Le `.docx` est déposé dans un dossier de travail caché,
+deux). La conversion passe par le serveur bureautique du Nextcloud, par trois chemins essayés dans
+l'ordre : le connecteur **Euro-Office** (`/apps/eurooffice/downloadas`), le connecteur **ONLYOFFICE**
+(`/apps/onlyoffice/downloadas`), puis l'API de conversion de Nextcloud
+(`/ocs/v2.php/apps/files/api/v1/convert`). Euro-Office est un fork d'ONLYOFFICE Docs, mais son
+connecteur Nextcloud est une **application distincte** : les routes sont identiques à l'identifiant
+près, et interroger le mauvais rend un 404 qu'on lirait comme « pas de serveur bureautique ». L'API
+générique vient en dernier — aucun de ces connecteurs n'enregistre de fournisseur de conversion, si
+bien qu'elle n'aboutit que lorsque Nextcloud Office est installé à côté, et répond sinon « le
+fichier n'a pas pu être converti ». Aucun de ces chemins ne demande de secret supplémentaire. Le
+`.docx` est déposé dans un dossier de travail caché,
 converti, puis retiré dans tous les cas. Une conversion qui échoue laisse partir le `.docx` et note
 l'erreur sur le modèle : un service qui reçoit le mauvais format peut travailler, un service qui ne
 reçoit rien est bloqué sans le savoir. `POST /api/nextcloud/test-pdf` vérifie tout cela sur un vrai
@@ -1284,7 +1289,7 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-> **1150 tests** : 1106 backend (58 suites) + 44 frontend (5 suites).
+> **1152 tests** : 1108 backend (58 suites) + 44 frontend (5 suites).
 >
 > Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas
 > vérifier à l'œil — le reste couvre les routes et les écrans module par module.
@@ -1296,7 +1301,7 @@ npm run test:run      # Exécution unique
 > | `saisie-terrain.test.ts` | Champs obligatoires des relevés, et surtout que les champs validés soient bien ceux que la route lit |
 > | `apiTokens.test.ts` | Portée des tokens API, méthode HTTP → permission |
 > | `migrations.test.ts` | Journal, ordre, non-rejeu, reprise après échec |
-> | `conversionPdf.test.ts` | Conversion en PDF : l'ordre des deux chemins, le refus que le connecteur rend en JSON sous un code 200, et le retrait du document témoin même après un échec |
+> | `conversionPdf.test.ts` | Conversion en PDF : l'identifiant d'application du connecteur — `eurooffice` ou `onlyoffice` —, l'ordre des chemins, le refus que le connecteur rend en JSON sous un code 200, et le retrait du document témoin même après un échec |
 > | `materielPretable.test.ts`, `materielEspaceVert.test.ts` | Les trois états du parc — oui, non, hérite — et le fait que les deux modules ne se confondent pas |
 > | `coutEspaceVert.test.ts` | Prix figé à la pose, lignes sans prix comptées à part, zones écartées des coûts |
 > | `geometriePlan.test.ts` | Aires du plan annoté : un pourcent vertical ne mesure pas comme un pourcent horizontal, et l'oublier double la surface |
