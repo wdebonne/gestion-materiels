@@ -27,13 +27,17 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
   l'envoyer a besoin du `.docx`, celui qui le fait signer a besoin du PDF, et les
   deux ont raison. Par défaut `.docx` : les modèles déjà réglés rendent
   exactement ce qu'ils rendaient.
-- **Deux chemins de conversion, essayés dans l'ordre** : la route du connecteur
-  ONLYOFFICE/EuroOffice, puis l'API de conversion de Nextcloud. Le connecteur
-  n'enregistre pas de fournisseur de conversion, si bien que l'API générique ne
-  répond que lorsque Nextcloud Office est installé à côté ; et EuroOffice étant
-  un fork, parier sur l'un revenait à parier sur la variante installée. Ni l'un
-  ni l'autre ne demande de secret supplémentaire : le mot de passe d'application
-  déjà enregistré suffit.
+- **Trois chemins de conversion, essayés dans l'ordre** : le connecteur
+  Euro-Office, le connecteur ONLYOFFICE, puis l'API de conversion de Nextcloud.
+  Euro-Office est un fork d'ONLYOFFICE Docs, mais son connecteur Nextcloud est
+  une **application distincte** — `eurooffice`, et non `onlyoffice` : les routes
+  sont les mêmes à l'identifiant près, et interroger le mauvais rend un 404
+  qu'on lirait comme « pas de serveur bureautique » alors qu'il y en a un. Un
+  troisième fork s'ajouterait dans une seule liste. L'API générique vient en
+  dernier : aucun de ces connecteurs n'enregistre de fournisseur de conversion
+  auprès de Nextcloud, si bien qu'elle n'aboutit que lorsque Nextcloud Office
+  est installé à côté. Aucun de ces chemins ne demande de secret
+  supplémentaire : le mot de passe d'application déjà enregistré suffit.
 - **« Tester la conversion PDF »** dans *Paramètres > Nextcloud* : un vrai
   document témoin est converti, et le chemin qui a répondu est nommé.
   Interroger la liste des applications installées ne dirait rien de ce qui se

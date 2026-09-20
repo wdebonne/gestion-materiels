@@ -282,7 +282,7 @@ function Connexion({
         </p>
 
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          La conversion en PDF passe par le serveur bureautique du Nextcloud — EuroOffice,
+          La conversion en PDF passe par le serveur bureautique du Nextcloud — Euro-Office,
           ONLYOFFICE ou Nextcloud Office. Le test convertit un document témoin sur la connexion{' '}
           <strong>déjà enregistrée</strong> et nomme le chemin qui a répondu : sans lui, un modèle
           réglé sur PDF ne se révélerait qu'à la première demande reçue.

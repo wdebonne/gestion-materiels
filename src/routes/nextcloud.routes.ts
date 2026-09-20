@@ -116,9 +116,10 @@ router.post('/test', authenticateToken, requireAdmin, async (req: AuthRequest, r
  *
  * Même exigence que le test de connexion : on convertit un vrai document
  * témoin, parce qu'interroger la liste des applications installées ne dirait
- * rien de ce qui se passera au moment de produire un arrêté. Deux chemins sont
- * possibles selon la variante installée — EuroOffice, ONLYOFFICE, Nextcloud
- * Office — et le seul moyen de savoir lequel répond est de le demander.
+ * rien de ce qui se passera au moment de produire un arrêté. Plusieurs chemins
+ * sont possibles selon la variante installée — Euro-Office, ONLYOFFICE,
+ * Nextcloud Office —, ils ne se distinguent parfois que par l'identifiant de
+ * l'application, et le seul moyen de savoir lequel répond est de le demander.
  *
  * Sans cette sonde, un administrateur règlerait un modèle sur PDF et ne
  * l'apprendrait qu'à la première demande reçue, quand la conversion échoue en
