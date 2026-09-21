@@ -217,6 +217,22 @@ passage la permission de renommer le véhicule.
 - 🏛️ **Filtre par service qui ne ment pas** : la liste des services se déduit de ce qui est réellement prêtable. Un service Véhicules qui ne prête aucun véhicule n'y figure pas ; le service Technique y figure pour sa seule prestation de raccordement électrique. Une entrée « Sans service » rassemble ce qu'aucune catégorie ne rattache
 - ↕️ **Tri sur chaque colonne** : nom, origine, catégorie, service, total, dehors, promis, disponible — et sur les sorties, la manifestation, la période et l'état. Les nombres se trient en nombres, les mots dans l'ordre alphabétique français
 
+### ⏱️ Plannings et heures (Nouveau!)
+
+Le parc dit ce que la commune possède ; ce module dit ce qu'il **coûte en heures**.
+
+- 📝 **Saisie faite pour le terrain** : un agent déclare « aujourd'hui de 14 h à 16 h, Livraison Manifestation » en quelques secondes, depuis un téléphone. Date du jour pré-remplie, raccourci « Hier », puces de durée (30 min, 1 h, 2 h, demi-journée), et la durée calculée affichée en permanence — avant d'enregistrer, pas après
+- 🏷️ **Catégorie créée à la volée** : le champ propose ce qui existe et enregistre ce qui manque. C'est **l'agent** qui découvre sur le terrain qu'il manque « Livraison Manifestation » ; l'envoyer demander à son responsable le ramènerait à cocher « Autre », et la statistique s'effondrerait dans cette case-là. Casse et accents sont neutralisés à l'écriture : « Tonte », « tonte » et « TONTE » restent une seule catégorie, sur SQLite comme sur MySQL
+- 👥 **Le travail à plusieurs, compté juste** : deux agents une heure sur la même tâche font **deux heures de travail mobilisé** mais **une heure pour chacun**. Un renfort de 30 min sur une tâche de 2 h porte le total à 2 h 30. Un renfort est de préférence quelqu'un de l'annuaire — comptes et fiches sans compte confondus — ou, en dernier recours, un libellé libre (« un agent des espaces verts »)
+- 🔀 **Deux mesures qu'on ne mélange jamais** : « temps total mobilisé » répond à *ce que cette tâche a coûté à la collectivité*, « temps d'une personne » à *ce que la journée de quelqu'un a contenu*. Le rapport bascule de l'une à l'autre, et dit en une phrase ce qu'il compte — un malentendu sur ce point suffirait à fausser une réunion
+- 📊 **Rapports prêts à projeter** : semaine, mois, année ou période libre ; répartition par catégorie, par personne ou par manifestation ; camembert **et** tableau des durées et parts côte à côte ; comparaison avec la période précédente, avec la même période l'an dernier, ou avec une période choisie — en barres, parce qu'un camembert ne montre pas une variation
+- 📤 **Exports qui disent la même chose que l'écran** : Excel (feuille *Synthèse* et feuille *Détail*, une ligne par contribution), CSV (point-virgule et BOM, pour Excel en français) et impression. Les mêmes filtres partent à l'export : le fichier ne peut pas contredire la page qui l'a demandé
+- 🖨️ **Deux PDF, pour deux usages** : le **planning** en paysage — la grille de la semaine, puis le détail jour par jour avec les renforts et le temps mobilisé — et le **rapport d’activité** en portrait, camembert et écarts compris, prêt à distribuer en réunion. Les chiffres y sont **écrits en texte et non photographiés** : nets à l’impression, sélectionnables, et le document pèse quelques dizaines de kilo-octets au lieu de dix-huit mégaoctets. Un export lancé en thème sombre sort en clair — personne ne veut imprimer une page noire
+- 🗓️ **Vue planning** : grille horaire semaine ou jour, colorée par catégorie, où un clic sur un créneau vide ouvre la saisie déjà remplie. Les tâches ne s'y déplacent pas à la souris — un glissement involontaire changerait des heures déjà déclarées sans rien signaler
+- 👔 **Un agent, plusieurs encadrants** : Mme Martin *Responsable du service* et M. Jean *Référent de l'équipe* peuvent suivre le même agent, chacun à son titre. Un encadrant voit ses propres heures et celles de ses agents rattachés, rien de plus ; le rattachement est **réservé à l'administrateur**, car pouvoir s'attribuer des agents reviendrait à élargir seul son propre périmètre
+- ⚠️ **L'oubli de rattachement ne passe pas inaperçu** : une personne rattachée à personne n'est visible que d'elle-même et de l'administrateur. Les paramètres l'affichent en tête, nommément, plutôt que de laisser croire en réunion qu'elle n'a rien saisi
+- 🕛 **Ni fuseau ni changement d'heure** : le jour est une chaîne ISO, les horaires du texte, et la durée un entier de minutes calculé par le serveur. Aucune conversion UTC ne traverse un compteur d'heures, et la semaine ISO est calculée en JavaScript plutôt que confiée à `strftime` et `DATE_FORMAT`, qui ne s'accordent pas sur la première semaine de l'année
+
 ### 🌳 Espaces Verts (Nouveau!)
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
 - 💶 **Prix figé à la pose** : repris du parc ou corrigé selon la facture. Mettre à jour un tarif ne réévalue **jamais** ce qui a déjà été planté — c'est ce qui permet de dire ce qu'un massif a réellement coûté, des années après
@@ -306,6 +322,7 @@ a réellement consommé, chaque écriture portant sa propre nature.
 - 📥 **Import/Export** *(plugin système)* : Import CSV/Excel et export filtrable
 - 🎉 **Manifestations** *(plugin système)* : Gestion d'événements avec prêt/livraison/récupération de matériel et suivi de stock
 - 🌳 **Espaces Verts** *(plugin système)* : Plan interactif annoté, composition botanique, entretiens, clonage, archives & snapshots
+- ⏱️ **Plannings et heures** *(plugin système)* : Temps passé par tâche et par catégorie, travail à plusieurs, statistiques, camemberts, comparaison entre périodes et exports
 
 ### 🔌 Système de Plugins Avancé (Nouveau!)
 - 📦 Import de plugins via fichiers ZIP

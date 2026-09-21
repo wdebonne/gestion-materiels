@@ -1,0 +1,59 @@
+{
+  "name": "Plannings et heures",
+  "slug": "plannings",
+  "version": "1.0.0",
+  "description": "Temps passé par tâche et par catégorie : saisie, planning, statistiques et rapports",
+  "author": "Système",
+  "icon": "clock",
+  "type": "menu",
+  "route": "plannings",
+  "config": {
+    "mesures": ["mobilise", "personne"],
+    "granularites": ["jour", "semaine", "mois", "annee"],
+    "comparaisons": ["precedente", "n-1", "personnalisee"],
+    "formats_export": ["xlsx", "csv", "pdf"],
+    "categories_initiales": [
+      "Livraison Manifestation",
+      "Entretien du matériel",
+      "Espaces verts",
+      "Voirie",
+      "Interventions bâtiments",
+      "Réunion"
+    ]
+  },
+  "api": {
+    "endpoints": [
+      { "method": "GET", "path": "/plannings/permissions", "description": "Ce que l'utilisateur peut faire, et qui il encadre" },
+      { "method": "GET", "path": "/plannings/categories", "description": "Le référentiel des catégories de temps" },
+      { "method": "POST", "path": "/plannings/categories", "description": "Créer la catégorie manquante (ouvert aux agents)" },
+      { "method": "PUT", "path": "/plannings/categories/:id", "description": "Renommer une catégorie ou changer sa couleur" },
+      { "method": "PUT", "path": "/plannings/categories/:id/actif", "description": "Retirer une catégorie des propositions" },
+      { "method": "DELETE", "path": "/plannings/categories/:id", "description": "Supprimer une catégorie inemployée" },
+      { "method": "GET", "path": "/plannings/taches", "description": "Les tâches d'une période, selon le périmètre" },
+      { "method": "GET", "path": "/plannings/taches/:id", "description": "Le détail d'une tâche et de ses renforts" },
+      { "method": "POST", "path": "/plannings/taches", "description": "Déclarer du temps passé" },
+      { "method": "PUT", "path": "/plannings/taches/:id", "description": "Corriger une saisie" },
+      { "method": "DELETE", "path": "/plannings/taches/:id", "description": "Supprimer une saisie" },
+      { "method": "GET", "path": "/plannings/rapport", "description": "Totaux, répartitions et comparaison entre périodes" },
+      { "method": "GET", "path": "/plannings/rapport/export", "description": "Le même rapport en xlsx ou en csv" },
+      { "method": "GET", "path": "/plannings/superviseurs", "description": "Qui encadre une personne, et à quel titre" },
+      { "method": "PUT", "path": "/plannings/superviseurs/:agentId", "description": "Remplacer les encadrants d'une personne (administrateur)" },
+      { "method": "GET", "path": "/plannings/agents-sans-superviseur", "description": "Les personnes dont les heures ne sont visibles que d'elles-mêmes" }
+    ]
+  },
+  "database": {
+    "tables": [
+      { "name": "planning_categories", "description": "Le référentiel, enrichi par les agents eux-mêmes" },
+      { "name": "planning_taches", "description": "Une tâche datée, et le temps de son titulaire" },
+      { "name": "planning_participants", "description": "Le temps de chaque renfort, nommé ou non" },
+      { "name": "planning_superviseurs", "description": "Qui encadre qui, et à quel titre" }
+    ]
+  },
+  "pages": {
+    "index": {
+      "title": "Plannings et heures",
+      "layout": "default",
+      "components": ["header", "stats", "tabs", "semaine", "planning", "rapports", "categories"]
+    }
+  }
+}

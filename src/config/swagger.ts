@@ -158,6 +158,7 @@ const options: swaggerJSDoc.Options = {
       { name: 'Manifestations Stock', description: 'Stock matériel dédié aux manifestations' },
       { name: 'Auth Settings', description: 'Configuration SSO, LDAP et Passkey' },
       { name: 'Passkey', description: 'Connexion WebAuthn / FIDO2 et gestion des clés' },
+      { name: 'Plannings', description: 'Temps passé, catégories, encadrement et rapports' },
     ],
     paths: {
       // ─── Auth ───

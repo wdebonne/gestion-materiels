@@ -11,7 +11,7 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound, Cloud
+  ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound, Cloud, Clock
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -29,6 +29,16 @@ interface EntreeParametres {
 }
 
 const settingsNavItems: EntreeParametres[] = [
+  {
+    to: '/settings/plannings',
+    icon: Clock,
+    // Ouvert au superviseur pour qu'il voie qui il encadre et repère les
+    // agents rattachés à personne — dont les heures ne remontent nulle part.
+    // Le rattachement lui-même reste à l'administrateur : pouvoir s'attribuer
+    // des agents reviendrait à élargir seul son propre périmètre.
+    label: 'Plannings',
+    manageOnly: true
+  },
   {
     to: '/settings/general',
     icon: Settings,

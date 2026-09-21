@@ -27,6 +27,7 @@ import {
   FolderOpen,
   BarChart3,
   CalendarClock,
+  Clock,
   TrendingDown,
   FileSpreadsheet,
   MapPin,
@@ -167,7 +168,9 @@ export default function Layout() {
     'tree-pine': TreePine,
     KeyRound,
     keyround: KeyRound,
-    'key-round': KeyRound
+    'key-round': KeyRound,
+    Clock,
+    clock: Clock
   }
 
   // Navigation de base
@@ -184,7 +187,7 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings']
   // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
   const baseNavSlugs = ['manifestations']
   const pluginNavigation = menuPlugins

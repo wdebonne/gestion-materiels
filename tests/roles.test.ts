@@ -120,6 +120,7 @@ describe('Contrat des routes', () => {
   const objectRoutes = require('../src/routes/object.routes').default;
   const uploadRoutes = require('../src/routes/upload.routes').default;
   const reservationRoutes = require('../src/routes/reservation.routes').default;
+  const planningsRoutes = require('../src/routes/plannings.routes').default;
 
   const TERRAIN = ['admin', 'supervisor', 'agent'];
   const GESTION = ['admin', 'supervisor'];
@@ -208,6 +209,46 @@ describe('Contrat des routes', () => {
   describe('Réservations', () => {
     it('post / (demander une réservation) est ouvert aux agents', () => {
       expect(allowedRolesFor(reservationRoutes, 'post', '/')).toEqual(TERRAIN);
+    });
+  });
+
+  /**
+   * Plannings et heures.
+   *
+   * Deux droits qu'il ne faut pas confondre. **Saisir son temps** est une
+   * écriture de terrain : un agent doit toujours pouvoir déclarer ses propres
+   * heures, sans quoi le module ne mesure rien. **Rattacher un agent à un
+   * encadrant** appartient à l'administrateur seul : un encadrant qui pourrait
+   * s'attribuer des agents élargirait lui-même ce qu'il voit, et le
+   * cloisonnement ne tiendrait plus que par convention.
+   */
+  describe('Plannings et heures', () => {
+    it.each([
+      ['post', '/taches'],
+      ['put', '/taches/:id'],
+      ['delete', '/taches/:id'],
+      ['post', '/categories'],
+      ['put', '/categories/:id'],
+    ] as Array<[string, string]>)('%s %s est ouvert aux agents', (method, path) => {
+      expect(allowedRolesFor(planningsRoutes, method, path)).toEqual(TERRAIN);
+    });
+
+    it.each([
+      ['put', '/categories/:id/actif'],
+      ['delete', '/categories/:id'],
+    ] as Array<[string, string]>)('%s %s reste au superviseur', (method, path) => {
+      expect(allowedRolesFor(planningsRoutes, method, path)).toEqual(GESTION);
+    });
+
+    it("put /superviseurs/:agentId est réservé à l'administrateur", () => {
+      expect(allowedRolesFor(planningsRoutes, 'put', '/superviseurs/:agentId')).toEqual(ADMIN);
+    });
+
+    it('la lecture des heures ne porte aucune garde de rôle : le périmètre s’en charge', () => {
+      // Un compte « user » doit pouvoir consulter ses propres heures ; ce qu'il
+      // voit des autres est décidé par `perimetreDe`, pas par son rôle.
+      expect(allowedRolesFor(planningsRoutes, 'get', '/taches')).toBeNull();
+      expect(allowedRolesFor(planningsRoutes, 'get', '/rapport')).toBeNull();
     });
   });
 });

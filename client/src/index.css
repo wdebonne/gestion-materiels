@@ -378,6 +378,82 @@ body {
   background-color: rgba(255, 255, 255, 0.1);
 }
 
+/*
+ * La grille du module Plannings et heures.
+ *
+ * Portée à `.planning-grille` et non à `.fc` : le Calendrier général affiche des
+ * événements et des réservations, dont la densité et les besoins ne sont pas les
+ * mêmes. Ce qui suit règle des problèmes propres à des blocs de travail
+ * colorés et serrés, et n'a rien à faire ailleurs.
+ */
+
+/*
+ * Un liséré de la couleur du fond autour de chaque bloc.
+ *
+ * Deux tâches qui se suivent — 8 h-10 h puis 10 h-12 h — se touchaient
+ * exactement, et deux catégories de teintes voisines formaient un seul pavé
+ * dont on ne voyait plus la coupure. Deux pixels de surface suffisent à les
+ * séparer, sans ajouter de trait qui alourdirait la grille.
+ */
+.planning-grille .fc-timegrid-event {
+  box-shadow: 0 0 0 2px var(--fc-page-bg-color, #ffffff);
+}
+
+/*
+ * Une tâche très courte doit rester cliquable et lisible.
+ *
+ * Un quart d'heure ne fait que treize pixels de haut sur une grille cadrée à
+ * l'heure : le libellé y était coupé en deux et la cible du doigt inexistante.
+ * Le bloc déborde légèrement sur le créneau suivant plutôt que de devenir
+ * illisible — l'heure exacte se lit dans l'infobulle et dans la fiche.
+ */
+.planning-grille .fc-timegrid-event-harness {
+  min-height: 1.35rem;
+}
+
+/* Le clic sur un créneau vide ouvre la saisie : autant le faire savoir. */
+.planning-grille .fc-timegrid-slot-lane {
+  cursor: pointer;
+}
+
+/*
+ * Le samedi et le dimanche s'estompent légèrement.
+ *
+ * Assez pour que la semaine de travail se distingue d'un coup d'œil, pas assez
+ * pour suggérer qu'on n'y travaille pas : une commune livre et range ses
+ * manifestations le week-end, et ces heures-là comptent comme les autres.
+ */
+.planning-grille .fc-day-sat .fc-timegrid-col-frame,
+.planning-grille .fc-day-sun .fc-timegrid-col-frame {
+  background-color: rgba(100, 116, 139, 0.05);
+}
+
+.dark .planning-grille .fc-day-sat .fc-timegrid-col-frame,
+.dark .planning-grille .fc-day-sun .fc-timegrid-col-frame {
+  background-color: rgba(15, 23, 42, 0.35);
+}
+
+/*
+ * La colonne d’aujourd’hui, en bleuté plutôt qu’en jaune.
+ *
+ * FullCalendar la marque avec un jaune pâle, seule couleur chaude de l’écran :
+ * elle attire l’œil plus que les tâches et jure avec les six teintes de la
+ * palette. Le thème sombre corrigeait déjà la variable ; le thème clair
+ * l’avait gardée. Portée au seul planning : le Calendrier général n’a pas
+ * demandé à changer.
+ */
+.planning-grille {
+  --fc-today-bg-color: rgba(14, 165, 233, 0.07);
+}
+
+/* L'en-tête porte le jour et son total : il lui faut deux lignes. */
+.planning-grille .fc-col-header-cell-cushion {
+  display: block;
+  width: 100%;
+  padding: 0.25rem 0;
+}
+
+
 .dark .fc .fc-popover {
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
 }

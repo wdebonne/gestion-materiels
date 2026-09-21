@@ -29,6 +29,7 @@ import passkeys from './027_passkeys';
 import personnesSansCompte from './028_personnes_sans_compte';
 import detailsDemandeManifestation from './029_details_demande_manifestation';
 import formatSortieModele from './030_format_sortie_modele';
+import planningsEtHeures from './031_plannings_et_heures';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -70,6 +71,7 @@ export const MIGRATIONS: readonly Migration[] = [
   personnesSansCompte,
   detailsDemandeManifestation,
   formatSortieModele,
+  planningsEtHeures,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';
