@@ -23,6 +23,16 @@ interface ReferenceSelectProps {
   onCreate?: (nom: string) => Promise<void>
   /** Ce que désigne le référentiel, pour les libellés (« une station »…). */
   nomSingulier?: string
+  /**
+   * Qui a le droit d'ajouter une entrée.
+   *
+   * `'manage'` par défaut : les référentiels du parc se tiennent à quelques
+   * mains, et c'est ce qui les garde propres. `'fieldWrite'` ouvre l'ajout
+   * à l'agent, pour les référentiels dont il est le seul à découvrir les
+   * manques — les catégories de temps, qu'il rencontre sur le terrain et
+   * qu'il rangerait sinon dans « Autre », où la statistique s'effondre.
+   */
+  droitCreation?: 'manage' | 'fieldWrite'
 }
 
 /**
@@ -44,8 +54,10 @@ export default function ReferenceSelect({
   required,
   onCreate,
   nomSingulier = 'entrée',
+  droitCreation = 'manage',
 }: ReferenceSelectProps) {
-  const { canManage } = usePermissions()
+  const { canManage, canFieldWrite } = usePermissions()
+  const peutAjouter = droitCreation === 'fieldWrite' ? canFieldWrite : canManage
   const conteneurRef = useRef<HTMLDivElement>(null)
   const champRef = useRef<HTMLInputElement>(null)
 
@@ -82,7 +94,7 @@ export default function ReferenceSelect({
   // Proposer la création seulement si le nom saisi n'existe pas déjà,
   // en ignorant la casse et les espaces — c'est là que naissaient les doublons.
   const existeDeja = options.some((o) => o.name.trim().toLowerCase() === recherche)
-  const peutCreer = Boolean(onCreate) && canManage && recherche.length >= 2 && !existeDeja
+  const peutCreer = Boolean(onCreate) && peutAjouter && recherche.length >= 2 && !existeDeja
 
   const choisir = (nom: string) => {
     onChange(nom)
@@ -196,7 +208,7 @@ export default function ReferenceSelect({
             {filtrees.length === 0 && !peutCreer && (
               <li className="px-3 py-4 text-center text-gray-600 dark:text-gray-400">
                 {recherche
-                  ? canManage
+                  ? peutAjouter
                     ? 'Aucun résultat'
                     : `Aucun résultat. Demandez à votre responsable d'ajouter ${nomSingulier}.`
                   : `Aucune ${nomSingulier} enregistrée`}

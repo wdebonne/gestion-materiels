@@ -31,7 +31,9 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       secondary: "bg-white text-gray-700 hover:bg-gray-50 focus-visible:ring-gray-200 border border-gray-200 shadow-sm dark:bg-gray-700 dark:text-gray-200 dark:border-gray-600 dark:hover:bg-gray-600",
       danger: "bg-red-50 text-red-600 hover:bg-red-100 border border-red-100 focus-visible:ring-red-500 dark:bg-red-900/30 dark:text-red-300 dark:border-red-900 dark:hover:bg-red-900/50",
       ghost: "text-gray-600 hover:bg-gray-100 focus-visible:ring-gray-500 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white",
-      outline: "border border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-primary-500 hover:border-gray-400"
+      // Les variantes sombres manquaient : le bouton restait en gris fonce sur
+      // fond sombre, donc a peine lisible. Le mode clair ne change pas.
+      outline: "border border-gray-300 text-gray-700 hover:bg-gray-50 focus-visible:ring-primary-500 hover:border-gray-400 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 dark:hover:border-gray-500"
     }
 
     // Hauteurs minimales : une cible tactile descend difficilement sous 44 px,

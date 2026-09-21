@@ -7,6 +7,93 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Le planning et les statistiques s'emportent en PDF
+
+> Le tableur et le CSV servent à retravailler des chiffres. Une réunion, elle,
+> se prépare avec une feuille : le **planning** part en paysage — la grille de
+> la semaine telle qu'à l'écran, puis le détail jour par jour, avec les renforts
+> et le temps mobilisé — et le **rapport d'activité** en portrait, camembert,
+> répartition et écarts compris.
+>
+> Trois choix ont été faits en le vérifiant, chacun sur un défaut constaté.
+>
+> **Les chiffres sont écrits, pas photographiés.** Le premier essai capturait
+> les cartes entières, tableaux compris : dix-huit mégaoctets, impossibles à
+> envoyer par courriel — or c'est ainsi qu'un compte rendu circule — et des
+> nombres flous à l'impression. Seuls les graphiques sont désormais des images ;
+> les tableaux sont composés en texte, donc nets, sélectionnables et cherchables.
+> Le document est passé à 78 Ko.
+>
+> **Un export lancé en thème sombre sort en clair.** `html2canvas` photographie
+> la page telle qu'elle est : en sombre, elle donnait un aplat noir sur une page
+> blanche. Le thème clair est donc imposé pendant la capture, puis rendu — quoi
+> qu'il arrive, y compris si la capture échoue.
+>
+> **Le PDF rappelle toujours quelle mesure il compte.** « 75 h » ne veut pas
+> dire la même chose selon qu'on additionne les contributions de tout le monde
+> ou les heures d'une seule personne. À l'écran, le sélecteur est sous les yeux ;
+> sur une feuille qui passe de main en main, il ne reste que ce qui est écrit.
+
+### Les graphiques du module n'ont plus d'animation d'apparition
+
+> Elle repartait de zéro à chaque changement de filtre, de thème ou d'onglet, et
+> les étiquettes du camembert n'arrivaient qu'à la fin : un export déclenché
+> entre-temps photographiait des parts sans leurs pourcentages. Sur un écran fait
+> pour lire des chiffres, elle ne faisait que retarder la lecture.
+
+### Le temps passé se déclare, et se raconte en chiffres
+
+> L'application savait ce que la commune possède, prête et entretient. Elle ne
+> savait rien de ce que cela **coûte en heures** : un responsable qui préparait
+> une réunion n'avait aucun chiffre, et la répartition du travail entre les
+> livraisons de manifestations, la tonte et la voirie se discutait de mémoire.
+>
+> Un agent déclare désormais ce qu'il vient de faire — « aujourd'hui de 14 h à
+> 16 h, Livraison Manifestation » — en quelques secondes, et la catégorie qui
+> manque se crée depuis le formulaire, parce que c'est lui qui la découvre.
+>
+> Deux difficultés propres à ce sujet ont décidé du reste.
+>
+> **Le travail à plusieurs.** Deux agents une heure sur la même tâche, c'est
+> deux heures de travail mobilisé mais une heure pour chacun ; un renfort de
+> trente minutes sur une tâche de deux heures porte le total à deux heures
+> trente. Les deux lectures sont justes et ne répondent pas à la même question :
+> elles sont portées séparément, et jamais additionnées. Un renfort est de
+> préférence quelqu'un de l'annuaire — que la migration 028 avait justement
+> ouvert aux personnes sans compte — et, à défaut seulement, un libellé libre.
+>
+> **Le temps sans fuseau horaire.** Le projet n'a aucune configuration de
+> fuseau, nulle part. Une colonne `DATE` serait rendue par mysql2 en objet
+> `Date` à minuit locale, que `res.json()` renvoie en UTC : le 18 mars quitterait
+> l'API en `"2026-03-17T23:00:00Z"`, quand SQLite rendrait `'2026-03-18'`. Même
+> code, deux jours différents, et seulement en production. Le jour est donc une
+> chaîne ISO, les horaires du texte, la durée un entier de minutes — et la
+> semaine ISO se calcule en JavaScript, puisque `strftime` et `DATE_FORMAT` ne
+> s'accordent pas sur la première semaine de l'année.
+>
+> Le cloisonnement est strict : chacun voit ses heures, un encadrant celles des
+> personnes qui lui sont rattachées. Le rattachement appartient à
+> l'administrateur — un encadrant qui pourrait s'attribuer des agents
+> élargirait seul ce qu'il voit. Conséquence assumée : une personne rattachée à
+> personne n'est visible que d'elle-même, ce que l'écran de paramétrage affiche
+> nommément pour que l'oubli ne se découvre pas en réunion.
+
+### Une personne qui a déclaré des heures n'est plus effacée par mégarde
+
+> `DELETE /api/users/:id` ne supprime réellement un compte que si `tracesDe()`
+> ne trouve rien derrière lui. Cette fonction ignorait les nouvelles tables :
+> un agent saisonnier avec deux cents heures et rien d'autre aurait été compté
+> comme sans trace, donc effacé pour de bon, et ses heures avec lui. Les heures
+> saisies, les participations et les liens d'encadrement comptent désormais
+> comme les clés et les réservations — le compte est désactivé, pas supprimé.
+
+### Les boutons « contour » redeviennent lisibles en thème sombre
+
+> La variante `outline` du bouton n'avait aucune déclinaison sombre : elle
+> restait en gris foncé sur fond sombre, à peine visible. Elle touche tous les
+> écrans qui l'emploient. Le thème clair est inchangé.
+
+
 ### Le document d'un service peut partir en PDF, converti par le Nextcloud de la commune
 
 > Un arrêté ou une convention partait en `.docx`, seul format que la bibliothèque

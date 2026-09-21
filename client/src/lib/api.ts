@@ -2277,3 +2277,185 @@ export const agendaExterneApi = {
       data: { importes: number; envoyes: number; retires: number; erreur: string | null }
     }>(`/calendar/agendas/${id}/sync`),
 }
+
+// --- API Plannings et heures ---
+
+export type MesureTemps = 'mobilise' | 'personne'
+export type GranularitePlanning = 'jour' | 'semaine' | 'mois' | 'annee'
+
+export interface CategorieTemps {
+  id: number
+  nom: string
+  couleur: string
+  active: boolean
+}
+
+export interface RenfortTache {
+  id: number
+  personne: { id: number; nom: string } | null
+  libelle: string | null
+  minutes: number
+}
+
+export interface TachePlanning {
+  id: number
+  jour: string
+  heureDebut: string | null
+  heureFin: string | null
+  minutes: number
+  minutesMobilisees: number
+  description: string | null
+  titulaire: { id: number; nom: string }
+  categorie: CategorieTemps | null
+  manifestation: { id: number; titre: string } | null
+  participants: RenfortTache[]
+}
+
+export interface PartTemps {
+  id: number | null
+  libelle: string
+  couleur?: string
+  minutes: number
+  part: number | null
+}
+
+export interface SeriePeriode {
+  cle: string
+  libelle: string
+  libelleLong: string
+  debut: string
+  fin: string
+  minutes: number
+}
+
+export interface RapportTemps {
+  periode: {
+    debut: string
+    fin: string
+    libelle: string
+    jours: number
+    granularite: GranularitePlanning
+    typePeriode: GranularitePlanning
+  }
+  mesure: MesureTemps
+  total: { minutes: number; taches: number; personnes: number }
+  parPeriode: SeriePeriode[]
+  parCategorie: PartTemps[]
+  parPersonne: PartTemps[]
+  parManifestation: PartTemps[]
+}
+
+export interface ComparaisonTemps {
+  reference: RapportTemps
+  ecart: { minutes: number; pourcentage: number | null }
+  parCategorie: {
+    id: number | null
+    libelle: string
+    couleur?: string
+    minutes: number
+    minutesReference: number
+    ecart: number
+    pourcentage: number | null
+  }[]
+}
+
+export interface LienEncadrement {
+  id: number
+  personneId: number
+  nom: string
+  intitule: string | null
+}
+
+export interface DroitsPlanning {
+  canWrite: boolean
+  canManageCategories: boolean
+  canDisableCategories: boolean
+  canManageLinks: boolean
+  voitTout: boolean
+  moi: number
+  mesSuperviseurs: LienEncadrement[]
+  mesAgents: LienEncadrement[]
+  couleurs: string[]
+}
+
+export interface FiltresPlanning {
+  debut?: string
+  fin?: string
+  periode?: GranularitePlanning
+  ancre?: string
+  mesure?: MesureTemps
+  personneId?: number | null
+  granularite?: GranularitePlanning
+  categorieIds?: number[]
+  personneIds?: number[]
+  manifestationId?: number | null
+  comparer?: 'precedente' | 'n-1'
+  compareDebut?: string
+  compareFin?: string
+}
+
+/**
+ * Les parametres d'un rapport, ecrits une seule fois.
+ *
+ * L'ecran et l'export doivent envoyer exactement les memes : sinon le fichier
+ * telecharge porte d'autres totaux que la page depuis laquelle on l'a demande,
+ * et c'est le fichier qu'on croit.
+ */
+function parametresPlanning(filtres: FiltresPlanning): string {
+  const p = new URLSearchParams()
+  if (filtres.debut) p.append('debut', filtres.debut)
+  if (filtres.fin) p.append('fin', filtres.fin)
+  if (filtres.periode) p.append('periode', filtres.periode)
+  if (filtres.ancre) p.append('ancre', filtres.ancre)
+  if (filtres.mesure) p.append('mesure', filtres.mesure)
+  if (filtres.personneId) p.append('personneId', String(filtres.personneId))
+  if (filtres.granularite) p.append('granularite', filtres.granularite)
+  if (filtres.categorieIds?.length) p.append('categorieIds', filtres.categorieIds.join(','))
+  if (filtres.personneIds?.length) p.append('personneIds', filtres.personneIds.join(','))
+  if (filtres.manifestationId) p.append('manifestationId', String(filtres.manifestationId))
+  if (filtres.comparer) p.append('comparer', filtres.comparer)
+  if (filtres.compareDebut) p.append('compareDebut', filtres.compareDebut)
+  if (filtres.compareFin) p.append('compareFin', filtres.compareFin)
+  return p.toString()
+}
+
+export const planningApi = {
+  droits: () => api.get<{ success: boolean; data: DroitsPlanning }>('/plannings/permissions'),
+
+  categories: (inclureInactives = false) =>
+    api.get<{ success: boolean; data: CategorieTemps[] }>(
+      `/plannings/categories${inclureInactives ? '?inclureInactives=1' : ''}`
+    ),
+  creerCategorie: (nom: string) =>
+    api.post<{ success: boolean; data: CategorieTemps }>('/plannings/categories', { nom }),
+  modifierCategorie: (id: number, data: { nom?: string; couleur?: string }) =>
+    api.put<{ success: boolean; data: CategorieTemps }>(`/plannings/categories/${id}`, data),
+  activerCategorie: (id: number, active: boolean) =>
+    api.put<{ success: boolean; data: CategorieTemps }>(`/plannings/categories/${id}/actif`, { active }),
+  supprimerCategorie: (id: number) =>
+    api.delete<{ success: boolean }>(`/plannings/categories/${id}`),
+
+  taches: (filtres: FiltresPlanning) =>
+    api.get<{ success: boolean; data: { periode: { debut: string; fin: string }; taches: TachePlanning[] } }>(
+      `/plannings/taches?${parametresPlanning(filtres)}`
+    ),
+  creerTache: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; data: TachePlanning }>('/plannings/taches', data),
+  modifierTache: (id: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean; data: TachePlanning }>(`/plannings/taches/${id}`, data),
+  supprimerTache: (id: number) => api.delete<{ success: boolean }>(`/plannings/taches/${id}`),
+
+  rapport: (filtres: FiltresPlanning) =>
+    api.get<{ success: boolean; data: { rapport: RapportTemps; comparaison: ComparaisonTemps | null } }>(
+      `/plannings/rapport?${parametresPlanning(filtres)}`
+    ),
+  urlExport: (filtres: FiltresPlanning, format: 'xlsx' | 'csv') =>
+    `/plannings/rapport/export?format=${format}&${parametresPlanning(filtres)}`,
+
+  superviseurs: (agentId: number) =>
+    api.get<{ success: boolean; data: LienEncadrement[] }>(`/plannings/superviseurs?agentId=${agentId}`),
+  definirSuperviseurs: (agentId: number, liens: { superviseurId: number; intitule?: string }[]) =>
+    api.put<{ success: boolean; data: LienEncadrement[] }>(`/plannings/superviseurs/${agentId}`, { liens }),
+  agentsSansSuperviseur: () =>
+    api.get<{ success: boolean; data: { id: number; nom: string }[] }>('/plannings/agents-sans-superviseur'),
+}

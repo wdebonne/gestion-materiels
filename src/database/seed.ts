@@ -698,6 +698,32 @@ const DEFAULT_PLUGINS = [
       etats_retour: ['bon', 'usé', 'endommagé', 'perdu'],
       formats_etiquettes: ['L7160', 'L7163', 'L7165', 'L7651', 'L6008']
     })
+  },
+  {
+    name: 'Plannings et heures',
+    slug: 'plannings',
+    version: '1.0.0',
+    description: 'Temps passé par tâche et par catégorie : saisie, planning, statistiques et rapports',
+    author: 'Système',
+    icon: 'clock',
+    plugin_type: 'menu',
+    route: 'plannings',
+    is_system: 1,
+    is_active: 1,
+    // Un point de départ, pas une liste fermée : un agent crée la catégorie
+    // qui lui manque depuis le formulaire de saisie. Une liste vide au premier
+    // démarrage renverrait tout le monde vers « Autre », et la statistique
+    // qu'on cherche à bâtir s'effondrerait dans cette case-là.
+    config: JSON.stringify({
+      categories_initiales: [
+        'Livraison Manifestation',
+        'Entretien du matériel',
+        'Espaces verts',
+        'Voirie',
+        'Interventions bâtiments',
+        'Réunion'
+      ]
+    })
   }
 ];
 
@@ -755,7 +781,35 @@ export async function seedDatabase(): Promise<void> {
   }
   console.log('✅ Plugins par défaut insérés');
 
+  await semerCategoriesPlanning();
+
   console.log('🎉 Seed terminé avec succès!');
+}
+
+/**
+ * Quelques catégories de temps, pour que le premier écran ne soit pas vide.
+ *
+ * Elles ne sont posées qu'une fois, sur un référentiel encore vierge : les
+ * reposer à chaque démarrage ferait réapparaître celles qu'une commune a
+ * volontairement supprimées. La liste vient de la configuration du plugin,
+ * pour qu'elle se modifie à un seul endroit.
+ */
+async function semerCategoriesPlanning(): Promise<void> {
+  try {
+    const deja = await db.queryOne('SELECT COUNT(*) as cnt FROM planning_categories');
+    if (Number(deja?.cnt ?? 0) > 0) return;
+
+    const plugin = DEFAULT_PLUGINS.find((p) => p.slug === 'plannings');
+    const noms: string[] = JSON.parse(plugin?.config ?? '{}').categories_initiales ?? [];
+
+    const { resoudreCategorie } = await import('../services/plannings.service');
+    for (const nom of noms) await resoudreCategorie(nom, null);
+
+    console.log('✅ Catégories de temps initiales insérées');
+  } catch (erreur) {
+    // Base pas encore migrée : le reste du seed n'a pas à s'arrêter pour ça.
+    console.warn('Catégories de temps non insérées :', (erreur as Error).message);
+  }
 }
 
 // Exécuter le seed si appelé directement

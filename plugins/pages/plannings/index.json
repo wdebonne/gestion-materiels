@@ -1,0 +1,56 @@
+{
+  "page": "index",
+  "title": "Plannings et heures",
+  "layout": "default",
+  "components": [
+    {
+      "type": "header",
+      "props": {
+        "title": "Plannings et heures",
+        "subtitle": "Déclarer le temps passé, et en tirer des statistiques",
+        "icon": "clock",
+        "actions": ["saisir-temps", "exporter"]
+      }
+    },
+    {
+      "type": "stats",
+      "props": {
+        "cards": [
+          { "label": "Cette semaine", "key": "semaine", "color": "blue" },
+          { "label": "Ce mois", "key": "mois", "color": "green" },
+          { "label": "Tâches saisies", "key": "taches", "color": "gray" },
+          { "label": "Catégorie dominante", "key": "dominante", "color": "purple" }
+        ]
+      }
+    },
+    {
+      "type": "tabs",
+      "props": {
+        "tabs": [
+          { "id": "semaine", "label": "Ma semaine", "icon": "calendar-days" },
+          { "id": "planning", "label": "Planning", "icon": "calendar-clock" },
+          { "id": "rapports", "label": "Rapports", "icon": "chart-pie" },
+          { "id": "categories", "label": "Catégories", "icon": "tags" }
+        ]
+      }
+    },
+    {
+      "type": "list",
+      "props": {
+        "tab": "semaine",
+        "filters": ["periode", "personne"],
+        "columns": ["jour", "horaires", "categorie", "description", "duree", "renforts", "actions"]
+      }
+    },
+    {
+      "type": "chart",
+      "props": {
+        "tab": "rapports",
+        "chartType": "pie",
+        "axe": "categorie",
+        "mesures": ["mobilise", "personne"],
+        "comparaison": true
+      }
+    }
+  ]
+}

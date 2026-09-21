@@ -60,6 +60,8 @@ const ImportExportPage = lazy(() => import('@/pages/ImportExportPage'))
 const MapPage = lazy(() => import('@/pages/MapPage'))
 const ManifestationsPage = lazy(() => import('@/pages/ManifestationsPage'))
 const EspacesVertsPage = lazy(() => import('@/pages/EspacesVertsPage'))
+const PlanningsPage = lazy(() => import('@/pages/PlanningsPage'))
+const PlanningsSettingsPage = lazy(() => import('@/pages/settings/PlanningsSettingsPage'))
 
 /** Page mémorisée par ProtectedRoute avant de renvoyer vers la connexion. */
 export function getRedirectTarget(location: { state?: unknown }): string {
@@ -165,6 +167,7 @@ function App() {
           <Route path="map" element={<MapPage />} />
           <Route path="manifestations" element={<ManifestationsPage />} />
           <Route path="espaces-verts" element={<EspacesVertsPage />} />
+          <Route path="plannings" element={<PlanningsPage />} />
           <Route path="profile" element={<ProfilePage />} />
 
           {/* Routes dynamiques pour les plugins de type menu */}
@@ -186,6 +189,7 @@ function App() {
             <Route path="webhooks" element={<WebhooksPage />} />
             <Route path="manifestations" element={<ManifestationsSettingsPage />} />
             <Route path="espaces-verts" element={<EspacesVertsSettingsPage />} />
+            <Route path="plannings" element={<PlanningsSettingsPage />} />
             <Route path="cartographie" element={<CartographieSettingsPage />} />
             <Route path="cles" element={<ClesSettingsPage />} />
             <Route path="cles/import-snipeit" element={<ImportSnipeItPage />} />
