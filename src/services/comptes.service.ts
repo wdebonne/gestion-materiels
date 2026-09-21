@@ -32,6 +32,9 @@ export interface TracesCompte {
   services: number;
   cles: number;
   reservations: number;
+  heures_saisies: number;
+  heures_participation: number;
+  encadrement: number;
   total: number;
 }
 
@@ -72,6 +75,18 @@ export async function tracesDe(userId: number | string): Promise<TracesCompte> {
     // Celles-ci sont en `ON DELETE CASCADE` : elles ne seraient pas vidées mais
     // emportées, et le planning perdrait des créneaux au lieu d'un nom.
     reservations: await compter('SELECT COUNT(*) as cnt FROM reservations WHERE user_id = ?'),
+    // Des heures déclarées sont une trace comme une autre, et la plus
+    // coûteuse à perdre : un agent saisonnier qui a saisi deux cents heures
+    // et rien d'autre n'aurait, sans ces trois lignes, aucune trace du tout.
+    // Il serait donc effacé pour de bon, et ses heures avec lui.
+    heures_saisies: await compter('SELECT COUNT(*) as cnt FROM planning_taches WHERE user_id = ?'),
+    heures_participation: await compter(
+      'SELECT COUNT(*) as cnt FROM planning_participants WHERE user_id = ?'
+    ),
+    encadrement: await compter(
+      'SELECT COUNT(*) as cnt FROM planning_superviseurs WHERE agent_id = ? OR superviseur_id = ?',
+      2
+    ),
     total: 0,
   };
 
@@ -82,7 +97,10 @@ export async function tracesDe(userId: number | string): Promise<TracesCompte> {
     traces.messages +
     traces.services +
     traces.cles +
-    traces.reservations;
+    traces.reservations +
+    traces.heures_saisies +
+    traces.heures_participation +
+    traces.encadrement;
 
   return traces;
 }
