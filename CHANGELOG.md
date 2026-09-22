@@ -7,6 +7,78 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Les demandes préviennent qui il faut, et pas les autres
+
+> Le socle des demandes savait qui traite ; il ne savait écrire à personne. Ce
+> qui manquait n'était pas l'envoi — `sendEmail` existe depuis longtemps — mais
+> la réponse à une question que ni un rôle ni un service ne sait poser : *« une
+> fuite à la mairie doit prévenir le responsable de la maintenance et l'élu
+> chargé des travaux, en plus du demandeur et du technicien »*.
+>
+> **Le catalogue d'événements est désormais partagé entre deux modules.** Les
+> manifestations et les demandes emploient la même mécanique — `engageant`, les
+> préférences de chacun, la grille par rôle — qui n'est écrite qu'une fois. Un
+> **domaine** les sépare, les événements de demande sont **préfixés**, et rien
+> n'a été renommé : les réglages déjà en place et les préférences déjà
+> enregistrées restent valides, sans migration. Réemployer la clé `message`
+> aurait fait que couper les messages de manifestation coupait aussi ceux des
+> demandes.
+>
+> **Une règle se lit comme une phrase**, et c'est ainsi que l'écran l'affiche :
+>
+> > Quand **n'importe quel événement** se produit, pour une demande de
+> > **Bâtiment**, sur **Mairie** → prévenir **l'élu aux travaux**.
+>
+> Chaque condition laissée sur « peu importe » **élargit** la règle au lieu de
+> la restreindre. Une règle qui ne porte que sur un bâtiment vaut pour toutes
+> ses demandes : c'est le cas courant, et il évite d'en écrire une par
+> combinaison.
+>
+> **Les règles ajoutent, elles ne remplacent jamais.** La tentation était de
+> faire gagner la plus précise ; ç'aurait été un piège. Prévenir le responsable
+> de la maintenance parce qu'on est à la mairie aurait alors **retiré** le
+> technicien attitré de la catégorie, et personne n'en aurait compris la cause.
+> Mieux vaut un message de trop qu'un silence — c'est la doctrine déjà tenue par
+> les manifestations.
+>
+> **Un bouton « Tester ».** L'administrateur compose « une fuite à la mairie »,
+> appuie, et lit qui serait prévenu *et à quel titre* : « technicien affecté »,
+> « service Technique », « Élu aux travaux ». Le calcul est celui de l'envoi
+> réel ; on lui demande seulement de rendre la provenance au lieu de l'effacer.
+> C'est ce qui sépare « très paramétrable » de « paramétrable visuellement » :
+> sans lui, on découvre l'effet d'une règle sur une vraie demande, un mois plus
+> tard, quand quelqu'un se plaint d'être noyé.
+>
+> **Une personne sans compte reste joignable.** L'élu chargé des travaux figure
+> à l'annuaire sans identifiants depuis la migration 028. La grille par rôle
+> l'écarte à dessein — les liens d'un message mèneraient à un écran de connexion
+> qu'il ne passera pas — mais une règle qui le **nomme** l'atteint : on lui écrit
+> qu'il y a une fuite, il n'a pas besoin d'un lien.
+>
+> **Ce qui ne part pas.** Une note interne n'est jamais envoyée par courriel :
+> c'est tout son objet. L'auteur d'une action n'est pas prévenu de sa propre
+> action — se faire notifier de son propre message est le défaut le plus sûr
+> pour qu'on cesse de lire ses courriels. Et une demande qu'on vous confie ne
+> peut pas être coupée individuellement : sans cet avis, elle attendrait sans
+> que vous le sachiez, et son demandeur n'aurait aucun moyen de s'en apercevoir.
+>
+> **Le délai dépassé se signale une fois.** La vérification passe tous les
+> quarts d'heure — un délai de prise en charge se compte en heures, et un
+> passage quotidien signalerait le retard le lendemain, quand il ne sert plus à
+> rien — mais une trace inscrite au fil de la demande sert de témoin. Sans elle,
+> un retard de trois semaines aurait produit deux mille courriels, et la boîte
+> du technicien serait devenue inutilisable : exactement l'inverse du but.
+>
+> La trace est écrite **avant** l'envoi : si l'envoi échoue, mieux vaut un avis
+> manqué que deux mille. Une demande close ne rappelle rien. Une alerte est
+> posée au passage, avec la référence du module, si bien que la pastille du menu
+> compte les retards sans qu'on ait rien branché.
+>
+> Enfin, l'ancien refus « ne peut pas être coupé : vous bloqueriez une
+> manifestation sans le savoir » était écrit en dur. Il aurait expliqué à un
+> technicien qu'il bloque une manifestation en refusant les demandes qu'on lui
+> confie. Chaque avis engageant porte désormais sa propre raison.
+
 ### Les demandes internes se traitent dans l'application
 
 > Les signalements passaient par **GestSup**, une application séparée : deuxième

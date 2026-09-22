@@ -37,6 +37,8 @@ jest.mock('../src/database', () => {
 
 import {
   EVENEMENTS_NOTIFICATION,
+  domaineDe,
+  evenementsDu,
   destinatairesParRole,
   enregistrerDefauts,
   enregistrerPreference,
@@ -89,8 +91,52 @@ describe('Catalogue des événements', () => {
   it('ne déclare engageant que ce qui bloque réellement une manifestation', () => {
     // Élargir cette liste retirerait à chacun le droit de se taire ; la
     // restreindre laisserait quelqu'un bloquer sans le savoir.
-    const engageants = EVENEMENTS_NOTIFICATION.filter((e) => e.engageant).map((e) => e.evenement);
+    //
+    // Le filtre par domaine est explicite depuis que le catalogue en porte
+    // deux : sans lui, ce test refuserait tout événement engageant d'un autre
+    // module, alors qu'il n'a jamais rien eu à dire à leur sujet.
+    const engageants = evenementsDu('manifestation')
+      .filter((e) => e.engageant)
+      .map((e) => e.evenement);
     expect(engageants).toEqual(['approval_requested']);
+  });
+
+  it('ne déclare engageant, côté demandes, que ce qui laisse quelqu’un attendre', () => {
+    const engageants = evenementsDu('ticket')
+      .filter((e) => e.engageant)
+      .map((e) => e.evenement);
+    // Une demande confiée et jamais lue attend indéfiniment, et son demandeur
+    // n'a aucun moyen de le savoir. Le reste se coupe librement.
+    expect(engageants).toEqual(['ticket_assigne']);
+  });
+
+  it('range chaque événement dans un domaine, et sépare les deux catalogues', () => {
+    for (const evenement of EVENEMENTS_NOTIFICATION) {
+      expect(['manifestation', 'ticket']).toContain(evenement.domaine);
+      expect(domaineDe(evenement.evenement)).toBe(evenement.domaine);
+    }
+    expect(evenementsDu('manifestation').length + evenementsDu('ticket').length).toBe(
+      EVENEMENTS_NOTIFICATION.length
+    );
+  });
+
+  it('préfixe les événements de demande, pour ne pas écraser une préférence existante', () => {
+    // `notification_preferences` est indexée par (user_id, event) : réemployer
+    // la clé « message » ferait que couper les messages de manifestation
+    // couperait aussi ceux des demandes.
+    for (const evenement of evenementsDu('ticket')) {
+      expect(evenement.evenement.startsWith('ticket_')).toBe(true);
+    }
+  });
+
+  it('motive chaque avis qu’on ne peut pas couper', () => {
+    // Le message était écrit en dur et parlait de manifestation : il aurait
+    // expliqué à un technicien qu'il bloque une manifestation en refusant les
+    // demandes qu'on lui confie.
+    for (const evenement of EVENEMENTS_NOTIFICATION.filter((e) => e.engageant)) {
+      if (evenement.domaine === 'manifestation') continue;
+      expect(evenement.raisonEngageant?.length ?? 0).toBeGreaterThan(20);
+    }
   });
 
   it('décrit chaque événement, pour que l’écran n’ait rien à inventer', () => {

@@ -475,4 +475,174 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
   }
 });
 
+// ------------------------------------------------- les règles de diffusion
+
+/**
+ * Qui prévenir, et à quelle condition.
+ *
+ * Réservé à l'administrateur : une règle décide de qui reçoit quoi, et se
+ * laisser ajouter comme destinataire reviendrait à s'abonner aux demandes des
+ * autres services.
+ */
+router.get('/regles', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const regles = await db.query(
+      `SELECT r.*,
+              c.nom AS categorie_nom, sc.nom AS sous_categorie_nom,
+              s.name AS site_nom, srv.name AS service_nom,
+              du.first_name AS dest_prenom, du.last_name AS dest_nom,
+              dsrv.name AS dest_service_nom
+         FROM ticket_notification_regles r
+         LEFT JOIN ticket_categories c ON c.id = r.categorie_id
+         LEFT JOIN ticket_categories sc ON sc.id = r.sous_categorie_id
+         LEFT JOIN cle_sites s ON s.id = r.site_id
+         LEFT JOIN services srv ON srv.id = r.service_id
+         LEFT JOIN users du ON du.id = r.destinataire_user_id
+         LEFT JOIN services dsrv ON dsrv.id = r.destinataire_service_id
+        ORDER BY r.id ASC`
+    );
+
+    res.json({
+      success: true,
+      regles: regles.map((r: any) => ({
+        id: Number(r.id),
+        evenement: r.evenement ?? null,
+        libelle: r.libelle ?? null,
+        actif: Boolean(r.is_active),
+        portee: {
+          categorieId: r.categorie_id === null ? null : Number(r.categorie_id),
+          categorieNom: r.categorie_nom ?? null,
+          sousCategorieId: r.sous_categorie_id === null ? null : Number(r.sous_categorie_id),
+          sousCategorieNom: r.sous_categorie_nom ?? null,
+          siteId: r.site_id === null ? null : Number(r.site_id),
+          siteNom: r.site_nom ?? null,
+          serviceId: r.service_id === null ? null : Number(r.service_id),
+          serviceNom: r.service_nom ?? null,
+        },
+        destinataire: {
+          type: r.destinataire_type,
+          userId: r.destinataire_user_id === null ? null : Number(r.destinataire_user_id),
+          userNom: [r.dest_prenom, r.dest_nom].filter(Boolean).join(' ').trim() || null,
+          serviceId: r.destinataire_service_id === null ? null : Number(r.destinataire_service_id),
+          serviceNom: r.dest_service_nom ?? null,
+          role: r.destinataire_role ?? null,
+        },
+      })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des règles :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Valide un destinataire : exactement un des trois, faute de `CHECK` en base. */
+function destinataireDepuis(corps: any): { type: string; userId: number | null; serviceId: number | null; role: string | null } | null {
+  const userId = entierOuNull(corps?.destinataireUserId);
+  const serviceId = entierOuNull(corps?.destinataireServiceId);
+  const role = corps?.destinataireRole ? String(corps.destinataireRole) : null;
+
+  const renseignes = [userId, serviceId, role].filter((v) => v !== null && v !== undefined);
+  if (renseignes.length !== 1) return null;
+
+  if (userId !== null) return { type: 'user', userId, serviceId: null, role: null };
+  if (serviceId !== null) return { type: 'service', userId: null, serviceId, role: null };
+  return { type: 'role', userId: null, serviceId: null, role };
+}
+
+router.post('/regles', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const destinataire = destinataireDepuis(req.body);
+    if (!destinataire) {
+      return refuser(res, 400, 'Indiquez exactement un destinataire : une personne, un service ou un rôle');
+    }
+
+    const maintenant = versDateTime();
+    const resultat = await db.execute(
+      `INSERT INTO ticket_notification_regles
+         (evenement, categorie_id, sous_categorie_id, site_id, service_id,
+          destinataire_type, destinataire_user_id, destinataire_service_id, destinataire_role,
+          libelle, is_active, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+      [
+        // `null` vaut « tous les événements » : c'est ce qu'on veut d'un élu qui
+        // suit un bâtiment, et qui n'a pas à cocher six cases.
+        req.body?.evenement || null,
+        entierOuNull(req.body?.categorieId),
+        entierOuNull(req.body?.sousCategorieId),
+        entierOuNull(req.body?.siteId),
+        entierOuNull(req.body?.serviceId),
+        destinataire.type,
+        destinataire.userId,
+        destinataire.serviceId,
+        destinataire.role,
+        req.body?.libelle ?? null,
+        req.user!.userId,
+        maintenant,
+        maintenant,
+      ]
+    );
+    res.status(201).json({ success: true, id: Number(resultat.lastInsertRowid) });
+  } catch (erreur: any) {
+    console.error('Erreur création de règle :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.put('/regles/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    if (req.body?.actif === undefined) return refuser(res, 400, 'Rien à modifier');
+    await db.execute('UPDATE ticket_notification_regles SET is_active = ?, updated_at = ? WHERE id = ?', [
+      req.body.actif ? 1 : 0,
+      versDateTime(),
+      req.params.id,
+    ]);
+    res.json({ success: true });
+  } catch (erreur: any) {
+    console.error('Erreur modification de règle :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.delete('/regles/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    await db.execute('DELETE FROM ticket_notification_regles WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Règle supprimée' });
+  } catch (erreur: any) {
+    console.error('Erreur suppression de règle :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Qui recevrait, et pourquoi — sans rien envoyer.
+ *
+ * C'est ce qui transforme « très paramétrable » en « paramétrable
+ * visuellement » : l'administrateur compose « une fuite à la mairie », appuie
+ * sur *Tester*, et lit la liste avec la raison de chacun. Sans cela, il
+ * découvrirait l'effet de ses règles sur une vraie demande, un mois plus tard.
+ */
+router.post('/regles/simulation', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const evenement = String(req.body?.evenement ?? '');
+    if (!evenement) return refuser(res, 400, 'Choisissez un événement');
+
+    const { simulerDestinataires } = await import('../services/ticketNotify.service');
+    const destinataires = await simulerDestinataires({
+      evenement,
+      categorieId: entierOuNull(req.body?.categorieId),
+      sousCategorieId: entierOuNull(req.body?.sousCategorieId),
+      siteId: entierOuNull(req.body?.siteId),
+      serviceId: entierOuNull(req.body?.serviceId),
+    });
+
+    res.json({
+      success: true,
+      destinataires: destinataires.map((d) => ({ email: d.email, raison: d.raison })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur simulation des destinataires :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
 export default router;

@@ -330,6 +330,13 @@ describe('Tickets', () => {
       ['delete', '/categories/:id'],
       ['get', '/utilisateurs/:userId'],
       ['put', '/utilisateurs/:userId'],
+      // Une règle décide de qui reçoit quoi : la laisser au superviseur
+      // reviendrait à le laisser s'abonner aux demandes des autres services.
+      ['get', '/regles'],
+      ['post', '/regles'],
+      ['put', '/regles/:id'],
+      ['delete', '/regles/:id'],
+      ['post', '/regles/simulation'],
     ] as Array<[string, string]>)('%s %s reste à l’administrateur', (method, path) => {
       // Les rattachements décident de ce qu'une personne voit : les ouvrir au
       // superviseur reviendrait à lui laisser s'accorder l'accès à un bâtiment.

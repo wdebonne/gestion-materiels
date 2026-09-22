@@ -20,6 +20,7 @@ import {
   Tab,
   Tabs,
 } from '@/components/ui'
+import ReglesNotification from '@/components/tickets/ReglesNotification'
 
 /**
  * Réglages du module Tickets.
@@ -49,7 +50,7 @@ export default function TicketsSettingsPage() {
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Tickets</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">
-            États, acheminement des demandes et rattachement des personnes
+            États, acheminement des demandes, bâtiments et destinataires des courriels
           </p>
         </div>
       </div>
@@ -58,11 +59,13 @@ export default function TicketsSettingsPage() {
         <Tab value="statuts" label="États" />
         <Tab value="categories" label="Catégories et acheminement" />
         <Tab value="batiments" label="Sites et bâtiments" />
+        <Tab value="notifications" label="Notifications" />
       </Tabs>
 
       {onglet === 'statuts' && <ReglagesStatuts />}
       {onglet === 'categories' && <ReglagesCategories />}
       {onglet === 'batiments' && <ReglagesBatiments />}
+      {onglet === 'notifications' && <ReglesNotification />}
     </div>
   )
 }

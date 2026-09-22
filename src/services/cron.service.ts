@@ -3,6 +3,7 @@ import { db } from '../database';
 import { sendAlertEmail, sendEmail, sendEmailRaw } from './email.service';
 import { emitAlert } from './websocket.service';
 import { destinatairesPour } from './manifestationNotify.service';
+import { notifierEcheance } from './ticketNotify.service';
 import { genererClasseur, TYPE_MIME_XLSX } from './manifestationExport.service';
 import { deposerFichier, lireConfiguration } from './webdav.service';
 
@@ -670,6 +671,11 @@ export function initCronJobs(): void {
   // Ménage des alertes traitées, avant l'heure de pointe.
   cron.schedule('30 3 * * *', purgerAlertesTraitees);
 
+  // Délais de demande dépassés, tous les quarts d'heure. Le pas est court à
+  // dessein : un délai de prise en charge se compte en heures, et un passage
+  // quotidien signalerait le retard le lendemain — quand il ne sert plus à rien.
+  cron.schedule('*/15 * * * *', verifierEcheancesTickets);
+
   // Exécuter une première vérification au démarrage
   setTimeout(checkAlerts, 10000);
 
@@ -847,4 +853,100 @@ async function generateWeeklyReport(): Promise<void> {
   }
 }
 
-export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport, verifierManifestations, deposerExportsAutomatiques };
+/**
+ * Les demandes dont un délai est passé.
+ *
+ * Deux garde-fous, et le second est le plus important.
+ *
+ * **On ne signale qu'une fois.** Une trace `echeance_signalee` est inscrite au
+ * fil de la demande, et sert de témoin. Sans elle, un retard de trois semaines
+ * produirait deux mille courriels — un toutes les quinze minutes — et la boîte
+ * du technicien deviendrait inutilisable, ce qui est exactement l'inverse du
+ * but recherché.
+ *
+ * **Une demande close ne rappelle rien.** `ferme_at IS NULL` : le retard d'une
+ * demande déjà résolue n'intéresse personne, et le signaler ferait douter de
+ * tous les autres avis.
+ *
+ * Une alerte est posée en même temps, avec `plugin_reference = 'tickets'` : la
+ * pastille du menu compte déjà ces lignes, il n'y a rien à brancher pour que le
+ * retard se voie aussi dans l'application.
+ */
+export async function verifierEcheancesTickets(): Promise<void> {
+  try {
+    const maintenant = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    const enRetard = await db.query(
+      `SELECT t.id, t.reference, t.titre, t.echeance_prise_en_charge, t.echeance_resolution,
+              t.pris_en_charge_at
+         FROM tickets t
+        WHERE t.ferme_at IS NULL
+          AND (
+            (t.echeance_resolution IS NOT NULL AND t.echeance_resolution < ?)
+            OR (t.echeance_prise_en_charge IS NOT NULL AND t.echeance_prise_en_charge < ?
+                AND t.pris_en_charge_at IS NULL)
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM ticket_history h
+             WHERE h.ticket_id = t.id AND h.action = 'echeance_signalee'
+          )`,
+      [maintenant, maintenant]
+    );
+
+    for (const ticket of enRetard) {
+      const resolutionDepassee =
+        ticket.echeance_resolution && String(ticket.echeance_resolution) < maintenant;
+      const quoi: 'prise_en_charge' | 'resolution' = resolutionDepassee ? 'resolution' : 'prise_en_charge';
+
+      // La trace est inscrite **avant** l'envoi : si l'envoi échoue, on préfère
+      // un avis manqué à deux mille avis envoyés.
+      await db.execute(
+        `INSERT INTO ticket_history (ticket_id, user_id, action, sequence, champ, nouvelle_valeur, created_at)
+         VALUES (?, NULL, 'echeance_signalee', ?, ?, ?, ?)`,
+        [
+          ticket.id,
+          await prochainRangFil(Number(ticket.id)),
+          quoi,
+          quoi === 'resolution' ? 'délai de résolution' : 'délai de prise en charge',
+          maintenant,
+        ]
+      );
+
+      await db.execute(
+        `INSERT INTO alerts (title, message, alert_type, severity, plugin_reference, plugin_reference_id, due_date, created_at)
+         VALUES (?, ?, 'custom', 'high', 'tickets', ?, ?, ?)`,
+        [
+          `Délai dépassé — ${ticket.reference ?? '#' + ticket.id}`,
+          `${ticket.titre} : le ${quoi === 'resolution' ? 'délai de résolution' : 'délai de prise en charge'} est passé.`,
+          ticket.id,
+          quoi === 'resolution' ? ticket.echeance_resolution : ticket.echeance_prise_en_charge,
+          maintenant,
+        ]
+      );
+
+      notifierEcheance(Number(ticket.id), quoi);
+    }
+
+    if (enRetard.length > 0) {
+      console.log(`⏰ ${enRetard.length} demande(s) au délai dépassé signalée(s)`);
+    }
+  } catch (error) {
+    // Table absente sur une base pas encore migrée : le cron n'a pas à mourir.
+    console.error('Erreur vérification des délais de demande :', (error as Error).message);
+  }
+}
+
+/** Le rang de la prochaine ligne du fil — le compteur est commun aux deux tables. */
+async function prochainRangFil(ticketId: number): Promise<number> {
+  const ligne = await db.queryOne(
+    `SELECT MAX(s) AS rang FROM (
+       SELECT MAX(sequence) AS s FROM ticket_messages WHERE ticket_id = ?
+       UNION ALL
+       SELECT MAX(sequence) AS s FROM ticket_history WHERE ticket_id = ?
+     ) AS rangs`,
+    [ticketId, ticketId]
+  );
+  return Number(ligne?.rang ?? 0) + 1;
+}
+
+export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport, verifierManifestations, deposerExportsAutomatiques, verifierEcheancesTickets };

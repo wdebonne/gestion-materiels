@@ -492,7 +492,226 @@ const DEFAULT_EMAIL_TEMPLATES = [
 </html>`,
     variables: JSON.stringify(['site_name', 'manifestation_title', 'recovery_date', 'manifestation_url', 'year']),
     description: 'Alerte de récupération en retard sur une manifestation'
-  }
+  },
+  {
+    name: 'ticket_nouveau',
+    subject: '🎫 Nouvelle demande — {{titre}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #0284c7; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Nouvelle demande</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p><strong>{{demandeur}}</strong> a ouvert une demande :</p>
+      <p style="background: #f0f9ff; border-left: 3px solid #0284c7; padding: 12px; white-space: pre-wrap;">{{titre}}{{#if description}}
+
+{{description}}{{/if}}</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Référence</td><td style="padding: 4px 8px;"><strong>{{reference}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Catégorie</td><td style="padding: 4px 8px;">{{categorie}}{{#if sous_categorie}} › {{sous_categorie}}{{/if}}</td></tr>
+        {{#if batiment}}<tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;">{{batiment}}</td></tr>{{/if}}
+        {{#if materiel}}<tr><td style="padding: 4px 8px; color: #6b7280;">Matériel</td><td style="padding: 4px 8px;">{{materiel}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demandeur</td><td style="padding: 4px 8px;">{{demandeur}}</td></tr>
+        {{#if technicien}}<tr><td style="padding: 4px 8px; color: #6b7280;">Confiée à</td><td style="padding: 4px 8px;">{{technicien}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">État</td><td style="padding: 4px 8px;">{{statut}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #0284c7; color: white; text-decoration: none; border-radius: 4px;">Ouvrir la demande</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['reference', 'titre', 'description', 'categorie', 'sous_categorie', 'batiment', 'materiel', 'demandeur', 'technicien', 'statut', 'lien']),
+    description: 'Envoyé à l’ouverture d’une demande'
+  },
+  {
+    name: 'ticket_assigne',
+    subject: '👤 Demande confiée — {{titre}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #4f46e5; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Une demande vous est confiée</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Cette demande vient de vous être confiée, ou l’a été à votre service :</p>
+      <p style="background: #eef2ff; border-left: 3px solid #4f46e5; padding: 12px; white-space: pre-wrap;">{{titre}}{{#if description}}
+
+{{description}}{{/if}}</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Référence</td><td style="padding: 4px 8px;"><strong>{{reference}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Catégorie</td><td style="padding: 4px 8px;">{{categorie}}{{#if sous_categorie}} › {{sous_categorie}}{{/if}}</td></tr>
+        {{#if batiment}}<tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;">{{batiment}}</td></tr>{{/if}}
+        {{#if materiel}}<tr><td style="padding: 4px 8px; color: #6b7280;">Matériel</td><td style="padding: 4px 8px;">{{materiel}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demandeur</td><td style="padding: 4px 8px;">{{demandeur}}</td></tr>
+        {{#if technicien}}<tr><td style="padding: 4px 8px; color: #6b7280;">Confiée à</td><td style="padding: 4px 8px;">{{technicien}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">État</td><td style="padding: 4px 8px;">{{statut}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #4f46e5; color: white; text-decoration: none; border-radius: 4px;">Ouvrir la demande</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['reference', 'titre', 'description', 'categorie', 'sous_categorie', 'batiment', 'materiel', 'demandeur', 'technicien', 'statut', 'lien']),
+    description: 'Envoyé quand une demande est confiée à quelqu’un ou à un service'
+  },
+  {
+    name: 'ticket_message',
+    subject: '💬 Nouveau message — {{titre}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #7c3aed; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Nouveau message</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Un message a été ajouté à la demande <strong>{{titre}}</strong> :</p>
+      <p style="background: #f5f3ff; border-left: 3px solid #7c3aed; padding: 12px; white-space: pre-wrap;">{{message}}</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Référence</td><td style="padding: 4px 8px;"><strong>{{reference}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Catégorie</td><td style="padding: 4px 8px;">{{categorie}}{{#if sous_categorie}} › {{sous_categorie}}{{/if}}</td></tr>
+        {{#if batiment}}<tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;">{{batiment}}</td></tr>{{/if}}
+        {{#if materiel}}<tr><td style="padding: 4px 8px; color: #6b7280;">Matériel</td><td style="padding: 4px 8px;">{{materiel}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demandeur</td><td style="padding: 4px 8px;">{{demandeur}}</td></tr>
+        {{#if technicien}}<tr><td style="padding: 4px 8px; color: #6b7280;">Confiée à</td><td style="padding: 4px 8px;">{{technicien}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">État</td><td style="padding: 4px 8px;">{{statut}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #7c3aed; color: white; text-decoration: none; border-radius: 4px;">Ouvrir la demande</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['reference', 'titre', 'message', 'categorie', 'batiment', 'demandeur', 'technicien', 'statut', 'lien']),
+    description: 'Envoyé quand quelqu’un écrit dans le fil d’une demande'
+  },
+  {
+    name: 'ticket_statut',
+    subject: '🔄 {{titre}} — {{statut}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #0891b2; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">État modifié</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>La demande <strong>{{titre}}</strong> est passée de <strong>{{ancien_statut}}</strong> à <strong>{{statut}}</strong>.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Référence</td><td style="padding: 4px 8px;"><strong>{{reference}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Catégorie</td><td style="padding: 4px 8px;">{{categorie}}{{#if sous_categorie}} › {{sous_categorie}}{{/if}}</td></tr>
+        {{#if batiment}}<tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;">{{batiment}}</td></tr>{{/if}}
+        {{#if materiel}}<tr><td style="padding: 4px 8px; color: #6b7280;">Matériel</td><td style="padding: 4px 8px;">{{materiel}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demandeur</td><td style="padding: 4px 8px;">{{demandeur}}</td></tr>
+        {{#if technicien}}<tr><td style="padding: 4px 8px; color: #6b7280;">Confiée à</td><td style="padding: 4px 8px;">{{technicien}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">État</td><td style="padding: 4px 8px;">{{statut}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #0891b2; color: white; text-decoration: none; border-radius: 4px;">Ouvrir la demande</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['reference', 'titre', 'statut', 'ancien_statut', 'categorie', 'batiment', 'demandeur', 'technicien', 'lien']),
+    description: 'Envoyé à chaque changement d’état qui ne clôt pas la demande'
+  },
+  {
+    name: 'ticket_resolu',
+    subject: '✅ {{titre}} — {{statut}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #16a34a; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Demande close</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>La demande <strong>{{titre}}</strong> est close : <strong>{{statut}}</strong>.</p>
+      <p>Si le problème persiste, répondez dans le fil plutôt que d’ouvrir une nouvelle demande : l’historique reste au même endroit.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Référence</td><td style="padding: 4px 8px;"><strong>{{reference}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Catégorie</td><td style="padding: 4px 8px;">{{categorie}}{{#if sous_categorie}} › {{sous_categorie}}{{/if}}</td></tr>
+        {{#if batiment}}<tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;">{{batiment}}</td></tr>{{/if}}
+        {{#if materiel}}<tr><td style="padding: 4px 8px; color: #6b7280;">Matériel</td><td style="padding: 4px 8px;">{{materiel}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demandeur</td><td style="padding: 4px 8px;">{{demandeur}}</td></tr>
+        {{#if technicien}}<tr><td style="padding: 4px 8px; color: #6b7280;">Confiée à</td><td style="padding: 4px 8px;">{{technicien}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">État</td><td style="padding: 4px 8px;">{{statut}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #16a34a; color: white; text-decoration: none; border-radius: 4px;">Ouvrir la demande</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['reference', 'titre', 'statut', 'ancien_statut', 'categorie', 'batiment', 'demandeur', 'technicien', 'lien']),
+    description: 'Envoyé quand une demande est résolue ou refusée'
+  },
+  {
+    name: 'ticket_echeance',
+    subject: '⏰ Délai dépassé — {{titre}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #dc2626; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Délai dépassé</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Le délai <strong>{{echeance}}</strong> de cette demande est dépassé, et elle n’est pas close :</p>
+      <p style="background: #fef2f2; border-left: 3px solid #dc2626; padding: 12px; white-space: pre-wrap;">{{titre}}</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Référence</td><td style="padding: 4px 8px;"><strong>{{reference}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Catégorie</td><td style="padding: 4px 8px;">{{categorie}}{{#if sous_categorie}} › {{sous_categorie}}{{/if}}</td></tr>
+        {{#if batiment}}<tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;">{{batiment}}</td></tr>{{/if}}
+        {{#if materiel}}<tr><td style="padding: 4px 8px; color: #6b7280;">Matériel</td><td style="padding: 4px 8px;">{{materiel}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demandeur</td><td style="padding: 4px 8px;">{{demandeur}}</td></tr>
+        {{#if technicien}}<tr><td style="padding: 4px 8px; color: #6b7280;">Confiée à</td><td style="padding: 4px 8px;">{{technicien}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">État</td><td style="padding: 4px 8px;">{{statut}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #dc2626; color: white; text-decoration: none; border-radius: 4px;">Ouvrir la demande</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['reference', 'titre', 'echeance', 'categorie', 'batiment', 'demandeur', 'technicien', 'statut', 'lien']),
+    description: 'Envoyé une seule fois, quand un délai de prise en charge ou de résolution est passé'
+  },
 ];
 
 const DEFAULT_PLUGINS = [

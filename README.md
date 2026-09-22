@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-1298-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1325-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -254,7 +254,14 @@ Les signalements passaient par **GestSup**, une application séparée : deuxièm
 
 > **Pièces jointes et rôles.** `POST /api/upload/file` est réservé aux agents de terrain : c'est le bon réglage pour le parc, et le mauvais ici, puisque le demandeur d'un ticket est justement un compte en consultation. Les pièces passent donc par une route du module, gardée par la **portée de la demande** et non par le rôle. Le glisser-déposer, la prise de photo et la réduction côté client restent les mêmes.
 
-> **GestSup reste en place.** Rien n'oblige à basculer ; l'historique se reprendra dans un second temps, et les notifications paramétrables par catégorie, bâtiment et service suivent (voir `docs/ROADMAP_FONCTIONNALITES.md`).
+> **GestSup reste en place.** Rien n'oblige à basculer ; l'historique se reprendra dans un second temps.
+
+- 📧 **Les courriels se règlent en phrases, pas en cases** : « Quand *n'importe quel événement* se produit, pour une demande de *Bâtiment*, sur *Mairie* → prévenir *l'élu aux travaux* ». Chaque condition laissée sur « peu importe » **élargit** la règle : une règle qui ne porte que sur un bâtiment vaut pour toutes ses demandes, sans qu'on ait à en écrire une par catégorie
+- ➕ **Les règles ajoutent, elles ne remplacent jamais** : prévenir le responsable de la maintenance parce qu'on est à la mairie ne retire pas le technicien attitré. Faire gagner la règle la plus précise aurait produit exactement ce défaut, et personne n'en aurait compris la cause
+- 🧪 **Un bouton « Tester »** : composez « une fuite à la mairie », et lisez qui serait prévenu **et à quel titre** — « technicien affecté », « service Technique », « Élu aux travaux ». Sans lui, on découvre l'effet d'une règle sur une vraie demande, un mois plus tard
+- 🙋 **Une personne sans compte reste joignable** : l'élu chargé des travaux figure à l'annuaire sans identifiants. La grille par rôle l'écarte à dessein — les liens mèneraient à un écran de connexion — mais une règle qui le **nomme** l'atteint : on lui écrit qu'il y a une fuite, pas qu'il doit se connecter
+- 🔕 **Chacun règle ce qu'il reçoit**, sauf une demande qu'on lui confie : la couper laisserait le travail attendre sans que personne le sache. Une **note interne** ne part jamais par courriel — c'est tout son objet
+- ⏰ **Le délai dépassé se signale une fois**, pas toutes les quinze minutes : une trace au fil de la demande sert de témoin. Sans elle, un retard de trois semaines aurait produit deux mille courriels. Une alerte est posée au passage, donc la pastille du menu la compte sans qu'on ait rien branché
 
 ### 🌳 Espaces Verts (Nouveau!)
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
@@ -602,7 +609,7 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 62 suites
+├── tests/                  # Tests backend (Jest) — 63 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── personnes.test.ts  # Annuaire : reconstruction de `users`, accès accordé ou retiré
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain
@@ -1278,7 +1285,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **SSO SAML / OIDC / LDAP** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local. Les passkeys, qui étaient dans le même cas, sont désormais appliquées |
 | **2FA (interrupteur « Général »), timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Le second facteur existant se règle dans l'onglet Passkey et ne s'applique qu'aux comptes ayant enregistré une clé ; cet interrupteur-ci n'est relu par personne. Le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | Deux manques. La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse : il faudrait viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres. Et l'**envoi** n'est pas implémenté — y écrire demande le consentement délégué, que le secret d'application ne porte pas. Un carnet Outlook est donc en réception seule, et l'écran le dit. CalDAV n'a ni l'un ni l'autre problème |
-| **Tickets : notifications, délais et statistiques** | Le socle : ouverture, acheminement automatique, cloisonnement, fil d'échange, pièces jointes, états et délais par catégorie. Les échéances sont posées et le retard est signalé dans la file | Aucun **courriel** ne part encore — ni au demandeur, ni au technicien, ni au service — et les règles « qui reçoit quoi » par catégorie, bâtiment ou service ne sont pas écrites. Aucun **rappel** d'échéance dépassée : le retard se voit dans la file, il ne se signale pas. Pas encore de **temps passé** rattaché à une demande, ni de **rapport**, ni de reprise de l'historique **GestSup** |
+| **Tickets : temps passé, statistiques et reprise GestSup** | Le socle et les notifications : ouverture, acheminement, cloisonnement, fil d'échange, pièces jointes, états, délais, courriels paramétrables par catégorie / bâtiment / service, rappel de délai dépassé | Pas encore de **temps passé** rattaché à une demande — `planning_taches` n'a pas de `ticket_id` — ni de **rapport** de volumes et de délais tenus, ni de reprise de l'historique **GestSup** |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 
 ### Limites connues

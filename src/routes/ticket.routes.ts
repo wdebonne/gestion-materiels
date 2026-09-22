@@ -39,6 +39,12 @@ import {
   resoudreRoutage,
 } from '../services/ticketsReferentiel.service';
 import { sitesProposesA } from '../services/sites.service';
+import {
+  notifierAffectation,
+  notifierMessage,
+  notifierOuverture,
+  notifierStatut,
+} from '../services/ticketNotify.service';
 import { servicesDe } from '../middleware/ticketScope';
 
 /**
@@ -345,6 +351,12 @@ router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const id = await creerTicket(req.body ?? {}, req.user!.userId);
     const ticket = await lireTicket(id);
+
+    // Après la réponse, jamais avant : un SMTP injoignable ne doit pas empêcher
+    // d'ouvrir une demande. `notifierOuverture` est en « tire-et-oublie ».
+    notifierOuverture(id, req.user!.userId);
+    if (ticket?.technicien_id) notifierAffectation(id, req.user!.userId);
+
     res.status(201).json({ success: true, id, reference: ticket?.reference, ticket });
   } catch (erreur: any) {
     if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
@@ -408,8 +420,19 @@ async function exigerAccesComplet(req: AuthRequest, res: Response): Promise<bool
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     if (!(await exigerAccesComplet(req, res))) return;
+
+    const avant = await lireTicket(req.params.id);
     await modifierTicket(Number(req.params.id), req.body ?? {}, req.user!.userId);
-    res.json({ success: true, ticket: await lireTicket(req.params.id) });
+    const apres = await lireTicket(req.params.id);
+
+    // Confier une demande à quelqu'un est le seul changement qui vaut un avis :
+    // corriger une faute de frappe dans un titre n'a personne à prévenir.
+    const confieeAutrement =
+      String(avant?.technicien_id ?? '') !== String(apres?.technicien_id ?? '') ||
+      String(avant?.service_id ?? '') !== String(apres?.service_id ?? '');
+    if (confieeAutrement) notifierAffectation(Number(req.params.id), req.user!.userId);
+
+    res.json({ success: true, ticket: apres });
   } catch (erreur: any) {
     if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
     if (estViolationCleEtrangere(erreur)) return refuser(res, 400, REFUS_REFERENCE);
@@ -424,8 +447,21 @@ router.put('/:id/statut', authenticateToken, async (req: AuthRequest, res: Respo
     const statutId = Number(req.body?.statutId);
     if (!Number.isFinite(statutId)) return refuser(res, 400, 'Statut manquant');
 
+    const avant = await lireTicket(req.params.id);
     await changerStatut(Number(req.params.id), statutId, req.user!.userId);
-    res.json({ success: true, ticket: await lireTicket(req.params.id) });
+    const apres = await lireTicket(req.params.id);
+
+    if (String(avant?.statut_id ?? '') !== String(apres?.statut_id ?? '')) {
+      notifierStatut(
+        Number(req.params.id),
+        req.user!.userId,
+        avant?.statut_nom ?? null,
+        apres?.statut_nom ?? '',
+        Boolean(apres?.ferme_at)
+      );
+    }
+
+    res.json({ success: true, ticket: apres });
   } catch (erreur: any) {
     if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
     console.error('Erreur changement de statut :', erreur);
@@ -488,6 +524,8 @@ router.post('/:id/messages', authenticateToken, async (req: AuthRequest, res: Re
         [messageId, pieceId, req.params.id]
       );
     }
+
+    notifierMessage(Number(req.params.id), req.user!.userId, String(req.body?.body ?? ''), interne);
 
     res.status(201).json({ success: true, messageId });
   } catch (erreur: any) {

@@ -58,6 +58,11 @@
       { "method": "DELETE", "path": "/tickets/referentiel/categories/:id", "description": "Supprimer une catégorie inemployée (administrateur)" },
       { "method": "GET", "path": "/tickets/referentiel/utilisateurs/:userId", "description": "Les bâtiments et catégories d'une personne" },
       { "method": "PUT", "path": "/tickets/referentiel/utilisateurs/:userId", "description": "Rattacher une personne à ses bâtiments et catégories" },
+      { "method": "GET", "path": "/tickets/referentiel/regles", "description": "Les règles de diffusion des courriels (administrateur)" },
+      { "method": "POST", "path": "/tickets/referentiel/regles", "description": "Ajouter une règle : quand, pour quoi, prévenir qui" },
+      { "method": "PUT", "path": "/tickets/referentiel/regles/:id", "description": "Activer ou désactiver une règle" },
+      { "method": "DELETE", "path": "/tickets/referentiel/regles/:id", "description": "Supprimer une règle" },
+      { "method": "POST", "path": "/tickets/referentiel/regles/simulation", "description": "Qui recevrait, et pourquoi, sans rien envoyer" },
       { "method": "GET", "path": "/sites/mes-sites", "description": "Mes bâtiments, et celui à imposer s'il n'y en a qu'un" },
       { "method": "GET", "path": "/sites", "description": "Les sites et bâtiments de la collectivité" },
       { "method": "POST", "path": "/sites", "description": "Créer un bâtiment (superviseur)" },
@@ -76,7 +81,8 @@
       { "name": "ticket_messages", "description": "Ce qu'une personne écrit dans le fil" },
       { "name": "ticket_history", "description": "Ce que le système constate" },
       { "name": "ticket_documents", "description": "Les pièces, du ticket ou d'un message" },
-      { "name": "ticket_watchers", "description": "Ceux qui suivent sans rien traiter" }
+      { "name": "ticket_watchers", "description": "Ceux qui suivent sans rien traiter" },
+      { "name": "ticket_notification_regles", "description": "Qui prévenir, et à quelle condition" }
     ]
   },
   "pages": {

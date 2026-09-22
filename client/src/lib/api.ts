@@ -2727,3 +2727,72 @@ export const siteApi = {
   modifier: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/sites/${id}`, data),
   supprimer: (id: number) => api.delete<{ success: boolean }>(`/sites/${id}`),
 }
+
+// --------------------------------------------- Tickets : règles de diffusion
+
+export interface RegleNotification {
+  id: number
+  /** `null` vaut « tous les événements » : c'est le cas d'un élu qui suit un bâtiment. */
+  evenement: string | null
+  libelle: string | null
+  actif: boolean
+  /** Chaque champ à `null` vaut « peu importe », et élargit la règle. */
+  portee: {
+    categorieId: number | null
+    categorieNom: string | null
+    sousCategorieId: number | null
+    sousCategorieNom: string | null
+    siteId: number | null
+    siteNom: string | null
+    serviceId: number | null
+    serviceNom: string | null
+  }
+  destinataire: {
+    type: 'user' | 'service' | 'role'
+    userId: number | null
+    userNom: string | null
+    serviceId: number | null
+    serviceNom: string | null
+    role: string | null
+  }
+}
+
+export const ticketRegleApi = {
+  liste: () =>
+    api.get<{ success: boolean; regles: RegleNotification[] }>('/tickets/referentiel/regles'),
+  creer: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>('/tickets/referentiel/regles', data),
+  activer: (id: number, actif: boolean) =>
+    api.put<{ success: boolean }>(`/tickets/referentiel/regles/${id}`, { actif }),
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/tickets/referentiel/regles/${id}`),
+  /** Qui recevrait, et pourquoi — sans rien envoyer. */
+  simuler: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; destinataires: { email: string; raison: string }[] }>(
+      '/tickets/referentiel/regles/simulation',
+      data
+    ),
+}
+
+/** Le catalogue d'événements d'un module, et les rôles configurables. */
+export const notificationCatalogueApi = {
+  evenements: (domaine: 'manifestation' | 'ticket') =>
+    api.get<{
+      success: boolean
+      data: {
+        events: Array<{
+          domaine: string
+          evenement: string
+          libelle: string
+          description: string
+          engageant: boolean
+        }>
+        roles: { role: string; label: string }[]
+      }
+    }>(`/notifications/events?domaine=${domaine}`),
+  defauts: (domaine: 'manifestation' | 'ticket') =>
+    api.get<{ success: boolean; data: Record<string, { roles: string[]; services: boolean }> }>(
+      `/notifications/defaults?domaine=${domaine}`
+    ),
+  enregistrerDefauts: (domaine: 'manifestation' | 'ticket', defaults: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/notifications/defaults?domaine=${domaine}`, { defaults }),
+}
