@@ -96,6 +96,13 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, event VARCHAR(60),
       enabled INTEGER, created_at DATETIME, updated_at DATETIME, UNIQUE(user_id, event)
     );
+    CREATE TABLE cle_sites (id INTEGER PRIMARY KEY, name VARCHAR(255), is_active INTEGER DEFAULT 1);
+    CREATE TABLE user_sites (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, site_id INTEGER,
+      est_responsable INTEGER NOT NULL DEFAULT 0,
+      peut_voir_tickets INTEGER NOT NULL DEFAULT 0,
+      notifie INTEGER NOT NULL DEFAULT 0
+    );
     CREATE TABLE ticket_watchers (
       id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER, user_id INTEGER, service_id INTEGER
     );
@@ -120,11 +127,15 @@ beforeAll(() => {
 
     INSERT INTO services (id, name, email) VALUES (${SERVICE_TECH}, 'Technique', 'technique@ville.fr');
     INSERT INTO service_members (service_id, user_id) VALUES (${SERVICE_TECH}, ${TECHNICIEN});
+
+    INSERT INTO cle_sites (id, name) VALUES (${MAIRIE}, 'Mairie'), (${SALLE}, 'École Jules Ferry');
   `);
 });
 
 afterEach(() => {
-  base.exec('DELETE FROM ticket_notification_regles; DELETE FROM notification_preferences; DELETE FROM settings; DELETE FROM ticket_watchers;');
+  base.exec(
+    'DELETE FROM ticket_notification_regles; DELETE FROM notification_preferences; DELETE FROM settings; DELETE FROM ticket_watchers; DELETE FROM user_sites;'
+  );
 });
 
 describe('Le socle des concernés', () => {
@@ -307,5 +318,101 @@ describe('La simulation', () => {
     const cles = base.prepare('SELECT setting_key FROM settings').all() as Array<{ setting_key: string }>;
     expect(cles.map((c) => c.setting_key)).toContain('ticket_notification_defaults');
     expect(cles.map((c) => c.setting_key)).not.toContain('manifestation_notification_defaults');
+  });
+});
+describe('Les désignés d’un bâtiment', () => {
+  /*
+   * Le cas qui a décidé du modèle.
+   *
+   * Sur une école, il y a la directrice, qui la gère au quotidien ; l'élu, qui
+   * suit toutes les écoles sans en gérer aucune ; et le responsable des écoles,
+   * qui suit les écoles *et* le bâtiment où est son bureau.
+   *
+   * Les deux premiers veulent être prévenus par courriel, l'élu veut pouvoir
+   * regarder sans recevoir un message à chaque ampoule grillée. `notifie` est
+   * donc indépendant de `peut_voir_tickets`.
+   */
+  const rattacher = (
+    userId: number,
+    siteId: number,
+    droits: { responsable?: boolean; voit?: boolean; notifie?: boolean }
+  ) =>
+    base
+      .prepare(
+        `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(
+        userId,
+        siteId,
+        droits.responsable ? 1 : 0,
+        droits.voit ? 1 : 0,
+        droits.notifie ? 1 : 0
+      );
+
+  it('prévient qui est désigné sur le bâtiment de la demande', async () => {
+    rattacher(CHEF_MAINTENANCE, SALLE, { responsable: true, voit: true, notifie: true });
+
+    const motives = await destinatairesMotives(demande({ site_id: SALLE }), 'ticket_nouveau', null);
+    const trouve = motives.find((d) => d.email === 'maint@ville.fr');
+
+    expect(trouve).toBeDefined();
+    expect(trouve!.raison).toContain('rattaché à');
+  });
+
+  it('ne prévient pas celui qui lit sans vouloir être dérangé', async () => {
+    // L'élu : il voit les écoles, il ne reçoit pas un courriel par ampoule.
+    rattacher(ELU, SALLE, { voit: true, notifie: false });
+
+    const adresses = (await destinatairesMotives(demande({ site_id: SALLE }), 'ticket_nouveau', null)).map(
+      (d) => d.email
+    );
+    expect(adresses).not.toContain('elu@ville.fr');
+  });
+
+  it('prévient sans exiger la lecture : les deux droits sont indépendants', async () => {
+    rattacher(CHEF_MAINTENANCE, SALLE, { notifie: true, voit: false });
+
+    const adresses = (await destinatairesMotives(demande({ site_id: SALLE }), 'ticket_nouveau', null)).map(
+      (d) => d.email
+    );
+    expect(adresses).toContain('maint@ville.fr');
+  });
+
+  it('ne prévient pas pour un autre bâtiment', async () => {
+    rattacher(CHEF_MAINTENANCE, SALLE, { notifie: true });
+
+    const adresses = (await destinatairesMotives(demande({ site_id: MAIRIE }), 'ticket_nouveau', null)).map(
+      (d) => d.email
+    );
+    expect(adresses).not.toContain('maint@ville.fr');
+  });
+
+  it('s’ajoute au technicien et au service, ne les remplace pas', async () => {
+    rattacher(CHEF_MAINTENANCE, SALLE, { notifie: true });
+
+    const adresses = (await destinatairesMotives(demande({ site_id: SALLE }), 'ticket_nouveau', null)).map(
+      (d) => d.email
+    );
+    expect(adresses).toEqual(
+      expect.arrayContaining(['maint@ville.fr', 'tech@ville.fr', 'technique@ville.fr', 'gardien@ville.fr'])
+    );
+  });
+
+  it('suit une personne sur plusieurs bâtiments, chacun à son titre', async () => {
+    // Le responsable des écoles : prévenu pour l'école, simple occupant de la
+    // mairie où se trouve son bureau.
+    rattacher(CHEF_MAINTENANCE, SALLE, { responsable: true, voit: true, notifie: true });
+    rattacher(CHEF_MAINTENANCE, MAIRIE, { responsable: false, voit: false, notifie: false });
+
+    const pourLEcole = (await destinatairesMotives(demande({ site_id: SALLE }), 'ticket_nouveau', null)).map(
+      (d) => d.email
+    );
+    const pourLaMairie = (await destinatairesMotives(demande({ site_id: MAIRIE }), 'ticket_nouveau', null)).map(
+      (d) => d.email
+    );
+
+    expect(pourLEcole).toContain('maint@ville.fr');
+    expect(pourLaMairie).not.toContain('maint@ville.fr');
   });
 });

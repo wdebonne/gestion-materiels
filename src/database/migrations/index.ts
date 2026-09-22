@@ -33,6 +33,7 @@ import planningsEtHeures from './031_plannings_et_heures';
 import tickets from './032_tickets';
 import ticketsNotifications from './033_tickets_notifications';
 import ticketsTempsEtReprise from './034_tickets_temps_et_reprise';
+import ticketsRattachements from './035_tickets_rattachements';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -78,6 +79,7 @@ export const MIGRATIONS: readonly Migration[] = [
   tickets,
   ticketsNotifications,
   ticketsTempsEtReprise,
+  ticketsRattachements,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

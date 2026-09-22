@@ -26,8 +26,9 @@ import {
  *
  * ## Trois sources de destinataires, qui s'additionnent
  *
- *   1. **le socle** — le demandeur, le technicien, le service destinataire et
- *      les observateurs. Ceux-là sont concernés par construction ;
+ *   1. **le socle** — le demandeur, le technicien, le service destinataire, les
+ *      personnes désignées sur le bâtiment, et les observateurs. Ceux-là sont
+ *      concernés par construction ;
  *   2. **la grille par rôle** — « tout superviseur reçoit les dépassements de
  *      délai », réglée dans l'écran des notifications ;
  *   3. **les règles de diffusion** — « une fuite à la mairie prévient aussi le
@@ -130,6 +131,30 @@ async function socleDuTicket(
   if (avecService && ticket.service_id) {
     for (const d of await destinatairesDuService(Number(ticket.service_id))) {
       destinataires.push({ ...d, raison: `service ${ticket.service_nom ?? 'destinataire'}` });
+    }
+  }
+
+  /*
+   * Ceux qu'on a désignés sur le bâtiment.
+   *
+   * Sur une école, la directrice et le responsable des écoles veulent être
+   * prévenus ; l'élu, qui suit sans gérer, veut pouvoir regarder sans recevoir
+   * un message à chaque ampoule grillée. `notifie` est donc **indépendant** de
+   * `peut_voir_tickets` : les lier obligerait l'élu à choisir entre ne rien
+   * voir et tout recevoir.
+   *
+   * Cela s'ajoute au technicien et au service de la catégorie, cela ne les
+   * remplace pas.
+   */
+  if (ticket.site_id) {
+    const { notifiesDuSite } = await import('./sites.service');
+    for (const compte of await notifiesDuSite(Number(ticket.site_id))) {
+      destinataires.push({
+        email: compte.email,
+        userId: Number(compte.id),
+        role: compte.role,
+        raison: `rattaché à ${ticket.site_nom ?? 'ce bâtiment'}`,
+      });
     }
   }
 

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { Building2, Send, Wrench, Info } from 'lucide-react'
+import { AlertTriangle, Building2, Send, Wrench, Info } from 'lucide-react'
 import {
   ticketApi,
   type CategorieDemande,
@@ -143,6 +143,26 @@ export default function NouveauTicket({
       <ModalBody className="space-y-4">
         {isLoading ? (
           <p className="text-sm text-gray-500">Chargement…</p>
+        ) : formulaire?.sansRattachement ? (
+          /*
+            Rien ne lui a été attribué.
+
+            Afficher des listes vides la laisserait chercher ce qui ne s'y
+            trouve pas, et conclure que l'application est cassée. On dit ce qui
+            manque et vers qui se tourner — c'est la contrepartie d'avoir fermé
+            l'accès par défaut.
+          */
+          <div className="flex items-start gap-3 rounded-lg bg-amber-50 p-4 dark:bg-amber-900/20">
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-500" />
+            <div className="text-sm text-gray-700 dark:text-gray-300">
+              <p className="font-medium">Aucune catégorie ne vous est encore attribuée</p>
+              <p className="mt-1">
+                Vous ne pouvez donc pas encore ouvrir de demande. Demandez à votre administrateur
+                de vous rattacher aux catégories qui vous concernent, dans{' '}
+                <span className="whitespace-nowrap">Paramètres › Tickets › Qui a droit à quoi</span>.
+              </p>
+            </div>
+          </div>
         ) : (
           <>
             <Input
@@ -229,7 +249,8 @@ export default function NouveauTicket({
 
             {!objectIdInitial && materielMode !== 'aucun' && (
               <Select
-                label={materielMode === 'requis' ? 'Matériel concerné' : 'Matériel concerné (facultatif)'}
+                label={materielMode === 'requis' ? 'Votre matériel' : 'Votre matériel (facultatif)'}
+                hint="Le matériel qui vous est attribué. S'il en manque un, signalez-le à votre administrateur."
                 value={objectId ?? ''}
                 onChange={(e: any) => setObjectId(e.target.value ? Number(e.target.value) : null)}
                 options={[
@@ -303,7 +324,7 @@ export default function NouveauTicket({
         </Button>
         <Button
           icon={<Send className="w-4 h-4" />}
-          disabled={!valide || creation.isPending}
+          disabled={!valide || creation.isPending || Boolean(formulaire?.sansRattachement)}
           onClick={() => creation.mutate()}
         >
           {creation.isPending ? 'Envoi…' : 'Envoyer la demande'}

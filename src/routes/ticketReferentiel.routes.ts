@@ -408,19 +408,38 @@ async function remplacerMaterielsDe(categorieId: number, materiels: any): Promis
 
 router.get('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const [sites, categories] = await Promise.all([
+    const [sites, categories, materiels] = await Promise.all([
       sitesDe(req.params.userId),
       db.query('SELECT * FROM user_ticket_categories WHERE user_id = ?', [req.params.userId]),
+      db.query(
+        `SELECT um.object_id, o.name, o.reference
+           FROM user_materiels um
+           JOIN objects o ON o.id = um.object_id
+          WHERE um.user_id = ?
+          ORDER BY o.name ASC`,
+        [req.params.userId]
+      ),
     ]);
     res.json({
       success: true,
-      sites: sites.map((s) => ({ siteId: s.id, nom: s.nom, peutVoirTickets: s.peutVoirTickets })),
+      sites: sites.map((s) => ({
+        siteId: s.id,
+        nom: s.nom,
+        estResponsable: s.estResponsable,
+        peutVoirTickets: s.peutVoirTickets,
+        notifie: s.notifie,
+      })),
       categories: categories.map((c: any) => ({
         categorieId: Number(c.ticket_categorie_id),
         materielAutorise:
           c.materiel_autorise === null || c.materiel_autorise === undefined
             ? null
             : Boolean(c.materiel_autorise),
+      })),
+      materiels: materiels.map((m: any) => ({
+        objectId: Number(m.object_id),
+        nom: m.name,
+        reference: m.reference ?? null,
       })),
     });
   } catch (erreur: any) {
@@ -438,7 +457,9 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
         userId,
         req.body.sites.map((s: any) => ({
           siteId: Number(s.siteId),
+          estResponsable: Boolean(s.estResponsable),
           peutVoirTickets: Boolean(s.peutVoirTickets),
+          notifie: Boolean(s.notifie),
         })),
         req.user!.userId
       );
@@ -468,9 +489,154 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
       }
     }
 
+    if (Array.isArray(req.body?.materiels)) {
+      // Remplacement et non fusion : l'écran montre l'état complet, et c'est
+      // cet état qu'il enregistre.
+      await db.execute('DELETE FROM user_materiels WHERE user_id = ?', [userId]);
+      for (const m of req.body.materiels) {
+        const objectId = entierOuNull(m?.objectId ?? m);
+        if (objectId === null) continue;
+        await db.execute(
+          `INSERT INTO user_materiels (user_id, object_id, created_by, created_at) VALUES (?, ?, ?, ?)`,
+          [userId, objectId, req.user!.userId, versDateTime()]
+        );
+      }
+    }
+
     res.json({ success: true, message: 'Rattachements enregistrés' });
   } catch (erreur: any) {
     console.error('Erreur enregistrement des rattachements :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * L'état des rattachements, compte par compte.
+ *
+ * C'est l'écran d'attribution, et c'est ce qui rend tenable d'avoir choisi
+ * « rien tant qu'on n'a pas attribué » : sans cette vue, un compte oublié reste
+ * muet — la personne ouvre le formulaire, ne trouve aucune catégorie, et
+ * n'appelle pas toujours pour le dire.
+ */
+router.get('/rattachements', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const comptes = await db.query(
+      `SELECT u.id, u.first_name, u.last_name, u.email, u.role, u.can_login,
+              (SELECT COUNT(*) FROM user_sites us WHERE us.user_id = u.id) AS nb_sites,
+              (SELECT COUNT(*) FROM user_sites us WHERE us.user_id = u.id AND us.est_responsable = 1) AS nb_responsable,
+              (SELECT COUNT(*) FROM user_sites us WHERE us.user_id = u.id AND us.peut_voir_tickets = 1) AS nb_voit,
+              (SELECT COUNT(*) FROM user_sites us WHERE us.user_id = u.id AND us.notifie = 1) AS nb_notifie,
+              (SELECT COUNT(*) FROM user_ticket_categories uc WHERE uc.user_id = u.id) AS nb_categories,
+              (SELECT COUNT(*) FROM user_materiels um WHERE um.user_id = u.id) AS nb_materiels
+         FROM users u
+        WHERE u.is_active = 1
+        ORDER BY u.last_name ASC, u.first_name ASC`
+    );
+
+    res.json({
+      success: true,
+      comptes: comptes.map((c: any) => ({
+        id: Number(c.id),
+        nom: [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.email,
+        email: c.email ?? null,
+        role: c.role,
+        seConnecte: Boolean(c.can_login),
+        sites: Number(c.nb_sites),
+        responsableDe: Number(c.nb_responsable),
+        voitPour: Number(c.nb_voit),
+        notifiePour: Number(c.nb_notifie),
+        categories: Number(c.nb_categories),
+        materiels: Number(c.nb_materiels),
+        // Sans catégorie, cette personne ne peut ouvrir aucune demande. C'est
+        // le renseignement que l'écran doit mettre en tête.
+        inactif: Number(c.nb_categories) === 0,
+      })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des rattachements :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Attribue les mêmes rattachements à plusieurs comptes d'un coup.
+ *
+ * Paramétrer une commune compte par compte demande trois cents passages ; en
+ * pratique, cela signifie que le paramétrage n'est jamais fini.
+ *
+ * Le geste **ajoute sans retirer** : cocher « Informatique » pour douze
+ * personnes ne doit pas effacer les catégories que certaines avaient déjà, et
+ * un droit accordé finement sur un bâtiment ne doit pas être défait par un
+ * passage en masse qui ne le mentionnait pas.
+ */
+router.post('/rattachements/en-masse', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const userIds: number[] = (req.body?.userIds ?? []).map(Number).filter(Number.isFinite);
+    if (userIds.length === 0) return refuser(res, 400, 'Aucun compte sélectionné');
+
+    const categorieIds: number[] = (req.body?.categorieIds ?? []).map(Number).filter(Number.isFinite);
+    const sites: any[] = Array.isArray(req.body?.sites) ? req.body.sites : [];
+    const maintenant = versDateTime();
+
+    for (const userId of userIds) {
+      for (const categorieId of categorieIds) {
+        const deja = await db.queryOne(
+          'SELECT id FROM user_ticket_categories WHERE user_id = ? AND ticket_categorie_id = ?',
+          [userId, categorieId]
+        );
+        if (deja) continue;
+        await db.execute(
+          `INSERT INTO user_ticket_categories (user_id, ticket_categorie_id, created_by, created_at)
+           VALUES (?, ?, ?, ?)`,
+          [userId, categorieId, req.user!.userId, maintenant]
+        );
+      }
+
+      for (const site of sites) {
+        const siteId = entierOuNull(site?.siteId);
+        if (siteId === null) continue;
+
+        const deja = await db.queryOne('SELECT id FROM user_sites WHERE user_id = ? AND site_id = ?', [
+          userId,
+          siteId,
+        ]);
+
+        if (deja) {
+          await db.execute(
+            `UPDATE user_sites
+                SET est_responsable = CASE WHEN ? = 1 THEN 1 ELSE est_responsable END,
+                    peut_voir_tickets = CASE WHEN ? = 1 THEN 1 ELSE peut_voir_tickets END,
+                    notifie = CASE WHEN ? = 1 THEN 1 ELSE notifie END
+              WHERE id = ?`,
+            [
+              site?.estResponsable ? 1 : 0,
+              site?.peutVoirTickets ? 1 : 0,
+              site?.notifie ? 1 : 0,
+              deja.id,
+            ]
+          );
+          continue;
+        }
+
+        await db.execute(
+          `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [
+            userId,
+            siteId,
+            site?.estResponsable ? 1 : 0,
+            site?.peutVoirTickets ? 1 : 0,
+            site?.notifie ? 1 : 0,
+            req.user!.userId,
+            maintenant,
+          ]
+        );
+      }
+    }
+
+    res.json({ success: true, comptes: userIds.length });
+  } catch (erreur: any) {
+    console.error('Erreur attribution en masse :', erreur);
     refuser(res, 500, 'Erreur serveur');
   }
 });

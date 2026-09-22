@@ -2588,10 +2588,15 @@ export const ticketApi = {
     api.get<{
       success: boolean
       sites: SiteBatiment[]
+      /** Les bâtiments dont elle est responsable : ceux pour lesquels elle peut signaler. */
+      sitesResponsable: SiteBatiment[]
+      estResponsable: boolean
       categories: CategorieDemande[]
       statuts: StatutTicket[]
       /** Renseigné quand la personne n'a qu'un bâtiment : le champ est masqué. */
       siteImpose: number | null
+      /** Rien ne lui a été attribué : l'écran le dit plutôt que d'afficher le vide. */
+      sansRattachement: boolean
     }>('/tickets/formulaire'),
 
   /** Où partira la demande, une fois la catégorie choisie. */
@@ -2701,11 +2706,59 @@ export const ticketReferentielApi = {
   rattachements: (userId: number) =>
     api.get<{
       success: boolean
-      sites: { siteId: number; nom: string; peutVoirTickets: boolean }[]
+      sites: RattachementSite[]
       categories: { categorieId: number; materielAutorise: boolean | null }[]
+      materiels: { objectId: number; nom: string; reference: string | null }[]
     }>(`/tickets/referentiel/utilisateurs/${userId}`),
   definirRattachements: (userId: number, data: Record<string, unknown>) =>
     api.put<{ success: boolean }>(`/tickets/referentiel/utilisateurs/${userId}`, data),
+
+  /** L'état des rattachements de tous les comptes, pour l'écran d'attribution. */
+  tableauRattachements: () =>
+    api.get<{ success: boolean; comptes: CompteRattache[] }>('/tickets/referentiel/rattachements'),
+
+  /** Attribue les mêmes rattachements à plusieurs comptes — ajoute sans retirer. */
+  attribuerEnMasse: (data: {
+    userIds: number[]
+    categorieIds?: number[]
+    sites?: Array<{ siteId: number; estResponsable?: boolean; peutVoirTickets?: boolean; notifie?: boolean }>
+  }) => api.post<{ success: boolean; comptes: number }>('/tickets/referentiel/rattachements/en-masse', data),
+}
+
+/**
+ * Le lien d'une personne avec un bâtiment, et les trois droits qu'il porte.
+ *
+ * Les trois sont **indépendants**. Une école a plusieurs responsables — la
+ * directrice, l'élu, le responsable des écoles — qui n'ont ni le même périmètre
+ * ni les mêmes besoins : l'élu veut regarder sans recevoir un courriel à chaque
+ * ampoule grillée.
+ */
+export interface RattachementSite {
+  siteId: number
+  nom: string
+  /** Peut signaler *pour le bâtiment*, et pas seulement pour son matériel. */
+  estResponsable: boolean
+  /** Lit les demandes du bâtiment. */
+  peutVoirTickets: boolean
+  /** Reçoit un courriel à chaque demande du bâtiment. */
+  notifie: boolean
+}
+
+export interface CompteRattache {
+  id: number
+  nom: string
+  email: string | null
+  role: string
+  seConnecte: boolean
+  sites: number
+  responsableDe: number
+  /** Sur combien de bâtiments elle lit les demandes des autres. */
+  voitPour: number
+  notifiePour: number
+  categories: number
+  materiels: number
+  /** Sans catégorie : cette personne ne peut ouvrir aucune demande. */
+  inactif: boolean
 }
 
 export const siteApi = {

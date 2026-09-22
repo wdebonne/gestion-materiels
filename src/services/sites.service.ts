@@ -17,14 +17,31 @@ import { db } from '../database';
  * Le nom physique reste donc historique ; ce service est la porte partagée, et
  * l'interface dit « Sites et bâtiments ».
  *
- * ## Aucun rattachement vaut « tous les sites »
+ * ## Aucun rattachement vaut « aucun site »
  *
- * `sitesDe()` rend la liste des bâtiments d'une personne. Quand elle est vide,
- * l'appelant doit comprendre « pas de restriction », et non « aucun site » :
- * sans cette convention, il faudrait rattacher trois cents agents avant que le
- * formulaire ne propose quoi que ce soit, et personne ne le ferait. C'est
- * `sitesProposesA()` qui applique la règle, une fois, pour que le formulaire et
- * les routes ne la réinventent pas chacun de leur côté.
+ * La première version faisait l'inverse : elle proposait **tous** les sites à
+ * qui n'en avait aucun, pour que le module serve avant d'être configuré. C'était
+ * un mauvais calcul. Un agent d'accueil n'a pas à choisir entre les douze
+ * bâtiments de la commune, et proposer une liste où presque tout est faux
+ * garantit qu'on s'y trompe.
+ *
+ * `sitesProposesA()` ne rend donc que les bâtiments rattachés. La contrepartie
+ * est assumée : il faut rattacher les comptes avant que le module ne serve, et
+ * l'écran d'attribution signale nommément ceux qui n'ont rien — c'est à cette
+ * condition que la règle tient.
+ *
+ * ## Trois droits, indépendants, sur chaque rattachement
+ *
+ * Une école a plusieurs responsables : la directrice, l'élu, le responsable des
+ * écoles. Ils n'ont ni le même périmètre ni les mêmes besoins.
+ *
+ *   `est_responsable`   signale *pour le bâtiment*, pas seulement pour le
+ *                       matériel qui lui est attribué
+ *   `peut_voir_tickets` lit les demandes du bâtiment
+ *   `notifie`           reçoit un courriel à chaque demande
+ *
+ * Les faire découler l'un de l'autre obligerait l'élu à choisir entre ne rien
+ * voir et tout recevoir.
  */
 
 export interface Site {
@@ -37,8 +54,12 @@ export interface Site {
 }
 
 export interface SiteRattache extends Site {
-  /** Cette personne lit-elle les demandes partagées de ce bâtiment ? */
+  /** Peut signaler pour le bâtiment, et pas seulement pour son matériel. */
+  estResponsable: boolean;
+  /** Lit les demandes du bâtiment. */
   peutVoirTickets: boolean;
+  /** Reçoit un courriel à chaque demande du bâtiment. */
+  notifie: boolean;
 }
 
 export interface Ouvrant {
@@ -99,23 +120,52 @@ export async function ouvrantsDe(siteId: number | string): Promise<Ouvrant[]> {
 /** Les bâtiments auxquels cette personne est rattachée, avec son droit de lecture. */
 export async function sitesDe(userId: number | string): Promise<SiteRattache[]> {
   const lignes = await db.query(
-    `SELECT s.*, us.peut_voir_tickets
+    `SELECT s.*, us.peut_voir_tickets, us.est_responsable, us.notifie
        FROM user_sites us
        JOIN cle_sites s ON s.id = us.site_id
       WHERE us.user_id = ?
       ORDER BY s.sort_order ASC, s.name ASC`,
     [userId]
   );
-  return lignes.map((l: any) => ({ ...enSite(l), peutVoirTickets: Boolean(l.peut_voir_tickets) }));
+  return lignes.map((l: any) => ({
+    ...enSite(l),
+    estResponsable: Boolean(l.est_responsable),
+    peutVoirTickets: Boolean(l.peut_voir_tickets),
+    notifie: Boolean(l.notifie),
+  }));
+}
+
+/** Les bâtiments dont cette personne est responsable — ceux pour lesquels elle signale. */
+export async function sitesDontResponsable(userId: number | string): Promise<Site[]> {
+  const rattaches = await sitesDe(userId);
+  return rattaches.filter((s) => s.estResponsable).map(({ estResponsable, peutVoirTickets, notifie, ...site }) => site);
+}
+
+/**
+ * Qui reçoit un courriel pour les demandes de ce bâtiment.
+ *
+ * C'est la question que pose l'envoi, à chaque demande. La directrice et le
+ * responsable des écoles y répondent ; l'élu, qui lit sans vouloir être
+ * dérangé, n'y figure pas.
+ */
+export async function notifiesDuSite(siteId: number | string): Promise<Array<{ id: number; email: string; role: string }>> {
+  return db.query(
+    `SELECT u.id, u.email, u.role
+       FROM user_sites us
+       JOIN users u ON u.id = us.user_id
+      WHERE us.site_id = ? AND us.notifie = 1
+        AND u.is_active = 1 AND u.email IS NOT NULL`,
+    [siteId]
+  );
 }
 
 /**
  * Les bâtiments à proposer à cette personne dans un formulaire.
  *
- * C'est ici que « un utilisateur peut avoir que 1 bâtiment mais aussi
+ * C'est ici que « un utilisateur peut avoir qu'un bâtiment mais aussi
  * plusieurs » se règle. Trois cas, et l'appelant n'a qu'à compter :
  *
- *   0 rattachement → tous les sites actifs, il choisit librement
+ *   0 rattachement → aucun, le champ n'a pas lieu d'être posé
  *   1 rattachement → un seul site, le champ est masqué et la valeur imposée
  *   n rattachements → ses sites, le champ est proposé
  *
@@ -125,8 +175,7 @@ export async function sitesDe(userId: number | string): Promise<SiteRattache[]> 
  */
 export async function sitesProposesA(userId: number | string): Promise<Site[]> {
   const rattaches = await sitesDe(userId);
-  if (rattaches.length > 0) return rattaches.map(({ peutVoirTickets, ...site }) => site);
-  return listerSites();
+  return rattaches.map(({ estResponsable, peutVoirTickets, notifie, ...site }) => site);
 }
 
 /**
@@ -138,16 +187,28 @@ export async function sitesProposesA(userId: number | string): Promise<Site[]> {
  */
 export async function definirSitesDe(
   userId: number,
-  rattachements: Array<{ siteId: number; peutVoirTickets?: boolean }>,
+  rattachements: Array<{
+    siteId: number;
+    estResponsable?: boolean;
+    peutVoirTickets?: boolean;
+    notifie?: boolean;
+  }>,
   auteurId: number | null
 ): Promise<void> {
   await db.transaction(async () => {
     await db.execute('DELETE FROM user_sites WHERE user_id = ?', [userId]);
     for (const r of rattachements) {
       await db.execute(
-        `INSERT INTO user_sites (user_id, site_id, peut_voir_tickets, created_by)
-         VALUES (?, ?, ?, ?)`,
-        [userId, r.siteId, r.peutVoirTickets ? 1 : 0, auteurId]
+        `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie, created_by)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          r.siteId,
+          r.estResponsable ? 1 : 0,
+          r.peutVoirTickets ? 1 : 0,
+          r.notifie ? 1 : 0,
+          auteurId,
+        ]
       );
     }
   });

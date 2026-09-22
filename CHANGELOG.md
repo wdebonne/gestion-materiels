@@ -7,6 +7,66 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Qui a droit à quoi, et qui reçoit quoi
+
+> La première version de ce module se trompait sur un point, et c'est
+> l'utilisateur qui l'a relevé : elle proposait **tous** les bâtiments et
+> **toutes** les catégories à qui n'avait rien, pour que le module serve avant
+> d'être configuré. C'était un mauvais calcul. Un agent d'accueil n'a pas à
+> choisir entre les douze bâtiments de la commune, et présenter une liste où
+> presque tout est faux garantit qu'on s'y trompe.
+>
+> Rien n'est donc plus attribué par défaut. La contrepartie est assumée et
+> compensée : l'écran d'attribution **nomme les comptes qui n'ont rien**, et le
+> formulaire dit à qui n'a rien vers qui se tourner, au lieu d'afficher des
+> listes vides sans explication.
+>
+> **Une école a plusieurs responsables, et ils n'ont pas les mêmes droits.**
+> C'est le cas qui a décidé du modèle. Sur une école, il y a la **directrice**,
+> qui la gère au quotidien ; l'**élu**, qui suit toutes les écoles sans en gérer
+> aucune ; et le **responsable des écoles**, qui suit les écoles *et* le bâtiment
+> où se trouve son bureau. Trois personnes, trois périmètres qui se chevauchent,
+> et trois besoins différents.
+>
+> Aucun rôle applicatif ne décrit cela, et aucun ne le décrira : ce ne sont pas
+> des pouvoirs, ce sont des responsabilités locales. Trois cases se posent donc
+> sur chaque lien personne↔bâtiment, et elles sont **indépendantes** :
+>
+> | | Signale pour le bâtiment | Voit les demandes | Reçoit les courriels |
+> |---|:---:|:---:|:---:|
+> | La directrice | ✓ | ✓ | ✓ |
+> | L'élu | | ✓ | |
+> | Le responsable des écoles, sur l'école | ✓ | ✓ | ✓ |
+> | Le même, sur la mairie où est son bureau | | | |
+> | Un agent, dans son bureau | | | |
+>
+> Faire découler la notification de la lecture obligerait l'élu à choisir entre
+> ne rien voir et tout recevoir — c'est exactement le réglage qu'on cherchait à
+> éviter. Et un simple occupant reste **rattaché sans aucune des trois** : c'est
+> ce qui pré-remplit son bâtiment quand il signale une panne sur son poste, sans
+> lui ouvrir les demandes de ses collègues.
+>
+> **« Mon matériel » existe enfin.** Rien ne disait qu'un ordinateur était celui
+> de quelqu'un : `objects.location` est du texte libre et désigne un lieu, et la
+> table des clés décrit une remise avec sa restitution — une sémantique de prêt
+> qui ne convient pas à un poste affecté pour cinq ans. Une affectation légère
+> répond à « je signale une panne sur *mon* téléphone » sans dérouler
+> l'inventaire de la commune, où l'on finit par choisir le premier de la liste et
+> envoyer la demande sur le matériel d'un collègue.
+>
+> **Un écran, et un geste de masse.** *Paramètres › Tickets › Qui a droit à quoi*
+> montre la liste des comptes avec, pour chacun, ses catégories, ses bâtiments,
+> ce dont il est responsable, ce qu'il voit, ce qu'il reçoit et son matériel. Le
+> geste de masse **ajoute sans retirer** : donner « Informatique » à douze
+> personnes n'efface pas ce que certaines avaient déjà, et ne défait aucun droit
+> réglé finement. Paramétrer compte par compte demanderait trois cents passages,
+> ce qui revient à ne jamais finir.
+>
+> Les destinataires désignés sur un bâtiment s'ajoutent au technicien et au
+> service de la catégorie ; ils ne les remplacent pas. Un changement de personnel
+> se règle donc en une case, et le nouveau collègue voit d'emblée ce qui est fait
+> et ce qui est en cours.
+
 ### Le rapport des demandes se lit à l'écran
 
 > Les chiffres existaient côté serveur ; il manquait l'écran. Un onglet

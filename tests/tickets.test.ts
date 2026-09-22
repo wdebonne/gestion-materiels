@@ -45,6 +45,7 @@ jest.mock('../src/database', () => {
 });
 
 import migration032 from '../src/database/migrations/032_tickets';
+import migration035 from '../src/database/migrations/035_tickets_rattachements';
 import type { ContexteMigration } from '../src/database/migrations/types';
 import {
   ajouterMessage,
@@ -57,7 +58,12 @@ import {
   referenceDe,
   SaisieInvalide,
 } from '../src/services/tickets.service';
-import { resoudreRoutage } from '../src/services/ticketsReferentiel.service';
+import {
+  categoriesProposeesA,
+  materielsDe,
+  resoudreRoutage,
+} from '../src/services/ticketsReferentiel.service';
+import { sitesDe, sitesProposesA } from '../src/services/sites.service';
 
 const base: BetterSqlite3.Database = (global as any).__baseTickets;
 
@@ -107,13 +113,14 @@ beforeAll(async () => {
     CREATE TABLE categories (id INTEGER PRIMARY KEY, name VARCHAR(255));
     CREATE TABLE subcategories (id INTEGER PRIMARY KEY, category_id INTEGER, name VARCHAR(255));
     CREATE TABLE objects (id INTEGER PRIMARY KEY, name VARCHAR(255), reference VARCHAR(100),
-      category_id INTEGER, subcategory_id INTEGER);
+      location VARCHAR(255), category_id INTEGER, subcategory_id INTEGER);
     CREATE TABLE cle_sites (id INTEGER PRIMARY KEY, name VARCHAR(255), code VARCHAR(50),
       address VARCHAR(500), sort_order INTEGER DEFAULT 0);
     CREATE TABLE cle_ouvrants (id INTEGER PRIMARY KEY, site_id INTEGER, name VARCHAR(255));
   `);
 
   await migration032.up(ctx);
+  await migration035.up(ctx);
 
   base.exec(`
     INSERT INTO users (id, email, first_name, last_name, role) VALUES
@@ -474,5 +481,93 @@ describe('La file', () => {
     expect(ligne.categorie_nom).toBe('Bâtiment');
     expect(ligne.site_nom).toBe('Mairie');
     expect(ligne.objet_nom).toBe('Nemo');
+  });
+});
+describe('Ce qu’on attribue à quelqu’un', () => {
+  /*
+   * La première version proposait **tout** à qui n'avait rien, pour que le
+   * module serve avant d'être configuré. C'était un mauvais calcul : un agent
+   * d'accueil n'a pas à choisir entre les douze bâtiments de la commune, et
+   * présenter une liste où presque tout est faux garantit qu'on s'y trompe.
+   *
+   * Ces tests figent l'inverse — et la contrepartie est assumée : l'écran
+   * d'attribution signale nommément les comptes qui n'ont rien.
+   */
+  const OCCUPANT = 3; // Ali, simple occupant
+  const DIRECTRICE = 4; // Tom, responsable d'un bâtiment
+
+  beforeAll(() => {
+    base.exec(`
+      INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie)
+      VALUES (${OCCUPANT}, ${MAIRIE}, 0, 0, 0),
+             (${DIRECTRICE}, ${MAIRIE}, 1, 1, 1);
+
+      INSERT INTO user_ticket_categories (user_id, ticket_categorie_id)
+      VALUES (${OCCUPANT}, ${CAT_INFO});
+
+      INSERT INTO user_materiels (user_id, object_id) VALUES (${OCCUPANT}, 10);
+    `);
+  });
+
+  it('ne propose aucun bâtiment à qui n’en a aucun', async () => {
+    // SECRETAIRE n'est rattachée à rien.
+    expect(await sitesProposesA(SECRETAIRE)).toEqual([]);
+  });
+
+  it('ne propose aucune catégorie à qui n’en a aucune', async () => {
+    // Sans catégorie, cette personne ne peut ouvrir aucune demande : c'est
+    // exactement ce que l'écran d'attribution doit signaler.
+    expect(await categoriesProposeesA(SECRETAIRE)).toEqual([]);
+  });
+
+  it('ne propose que les bâtiments rattachés', async () => {
+    const proposes = await sitesProposesA(OCCUPANT);
+    expect(proposes).toHaveLength(1);
+    expect(proposes[0].id).toBe(MAIRIE);
+  });
+
+  it('ne propose que les catégories attribuées, sous-catégories comprises', async () => {
+    const proposees = await categoriesProposeesA(OCCUPANT);
+    const noms = proposees.map((c) => c.nom);
+
+    expect(noms).toContain('Informatique');
+    // « Bâtiment » ne lui a pas été attribuée.
+    expect(noms).not.toContain('Bâtiment');
+    // Rattacher à « Informatique » sans donner ses sous-catégories serait un
+    // piège à administrateur : elles suivent.
+    expect(noms).toContain('Écran');
+  });
+
+  it('distingue le simple occupant du responsable', async () => {
+    const occupant = await sitesDe(OCCUPANT);
+    const directrice = await sitesDe(DIRECTRICE);
+
+    // L'occupant est rattaché — c'est ce qui pré-remplit son bâtiment quand il
+    // signale une panne sur son poste — sans pouvoir signaler pour le bâtiment
+    // ni lire les demandes de ses collègues.
+    expect(occupant[0].estResponsable).toBe(false);
+    expect(occupant[0].peutVoirTickets).toBe(false);
+    expect(occupant[0].notifie).toBe(false);
+
+    expect(directrice[0].estResponsable).toBe(true);
+    expect(directrice[0].peutVoirTickets).toBe(true);
+    expect(directrice[0].notifie).toBe(true);
+  });
+
+  it('ne rend que le matériel attribué à la personne', async () => {
+    expect((await materielsDe(OCCUPANT)).map((m) => m.id)).toEqual([10]);
+    // La directrice n'a pas de matériel attribué : elle n'hérite pas de celui
+    // des occupants de son bâtiment.
+    expect(await materielsDe(DIRECTRICE)).toEqual([]);
+  });
+
+  it('restreint le matériel au parc que la catégorie propose', async () => {
+    // Le Nemo est en catégorie de parc 2 (Outillage) ; une demande
+    // « Informatique » qui ne propose que la catégorie 1 ne doit pas le rendre.
+    const filtreInformatique = { sql: ' AND o.category_id = ?', params: [1] };
+    expect(await materielsDe(OCCUPANT, filtreInformatique)).toEqual([]);
+
+    const filtreOutillage = { sql: ' AND o.category_id = ?', params: [2] };
+    expect((await materielsDe(OCCUPANT, filtreOutillage)).map((m) => m.id)).toEqual([10]);
   });
 });
