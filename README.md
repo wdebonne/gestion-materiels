@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-1325-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1349-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -251,6 +251,10 @@ Les signalements passaient par **GestSup**, une application séparée : deuxièm
 - 🗂️ **File façon GestSup** : les états en colonne de gauche avec leur compteur, l'arbre des catégories en dessous, la liste à droite. Les filtres vivent **dans l'URL** (`?statut=2&categorie=5`), donc se copient dans un message
 - 🏛️ **Les bâtiments sont ceux du module Clés**, promus en référentiel partagé : une seule liste à tenir, et les lieux déjà saisis servent immédiatement. Un bâtiment cité par une demande ne se supprime plus — l'historique perdrait son lieu — mais se **désactive**
 - 🤝 **Ouvert au rôle « Service partenaire »** : c'est lui qui traite les demandes qu'on lui adresse, et qui en ouvre au service voisin
+- ⏱️ **Le temps passé vient des plannings**, pas d'une seconde comptabilité : une tâche se rattache à une demande comme elle se rattache déjà à une manifestation. L'agent saisit ses heures **une fois**, et le rapport sait ce qu'une demande a coûté — renforts compris
+- 🔧 **La fiche d'un matériel montre ses demandes** : « souci de bruit sur le Nemo » entre dans l'historique du Nemo, aux côtés de ses entretiens. Le bouton « Signaler un problème » ouvre le formulaire avec le matériel **déjà rempli**
+- 📊 **Médiane *et* moyenne** sur les délais : une demande qui traîne six mois tire la moyenne d'un service qui répond en deux heures, et le chiffre seul fait conclure l'inverse. L'écart entre les deux devient le renseignement. Les délais ne se mesurent que sur ce qui est **clos**, et le rapport est borné par la portée de son lecteur
+- 📥 **Reprise de GestSup, rejouable** : l'identifiant d'origine est conservé, relancer un import interrompu ne double rien, et le numéro connu des agents (`G-2646`) reste la référence. L'**essai à blanc est le défaut** — il faut demander l'écriture. Ce qui ne se rapproche pas est **signalé, pas deviné** : une catégorie inconnue n'est jamais rangée dans la première venue. Les demandeurs absents sont inscrits à l'annuaire **sans accès**
 
 > **Pièces jointes et rôles.** `POST /api/upload/file` est réservé aux agents de terrain : c'est le bon réglage pour le parc, et le mauvais ici, puisque le demandeur d'un ticket est justement un compte en consultation. Les pièces passent donc par une route du module, gardée par la **portée de la demande** et non par le rôle. Le glisser-déposer, la prise de photo et la réduction côté client restent les mêmes.
 
@@ -609,7 +613,7 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 63 suites
+├── tests/                  # Tests backend (Jest) — 64 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── personnes.test.ts  # Annuaire : reconstruction de `users`, accès accordé ou retiré
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain
@@ -1285,7 +1289,6 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **SSO SAML / OIDC / LDAP** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local. Les passkeys, qui étaient dans le même cas, sont désormais appliquées |
 | **2FA (interrupteur « Général »), timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Le second facteur existant se règle dans l'onglet Passkey et ne s'applique qu'aux comptes ayant enregistré une clé ; cet interrupteur-ci n'est relu par personne. Le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | Deux manques. La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse : il faudrait viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres. Et l'**envoi** n'est pas implémenté — y écrire demande le consentement délégué, que le secret d'application ne porte pas. Un carnet Outlook est donc en réception seule, et l'écran le dit. CalDAV n'a ni l'un ni l'autre problème |
-| **Tickets : temps passé, statistiques et reprise GestSup** | Le socle et les notifications : ouverture, acheminement, cloisonnement, fil d'échange, pièces jointes, états, délais, courriels paramétrables par catégorie / bâtiment / service, rappel de délai dépassé | Pas encore de **temps passé** rattaché à une demande — `planning_taches` n'a pas de `ticket_id` — ni de **rapport** de volumes et de délais tenus, ni de reprise de l'historique **GestSup** |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 
 ### Limites connues

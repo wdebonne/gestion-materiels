@@ -7,6 +7,71 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Les demandes entrent dans l'histoire du matériel, et dans les chiffres
+
+> Il restait à répondre à trois questions que le socle posait sans pouvoir les
+> traiter : combien de temps une demande coûte, ce qu'on tient comme délais, et
+> ce que devient tout ce qui a déjà été signalé dans GestSup.
+>
+> **Le temps passé est une colonne, pas une seconde comptabilité.**
+> `planning_taches` portait déjà `manifestation_id` ; `ticket_id` s'ajoute au
+> même titre. Une table dédiée aurait obligé l'agent à saisir ses deux heures
+> **deux fois** — une fois pour son planning, une fois pour la demande — ou une
+> seule, et le total de sa semaine aurait été faux. Les renforts, les deux
+> mesures (temps mobilisé / temps d'une personne) et l'export existant suivent
+> sans qu'on ait rien écrit.
+>
+> La saisie de temps propose les demandes **encore ouvertes**, et celles-là
+> seulement : dérouler tout l'historique donnerait une liste de plusieurs
+> centaines de lignes dans laquelle personne ne retrouverait la sienne.
+>
+> **La fiche d'un matériel montre ses demandes.** « Souci de bruit sur le Nemo »
+> apparaît enfin dans l'historique du Nemo, aux côtés de ses entretiens et de
+> ses pleins — c'était la moitié de la raison pour laquelle ce module a été
+> écrit ici plutôt qu'intégré à l'outil séparé. Le bouton « Signaler un
+> problème » ouvre le formulaire **avec le matériel déjà rempli** : c'est depuis
+> la fiche qu'on constate la panne, et redemander de retrouver le matériel dans
+> une liste serait absurde. Ce rattachement est conservé même si la catégorie
+> choisie ne demande pas de matériel, sans quoi il se perdrait silencieusement
+> au moment précis où il est le plus évident.
+>
+> **La médiane à côté de la moyenne.** Une demande qui traîne six mois — le
+> rideau qu'on ne commande qu'au budget suivant — tire la moyenne d'un service
+> qui répond par ailleurs en deux heures. Présentée seule en réunion, elle fait
+> conclure l'inverse de la réalité. L'écart entre les deux chiffres devient
+> alors un renseignement à part entière : quand la moyenne double la médiane,
+> ce sont quelques dossiers bloqués qu'il faut regarder, pas l'équipe.
+>
+> Les délais ne se mesurent que sur ce qui est **clos** : compter les demandes
+> ouvertes avec leur âge courant ferait baisser la moyenne à mesure qu'on en
+> ouvre, ce qui n'a pas de sens. Les ouvertes sont comptées à part — c'est une
+> mesure de charge, pas de performance. Et le rapport est borné par la portée de
+> son lecteur : un responsable du service technique qui lirait « 340 demandes »
+> alors qu'il n'en voit que 120 n'y comprendrait rien, et le chiffre révélerait
+> l'activité des autres.
+>
+> **La reprise de GestSup, rejouable et sans surprise.** L'enjeu n'est pas de
+> recopier des lignes : c'est que « M. Dupont a déjà signalé le rideau cassé »
+> fonctionne dès le premier jour. Un module de demandes sans passé ne prévient
+> aucun doublon.
+>
+> Trois règles, chacune tirée d'un échec prévisible. La reprise est **rejouable**
+> — l'identifiant d'origine est conservé, relancer un import interrompu ne
+> double rien, et corriger un fichier puis le reverser met à jour au lieu
+> d'empiler. L'**essai à blanc est le défaut** : il faut demander explicitement
+> l'écriture, parce que découvrir après coup que trois cents demandes ont
+> atterri sur la mauvaise catégorie coûte bien plus cher que de lire un tableau
+> avant. Et **ce qui ne se rapproche pas est dit, pas deviné** : une catégorie
+> inconnue n'est pas rangée dans la première venue, elle est reportée telle
+> quelle — deviner produirait un historique faux, qu'on croirait vrai.
+>
+> Les demandeurs absents sont **inscrits à l'annuaire sans accès**, ce que la
+> migration 028 avait prévu pour le gardien et l'élu : cela vaut mieux qu'un
+> historique dont l'auteur est « inconnu ». Le numéro d'origine est conservé
+> comme référence (`G-2646`), parce que c'est celui que les agents citent encore
+> dans leurs courriels. Les correspondances établies une fois — « SVC_TECH » est
+> le service Technique — sont retenues, et ne sont plus redemandées.
+
 ### Les demandes préviennent qui il faut, et pas les autres
 
 > Le socle des demandes savait qui traite ; il ne savait écrire à personne. Ce

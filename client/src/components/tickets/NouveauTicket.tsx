@@ -104,7 +104,12 @@ export default function NouveauTicket({
         categorieId,
         sousCategorieId,
         siteId: siteMode === 'masque' ? null : siteId,
-        objectId: materielMode === 'aucun' ? null : objectId,
+        // Un matériel pré-rempli — on vient de la fiche du Nemo — est conservé
+        // même si la catégorie choisie ne demande pas de matériel. L'effacer
+        // ferait perdre silencieusement le rattachement au moment précis où il
+        // est le plus évident, et la demande n'apparaîtrait jamais dans
+        // l'historique du matériel.
+        objectId: objectIdInitial ?? (materielMode === 'aucun' ? null : objectId),
         priorite,
       })
 
@@ -130,7 +135,7 @@ export default function NouveauTicket({
 
   const valide =
     titre.trim().length > 0 &&
-    (materielMode !== 'requis' || objectId !== null) &&
+    (materielMode !== 'requis' || objectId !== null || objectIdInitial != null) &&
     (siteMode !== 'requis' || siteId !== null)
 
   return (
@@ -214,7 +219,15 @@ export default function NouveauTicket({
               </p>
             )}
 
-            {materielMode !== 'aucun' && (
+            {/* Le matériel vient de sa fiche : on le rappelle, on ne le redemande pas. */}
+            {objectIdInitial && (
+              <p className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                <Wrench className="w-4 h-4 shrink-0 text-primary-600" />
+                Cette demande sera rattachée au matériel depuis lequel vous l'ouvrez.
+              </p>
+            )}
+
+            {!objectIdInitial && materielMode !== 'aucun' && (
               <Select
                 label={materielMode === 'requis' ? 'Matériel concerné' : 'Matériel concerné (facultatif)'}
                 value={objectId ?? ''}

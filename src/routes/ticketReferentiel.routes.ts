@@ -645,4 +645,62 @@ router.post('/regles/simulation', authenticateToken, requireAdmin, async (req: A
   }
 });
 
+// --------------------------------------------------- la reprise de GestSup
+
+/**
+ * Reprend un export GestSup.
+ *
+ * **L'essai à blanc est le défaut.** Il faut demander explicitement l'écriture
+ * (`appliquer: true`) : découvrir après coup que trois cents demandes ont
+ * atterri sur la mauvaise catégorie coûte bien plus cher que de lire un tableau
+ * avant. L'écran enchaîne les deux — on lit le rapport, puis on confirme.
+ */
+router.post('/import/gestsup', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const lignes = req.body?.lignes;
+    if (!Array.isArray(lignes) || lignes.length === 0) {
+      return refuser(res, 400, 'Aucune ligne à reprendre');
+    }
+    if (lignes.length > 5000) {
+      // Une reprise se fait par lots : un fichier de cinquante mille lignes
+      // tiendrait la connexion ouverte plusieurs minutes, et un délai
+      // d'attente dépassé laisserait la reprise à moitié faite sans que
+      // personne sache où elle s'est arrêtée.
+      return refuser(res, 400, 'Reprenez par lots de 5000 lignes au maximum');
+    }
+
+    const { importerGestsup } = await import('../services/importGestsup.service');
+    const rapport = await importerGestsup(lignes, {
+      essaiABlanc: req.body?.appliquer !== true,
+      auteurId: req.user!.userId,
+    });
+
+    res.json({ success: true, rapport });
+  } catch (erreur: any) {
+    console.error('Erreur reprise GestSup :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Les correspondances retenues, pour les relire et les corriger. */
+router.get('/import/correspondances', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
+  try {
+    const lignes = await db.query(
+      'SELECT * FROM ticket_import_correspondances ORDER BY domaine ASC, valeur_source ASC'
+    );
+    res.json({
+      success: true,
+      correspondances: lignes.map((l: any) => ({
+        id: Number(l.id),
+        domaine: l.domaine,
+        valeurSource: l.valeur_source,
+        cibleId: l.cible_id === null ? null : Number(l.cible_id),
+      })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des correspondances :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
 export default router;

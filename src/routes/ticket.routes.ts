@@ -345,6 +345,72 @@ function presenterLigne(l: any, materielsOk: Set<number>, accesComplet: boolean)
   };
 }
 
+// ------------------------------------------------------------------ rapports
+
+/**
+ * Volumes, délais tenus et temps passé sur une période.
+ *
+ * Aucune garde de rôle : le rapport est **borné par la portée du lecteur**, et
+ * n'agrège que ce qu'il a déjà le droit de voir. Un agent y lit ses propres
+ * chiffres, un responsable ceux de son équipe. Réserver l'écran à
+ * l'encadrement priverait un agent de savoir ce qu'il a traité.
+ */
+router.get('/rapport', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const aujourdhui = new Date();
+    const parDefautDebut = new Date(aujourdhui.getFullYear(), aujourdhui.getMonth(), 1);
+    const jour = (d: Date) => d.toISOString().slice(0, 10);
+
+    const bornes = {
+      debut: String(req.query.debut ?? jour(parDefautDebut)),
+      fin: String(req.query.fin ?? jour(aujourdhui)),
+    };
+
+    const portee = await porteeTickets(req, 't');
+    const { construireRapport } = await import('../services/ticketsRapport.service');
+    res.json({ success: true, rapport: await construireRapport(portee, bornes) });
+  } catch (erreur: any) {
+    console.error('Erreur rapport des demandes :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Les demandes qui concernent un matériel — pour sa fiche.
+ *
+ * L'accès au matériel lui-même est vérifié : sans cela, on apprendrait par le
+ * nombre de demandes qu'un matériel existe hors de son périmètre.
+ */
+router.get('/materiel/:objectId', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { peutVoirObjet } = await import('../middleware/objectScope');
+    if (!(await peutVoirObjet(req, req.params.objectId))) {
+      return refuser(res, 404, 'Matériel introuvable');
+    }
+
+    const portee = await porteeTickets(req, 't');
+    const { demandesDuMateriel } = await import('../services/ticketsRapport.service');
+    const demandes = await demandesDuMateriel(portee, req.params.objectId);
+
+    res.json({
+      success: true,
+      demandes: demandes.map((d: any) => ({
+        id: Number(d.id),
+        reference: d.reference,
+        titre: d.titre,
+        statut: { nom: d.statut_nom, couleur: d.statut_couleur, ouvert: Boolean(d.statut_ouvert) },
+        categorie: d.categorie_nom ?? null,
+        demandeur: [d.demandeur_prenom, d.demandeur_nom].filter(Boolean).join(' ').trim() || null,
+        creeLe: d.created_at,
+        closeLe: d.ferme_at ?? null,
+      })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur demandes du matériel :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
 // ----------------------------------------------------------------- la demande
 
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {

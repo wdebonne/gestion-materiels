@@ -2308,6 +2308,8 @@ export interface TachePlanning {
   titulaire: { id: number; nom: string }
   categorie: CategorieTemps | null
   manifestation: { id: number; titre: string } | null
+  /** La demande à laquelle ces heures se rattachent, s'il y en a une. */
+  ticket: { id: number; reference: string | null; titre: string } | null
   participants: RenfortTache[]
 }
 

@@ -63,6 +63,10 @@
       { "method": "PUT", "path": "/tickets/referentiel/regles/:id", "description": "Activer ou désactiver une règle" },
       { "method": "DELETE", "path": "/tickets/referentiel/regles/:id", "description": "Supprimer une règle" },
       { "method": "POST", "path": "/tickets/referentiel/regles/simulation", "description": "Qui recevrait, et pourquoi, sans rien envoyer" },
+      { "method": "GET", "path": "/tickets/rapport", "description": "Volumes, délais tenus et temps passé, dans la portée du lecteur" },
+      { "method": "GET", "path": "/tickets/materiel/:objectId", "description": "Les demandes qui concernent un matériel, pour sa fiche" },
+      { "method": "POST", "path": "/tickets/referentiel/import/gestsup", "description": "Reprendre un export GestSup — essai à blanc par défaut" },
+      { "method": "GET", "path": "/tickets/referentiel/import/correspondances", "description": "Les rapprochements retenus, à relire et corriger" },
       { "method": "GET", "path": "/sites/mes-sites", "description": "Mes bâtiments, et celui à imposer s'il n'y en a qu'un" },
       { "method": "GET", "path": "/sites", "description": "Les sites et bâtiments de la collectivité" },
       { "method": "POST", "path": "/sites", "description": "Créer un bâtiment (superviseur)" },
@@ -82,7 +86,8 @@
       { "name": "ticket_history", "description": "Ce que le système constate" },
       { "name": "ticket_documents", "description": "Les pièces, du ticket ou d'un message" },
       { "name": "ticket_watchers", "description": "Ceux qui suivent sans rien traiter" },
-      { "name": "ticket_notification_regles", "description": "Qui prévenir, et à quelle condition" }
+      { "name": "ticket_notification_regles", "description": "Qui prévenir, et à quelle condition" },
+      { "name": "ticket_import_correspondances", "description": "Ce qu'un libellé GestSup désigne ici" }
     ]
   },
   "pages": {

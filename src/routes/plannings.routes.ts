@@ -264,6 +264,7 @@ router.get('/taches', authenticateToken, async (req: AuthRequest, res: Response)
         categorieIds: identifiants(req.query.categorieIds),
         personneIds: identifiants(req.query.personneIds),
         manifestationId: req.query.manifestationId ? Number(req.query.manifestationId) : null,
+        ticketId: req.query.ticketId ? Number(req.query.ticketId) : null,
       },
       perimetre
     );
@@ -296,6 +297,7 @@ function saisieDepuis(corps: any, parDefaut: number) {
     minutes: corps?.minutes == null ? null : Number(corps.minutes),
     categorieId: corps?.categorieId == null ? null : Number(corps.categorieId),
     manifestationId: corps?.manifestationId == null ? null : Number(corps.manifestationId),
+    ticketId: corps?.ticketId == null ? null : Number(corps.ticketId),
     description: corps?.description ?? null,
     participants: Array.isArray(corps?.participants) ? corps.participants : [],
   };
@@ -408,6 +410,7 @@ function rapportDemande(query: any) {
       categorieIds: identifiants(query.categorieIds),
       personneIds: identifiants(query.personneIds),
       manifestationId: query.manifestationId ? Number(query.manifestationId) : null,
+      ticketId: query.ticketId ? Number(query.ticketId) : null,
     },
   };
 }

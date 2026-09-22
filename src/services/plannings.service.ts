@@ -273,6 +273,7 @@ export interface TacheSaisie {
   minutes?: number | null;
   categorieId?: number | null;
   manifestationId?: number | null;
+  ticketId?: number | null;
   description?: string | null;
   participants?: ParticipantSaisi[];
 }
@@ -365,13 +366,14 @@ export async function creerTache(saisie: TacheSaisie, auteurId: number): Promise
 
   const { lastInsertRowid } = await db.execute(
     `INSERT INTO planning_taches
-       (user_id, categorie_id, manifestation_id, date_jour, heure_debut, heure_fin,
+       (user_id, categorie_id, manifestation_id, ticket_id, date_jour, heure_debut, heure_fin,
         minutes, description, created_by, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       saisie.userId,
       saisie.categorieId ?? null,
       saisie.manifestationId ?? null,
+      saisie.ticketId ?? null,
       saisie.jour,
       saisie.heureDebut || null,
       saisie.heureFin || null,
@@ -402,13 +404,14 @@ export async function modifierTache(id: number, saisie: TacheSaisie): Promise<vo
 
   await db.execute(
     `UPDATE planning_taches
-        SET user_id = ?, categorie_id = ?, manifestation_id = ?, date_jour = ?,
+        SET user_id = ?, categorie_id = ?, manifestation_id = ?, ticket_id = ?, date_jour = ?,
             heure_debut = ?, heure_fin = ?, minutes = ?, description = ?, updated_at = ?
       WHERE id = ?`,
     [
       saisie.userId,
       saisie.categorieId ?? null,
       saisie.manifestationId ?? null,
+      saisie.ticketId ?? null,
       saisie.jour,
       saisie.heureDebut || null,
       saisie.heureFin || null,
@@ -446,6 +449,7 @@ export interface FiltresTaches {
   categorieIds?: number[];
   personneIds?: number[];
   manifestationId?: number | null;
+  ticketId?: number | null;
 }
 
 export interface Tache {
@@ -459,6 +463,7 @@ export interface Tache {
   titulaire: { id: number; nom: string };
   categorie: Categorie | null;
   manifestation: { id: number; titre: string } | null;
+  ticket: { id: number; reference: string | null; titre: string } | null;
   participants: {
     id: number;
     personne: { id: number; nom: string } | null;
@@ -491,6 +496,13 @@ export function construireFiltres(
   if (filtres.manifestationId != null) {
     conditions.push(`${alias}.manifestation_id = ?`);
     params.push(filtres.manifestationId);
+  }
+
+  // Même mécanique que la manifestation : c'est le précédent exact, et le
+  // rapport sait déjà répartir par entité rattachée.
+  if (filtres.ticketId != null) {
+    conditions.push(`${alias}.ticket_id = ?`);
+    params.push(filtres.ticketId);
   }
 
   // Les personnes demandées explicitement retiennent la tâche si elles en sont
@@ -531,11 +543,13 @@ export async function listerTaches(filtres: FiltresTaches, perimetre: Perimetre)
   const lignes = await db.query(
     `SELECT t.*, u.first_name, u.last_name,
             c.id AS cat_id, c.name AS cat_name, c.couleur AS cat_couleur, c.is_active AS cat_active,
-            m.id AS manif_id, m.title AS manif_titre
+            m.id AS manif_id, m.title AS manif_titre,
+            tk.id AS ticket_ref_id, tk.reference AS ticket_reference, tk.titre AS ticket_titre
        FROM planning_taches t
        JOIN users u ON u.id = t.user_id
        LEFT JOIN planning_categories c ON c.id = t.categorie_id
        LEFT JOIN manifestations m ON m.id = t.manifestation_id
+       LEFT JOIN tickets tk ON tk.id = t.ticket_id
       WHERE ${sql}
       ORDER BY t.date_jour DESC, t.heure_debut DESC, t.id DESC`,
     params
@@ -560,6 +574,13 @@ export async function listerTaches(filtres: FiltresTaches, perimetre: Perimetre)
         ? enCategorie({ id: ligne.cat_id, name: ligne.cat_name, couleur: ligne.cat_couleur, is_active: ligne.cat_active })
         : null,
       manifestation: ligne.manif_id ? { id: Number(ligne.manif_id), titre: ligne.manif_titre } : null,
+      ticket: ligne.ticket_ref_id
+        ? {
+            id: Number(ligne.ticket_ref_id),
+            reference: ligne.ticket_reference ?? null,
+            titre: ligne.ticket_titre,
+          }
+        : null,
       participants: miens,
     };
   });
