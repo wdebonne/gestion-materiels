@@ -724,6 +724,40 @@ const DEFAULT_PLUGINS = [
         'Réunion'
       ]
     })
+  },
+  {
+    name: 'Tickets',
+    slug: 'tickets',
+    version: '1.0.0',
+    description: 'Demandes internes : ouverture, routage automatique, échanges et suivi',
+    author: 'Système',
+    icon: 'life-buoy',
+    plugin_type: 'menu',
+    route: 'tickets',
+    is_system: 1,
+    is_active: 1,
+    // Un point de départ, pas une liste fermée. Les six statuts sont ceux que
+    // la commune employait dans GestSup : les retrouver au premier démarrage
+    // évite de les faire ressaisir, et de les voir diverger d'un service à
+    // l'autre. La liste vit dans la configuration du plugin pour se modifier à
+    // un seul endroit.
+    config: JSON.stringify({
+      statuts_initiaux: [
+        { nom: 'À traiter', couleur: 'red', ouvert: true, defaut: true, final: false, systeme: true },
+        { nom: 'En cours', couleur: 'blue', ouvert: true, defaut: false, final: false, systeme: false },
+        { nom: 'En attente de retour', couleur: 'amber', ouvert: true, defaut: false, final: false, systeme: false },
+        { nom: 'En commande', couleur: 'purple', ouvert: true, defaut: false, final: false, systeme: false },
+        { nom: 'Résolu', couleur: 'green', ouvert: false, defaut: false, final: true, systeme: true },
+        { nom: 'Refusé', couleur: 'gray', ouvert: false, defaut: false, final: true, systeme: false }
+      ],
+      categories_initiales: [
+        { nom: 'Informatique', couleur: 'sky', visibilite: 'privee' },
+        { nom: 'Bâtiment', couleur: 'amber', visibilite: 'site' },
+        { nom: 'Voirie', couleur: 'stone', visibilite: 'site' },
+        { nom: 'Espaces verts', couleur: 'green', visibilite: 'site' },
+        { nom: 'Matériel et véhicules', couleur: 'indigo', visibilite: 'site' }
+      ]
+    })
   }
 ];
 
@@ -782,6 +816,7 @@ export async function seedDatabase(): Promise<void> {
   console.log('✅ Plugins par défaut insérés');
 
   await semerCategoriesPlanning();
+  await semerReferentielTickets();
 
   console.log('🎉 Seed terminé avec succès!');
 }
@@ -809,6 +844,93 @@ async function semerCategoriesPlanning(): Promise<void> {
   } catch (erreur) {
     // Base pas encore migrée : le reste du seed n'a pas à s'arrêter pour ça.
     console.warn('Catégories de temps non insérées :', (erreur as Error).message);
+  }
+}
+
+/**
+ * Les statuts et catégories de demande, au premier démarrage.
+ *
+ * Posés une seule fois, sur un référentiel encore vierge. Les reposer à chaque
+ * démarrage ferait réapparaître ce qu'une commune a volontairement renommé ou
+ * retiré — et le renommage est prévu : ce sont ses statuts, pas ceux du code.
+ *
+ * Les listes viennent de la configuration du plugin, pour qu'elles se modifient
+ * à un seul endroit. C'est le fonctionnement de `semerCategoriesPlanning()`.
+ */
+async function semerReferentielTickets(): Promise<void> {
+  try {
+    const deja = await db.queryOne('SELECT COUNT(*) as cnt FROM ticket_statuts');
+    if (Number(deja?.cnt ?? 0) > 0) return;
+
+    const plugin = DEFAULT_PLUGINS.find((p) => p.slug === 'tickets');
+    const config = JSON.parse(plugin?.config ?? '{}');
+    const maintenant = new Date().toISOString().slice(0, 19).replace('T', ' ');
+
+    // La normalisation vient du service, et non d'une copie locale : c'est elle
+    // qui garde l'unicité des noms, et deux implémentations finiraient par
+    // diverger d'un accent — donc par accepter un doublon que l'index refuse.
+    const { normaliserCategorie } = await import('../services/ticketsReferentiel.service');
+    const enSlug = (nom: string) =>
+      normaliserCategorie(nom).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+    for (const [rang, statut] of (config.statuts_initiaux ?? []).entries()) {
+      await db.execute(
+        `INSERT INTO ticket_statuts (nom, slug, couleur, ordre, is_ouvert, is_defaut, is_final, is_systeme, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        [
+          statut.nom,
+          enSlug(statut.nom),
+          statut.couleur ?? null,
+          rang + 1,
+          statut.ouvert ? 1 : 0,
+          statut.defaut ? 1 : 0,
+          statut.final ? 1 : 0,
+          statut.systeme ? 1 : 0,
+          maintenant,
+          maintenant,
+        ]
+      );
+    }
+
+    /*
+     * Les catégories ne sont semées que si personne n'en a créé.
+     *
+     * Elles arrivent **sans service ni technicien** : le routage dépend de
+     * l'organisation de la commune, que le code ne connaît pas. Les inventer
+     * enverrait les demandes au hasard, ce qui est pire que de ne rien
+     * envoyer — l'écran de réglage le signale et demande de les rattacher.
+     *
+     * La visibilité, elle, est posée : une demande informatique est
+     * personnelle, un problème de bâtiment intéresse ceux qui y travaillent.
+     * C'est le défaut qu'on veut, et il se corrige d'une case.
+     */
+    const dejaCat = await db.queryOne('SELECT COUNT(*) as cnt FROM ticket_categories');
+    if (Number(dejaCat?.cnt ?? 0) === 0) {
+      for (const [rang, categorie] of (config.categories_initiales ?? []).entries()) {
+        const normalise = normaliserCategorie(categorie.nom);
+
+        await db.execute(
+          `INSERT INTO ticket_categories (nom, name_normalise, parent_id, parent_cle, couleur, ordre, is_active, visibilite, materiel_mode, site_mode, created_at, updated_at)
+           VALUES (?, ?, NULL, 0, ?, ?, 1, ?, ?, ?, ?, ?)`,
+          [
+            categorie.nom,
+            normalise,
+            categorie.couleur ?? null,
+            rang + 1,
+            categorie.visibilite ?? 'privee',
+            categorie.visibilite === 'site' ? 'optionnel' : 'aucun',
+            'auto',
+            maintenant,
+            maintenant,
+          ]
+        );
+      }
+    }
+
+    console.log('✅ Référentiel des demandes initialisé');
+  } catch (erreur) {
+    // Base pas encore migrée : le reste du seed n'a pas à s'arrêter pour ça.
+    console.warn('Référentiel des demandes non initialisé :', (erreur as Error).message);
   }
 }
 

@@ -7,6 +7,93 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Les demandes internes se traitent dans l'application
+
+> Les signalements passaient par **GestSup**, une application séparée : deuxième
+> outil, deuxième annuaire, deuxième mot de passe, et surtout aucun lien avec le
+> parc. « Souci de bruit sur le Nemo » n'apparaissait nulle part dans la fiche du
+> Nemo, et « le rideau est cassé à la salle des fêtes » se ressaisissait trois
+> fois, parce que personne ne voyait ce que les autres avaient déjà signalé.
+>
+> Un module **Tickets** ouvre, achemine et suit ces demandes. Il réutilise ce qui
+> existait déjà — l'annuaire, les équipes, le référentiel des lieux, le parc, les
+> pièces jointes — et n'ajoute que ce qui manquait vraiment : la demande
+> elle-même, et deux liaisons.
+>
+> **Une demande part toute seule au bon endroit.** La catégorie — Informatique,
+> Bâtiment, Voirie — porte son service destinataire et son technicien. Le
+> demandeur ne les choisit pas : il écrit ce qui ne va pas, et l'écran lui dit
+> où cela part, parce que personne n'aime envoyer dans le vide. Une
+> sous-catégorie sans réglage hérite de sa catégorie, ce qui évite de recopier
+> l'acheminement à dix endroits et de le voir diverger.
+>
+> **Le formulaire ne demande pas ce qu'il sait déjà.** Quelqu'un rattaché à un
+> seul bâtiment ne voit pas le champ « bâtiment » : il est rempli. Rattaché à
+> deux, il le voit. Le matériel n'apparaît que si la catégorie l'autorise, et se
+> limite au parc qu'elle propose — le sélecteur de « souci de bruit sur le Nemo »
+> ne déroule pas l'inventaire de la commune.
+>
+> **Le cloisonnement est celui qui était demandé.** Le service technique ne voit
+> pas les demandes informatiques, et réciproquement. Aucun rôle n'ouvre tout par
+> lui-même, pas même superviseur : qui doit tout voir le reçoit explicitement,
+> dans l'écran des droits. Un responsable voit en plus les demandes des agents
+> qu'il encadre, par le même lien qui sert déjà aux heures.
+>
+> **Voir n'est pas lire.** Les collègues d'un bâtiment voient les demandes qui
+> le concernent — c'est ce qui évite trois signalements pour un même rideau — mais
+> en **voisinage** : le titre, l'état, la date, le demandeur. Ni le fil, ni les
+> pièces, ni les notes internes. Et seulement sur les catégories déclarées
+> partageables : l'informatique reste privée, parce qu'une demande de mot de passe
+> n'a pas à circuler dans l'open space. Le partage est donc une propriété de la
+> nature de la demande, pas du compte — c'est ce qui le rend explicable.
+>
+> Basculer une catégorie en partagé **n'expose pas rétroactivement** ce qui a été
+> écrit quand elle était privée : leurs auteurs ne l'ont jamais accepté. Un bouton
+> le rattrape d'un geste, en le sachant.
+>
+> **Le fil mêle ce qui se dit et ce qui se passe**, comme dans GestSup :
+> ouverture, messages, changements d'état et pièces déposées dans une seule
+> colonne. Deux tables pourtant — une trace d'audit ne se modifie pas — et un
+> compteur commun les ordonne, parce qu'un `DATETIME` ne porte pas les fractions
+> de seconde et qu'une action en écrit plusieurs d'un coup : sans lui, « Résolu »
+> pouvait s'afficher avant « Ouverture ».
+>
+> Une **note interne** reste entre intervenants. Le serveur ne l'envoie pas au
+> demandeur, plutôt que de compter sur l'écran pour la cacher — c'est ce qui
+> manquait pour écrire « à commander chez X, délai trois semaines » sans
+> l'adresser à celui qui attend.
+>
+> **Les photos s'attachent au message.** Déposée avec un message, une image
+> s'affiche en vignette dans sa bulle ; déposée seule, elle va dans les documents
+> du bas. Visuellement, on a bien la photo dans le message ; techniquement, aucun
+> HTML n'a jamais été stocké — le dépôt n'a ni éditeur riche ni sanitiseur, et un
+> module dont le principe est que des gens s'écrivent n'était pas l'endroit pour
+> en introduire un.
+>
+> Deux points méritaient d'être corrigés au passage.
+>
+> **`POST /api/upload/file` est réservé aux agents de terrain.** C'est le bon
+> réglage pour le parc, et le mauvais ici : le demandeur d'un ticket est
+> justement un compte en consultation, et joindre la photo de son rideau cassé
+> lui aurait valu un refus. Les pièces passent donc par une route du module,
+> gardée par la portée de la demande et non par le rôle. Le glisser-déposer, la
+> prise de photo et la réduction côté client restent les mêmes : le composant
+> accepte désormais qu'on lui fournisse son propre dépôt.
+>
+> **Le menu d'un compte « service » est écrit en dur.** Ouvrir le chemin dans le
+> cloisonnement ne suffisait pas : il fallait aussi l'ajouter à cette liste, sans
+> quoi un service partenaire aurait eu une API accessible et aucun bouton pour y
+> aller.
+>
+> Les **six états** — à traiter, en cours, en attente de retour, en commande,
+> résolu, refusé — se renomment, se recolorent et se réordonnent : ce sont ceux
+> de la collectivité, pas ceux du code, qui ne s'appuie que sur trois drapeaux.
+> Les **bâtiments** sont ceux du module Clés, promus en référentiel partagé : une
+> seule liste à tenir, et les lieux déjà saisis servent immédiatement.
+>
+> GestSup reste en place : rien n'oblige à basculer, et l'historique se reprendra
+> dans un second temps.
+
 ### Le planning et les statistiques s'emportent en PDF
 
 > Le tableur et le CSV servent à retravailler des chiffres. Une réunion, elle,

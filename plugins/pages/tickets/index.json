@@ -1,0 +1,61 @@
+{
+  "page": "index",
+  "title": "Tickets",
+  "layout": "default",
+  "components": [
+    {
+      "type": "header",
+      "props": {
+        "title": "Tickets",
+        "subtitle": "Signaler, suivre et clore les demandes internes",
+        "icon": "life-buoy",
+        "actions": ["nouveau-ticket", "filtrer"]
+      }
+    },
+    {
+      "type": "stats",
+      "props": {
+        "cards": [
+          { "label": "À traiter", "key": "a_traiter", "color": "red" },
+          { "label": "En cours", "key": "en_cours", "color": "blue" },
+          { "label": "En retard", "key": "en_retard", "color": "amber" },
+          { "label": "Résolues ce mois", "key": "resolues_mois", "color": "green" }
+        ]
+      }
+    },
+    {
+      "type": "sidebar",
+      "props": {
+        "sections": [
+          { "id": "vues", "label": "Mes vues", "items": ["mes-demandes", "qui-m-est-confie", "mon-batiment"] },
+          { "id": "statuts", "label": "États", "source": "/tickets/compteurs", "compteurs": true },
+          { "id": "categories", "label": "Catégories", "source": "/tickets/referentiel/categories", "arbre": true }
+        ]
+      }
+    },
+    {
+      "type": "list",
+      "props": {
+        "filters": ["recherche", "statut", "categorie", "batiment", "technicien", "periode"],
+        "columns": [
+          "reference",
+          "titre",
+          "statut",
+          "categorie",
+          "batiment",
+          "demandeur",
+          "technicien",
+          "age",
+          "echeance"
+        ]
+      }
+    },
+    {
+      "type": "detail",
+      "props": {
+        "sections": ["entete", "fil", "pieces", "observateurs"],
+        "fil": { "unifie": true, "notesInternes": "intervenants" }
+      }
+    }
+  ]
+}

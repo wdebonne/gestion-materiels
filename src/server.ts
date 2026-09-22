@@ -59,6 +59,9 @@ import nextcloudRoutes from './routes/nextcloud.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
 import mobilierUrbainRoutes from './routes/mobilierUrbain.routes';
 import planningsRoutes from './routes/plannings.routes';
+import ticketRoutes from './routes/ticket.routes';
+import ticketReferentielRoutes from './routes/ticketReferentiel.routes';
+import siteRoutes from './routes/site.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -301,6 +304,14 @@ app.use('/api/notifications', notificationRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
 app.use('/api/mobilier-urbain', mobilierUrbainRoutes);
 app.use('/api/plannings', planningsRoutes);
+// Monté avant `/api/tickets` : « referentiel » ne doit pas être pris pour un
+// identifiant de demande par le routeur principal, qui répondrait « demande
+// introuvable » sur chaque écran de réglage.
+app.use('/api/tickets/referentiel', ticketReferentielRoutes);
+app.use('/api/tickets', ticketRoutes);
+// Les sites sont le référentiel des lieux du module Clés, ouvert aux demandes
+// qui ont besoin de désigner un bâtiment. Voir `sites.service.ts`.
+app.use('/api/sites', siteRoutes);
 // Monté avant `/api/cles` : la page d'un trousseau trouvé est la seule route du
 // module ouverte sans compte, et « public » ne doit pas être pris pour un
 // identifiant de matériel par le routeur principal. Le limiteur la protège de

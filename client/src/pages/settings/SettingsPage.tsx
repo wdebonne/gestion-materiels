@@ -11,7 +11,8 @@ import {
   Webhook,
   Code2,
   Key,
-  ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound, Cloud, Clock
+  ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound, Cloud, Clock,
+  LifeBuoy
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -29,6 +30,16 @@ interface EntreeParametres {
 }
 
 const settingsNavItems: EntreeParametres[] = [
+  {
+    to: '/settings/tickets',
+    icon: LifeBuoy,
+    // Ouvert au superviseur pour le référentiel — statuts, catégories, routage :
+    // c'est lui qui connaît l'organisation de son service. Le rattachement des
+    // personnes aux bâtiments reste à l'administrateur, parce qu'il décide de
+    // qui lit les demandes des autres.
+    label: 'Tickets',
+    manageOnly: true
+  },
   {
     to: '/settings/plannings',
     icon: Clock,

@@ -1,13 +1,19 @@
 import type { Request, Response } from 'express';
 
 /**
- * Cloisonnement du rôle « service » au seul module Manifestations.
+ * Cloisonnement du rôle « service » aux manifestations et aux demandes.
  *
  * Le service communication suit les manifestations, le service informatique
  * approuve le prêt d'un vidéoprojecteur. Ni l'un ni l'autre n'a à voir le parc,
  * les entretiens, les pleins de carburant ou les espaces verts : ce serait un
  * volume d'information sans usage pour eux, et une exposition sans raison pour
  * la collectivité.
+ *
+ * Le module Tickets fait exception, et c'est voulu : un service partenaire est
+ * précisément celui qui traite les demandes qu'on lui adresse, et celui qui en
+ * ouvre au service voisin. L'ouverture ne l'expose à rien de plus — ce qu'il y
+ * voit est décidé par `ticketScope.ts`, qui ne lui rend que les demandes de son
+ * équipe, les siennes, et celles de son bâtiment si on le lui a accordé.
  *
  * La règle est appliquée **une seule fois**, au point exact où le rôle devient
  * connu : la fin de `authenticateToken`. C'est le seul endroit qui convienne —
@@ -43,6 +49,12 @@ const CHEMINS_AUTORISES: ReadonlyArray<{
   { motif: /^\/api\/services\/\d+\/delegations(\/|$)/ },
 
   { prefixe: '/api/manifestations' },
+  // Les demandes : en écriture, puisqu'un service partenaire en ouvre et en
+  // traite. La portée fait le reste, route par route.
+  { prefixe: '/api/tickets' },
+  // Les bâtiments, en lecture : le formulaire de demande a besoin de leur nom.
+  // Les créer ou les supprimer reste hors de son périmètre.
+  { prefixe: '/api/sites', lectureSeule: true },
   { prefixe: '/api/auth' },
   { prefixe: '/api/settings', lectureSeule: true },
   { prefixe: '/api/categories', lectureSeule: true },
@@ -96,7 +108,7 @@ export function cheminAutorise(chemin: string, methode: string): boolean {
 }
 
 export const REFUS_CLOISONNEMENT =
-  'Votre compte est limité au suivi des manifestations qui vous concernent';
+  'Votre compte est limité aux manifestations et aux demandes qui vous concernent';
 
 /**
  * Refuse la requête si le compte est cloisonné et le chemin hors périmètre.

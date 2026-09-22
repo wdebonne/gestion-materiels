@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-1152-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1298-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -232,6 +232,29 @@ Le parc dit ce que la commune possède ; ce module dit ce qu'il **coûte en heur
 - 👔 **Un agent, plusieurs encadrants** : Mme Martin *Responsable du service* et M. Jean *Référent de l'équipe* peuvent suivre le même agent, chacun à son titre. Un encadrant voit ses propres heures et celles de ses agents rattachés, rien de plus ; le rattachement est **réservé à l'administrateur**, car pouvoir s'attribuer des agents reviendrait à élargir seul son propre périmètre
 - ⚠️ **L'oubli de rattachement ne passe pas inaperçu** : une personne rattachée à personne n'est visible que d'elle-même et de l'administrateur. Les paramètres l'affichent en tête, nommément, plutôt que de laisser croire en réunion qu'elle n'a rien saisi
 - 🕛 **Ni fuseau ni changement d'heure** : le jour est une chaîne ISO, les horaires du texte, et la durée un entier de minutes calculé par le serveur. Aucune conversion UTC ne traverse un compteur d'heures, et la semaine ISO est calculée en JavaScript plutôt que confiée à `strftime` et `DATE_FORMAT`, qui ne s'accordent pas sur la première semaine de l'année
+
+### 🎫 Tickets — les demandes internes (Nouveau!)
+
+Les signalements passaient par **GestSup**, une application séparée : deuxième outil, deuxième annuaire, deuxième mot de passe, et aucun lien avec le parc. « Souci de bruit sur le Nemo » n'apparaissait nulle part dans la fiche du Nemo, et « le rideau est cassé à la salle des fêtes » se ressaisissait trois fois, faute de voir ce que les autres avaient déjà signalé.
+
+- 🎯 **Une demande part toute seule au bon endroit** : la catégorie — Informatique, Bâtiment, Voirie — porte son **service destinataire** et son **technicien**. Le demandeur ne les choisit pas ; l'écran lui dit en clair où cela part (« cette demande partira au service Technique (Tom Tech) »), parce que personne n'aime envoyer dans le vide. Une sous-catégorie laissée sans réglage **hérite** de sa catégorie : l'acheminement s'écrit une fois, pas dix
+- 🏢 **Le formulaire ne demande pas ce qu'il sait déjà** : rattaché à **un seul bâtiment**, le champ est masqué et rempli ; rattaché à **plusieurs**, il est proposé. Une catégorie peut forcer la question (la voirie, où le lieu *est* la demande) ou la supprimer (une création de compte n'a pas de lieu)
+- 🔧 **Le matériel concerné, quand il a du sens** : proposé seulement si la catégorie l'autorise — et réglable **par personne** — puis limité au parc que cette catégorie associe. Le sélecteur de « souci de bruit sur le Nemo » ne déroule pas l'inventaire de la commune, et un ticket ainsi rattaché documente l'entretien du matériel
+- 🚧 **Cloisonnement par équipe** : le service technique ne voit pas les demandes informatiques, et réciproquement. **Aucun rôle n'ouvre tout par lui-même**, pas même superviseur — qui doit tout voir le reçoit explicitement dans l'écran des droits. Un responsable voit en plus les demandes des agents qu'il encadre, par le lien qui sert déjà aux heures
+- 👀 **Voir n'est pas lire** : les collègues d'un bâtiment voient les demandes qui le concernent — c'est ce qui évite trois signalements pour un même rideau — mais en **voisinage** : titre, état, date, demandeur. Ni le fil, ni les pièces, ni les notes internes. Et seulement sur les catégories déclarées partageables : l'informatique reste privée, parce qu'une demande de mot de passe n'a pas à circuler dans l'open space
+- 🔁 **Le partage ne rétroagit pas** : basculer une catégorie en partagé n'expose pas ce qui a été écrit quand elle était privée. Un bouton le rattrape d'un geste, en le sachant
+- 💬 **Un fil unique**, comme dans GestSup : ouverture, messages, changements d'état et pièces déposées dans une seule colonne. Deux tables pourtant — une trace d'audit ne se modifie pas — et un **compteur commun** les ordonne : un `DATETIME` ne porte pas les fractions de seconde, et une action en écrit plusieurs d'un coup. Sans lui, « Résolu » pouvait s'afficher avant « Ouverture »
+- 🔒 **Note interne** : le technicien écrit « à commander chez X, délai trois semaines » sans l'adresser à celui qui attend. Le serveur ne l'envoie pas au demandeur, plutôt que de compter sur l'écran pour la cacher
+- 📎 **Photos dans le message, documents en dessous** : une image déposée avec un message s'affiche **en vignette dans sa bulle**, une pièce déposée seule va dans les documents. Visuellement on a la photo dans le message ; techniquement aucun HTML n'est stocké — le dépôt n'a ni éditeur riche ni sanitiseur, et un module dont le principe est que des gens s'écrivent n'était pas l'endroit pour en introduire un
+- 🚦 **Six états personnalisables** : à traiter, en cours, en attente de retour, en commande, résolu, refusé. Ils se renomment, se recolorent et se réordonnent — ce sont ceux de la collectivité, pas ceux du code, qui ne s'appuie que sur trois drapeaux (*ouvert*, *par défaut*, *final*). « En attente de retour » est ouvert sans être le défaut ; « refusé » est final sans être une résolution
+- ⏱️ **Délais par catégorie** : prise en charge et résolution, en minutes. Les échéances sont posées à l'ouverture, la file signale d'un liseré rouge ce qui est en retard, et la prise en charge **ne rajeunit jamais** — un aller-retour par « en attente » ne remet pas le compteur à zéro
+- 🗂️ **File façon GestSup** : les états en colonne de gauche avec leur compteur, l'arbre des catégories en dessous, la liste à droite. Les filtres vivent **dans l'URL** (`?statut=2&categorie=5`), donc se copient dans un message
+- 🏛️ **Les bâtiments sont ceux du module Clés**, promus en référentiel partagé : une seule liste à tenir, et les lieux déjà saisis servent immédiatement. Un bâtiment cité par une demande ne se supprime plus — l'historique perdrait son lieu — mais se **désactive**
+- 🤝 **Ouvert au rôle « Service partenaire »** : c'est lui qui traite les demandes qu'on lui adresse, et qui en ouvre au service voisin
+
+> **Pièces jointes et rôles.** `POST /api/upload/file` est réservé aux agents de terrain : c'est le bon réglage pour le parc, et le mauvais ici, puisque le demandeur d'un ticket est justement un compte en consultation. Les pièces passent donc par une route du module, gardée par la **portée de la demande** et non par le rôle. Le glisser-déposer, la prise de photo et la réduction côté client restent les mêmes.
+
+> **GestSup reste en place.** Rien n'oblige à basculer ; l'historique se reprendra dans un second temps, et les notifications paramétrables par catégorie, bâtiment et service suivent (voir `docs/ROADMAP_FONCTIONNALITES.md`).
 
 ### 🌳 Espaces Verts (Nouveau!)
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
@@ -579,7 +602,7 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 57 suites
+├── tests/                  # Tests backend (Jest) — 62 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── personnes.test.ts  # Annuaire : reconstruction de `users`, accès accordé ou retiré
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain
@@ -1255,6 +1278,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 | **SSO SAML / OIDC / LDAP** | Écrans de configuration complets, table `auth_config` | Rien ne relit cette configuration : la connexion reste en bcrypt local. Les passkeys, qui étaient dans le même cas, sont désormais appliquées |
 | **2FA (interrupteur « Général »), timeout de session, connexion locale** | Réglages retirés du formulaire, remplacés par un encart expliquant pourquoi | Le second facteur existant se règle dans l'onglet Passkey et ne s'applique qu'aux comptes ayant enregistré une clé ; cet interrupteur-ci n'est relu par personne. Le timeout de session demanderait un suivi d'inactivité ; désactiver la connexion locale rendrait l'application inaccessible tant qu'aucun SSO ne fonctionne |
 | **Synchronisation Outlook** | Configuration enregistrable, flux OAuth réel contre Microsoft Graph | Deux manques. La requête vise `/me/calendarview` avec un jeton applicatif, que Graph refuse : il faudrait viser `/users/{identifiant}/calendarview`, donc choisir la boîte aux lettres. Et l'**envoi** n'est pas implémenté — y écrire demande le consentement délégué, que le secret d'application ne porte pas. Un carnet Outlook est donc en réception seule, et l'écran le dit. CalDAV n'a ni l'un ni l'autre problème |
+| **Tickets : notifications, délais et statistiques** | Le socle : ouverture, acheminement automatique, cloisonnement, fil d'échange, pièces jointes, états et délais par catégorie. Les échéances sont posées et le retard est signalé dans la file | Aucun **courriel** ne part encore — ni au demandeur, ni au technicien, ni au service — et les règles « qui reçoit quoi » par catégorie, bâtiment ou service ne sont pas écrites. Aucun **rappel** d'échéance dépassée : le retard se voit dans la file, il ne se signale pas. Pas encore de **temps passé** rattaché à une demande, ni de **rapport**, ni de reprise de l'historique **GestSup** |
 | **Description des sous-catégories** | — | Ni colonne en base, ni champ de route, ni champ de formulaire. L'affichage mort a été retiré |
 
 ### Limites connues

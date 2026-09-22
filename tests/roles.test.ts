@@ -252,3 +252,109 @@ describe('Contrat des routes', () => {
     });
   });
 });
+describe('Tickets', () => {
+  const ticketRoutes = require('../src/routes/ticket.routes').default;
+  const ticketReferentielRoutes = require('../src/routes/ticketReferentiel.routes').default;
+  const siteRoutes = require('../src/routes/site.routes').default;
+
+  const GESTION = ['admin', 'supervisor'];
+  const ADMIN = ['admin'];
+
+  describe('Les demandes ne portent aucune garde de rôle', () => {
+    /*
+     * C'est le point le plus important de ce fichier pour le module.
+     *
+     * Le demandeur d'un ticket est précisément un compte « user » ou
+     * « service ». Poser `requireFieldWrite` — même par réflexe, parce que
+     * c'est ce que fait `/api/upload/file` — lui interdirait d'ouvrir une
+     * demande, d'y répondre et d'y joindre la photo du rideau cassé : le
+     * module serait inutilisable par ceux à qui il est destiné.
+     *
+     * Ce qui protège ces routes est `ticketScope.ts`, et lui seul.
+     */
+    it.each([
+      ['post', '/'],
+      ['get', '/'],
+      ['get', '/:id'],
+      ['put', '/:id'],
+      ['put', '/:id/statut'],
+      ['get', '/:id/fil'],
+      ['post', '/:id/messages'],
+      ['post', '/:id/documents'],
+      ['delete', '/:id/documents/:docId'],
+      ['post', '/:id/observateurs'],
+      ['get', '/formulaire'],
+      ['get', '/compteurs'],
+    ] as Array<[string, string]>)('%s %s est ouvert à tout compte connecté', (method, path) => {
+      expect(allowedRolesFor(ticketRoutes, method, path)).toBeNull();
+    });
+
+    it('n’importe pas requireFieldWrite', () => {
+      // Un test négatif : la garde exclurait `user` et `service`, qui sont les
+      // deux rôles pour lesquels le module existe. On regarde l'import et non
+      // le texte entier, puisque le fichier explique en commentaire pourquoi
+      // cette garde est écartée — et cette explication doit pouvoir rester.
+      const source = require('fs').readFileSync(
+        require('path').join(__dirname, '..', 'src', 'routes', 'ticket.routes.ts'),
+        'utf8'
+      );
+      const imports = source.match(/import\s*\{[^}]*\}\s*from\s*'[^']*auth\.middleware'/s)?.[0] ?? '';
+      expect(imports).not.toContain('requireFieldWrite');
+      expect(imports).toContain('authenticateToken');
+    });
+
+    it('réserve la suppression définitive à l’administrateur', () => {
+      // Supprimer une demande emporte son fil et ses pièces, sans retour.
+      expect(allowedRolesFor(ticketRoutes, 'delete', '/:id')).toEqual(ADMIN);
+    });
+  });
+
+  describe('Le référentiel', () => {
+    it('laisse lire à tout compte connecté', () => {
+      // Un formulaire a besoin du nom et de la couleur des statuts.
+      expect(allowedRolesFor(ticketReferentielRoutes, 'get', '/statuts')).toBeNull();
+      expect(allowedRolesFor(ticketReferentielRoutes, 'get', '/categories')).toBeNull();
+    });
+
+    it.each([
+      ['post', '/statuts'],
+      ['put', '/statuts/:id'],
+      ['post', '/categories'],
+      ['put', '/categories/:id'],
+    ] as Array<[string, string]>)('%s %s est réservé à l’encadrement', (method, path) => {
+      expect(allowedRolesFor(ticketReferentielRoutes, method, path)).toEqual(GESTION);
+    });
+
+    it.each([
+      ['delete', '/statuts/:id'],
+      ['delete', '/categories/:id'],
+      ['get', '/utilisateurs/:userId'],
+      ['put', '/utilisateurs/:userId'],
+    ] as Array<[string, string]>)('%s %s reste à l’administrateur', (method, path) => {
+      // Les rattachements décident de ce qu'une personne voit : les ouvrir au
+      // superviseur reviendrait à lui laisser s'accorder l'accès à un bâtiment.
+      expect(allowedRolesFor(ticketReferentielRoutes, method, path)).toEqual(ADMIN);
+    });
+  });
+
+  describe('Les sites', () => {
+    it('laisse lire à tout compte connecté', () => {
+      expect(allowedRolesFor(siteRoutes, 'get', '/')).toBeNull();
+      expect(allowedRolesFor(siteRoutes, 'get', '/mes-sites')).toBeNull();
+    });
+
+    it.each([
+      ['post', '/'],
+      ['put', '/:id'],
+    ] as Array<[string, string]>)('%s %s est réservé à l’encadrement', (method, path) => {
+      expect(allowedRolesFor(siteRoutes, method, path)).toEqual(GESTION);
+    });
+
+    it.each([
+      ['delete', '/:id'],
+      ['get', '/:id/membres'],
+    ] as Array<[string, string]>)('%s %s reste à l’administrateur', (method, path) => {
+      expect(allowedRolesFor(siteRoutes, method, path)).toEqual(ADMIN);
+    });
+  });
+});
