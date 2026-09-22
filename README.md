@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-1364-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1367-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -241,6 +241,8 @@ Les signalements passaient par **GestSup**, une application séparée : deuxièm
 - 🏢 **Le formulaire ne demande pas ce qu'il sait déjà** : rattaché à **un seul bâtiment**, le champ est masqué et rempli ; rattaché à **plusieurs**, il est proposé. Une catégorie peut forcer la question (la voirie, où le lieu *est* la demande) ou la supprimer (une création de compte n'a pas de lieu)
 - 🔐 **Rien n'est attribué par défaut** : une personne demande dans les **catégories** qu'on lui donne, sur le **matériel qui lui est attribué**, et — si elle est **responsable** — pour son bâtiment. Proposer les douze bâtiments de la commune à un agent d'accueil garantit qu'il s'y trompe. L'écran d'attribution **nomme les comptes qui n'ont rien**, et le formulaire dit à qui n'a rien vers qui se tourner
 - 🏫 **Une école a plusieurs responsables**, et trois cases indépendantes sur chaque lien personne↔bâtiment le disent : **signale pour le bâtiment**, **voit les demandes**, **reçoit les courriels**. La directrice coche les trois, l'élu regarde sans être dérangé à chaque ampoule grillée, le responsable des écoles est responsable de l'école et simple occupant de la mairie où est son bureau
+- 🔖 **Numéro d'inventaire interne**, à côté de la référence : le service comptable numérote ce qu'il a **amorti**, les services numérotent ce qu'ils **manipulent**. Tenir les deux fait du rapprochement une jointure plutôt qu'un après-midi de recopie. Unique, cherché depuis la barre de recherche du parc, et affiché **hors de la configuration des champs** — il ne doit pas pouvoir disparaître d'un écran par un réglage
+- 🧑‍🔧 **Attribuer depuis la fiche du matériel** autant que depuis celle de la personne : on affecte un poste en équipant quelqu'un, on corrige en ouvrant la fiche du poste le jour où il change de bureau. Un matériel attribué à personne n'apparaît dans le formulaire de personne, et le bloc le dit plutôt que de laisser chercher
 - 💻 **« Mon matériel »** : son téléphone, son ordinateur. C'est ce que le formulaire propose quand il signale une panne, plutôt que tout le parc — où l'on finit par choisir le premier de la liste et envoyer la demande sur le matériel d'un collègue
 - 🧰 **Attribuer en masse** : sélectionner douze personnes et leur donner une catégorie ou un bâtiment. Le geste **ajoute sans retirer** — il n'efface rien de ce qui était déjà donné, et ne défait aucun droit réglé finement
 - 🔧 **Le matériel concerné, quand il a du sens** : proposé seulement si la catégorie l'autorise — et réglable **par personne** — puis limité au parc que cette catégorie associe. Le sélecteur de « souci de bruit sur le Nemo » ne déroule pas l'inventaire de la commune, et un ticket ainsi rattaché documente l'entretien du matériel

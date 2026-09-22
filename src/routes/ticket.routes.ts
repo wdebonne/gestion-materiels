@@ -2,7 +2,12 @@ import { Router, Response } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { db } from '../database';
-import { authenticateToken, AuthRequest, requireAdmin } from '../middleware/auth.middleware';
+import {
+  authenticateToken,
+  AuthRequest,
+  requireAdmin,
+  requireSupervisor,
+} from '../middleware/auth.middleware';
 import {
   accesTicket,
   contexteTickets,
@@ -425,6 +430,114 @@ router.get('/materiel/:objectId', authenticateToken, async (req: AuthRequest, re
     refuser(res, 500, 'Erreur serveur');
   }
 });
+
+/**
+ * À qui ce matériel est attribué.
+ *
+ * L'attribution se règle depuis les deux bouts : la fiche d'une personne, dans
+ * *Paramètres › Tickets*, et la fiche du matériel — ici. C'est le même lien, et
+ * les deux entrées valent : on affecte un poste en équipant quelqu'un, et on
+ * corrige en ouvrant la fiche du poste le jour où il change de bureau.
+ *
+ * Lecture ouverte à qui peut voir le matériel : savoir qui détient le
+ * vidéoprojecteur est la question que la fiche existe pour répondre. L'écriture
+ * reste à l'encadrement — attribuer un matériel décide de qui pourra ouvrir une
+ * demande dessus.
+ */
+router.get('/materiel/:objectId/detenteurs', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const { peutVoirObjet } = await import('../middleware/objectScope');
+    if (!(await peutVoirObjet(req, req.params.objectId))) {
+      return refuser(res, 404, 'Matériel introuvable');
+    }
+
+    const lignes = await db.query(
+      `SELECT um.id, um.user_id, um.note, um.created_at,
+              u.first_name, u.last_name, u.email, u.can_login
+         FROM user_materiels um
+         JOIN users u ON u.id = um.user_id
+        WHERE um.object_id = ?
+        ORDER BY u.last_name ASC, u.first_name ASC`,
+      [req.params.objectId]
+    );
+
+    res.json({
+      success: true,
+      detenteurs: lignes.map((l: any) => ({
+        id: Number(l.id),
+        userId: Number(l.user_id),
+        nom: [l.first_name, l.last_name].filter(Boolean).join(' ').trim() || l.email,
+        email: l.email ?? null,
+        seConnecte: Boolean(l.can_login),
+        note: l.note ?? null,
+        depuis: l.created_at,
+      })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des détenteurs :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.post(
+  '/materiel/:objectId/detenteurs',
+  authenticateToken,
+  requireSupervisor,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = Number(req.body?.userId);
+      if (!Number.isFinite(userId)) return refuser(res, 400, 'Indiquez une personne');
+
+      const { peutVoirObjet } = await import('../middleware/objectScope');
+      if (!(await peutVoirObjet(req, req.params.objectId))) {
+        return refuser(res, 404, 'Matériel introuvable');
+      }
+
+      // Un matériel peut être attribué à plusieurs personnes — un véhicule de
+      // service partagé, un vidéoprojecteur d'étage. Attribuer deux fois la
+      // même n'est pas une erreur, c'est un geste sans effet.
+      const deja = await db.queryOne(
+        'SELECT id FROM user_materiels WHERE user_id = ? AND object_id = ?',
+        [userId, req.params.objectId]
+      );
+      if (deja) return res.json({ success: true, id: Number(deja.id) });
+
+      const resultat = await db.execute(
+        `INSERT INTO user_materiels (user_id, object_id, note, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?)`,
+        [userId, req.params.objectId, req.body?.note ?? null, req.user!.userId, versDateTime()]
+      );
+      res.status(201).json({ success: true, id: Number(resultat.lastInsertRowid) });
+    } catch (erreur: any) {
+      if (estViolationCleEtrangere(erreur)) return refuser(res, 400, REFUS_REFERENCE);
+      console.error('Erreur attribution de matériel :', erreur);
+      refuser(res, 500, 'Erreur serveur');
+    }
+  }
+);
+
+router.delete(
+  '/materiel/:objectId/detenteurs/:userId',
+  authenticateToken,
+  requireSupervisor,
+  async (req: AuthRequest, res: Response) => {
+    try {
+      await db.execute('DELETE FROM user_materiels WHERE object_id = ? AND user_id = ?', [
+        req.params.objectId,
+        req.params.userId,
+      ]);
+      /*
+       * Les demandes déjà ouvertes sur ce matériel ne bougent pas : retirer une
+       * affectation ne réécrit pas l'histoire. La personne ne pourra simplement
+       * plus en ouvrir de nouvelle dessus.
+       */
+      res.json({ success: true, message: 'Attribution retirée' });
+    } catch (erreur: any) {
+      console.error('Erreur retrait d’attribution :', erreur);
+      refuser(res, 500, 'Erreur serveur');
+    }
+  }
+);
 
 // ----------------------------------------------------------------- la demande
 

@@ -7,6 +7,64 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Attribuer un matériel depuis sa fiche, et lui donner un numéro d'inventaire
+
+> **L'attribution se règle désormais depuis les deux bouts.** Elle existait
+> depuis la fiche d'une personne, dans *Paramètres › Tickets* ; elle existe
+> maintenant depuis la fiche du matériel, dans l'onglet *Demandes*. C'est le
+> même lien, et les deux entrées valent : on affecte un poste en équipant
+> quelqu'un, et on corrige en ouvrant la fiche du poste le jour où il change de
+> bureau.
+>
+> Ce que l'attribution décide reste inchangé, et c'est tout son intérêt : le
+> formulaire de demande ne propose à chacun **que le matériel qui lui est
+> attribué**, et seulement si la catégorie choisie l'autorise. Un matériel
+> attribué à personne n'apparaît donc dans le formulaire de personne — le bloc
+> le dit en toutes lettres plutôt que de laisser chercher pourquoi.
+>
+> Plusieurs personnes peuvent se partager un matériel : un véhicule de service,
+> un vidéoprojecteur d'étage. Attribuer deux fois la même n'est pas une erreur,
+> c'est un geste sans effet. Retirer une attribution ne touche pas aux demandes
+> déjà ouvertes : la personne ne pourra simplement plus en ouvrir de nouvelle.
+>
+> **Un numéro d'inventaire interne**, à côté de la référence et non à sa place.
+>
+> Le parc portait déjà `reference`, employée à tout : le code du fournisseur, le
+> modèle, et le numéro d'inventaire quand l'import Snipe-IT en apportait un. Un
+> seul champ pour trois usages convient tant qu'on ne cherche rien ; cela ne
+> convient plus le jour où il faut **rapprocher le parc de la comptabilité**.
+>
+> Car ce sont deux numérotations distinctes, qui ne se recouvrent pas. Le
+> service comptable numérote ce qu'il a **amorti** — une acquisition, une ligne
+> de budget, parfois un lot entier sous un seul numéro. Les services numérotent
+> ce qu'ils **manipulent** — un exemplaire, une étiquette collée dessus, un QR
+> code. Un même camion porte donc deux numéros qui n'ont ni la même forme ni le
+> même émetteur, et c'est précisément ce qui rend le rapprochement possible : on
+> tient les deux, et le rapprochement devient une jointure au lieu d'un
+> après-midi de recopie.
+>
+> Réutiliser `reference` aurait écrasé ce que les communes y ont déjà mis, et
+> aucune migration ne peut deviner lequel des trois usages une valeur servait.
+>
+> Le numéro est **unique**, et cherché depuis la barre de recherche du parc — au
+> même titre que le nom, la référence et le numéro de série : c'est ce qu'on lit
+> sur l'étiquette, donc ce qu'on tape. Deux précautions l'accompagnent :
+>
+> — un doublon répond « ce numéro est déjà porté par un autre matériel »,
+> et non « erreur serveur ». Celui qui vient de relever le numéro sur une
+> étiquette n'apprendrait rien du second message, et le ressaisirait à
+> l'identique ;
+> — un champ vidé est rangé à `NULL` et non en chaîne vide, qui serait une
+> valeur comme une autre pour l'index unique et n'accepterait qu'un seul
+> matériel sans numéro.
+>
+> Il est enfin affiché **hors de la configuration des champs**, qui peut masquer
+> le reste du bloc : un numéro d'inventaire n'est pas une décoration, et ne doit
+> pas pouvoir disparaître d'un écran par un réglage.
+>
+> *Reste à faire, si le besoin se confirme : un champ propre au numéro
+> comptable. Aujourd'hui, `Référence` peut l'accueillir.*
+
 ### Qui a droit à quoi, et qui reçoit quoi
 
 > La première version de ce module se trompait sur un point, et c'est
