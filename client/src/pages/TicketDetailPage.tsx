@@ -77,6 +77,12 @@ function phraseEvenement(ligne: LigneFilTicket): string {
       return `${qui} a modifié ${ligne.champ}${
         ligne.nouvelle ? ` : ${ligne.ancienne || '—'} → ${ligne.nouvelle}` : ''
       }`
+    case 'import':
+      // La demande vient d'un autre outil : le dire, pour qu'on ne cherche pas
+      // pourquoi son fil commence au milieu.
+      return ligne.nouvelle ?? 'Demande reprise d’un autre outil'
+    case 'echeance_signalee':
+      return `Le ${ligne.nouvelle ?? 'délai'} est dépassé`
     default:
       return `${qui} — ${ligne.action}`
   }
@@ -161,6 +167,21 @@ export default function TicketDetailPage() {
             <div className="min-w-0">
               <p className="text-xs font-mono text-gray-400">{t.reference}</p>
               <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t.titre}</h1>
+
+              {/*
+                Ce que le demandeur a écrit.
+
+                Le titre dit de quoi il s'agit, la description dit ce qui se
+                passe — « bloqué depuis lundi », « ça grince quand il pleut ».
+                C'est le renseignement pour lequel un technicien ouvre la fiche,
+                et il n'a pas à descendre dans le fil pour le trouver. En texte
+                brut, rendu tel qu'il a été saisi.
+              */}
+              {t.description && (
+                <p className="mt-2 whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                  {t.description}
+                </p>
+              )}
 
               <div className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-gray-600 dark:text-gray-300">
                 {t.demandeur && (

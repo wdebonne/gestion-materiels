@@ -7,6 +7,45 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Le rapport des demandes se lit à l'écran
+
+> Les chiffres existaient côté serveur ; il manquait l'écran. Un onglet
+> **Rapport** s'ajoute à la file, avec sa période — l'onglet vit dans l'URL
+> comme les filtres, pour qu'« regarde le rapport du mois » se partage par un
+> lien plutôt que par une suite de clics à décrire.
+>
+> **Trois formes, trois métiers.** Les volumes sont des nombres seuls : « 42
+> demandes ce mois » n'a pas besoin d'un graphique, et lui en donner un
+> ajouterait du décor sans rien apprendre. Les répartitions sont des barres
+> horizontales — on compare des grandeurs entre des libellés nommés, dont
+> certains sont longs. Les délais sont deux nombres côte à côte, parce que c'est
+> **leur écart** qui renseigne : quand la moyenne dépasse nettement la médiane,
+> l'écran le dit en toutes lettres, ce sont quelques dossiers bloqués qu'il faut
+> regarder et non l'équipe.
+>
+> **Les couleurs sont celles du dépôt, et personne n'en a inventé.** La palette
+> des catégories de temps porte huit teintes en ordre fixe, validées comme un
+> jeu sur les surfaces réelles de l'application. Le validateur a été repassé :
+> écart minimal de 9,1 en clair et 8,4 en sombre entre voisines en vision
+> déficiente, pour une cible de 8 — les chiffres que le dépôt annonçait, au
+> centième près.
+>
+> Trois teintes claires passent sous 3:1 de contraste, et c'est pourquoi chaque
+> graphique porte **son tableau à côté de lui**, avec une pastille qui rattache
+> chaque libellé à sa barre. L'identité ne repose jamais sur la couleur seule.
+> Les répartitions par bâtiment et par technicien n'emploient **qu'une seule
+> teinte** : elles comparent une grandeur, elles ne distinguent pas des
+> identités, et huit couleurs y laisseraient croire à un sens qui n'existe pas.
+>
+> **La couleur est portée par l'icône, jamais par le chiffre.** Un nombre teinté
+> est un nombre moins lisible, et c'est justement celui qu'on vient chercher.
+>
+> Regarder le rendu a révélé deux manques que la compilation ne voyait pas : la
+> **description d'une demande n'était affichée nulle part** — le titre dit de
+> quoi il s'agit, la description dit ce qui se passe, et c'est le renseignement
+> pour lequel un technicien ouvre la fiche — et un ticket repris s'annonçait
+> « Admin Système — import » au lieu de « Repris de GestSup (2646) ».
+
 ### Les demandes entrent dans l'histoire du matériel, et dans les chiffres
 
 > Il restait à répondre à trois questions que le socle posait sans pouvoir les

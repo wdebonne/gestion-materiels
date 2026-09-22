@@ -15,8 +15,9 @@ import {
   Inbox,
 } from 'lucide-react'
 import { ticketApi, ticketReferentielApi, type CategorieDemande, type Ticket } from '@/lib/api'
-import { Badge, Button, Card, CardBody, LoadingInline, Select } from '@/components/ui'
+import { Badge, Button, Card, CardBody, LoadingInline, Select, Tab, Tabs } from '@/components/ui'
 import NouveauTicket from '@/components/tickets/NouveauTicket'
+import RapportTickets from '@/components/tickets/RapportTickets'
 
 /**
  * La file des demandes.
@@ -73,6 +74,9 @@ export default function TicketsPage() {
   const [recherche, setRecherche] = useState(parametres.get('recherche') ?? '')
   const [filtresOuverts, setFiltresOuverts] = useState(false)
   const [creation, setCreation] = useState(false)
+  // L'onglet vit dans l'URL comme les filtres : « regarde le rapport du mois »
+  // se partage par un lien, pas par une suite de clics à décrire.
+  const onglet = parametres.get('onglet') === 'rapport' ? 'rapport' : 'file'
 
   const statutId = parametres.get('statut') ? Number(parametres.get('statut')) : null
   const categorieId = parametres.get('categorie') ? Number(parametres.get('categorie')) : null
@@ -137,6 +141,14 @@ export default function TicketsPage() {
         </Button>
       </div>
 
+      <Tabs value={onglet} onChange={(valeur: string) => poser('onglet', valeur === 'file' ? null : valeur)}>
+        <Tab value="file" label="Demandes" />
+        <Tab value="rapport" label="Rapport" />
+      </Tabs>
+
+      {onglet === 'rapport' && <RapportTickets />}
+
+      {onglet === 'file' && (
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* ------------------------------------------------ colonne de gauche */}
         <aside className="lg:col-span-1 space-y-4">
@@ -295,11 +307,9 @@ export default function TicketsPage() {
         </div>
       </div>
 
-      {creation && (
-        <NouveauTicket
-          onFerme={() => setCreation(false)}
-        />
       )}
+
+      {creation && <NouveauTicket onFerme={() => setCreation(false)} />}
     </div>
   )
 }
