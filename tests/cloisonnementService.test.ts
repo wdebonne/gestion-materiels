@@ -162,3 +162,45 @@ describe('Point d’application unique', () => {
     expect(auth.match(/refuserSiCloisonne\(/g)?.length).toBe(2);
   });
 });
+describe('Les demandes, ouvertes au service partenaire', () => {
+  /*
+   * Un service partenaire est précisément celui qui traite les demandes qu'on
+   * lui adresse. Le laisser fermé aurait rendu le module inaccessible au rôle
+   * qui en a le plus l'usage — et en 403 silencieux, puisque la règle est
+   * fermée par défaut.
+   *
+   * Ce qu'il y voit n'est pas décidé ici mais par `ticketScope.ts` : ouvrir le
+   * chemin ne lui montre pas les demandes des autres.
+   */
+  it.each([
+    ['/api/tickets', 'GET'],
+    ['/api/tickets', 'POST'],
+    ['/api/tickets/12', 'GET'],
+    ['/api/tickets/12/messages', 'POST'],
+    ['/api/tickets/12/documents', 'POST'],
+    ['/api/tickets/referentiel/statuts', 'GET'],
+  ])('%s %s est ouvert', (chemin, methode) => {
+    expect(cheminAutorise(chemin, methode)).toBe(true);
+  });
+
+  it('ouvre les bâtiments en lecture, pas en écriture', () => {
+    // Le formulaire a besoin du nom des bâtiments ; en créer un relève de
+    // l'administration du référentiel, pas d'un compte cloisonné.
+    expect(cheminAutorise('/api/sites', 'GET')).toBe(true);
+    expect(cheminAutorise('/api/sites/mes-sites', 'GET')).toBe(true);
+    expect(cheminAutorise('/api/sites', 'POST')).toBe(false);
+    expect(cheminAutorise('/api/sites/3', 'DELETE')).toBe(false);
+  });
+
+  it('n’a rien relâché ailleurs', () => {
+    // L'ouverture des demandes ne doit pas avoir servi de prétexte à d'autres.
+    expect(cheminAutorise('/api/plannings', 'GET')).toBe(false);
+    expect(cheminAutorise('/api/objects', 'GET')).toBe(false);
+    expect(cheminAutorise('/api/cles', 'GET')).toBe(false);
+  });
+
+  it('ne se laisse pas tromper par un chemin qui commence pareil', () => {
+    expect(cheminAutorise('/api/ticketsx', 'GET')).toBe(false);
+    expect(cheminAutorise('/api/sitesx', 'GET')).toBe(false);
+  });
+});

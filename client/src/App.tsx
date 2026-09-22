@@ -62,6 +62,9 @@ const ManifestationsPage = lazy(() => import('@/pages/ManifestationsPage'))
 const EspacesVertsPage = lazy(() => import('@/pages/EspacesVertsPage'))
 const PlanningsPage = lazy(() => import('@/pages/PlanningsPage'))
 const PlanningsSettingsPage = lazy(() => import('@/pages/settings/PlanningsSettingsPage'))
+const TicketsPage = lazy(() => import('@/pages/TicketsPage'))
+const TicketDetailPage = lazy(() => import('@/pages/TicketDetailPage'))
+const TicketsSettingsPage = lazy(() => import('@/pages/settings/TicketsSettingsPage'))
 
 /** Page mémorisée par ProtectedRoute avant de renvoyer vers la connexion. */
 export function getRedirectTarget(location: { state?: unknown }): string {
@@ -168,6 +171,8 @@ function App() {
           <Route path="manifestations" element={<ManifestationsPage />} />
           <Route path="espaces-verts" element={<EspacesVertsPage />} />
           <Route path="plannings" element={<PlanningsPage />} />
+          <Route path="tickets" element={<TicketsPage />} />
+          <Route path="tickets/:id" element={<TicketDetailPage />} />
           <Route path="profile" element={<ProfilePage />} />
 
           {/* Routes dynamiques pour les plugins de type menu */}
@@ -190,6 +195,7 @@ function App() {
             <Route path="manifestations" element={<ManifestationsSettingsPage />} />
             <Route path="espaces-verts" element={<EspacesVertsSettingsPage />} />
             <Route path="plannings" element={<PlanningsSettingsPage />} />
+            <Route path="tickets" element={<TicketsSettingsPage />} />
             <Route path="cartographie" element={<CartographieSettingsPage />} />
             <Route path="cles" element={<ClesSettingsPage />} />
             <Route path="cles/import-snipeit" element={<ImportSnipeItPage />} />

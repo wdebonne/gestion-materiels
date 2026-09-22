@@ -10,6 +10,13 @@ export interface UploadedFile {
   originalName: string
   mimetype: string
   size: number
+  /**
+   * Le fichier d'origine, quand le dépôt a été différé.
+   *
+   * Voir `televerser` : un appelant qui n'a pas encore d'entité à laquelle
+   * rattacher la pièce le conserve ici, et le dépose lui-même ensuite.
+   */
+  file?: File
 }
 
 interface FileUploadProps {
@@ -21,6 +28,22 @@ interface FileUploadProps {
   maxSize?: number // en MB
   maxFiles?: number
   className?: string
+  /**
+   * Comment déposer un fichier, si ce n'est pas par `POST /api/upload/file`.
+   *
+   * Cette route-là porte `requireFieldWrite` : elle est réservée à
+   * l'administrateur, au superviseur et à l'agent de terrain. C'est le bon
+   * réglage pour le parc — un compte en consultation n'a pas à déposer des
+   * documents sur du matériel — mais le mauvais partout où c'est précisément
+   * un compte « user » ou « service » qui dépose : le demandeur d'un ticket
+   * joignant la photo de son rideau cassé recevrait un 403.
+   *
+   * L'appelant fournit alors sa propre fonction, gardée par ce qui convient à
+   * son module. Le glisser-déposer, la prise de photo, la réduction côté
+   * client et les aperçus restent les mêmes — c'est tout l'intérêt de ne pas
+   * recopier ce composant.
+   */
+  televerser?: (fichier: File) => Promise<UploadedFile>
 }
 
 export default function FileUpload({
@@ -31,7 +54,8 @@ export default function FileUpload({
   accept = 'image/*,.pdf',
   maxSize = 10,
   maxFiles = 5,
-  className = ''
+  className = '',
+  televerser
 }: FileUploadProps) {
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -91,6 +115,11 @@ export default function FileUpload({
       const uploadedFiles: UploadedFile[] = []
 
       for (const file of filesToUpload) {
+        if (televerser) {
+          uploadedFiles.push(await televerser(file))
+          continue
+        }
+
         const formData = new FormData()
         formData.append('file', file)
 

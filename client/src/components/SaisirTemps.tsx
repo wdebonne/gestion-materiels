@@ -69,6 +69,7 @@ export default function SaisirTemps({
   const [categorie, setCategorie] = useState('')
   const [description, setDescription] = useState('')
   const [manifestationId, setManifestationId] = useState('')
+  const [ticketId, setTicketId] = useState('')
   const [pour, setPour] = useState<number | undefined>(titulaireId)
   const [renforts, setRenforts] = useState<RenfortSaisi[]>([])
   const [erreur, setErreur] = useState('')
@@ -83,6 +84,20 @@ export default function SaisirTemps({
     queryKey: ['annuaire'],
     queryFn: async () => (await api.get('/users/annuaire')).data.users ?? [],
     enabled: ouvert,
+  })
+
+  /*
+   * Les demandes encore ouvertes, et celles-là seulement.
+   *
+   * Dérouler tout l'historique donnerait une liste de plusieurs centaines de
+   * lignes dans laquelle personne ne retrouverait la demande sur laquelle il
+   * vient de passer deux heures. Une demande close ne reçoit plus d'heures ;
+   * si elle en reçoit, c'est qu'elle a été rouverte, et elle réapparaît.
+   */
+  const { data: demandes = [] } = useQuery({
+    queryKey: ['plannings', 'demandes-ouvertes'],
+    queryFn: async () =>
+      (await api.get('/tickets?ouverts=true&limite=200')).data.tickets ?? [],
   })
 
   const { data: manifestations = [] } = useQuery({
@@ -103,6 +118,7 @@ export default function SaisirTemps({
       setCategorie(tache.categorie?.nom ?? '')
       setDescription(tache.description ?? '')
       setManifestationId(tache.manifestation ? String(tache.manifestation.id) : '')
+      setTicketId(tache.ticket ? String(tache.ticket.id) : '')
       setPour(tache.titulaire.id)
       setRenforts(
         tache.participants.map((p, index) => ({
@@ -163,6 +179,7 @@ export default function SaisirTemps({
         heureFin: heureFin || null,
         categorieId: choisie?.id ?? null,
         manifestationId: manifestationId ? Number(manifestationId) : null,
+        ticketId: ticketId ? Number(ticketId) : null,
         description: description.trim() || null,
         participants: renforts.map((r) => ({
           userId: r.nomme ? r.userId : null,
@@ -308,6 +325,20 @@ export default function SaisirTemps({
               placeholder="Aucune"
               onChange={(e) => setManifestationId(e.target.value)}
               options={manifestations.map((m: any) => ({ value: m.id, label: m.title }))}
+            />
+          )}
+
+          {demandes.length > 0 && (
+            <Select
+              label="Demande concernée"
+              hint="Facultatif — rattache ces heures à un ticket, et à son matériel"
+              value={ticketId}
+              placeholder="Aucune"
+              onChange={(e) => setTicketId(e.target.value)}
+              options={demandes.map((t: any) => ({
+                value: t.id,
+                label: `${t.reference ?? '#' + t.id} — ${t.titre}`,
+              }))}
             />
           )}
 

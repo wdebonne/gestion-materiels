@@ -4,6 +4,8 @@ import { logService } from '../services/log.service';
 import { ROLES, ROLE_LABELS } from '../config/roles';
 import {
   EVENEMENTS_NOTIFICATION,
+  evenementsDu,
+  type DomaineNotification,
   enregistrerDefauts,
   enregistrerPreference,
   lireDefauts,
@@ -28,11 +30,23 @@ const router = Router();
  * finirait par diverger, et un événement à moitié déclaré serait proposé sans
  * jamais partir.
  */
-router.get('/events', authenticateToken, async (_req: AuthRequest, res: Response) => {
+/**
+ * Le domaine demandé, ou celui des manifestations.
+ *
+ * Le défaut préserve les appels existants : l'écran des manifestations n'a pas
+ * à savoir qu'un second module partage désormais ce catalogue.
+ */
+function domaineDemande(req: AuthRequest): DomaineNotification {
+  return req.query.domaine === 'ticket' ? 'ticket' : 'manifestation';
+}
+
+router.get('/events', authenticateToken, async (req: AuthRequest, res: Response) => {
   res.json({
     success: true,
     data: {
-      events: EVENEMENTS_NOTIFICATION,
+      // `tous=true` rend les deux catalogues, pour un écran qui les présenterait
+      // ensemble ; sinon, seulement ceux du domaine demandé.
+      events: req.query.tous === 'true' ? EVENEMENTS_NOTIFICATION : evenementsDu(domaineDemande(req)),
       roles: ROLES.map((role) => ({ role, label: ROLE_LABELS[role] })),
     },
   });
@@ -40,9 +54,9 @@ router.get('/events', authenticateToken, async (_req: AuthRequest, res: Response
 
 // ======================== DÉFAUTS DE LA COLLECTIVITÉ ========================
 
-router.get('/defaults', authenticateToken, requireAdmin, async (_req: AuthRequest, res: Response) => {
+router.get('/defaults', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    res.json({ success: true, data: await lireDefauts() });
+    res.json({ success: true, data: await lireDefauts(domaineDemande(req)) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }
@@ -50,9 +64,10 @@ router.get('/defaults', authenticateToken, requireAdmin, async (_req: AuthReques
 
 router.put('/defaults', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    await enregistrerDefauts(req.body?.defaults ?? {});
-    await logService.success('user', 'Réglages de notification modifiés', {}, { userId: req.user?.userId });
-    res.json({ success: true, data: await lireDefauts() });
+    const domaine = domaineDemande(req);
+    await enregistrerDefauts(req.body?.defaults ?? {}, domaine);
+    await logService.success('user', 'Réglages de notification modifiés', { domaine }, { userId: req.user?.userId });
+    res.json({ success: true, data: await lireDefauts(domaine) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
   }

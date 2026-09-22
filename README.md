@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-1152-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1349-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -232,6 +232,41 @@ Le parc dit ce que la commune possède ; ce module dit ce qu'il **coûte en heur
 - 👔 **Un agent, plusieurs encadrants** : Mme Martin *Responsable du service* et M. Jean *Référent de l'équipe* peuvent suivre le même agent, chacun à son titre. Un encadrant voit ses propres heures et celles de ses agents rattachés, rien de plus ; le rattachement est **réservé à l'administrateur**, car pouvoir s'attribuer des agents reviendrait à élargir seul son propre périmètre
 - ⚠️ **L'oubli de rattachement ne passe pas inaperçu** : une personne rattachée à personne n'est visible que d'elle-même et de l'administrateur. Les paramètres l'affichent en tête, nommément, plutôt que de laisser croire en réunion qu'elle n'a rien saisi
 - 🕛 **Ni fuseau ni changement d'heure** : le jour est une chaîne ISO, les horaires du texte, et la durée un entier de minutes calculé par le serveur. Aucune conversion UTC ne traverse un compteur d'heures, et la semaine ISO est calculée en JavaScript plutôt que confiée à `strftime` et `DATE_FORMAT`, qui ne s'accordent pas sur la première semaine de l'année
+
+### 🎫 Tickets — les demandes internes (Nouveau!)
+
+Les signalements passaient par **GestSup**, une application séparée : deuxième outil, deuxième annuaire, deuxième mot de passe, et aucun lien avec le parc. « Souci de bruit sur le Nemo » n'apparaissait nulle part dans la fiche du Nemo, et « le rideau est cassé à la salle des fêtes » se ressaisissait trois fois, faute de voir ce que les autres avaient déjà signalé.
+
+- 🎯 **Une demande part toute seule au bon endroit** : la catégorie — Informatique, Bâtiment, Voirie — porte son **service destinataire** et son **technicien**. Le demandeur ne les choisit pas ; l'écran lui dit en clair où cela part (« cette demande partira au service Technique (Tom Tech) »), parce que personne n'aime envoyer dans le vide. Une sous-catégorie laissée sans réglage **hérite** de sa catégorie : l'acheminement s'écrit une fois, pas dix
+- 🏢 **Le formulaire ne demande pas ce qu'il sait déjà** : rattaché à **un seul bâtiment**, le champ est masqué et rempli ; rattaché à **plusieurs**, il est proposé. Une catégorie peut forcer la question (la voirie, où le lieu *est* la demande) ou la supprimer (une création de compte n'a pas de lieu)
+- 🔧 **Le matériel concerné, quand il a du sens** : proposé seulement si la catégorie l'autorise — et réglable **par personne** — puis limité au parc que cette catégorie associe. Le sélecteur de « souci de bruit sur le Nemo » ne déroule pas l'inventaire de la commune, et un ticket ainsi rattaché documente l'entretien du matériel
+- 🚧 **Cloisonnement par équipe** : le service technique ne voit pas les demandes informatiques, et réciproquement. **Aucun rôle n'ouvre tout par lui-même**, pas même superviseur — qui doit tout voir le reçoit explicitement dans l'écran des droits. Un responsable voit en plus les demandes des agents qu'il encadre, par le lien qui sert déjà aux heures
+- 👀 **Voir n'est pas lire** : les collègues d'un bâtiment voient les demandes qui le concernent — c'est ce qui évite trois signalements pour un même rideau — mais en **voisinage** : titre, état, date, demandeur. Ni le fil, ni les pièces, ni les notes internes. Et seulement sur les catégories déclarées partageables : l'informatique reste privée, parce qu'une demande de mot de passe n'a pas à circuler dans l'open space
+- 🔁 **Le partage ne rétroagit pas** : basculer une catégorie en partagé n'expose pas ce qui a été écrit quand elle était privée. Un bouton le rattrape d'un geste, en le sachant
+- 💬 **Un fil unique**, comme dans GestSup : ouverture, messages, changements d'état et pièces déposées dans une seule colonne. Deux tables pourtant — une trace d'audit ne se modifie pas — et un **compteur commun** les ordonne : un `DATETIME` ne porte pas les fractions de seconde, et une action en écrit plusieurs d'un coup. Sans lui, « Résolu » pouvait s'afficher avant « Ouverture »
+- 🔒 **Note interne** : le technicien écrit « à commander chez X, délai trois semaines » sans l'adresser à celui qui attend. Le serveur ne l'envoie pas au demandeur, plutôt que de compter sur l'écran pour la cacher
+- 📎 **Photos dans le message, documents en dessous** : une image déposée avec un message s'affiche **en vignette dans sa bulle**, une pièce déposée seule va dans les documents. Visuellement on a la photo dans le message ; techniquement aucun HTML n'est stocké — le dépôt n'a ni éditeur riche ni sanitiseur, et un module dont le principe est que des gens s'écrivent n'était pas l'endroit pour en introduire un
+- 🚦 **Six états personnalisables** : à traiter, en cours, en attente de retour, en commande, résolu, refusé. Ils se renomment, se recolorent et se réordonnent — ce sont ceux de la collectivité, pas ceux du code, qui ne s'appuie que sur trois drapeaux (*ouvert*, *par défaut*, *final*). « En attente de retour » est ouvert sans être le défaut ; « refusé » est final sans être une résolution
+- ⏱️ **Délais par catégorie** : prise en charge et résolution, en minutes. Les échéances sont posées à l'ouverture, la file signale d'un liseré rouge ce qui est en retard, et la prise en charge **ne rajeunit jamais** — un aller-retour par « en attente » ne remet pas le compteur à zéro
+- 🗂️ **File façon GestSup** : les états en colonne de gauche avec leur compteur, l'arbre des catégories en dessous, la liste à droite. Les filtres vivent **dans l'URL** (`?statut=2&categorie=5`), donc se copient dans un message
+- 🏛️ **Les bâtiments sont ceux du module Clés**, promus en référentiel partagé : une seule liste à tenir, et les lieux déjà saisis servent immédiatement. Un bâtiment cité par une demande ne se supprime plus — l'historique perdrait son lieu — mais se **désactive**
+- 🤝 **Ouvert au rôle « Service partenaire »** : c'est lui qui traite les demandes qu'on lui adresse, et qui en ouvre au service voisin
+- ⏱️ **Le temps passé vient des plannings**, pas d'une seconde comptabilité : une tâche se rattache à une demande comme elle se rattache déjà à une manifestation. L'agent saisit ses heures **une fois**, et le rapport sait ce qu'une demande a coûté — renforts compris
+- 🔧 **La fiche d'un matériel montre ses demandes** : « souci de bruit sur le Nemo » entre dans l'historique du Nemo, aux côtés de ses entretiens. Le bouton « Signaler un problème » ouvre le formulaire avec le matériel **déjà rempli**
+- 📊 **Médiane *et* moyenne** sur les délais : une demande qui traîne six mois tire la moyenne d'un service qui répond en deux heures, et le chiffre seul fait conclure l'inverse. L'écart entre les deux devient le renseignement. Les délais ne se mesurent que sur ce qui est **clos**, et le rapport est borné par la portée de son lecteur
+- 📈 **Un onglet Rapport** : volumes, délais tenus, répartitions par catégorie, bâtiment et technicien, temps passé. Chaque graphique porte **son tableau à côté** — trois teintes de la palette passent sous 3:1 de contraste, et l'identité d'une barre ne repose jamais sur sa seule couleur. La période vit dans l'URL, donc le rapport se partage par un lien
+- 📥 **Reprise de GestSup, rejouable** : l'identifiant d'origine est conservé, relancer un import interrompu ne double rien, et le numéro connu des agents (`G-2646`) reste la référence. L'**essai à blanc est le défaut** — il faut demander l'écriture. Ce qui ne se rapproche pas est **signalé, pas deviné** : une catégorie inconnue n'est jamais rangée dans la première venue. Les demandeurs absents sont inscrits à l'annuaire **sans accès**
+
+> **Pièces jointes et rôles.** `POST /api/upload/file` est réservé aux agents de terrain : c'est le bon réglage pour le parc, et le mauvais ici, puisque le demandeur d'un ticket est justement un compte en consultation. Les pièces passent donc par une route du module, gardée par la **portée de la demande** et non par le rôle. Le glisser-déposer, la prise de photo et la réduction côté client restent les mêmes.
+
+> **GestSup reste en place.** Rien n'oblige à basculer ; l'historique se reprendra dans un second temps.
+
+- 📧 **Les courriels se règlent en phrases, pas en cases** : « Quand *n'importe quel événement* se produit, pour une demande de *Bâtiment*, sur *Mairie* → prévenir *l'élu aux travaux* ». Chaque condition laissée sur « peu importe » **élargit** la règle : une règle qui ne porte que sur un bâtiment vaut pour toutes ses demandes, sans qu'on ait à en écrire une par catégorie
+- ➕ **Les règles ajoutent, elles ne remplacent jamais** : prévenir le responsable de la maintenance parce qu'on est à la mairie ne retire pas le technicien attitré. Faire gagner la règle la plus précise aurait produit exactement ce défaut, et personne n'en aurait compris la cause
+- 🧪 **Un bouton « Tester »** : composez « une fuite à la mairie », et lisez qui serait prévenu **et à quel titre** — « technicien affecté », « service Technique », « Élu aux travaux ». Sans lui, on découvre l'effet d'une règle sur une vraie demande, un mois plus tard
+- 🙋 **Une personne sans compte reste joignable** : l'élu chargé des travaux figure à l'annuaire sans identifiants. La grille par rôle l'écarte à dessein — les liens mèneraient à un écran de connexion — mais une règle qui le **nomme** l'atteint : on lui écrit qu'il y a une fuite, pas qu'il doit se connecter
+- 🔕 **Chacun règle ce qu'il reçoit**, sauf une demande qu'on lui confie : la couper laisserait le travail attendre sans que personne le sache. Une **note interne** ne part jamais par courriel — c'est tout son objet
+- ⏰ **Le délai dépassé se signale une fois**, pas toutes les quinze minutes : une trace au fil de la demande sert de témoin. Sans elle, un retard de trois semaines aurait produit deux mille courriels. Une alerte est posée au passage, donc la pastille du menu la compte sans qu'on ait rien branché
 
 ### 🌳 Espaces Verts (Nouveau!)
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
@@ -579,7 +614,7 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 57 suites
+├── tests/                  # Tests backend (Jest) — 64 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── personnes.test.ts  # Annuaire : reconstruction de `users`, accès accordé ou retiré
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain

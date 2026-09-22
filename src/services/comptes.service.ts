@@ -35,6 +35,9 @@ export interface TracesCompte {
   heures_saisies: number;
   heures_participation: number;
   encadrement: number;
+  tickets_ouverts: number;
+  tickets_affectes: number;
+  messages_tickets: number;
   total: number;
 }
 
@@ -87,6 +90,21 @@ export async function tracesDe(userId: number | string): Promise<TracesCompte> {
       'SELECT COUNT(*) as cnt FROM planning_superviseurs WHERE agent_id = ? OR superviseur_id = ?',
       2
     ),
+    // Une demande prouve qu'un signalement a été fait, et par qui. C'est
+    // exactement ce qu'un litige oblige à retrouver — « je l'avais signalé en
+    // mars » — et `demandeur_id` n'est pas en `ON DELETE SET NULL` pour cette
+    // raison : effacer la personne échouerait, ou laisserait une demande sans
+    // auteur. Un agent qui n'aurait fait qu'ouvrir des tickets serait, sans ces
+    // trois lignes, jugé « sans trace » et supprimé pour de bon.
+    tickets_ouverts: await compter(
+      'SELECT COUNT(*) as cnt FROM tickets WHERE demandeur_id = ? OR created_by = ?',
+      2
+    ),
+    tickets_affectes: await compter(
+      'SELECT COUNT(*) as cnt FROM tickets WHERE technicien_id = ? OR resolu_by = ?',
+      2
+    ),
+    messages_tickets: await compter('SELECT COUNT(*) as cnt FROM ticket_messages WHERE user_id = ?'),
     total: 0,
   };
 
@@ -100,7 +118,10 @@ export async function tracesDe(userId: number | string): Promise<TracesCompte> {
     traces.reservations +
     traces.heures_saisies +
     traces.heures_participation +
-    traces.encadrement;
+    traces.encadrement +
+    traces.tickets_ouverts +
+    traces.tickets_affectes +
+    traces.messages_tickets;
 
   return traces;
 }

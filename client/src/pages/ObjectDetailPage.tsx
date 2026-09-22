@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import QRCodeDisplay from '@/components/QRCodeDisplay'
+import DemandesDuMateriel from '@/components/tickets/DemandesDuMateriel'
 import ObjectTimeline from '@/components/ObjectTimeline'
 import ImplantationsDuMateriel, {
   useImplantationsDuMateriel,
@@ -862,6 +863,12 @@ export default function ObjectDetailPage() {
     }
 
     // Onglet Timeline (toujours visible)
+    // Les demandes qui concernent ce matériel : « souci de bruit sur le Nemo »
+    // appartient à l'historique du Nemo autant que ses entretiens. L'onglet est
+    // toujours visible — son absence laisserait croire qu'on ne peut rien
+    // signaler depuis la fiche.
+    baseTabs.push({ id: 'tickets', label: 'Demandes' } as any)
+
     baseTabs.push({ id: 'timeline', label: 'Historique' } as any)
     
     return baseTabs
@@ -2982,6 +2989,8 @@ export default function ObjectDetailPage() {
       {activeTab === 'implantations' && object && (
         <ImplantationsDuMateriel objectId={Number(id)} objectName={object.name} />
       )}
+
+      {activeTab === 'tickets' && object && <DemandesDuMateriel objectId={Number(object.id)} />}
 
       {activeTab === 'timeline' && object && (
         <Card>

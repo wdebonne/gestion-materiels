@@ -7,6 +7,269 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Le rapport des demandes se lit à l'écran
+
+> Les chiffres existaient côté serveur ; il manquait l'écran. Un onglet
+> **Rapport** s'ajoute à la file, avec sa période — l'onglet vit dans l'URL
+> comme les filtres, pour qu'« regarde le rapport du mois » se partage par un
+> lien plutôt que par une suite de clics à décrire.
+>
+> **Trois formes, trois métiers.** Les volumes sont des nombres seuls : « 42
+> demandes ce mois » n'a pas besoin d'un graphique, et lui en donner un
+> ajouterait du décor sans rien apprendre. Les répartitions sont des barres
+> horizontales — on compare des grandeurs entre des libellés nommés, dont
+> certains sont longs. Les délais sont deux nombres côte à côte, parce que c'est
+> **leur écart** qui renseigne : quand la moyenne dépasse nettement la médiane,
+> l'écran le dit en toutes lettres, ce sont quelques dossiers bloqués qu'il faut
+> regarder et non l'équipe.
+>
+> **Les couleurs sont celles du dépôt, et personne n'en a inventé.** La palette
+> des catégories de temps porte huit teintes en ordre fixe, validées comme un
+> jeu sur les surfaces réelles de l'application. Le validateur a été repassé :
+> écart minimal de 9,1 en clair et 8,4 en sombre entre voisines en vision
+> déficiente, pour une cible de 8 — les chiffres que le dépôt annonçait, au
+> centième près.
+>
+> Trois teintes claires passent sous 3:1 de contraste, et c'est pourquoi chaque
+> graphique porte **son tableau à côté de lui**, avec une pastille qui rattache
+> chaque libellé à sa barre. L'identité ne repose jamais sur la couleur seule.
+> Les répartitions par bâtiment et par technicien n'emploient **qu'une seule
+> teinte** : elles comparent une grandeur, elles ne distinguent pas des
+> identités, et huit couleurs y laisseraient croire à un sens qui n'existe pas.
+>
+> **La couleur est portée par l'icône, jamais par le chiffre.** Un nombre teinté
+> est un nombre moins lisible, et c'est justement celui qu'on vient chercher.
+>
+> Regarder le rendu a révélé deux manques que la compilation ne voyait pas : la
+> **description d'une demande n'était affichée nulle part** — le titre dit de
+> quoi il s'agit, la description dit ce qui se passe, et c'est le renseignement
+> pour lequel un technicien ouvre la fiche — et un ticket repris s'annonçait
+> « Admin Système — import » au lieu de « Repris de GestSup (2646) ».
+
+### Les demandes entrent dans l'histoire du matériel, et dans les chiffres
+
+> Il restait à répondre à trois questions que le socle posait sans pouvoir les
+> traiter : combien de temps une demande coûte, ce qu'on tient comme délais, et
+> ce que devient tout ce qui a déjà été signalé dans GestSup.
+>
+> **Le temps passé est une colonne, pas une seconde comptabilité.**
+> `planning_taches` portait déjà `manifestation_id` ; `ticket_id` s'ajoute au
+> même titre. Une table dédiée aurait obligé l'agent à saisir ses deux heures
+> **deux fois** — une fois pour son planning, une fois pour la demande — ou une
+> seule, et le total de sa semaine aurait été faux. Les renforts, les deux
+> mesures (temps mobilisé / temps d'une personne) et l'export existant suivent
+> sans qu'on ait rien écrit.
+>
+> La saisie de temps propose les demandes **encore ouvertes**, et celles-là
+> seulement : dérouler tout l'historique donnerait une liste de plusieurs
+> centaines de lignes dans laquelle personne ne retrouverait la sienne.
+>
+> **La fiche d'un matériel montre ses demandes.** « Souci de bruit sur le Nemo »
+> apparaît enfin dans l'historique du Nemo, aux côtés de ses entretiens et de
+> ses pleins — c'était la moitié de la raison pour laquelle ce module a été
+> écrit ici plutôt qu'intégré à l'outil séparé. Le bouton « Signaler un
+> problème » ouvre le formulaire **avec le matériel déjà rempli** : c'est depuis
+> la fiche qu'on constate la panne, et redemander de retrouver le matériel dans
+> une liste serait absurde. Ce rattachement est conservé même si la catégorie
+> choisie ne demande pas de matériel, sans quoi il se perdrait silencieusement
+> au moment précis où il est le plus évident.
+>
+> **La médiane à côté de la moyenne.** Une demande qui traîne six mois — le
+> rideau qu'on ne commande qu'au budget suivant — tire la moyenne d'un service
+> qui répond par ailleurs en deux heures. Présentée seule en réunion, elle fait
+> conclure l'inverse de la réalité. L'écart entre les deux chiffres devient
+> alors un renseignement à part entière : quand la moyenne double la médiane,
+> ce sont quelques dossiers bloqués qu'il faut regarder, pas l'équipe.
+>
+> Les délais ne se mesurent que sur ce qui est **clos** : compter les demandes
+> ouvertes avec leur âge courant ferait baisser la moyenne à mesure qu'on en
+> ouvre, ce qui n'a pas de sens. Les ouvertes sont comptées à part — c'est une
+> mesure de charge, pas de performance. Et le rapport est borné par la portée de
+> son lecteur : un responsable du service technique qui lirait « 340 demandes »
+> alors qu'il n'en voit que 120 n'y comprendrait rien, et le chiffre révélerait
+> l'activité des autres.
+>
+> **La reprise de GestSup, rejouable et sans surprise.** L'enjeu n'est pas de
+> recopier des lignes : c'est que « M. Dupont a déjà signalé le rideau cassé »
+> fonctionne dès le premier jour. Un module de demandes sans passé ne prévient
+> aucun doublon.
+>
+> Trois règles, chacune tirée d'un échec prévisible. La reprise est **rejouable**
+> — l'identifiant d'origine est conservé, relancer un import interrompu ne
+> double rien, et corriger un fichier puis le reverser met à jour au lieu
+> d'empiler. L'**essai à blanc est le défaut** : il faut demander explicitement
+> l'écriture, parce que découvrir après coup que trois cents demandes ont
+> atterri sur la mauvaise catégorie coûte bien plus cher que de lire un tableau
+> avant. Et **ce qui ne se rapproche pas est dit, pas deviné** : une catégorie
+> inconnue n'est pas rangée dans la première venue, elle est reportée telle
+> quelle — deviner produirait un historique faux, qu'on croirait vrai.
+>
+> Les demandeurs absents sont **inscrits à l'annuaire sans accès**, ce que la
+> migration 028 avait prévu pour le gardien et l'élu : cela vaut mieux qu'un
+> historique dont l'auteur est « inconnu ». Le numéro d'origine est conservé
+> comme référence (`G-2646`), parce que c'est celui que les agents citent encore
+> dans leurs courriels. Les correspondances établies une fois — « SVC_TECH » est
+> le service Technique — sont retenues, et ne sont plus redemandées.
+
+### Les demandes préviennent qui il faut, et pas les autres
+
+> Le socle des demandes savait qui traite ; il ne savait écrire à personne. Ce
+> qui manquait n'était pas l'envoi — `sendEmail` existe depuis longtemps — mais
+> la réponse à une question que ni un rôle ni un service ne sait poser : *« une
+> fuite à la mairie doit prévenir le responsable de la maintenance et l'élu
+> chargé des travaux, en plus du demandeur et du technicien »*.
+>
+> **Le catalogue d'événements est désormais partagé entre deux modules.** Les
+> manifestations et les demandes emploient la même mécanique — `engageant`, les
+> préférences de chacun, la grille par rôle — qui n'est écrite qu'une fois. Un
+> **domaine** les sépare, les événements de demande sont **préfixés**, et rien
+> n'a été renommé : les réglages déjà en place et les préférences déjà
+> enregistrées restent valides, sans migration. Réemployer la clé `message`
+> aurait fait que couper les messages de manifestation coupait aussi ceux des
+> demandes.
+>
+> **Une règle se lit comme une phrase**, et c'est ainsi que l'écran l'affiche :
+>
+> > Quand **n'importe quel événement** se produit, pour une demande de
+> > **Bâtiment**, sur **Mairie** → prévenir **l'élu aux travaux**.
+>
+> Chaque condition laissée sur « peu importe » **élargit** la règle au lieu de
+> la restreindre. Une règle qui ne porte que sur un bâtiment vaut pour toutes
+> ses demandes : c'est le cas courant, et il évite d'en écrire une par
+> combinaison.
+>
+> **Les règles ajoutent, elles ne remplacent jamais.** La tentation était de
+> faire gagner la plus précise ; ç'aurait été un piège. Prévenir le responsable
+> de la maintenance parce qu'on est à la mairie aurait alors **retiré** le
+> technicien attitré de la catégorie, et personne n'en aurait compris la cause.
+> Mieux vaut un message de trop qu'un silence — c'est la doctrine déjà tenue par
+> les manifestations.
+>
+> **Un bouton « Tester ».** L'administrateur compose « une fuite à la mairie »,
+> appuie, et lit qui serait prévenu *et à quel titre* : « technicien affecté »,
+> « service Technique », « Élu aux travaux ». Le calcul est celui de l'envoi
+> réel ; on lui demande seulement de rendre la provenance au lieu de l'effacer.
+> C'est ce qui sépare « très paramétrable » de « paramétrable visuellement » :
+> sans lui, on découvre l'effet d'une règle sur une vraie demande, un mois plus
+> tard, quand quelqu'un se plaint d'être noyé.
+>
+> **Une personne sans compte reste joignable.** L'élu chargé des travaux figure
+> à l'annuaire sans identifiants depuis la migration 028. La grille par rôle
+> l'écarte à dessein — les liens d'un message mèneraient à un écran de connexion
+> qu'il ne passera pas — mais une règle qui le **nomme** l'atteint : on lui écrit
+> qu'il y a une fuite, il n'a pas besoin d'un lien.
+>
+> **Ce qui ne part pas.** Une note interne n'est jamais envoyée par courriel :
+> c'est tout son objet. L'auteur d'une action n'est pas prévenu de sa propre
+> action — se faire notifier de son propre message est le défaut le plus sûr
+> pour qu'on cesse de lire ses courriels. Et une demande qu'on vous confie ne
+> peut pas être coupée individuellement : sans cet avis, elle attendrait sans
+> que vous le sachiez, et son demandeur n'aurait aucun moyen de s'en apercevoir.
+>
+> **Le délai dépassé se signale une fois.** La vérification passe tous les
+> quarts d'heure — un délai de prise en charge se compte en heures, et un
+> passage quotidien signalerait le retard le lendemain, quand il ne sert plus à
+> rien — mais une trace inscrite au fil de la demande sert de témoin. Sans elle,
+> un retard de trois semaines aurait produit deux mille courriels, et la boîte
+> du technicien serait devenue inutilisable : exactement l'inverse du but.
+>
+> La trace est écrite **avant** l'envoi : si l'envoi échoue, mieux vaut un avis
+> manqué que deux mille. Une demande close ne rappelle rien. Une alerte est
+> posée au passage, avec la référence du module, si bien que la pastille du menu
+> compte les retards sans qu'on ait rien branché.
+>
+> Enfin, l'ancien refus « ne peut pas être coupé : vous bloqueriez une
+> manifestation sans le savoir » était écrit en dur. Il aurait expliqué à un
+> technicien qu'il bloque une manifestation en refusant les demandes qu'on lui
+> confie. Chaque avis engageant porte désormais sa propre raison.
+
+### Les demandes internes se traitent dans l'application
+
+> Les signalements passaient par **GestSup**, une application séparée : deuxième
+> outil, deuxième annuaire, deuxième mot de passe, et surtout aucun lien avec le
+> parc. « Souci de bruit sur le Nemo » n'apparaissait nulle part dans la fiche du
+> Nemo, et « le rideau est cassé à la salle des fêtes » se ressaisissait trois
+> fois, parce que personne ne voyait ce que les autres avaient déjà signalé.
+>
+> Un module **Tickets** ouvre, achemine et suit ces demandes. Il réutilise ce qui
+> existait déjà — l'annuaire, les équipes, le référentiel des lieux, le parc, les
+> pièces jointes — et n'ajoute que ce qui manquait vraiment : la demande
+> elle-même, et deux liaisons.
+>
+> **Une demande part toute seule au bon endroit.** La catégorie — Informatique,
+> Bâtiment, Voirie — porte son service destinataire et son technicien. Le
+> demandeur ne les choisit pas : il écrit ce qui ne va pas, et l'écran lui dit
+> où cela part, parce que personne n'aime envoyer dans le vide. Une
+> sous-catégorie sans réglage hérite de sa catégorie, ce qui évite de recopier
+> l'acheminement à dix endroits et de le voir diverger.
+>
+> **Le formulaire ne demande pas ce qu'il sait déjà.** Quelqu'un rattaché à un
+> seul bâtiment ne voit pas le champ « bâtiment » : il est rempli. Rattaché à
+> deux, il le voit. Le matériel n'apparaît que si la catégorie l'autorise, et se
+> limite au parc qu'elle propose — le sélecteur de « souci de bruit sur le Nemo »
+> ne déroule pas l'inventaire de la commune.
+>
+> **Le cloisonnement est celui qui était demandé.** Le service technique ne voit
+> pas les demandes informatiques, et réciproquement. Aucun rôle n'ouvre tout par
+> lui-même, pas même superviseur : qui doit tout voir le reçoit explicitement,
+> dans l'écran des droits. Un responsable voit en plus les demandes des agents
+> qu'il encadre, par le même lien qui sert déjà aux heures.
+>
+> **Voir n'est pas lire.** Les collègues d'un bâtiment voient les demandes qui
+> le concernent — c'est ce qui évite trois signalements pour un même rideau — mais
+> en **voisinage** : le titre, l'état, la date, le demandeur. Ni le fil, ni les
+> pièces, ni les notes internes. Et seulement sur les catégories déclarées
+> partageables : l'informatique reste privée, parce qu'une demande de mot de passe
+> n'a pas à circuler dans l'open space. Le partage est donc une propriété de la
+> nature de la demande, pas du compte — c'est ce qui le rend explicable.
+>
+> Basculer une catégorie en partagé **n'expose pas rétroactivement** ce qui a été
+> écrit quand elle était privée : leurs auteurs ne l'ont jamais accepté. Un bouton
+> le rattrape d'un geste, en le sachant.
+>
+> **Le fil mêle ce qui se dit et ce qui se passe**, comme dans GestSup :
+> ouverture, messages, changements d'état et pièces déposées dans une seule
+> colonne. Deux tables pourtant — une trace d'audit ne se modifie pas — et un
+> compteur commun les ordonne, parce qu'un `DATETIME` ne porte pas les fractions
+> de seconde et qu'une action en écrit plusieurs d'un coup : sans lui, « Résolu »
+> pouvait s'afficher avant « Ouverture ».
+>
+> Une **note interne** reste entre intervenants. Le serveur ne l'envoie pas au
+> demandeur, plutôt que de compter sur l'écran pour la cacher — c'est ce qui
+> manquait pour écrire « à commander chez X, délai trois semaines » sans
+> l'adresser à celui qui attend.
+>
+> **Les photos s'attachent au message.** Déposée avec un message, une image
+> s'affiche en vignette dans sa bulle ; déposée seule, elle va dans les documents
+> du bas. Visuellement, on a bien la photo dans le message ; techniquement, aucun
+> HTML n'a jamais été stocké — le dépôt n'a ni éditeur riche ni sanitiseur, et un
+> module dont le principe est que des gens s'écrivent n'était pas l'endroit pour
+> en introduire un.
+>
+> Deux points méritaient d'être corrigés au passage.
+>
+> **`POST /api/upload/file` est réservé aux agents de terrain.** C'est le bon
+> réglage pour le parc, et le mauvais ici : le demandeur d'un ticket est
+> justement un compte en consultation, et joindre la photo de son rideau cassé
+> lui aurait valu un refus. Les pièces passent donc par une route du module,
+> gardée par la portée de la demande et non par le rôle. Le glisser-déposer, la
+> prise de photo et la réduction côté client restent les mêmes : le composant
+> accepte désormais qu'on lui fournisse son propre dépôt.
+>
+> **Le menu d'un compte « service » est écrit en dur.** Ouvrir le chemin dans le
+> cloisonnement ne suffisait pas : il fallait aussi l'ajouter à cette liste, sans
+> quoi un service partenaire aurait eu une API accessible et aucun bouton pour y
+> aller.
+>
+> Les **six états** — à traiter, en cours, en attente de retour, en commande,
+> résolu, refusé — se renomment, se recolorent et se réordonnent : ce sont ceux
+> de la collectivité, pas ceux du code, qui ne s'appuie que sur trois drapeaux.
+> Les **bâtiments** sont ceux du module Clés, promus en référentiel partagé : une
+> seule liste à tenir, et les lieux déjà saisis servent immédiatement.
+>
+> GestSup reste en place : rien n'oblige à basculer, et l'historique se reprendra
+> dans un second temps.
+
 ### Le planning et les statistiques s'emportent en PDF
 
 > Le tableur et le CSV servent à retravailler des chiffres. Une réunion, elle,

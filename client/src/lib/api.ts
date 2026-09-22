@@ -2308,6 +2308,8 @@ export interface TachePlanning {
   titulaire: { id: number; nom: string }
   categorie: CategorieTemps | null
   manifestation: { id: number; titre: string } | null
+  /** La demande à laquelle ces heures se rattachent, s'il y en a une. */
+  ticket: { id: number; reference: string | null; titre: string } | null
   participants: RenfortTache[]
 }
 
@@ -2458,4 +2460,341 @@ export const planningApi = {
     api.put<{ success: boolean; data: LienEncadrement[] }>(`/plannings/superviseurs/${agentId}`, { liens }),
   agentsSansSuperviseur: () =>
     api.get<{ success: boolean; data: { id: number; nom: string }[] }>('/plannings/agents-sans-superviseur'),
+}
+
+// ------------------------------------------------------------------- Tickets
+
+export interface StatutTicket {
+  id: number
+  nom: string
+  slug: string
+  couleur: string | null
+  icone: string | null
+  ordre: number
+  ouvert: boolean
+  defaut: boolean
+  final: boolean
+  systeme: boolean
+  actif: boolean
+}
+
+export interface CategorieDemande {
+  id: number
+  nom: string
+  parentId: number | null
+  description: string | null
+  couleur: string | null
+  icone: string | null
+  ordre: number
+  actif: boolean
+  serviceId: number | null
+  technicienId: number | null
+  /** `null` sur une sous-catégorie veut dire « hérite de la parente ». */
+  visibilite: 'privee' | 'site' | null
+  materielMode: 'aucun' | 'optionnel' | 'requis' | null
+  siteMode: 'auto' | 'requis' | 'masque' | null
+  slaPriseEnChargeMinutes: number | null
+  slaResolutionMinutes: number | null
+  materiels?: { categoryId: number | null; subcategoryId: number | null }[]
+}
+
+export interface SiteBatiment {
+  id: number
+  nom: string
+  code: string | null
+  adresse: string | null
+  ordre: number
+  actif: boolean
+  peutVoirTickets?: boolean
+}
+
+export interface LigneFilTicket {
+  type: 'message' | 'evenement'
+  id: number
+  rang: number
+  date: string
+  auteur: { id: number | null; nom: string | null }
+  body?: string
+  interne?: boolean
+  serviceNom?: string | null
+  pieces?: { id: number; nom: string; url: string; mime: string | null; taille: number | null }[]
+  action?: string
+  champ?: string | null
+  ancienne?: string | null
+  nouvelle?: string | null
+}
+
+export interface Ticket {
+  id: number
+  reference: string | null
+  titre: string
+  description: string | null
+  /** Faux quand la demande n'est visible qu'au titre du bâtiment. */
+  accesComplet: boolean
+  statut: { id: number; nom: string; couleur: string | null; ouvert: boolean }
+  categorie: { id: number; nom: string; couleur: string | null } | null
+  sousCategorie: { id: number; nom: string } | null
+  site: { id: number; nom: string } | null
+  service: { id: number; nom: string } | null
+  demandeur: { id: number; nom: string } | null
+  technicien: { id: number; nom: string } | null
+  materiel: { id: number | null; nom: string; reference: string | null } | null
+  priorite: string
+  echeanceResolution: string | null
+  enRetard: boolean
+  creeLe: string
+  misAJourLe: string
+}
+
+export interface FiltresTickets {
+  /** Les filtres sont sérialisés en chaîne de requête : une signature d'index
+   *  évite d'avoir à recopier la liste dans `parametresTickets`. */
+  [cle: string]: unknown
+  statutId?: number | null
+  categorieId?: number | null
+  sousCategorieId?: number | null
+  siteId?: number | null
+  technicienId?: number | null
+  serviceId?: number | null
+  demandeurId?: number | null
+  objectId?: number | null
+  ouverts?: boolean | null
+  recherche?: string | null
+  limite?: number
+  depuis?: number
+}
+
+function parametresTickets(filtres: Record<string, unknown>): string {
+  const p = new URLSearchParams()
+  for (const [cle, valeur] of Object.entries(filtres)) {
+    if (valeur === null || valeur === undefined || valeur === '') continue
+    p.append(cle, String(valeur))
+  }
+  return p.toString()
+}
+
+export const ticketApi = {
+  permissions: () =>
+    api.get<{
+      success: boolean
+      voitTout: boolean
+      services: number[]
+      sitesPartages: number[]
+      estIntervenant: boolean
+    }>('/tickets/permissions'),
+
+  /** Tout ce dont le formulaire a besoin, en un seul appel. */
+  formulaire: () =>
+    api.get<{
+      success: boolean
+      sites: SiteBatiment[]
+      categories: CategorieDemande[]
+      statuts: StatutTicket[]
+      /** Renseigné quand la personne n'a qu'un bâtiment : le champ est masqué. */
+      siteImpose: number | null
+    }>('/tickets/formulaire'),
+
+  /** Où partira la demande, une fois la catégorie choisie. */
+  routage: (categorieId?: number | null, sousCategorieId?: number | null) =>
+    api.get<{
+      success: boolean
+      routage: { siteMode: string; materielMode: string; visibilite: string }
+      destinataire: {
+        service: { id: number; nom: string } | null
+        technicien: { id: number; nom: string } | null
+      }
+    }>(`/tickets/formulaire/routage?${parametresTickets({ categorieId, sousCategorieId })}`),
+
+  materielsProposes: (categorieId?: number | null, sousCategorieId?: number | null, recherche?: string) =>
+    api.get<{
+      success: boolean
+      materiels: { id: number; name: string; reference: string | null; location: string | null }[]
+    }>(`/tickets/formulaire/materiels?${parametresTickets({ categorieId, sousCategorieId, recherche })}`),
+
+  compteurs: (filtres: FiltresTickets = {}) =>
+    api.get<{
+      success: boolean
+      parStatut: { statutId: number; nom: string; couleur: string | null; ordre: number; total: number }[]
+      total: number
+    }>(`/tickets/compteurs?${parametresTickets(filtres)}`),
+
+  liste: (filtres: FiltresTickets = {}) =>
+    api.get<{ success: boolean; total: number; tickets: Ticket[] }>(`/tickets?${parametresTickets(filtres)}`),
+
+  lire: (id: number | string) =>
+    api.get<{
+      success: boolean
+      ticket: Ticket
+      acces: 'complet' | 'voisinage'
+      intervenant?: boolean
+      fil: LigneFilTicket[]
+      pieces: any[]
+      observateurs: any[]
+      message?: string
+    }>(`/tickets/${id}`),
+
+  creer: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number; reference: string | null; ticket: Ticket }>('/tickets', data),
+  modifier: (id: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/tickets/${id}`, data),
+  changerStatut: (id: number, statutId: number) =>
+    api.put<{ success: boolean }>(`/tickets/${id}/statut`, { statutId }),
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/tickets/${id}`),
+
+  fil: (id: number | string) => api.get<{ success: boolean; fil: LigneFilTicket[] }>(`/tickets/${id}/fil`),
+  ecrire: (id: number, data: { body: string; interne?: boolean; piecesIds?: number[] }) =>
+    api.post<{ success: boolean; messageId: number }>(`/tickets/${id}/messages`, data),
+
+  /**
+   * Dépose une pièce.
+   *
+   * Passe par `/tickets/:id/documents` et non par `/upload/file` : ce dernier
+   * exige le rôle agent de terrain, ce qui interdirait au demandeur de joindre
+   * la photo de son rideau cassé.
+   */
+  joindre: (id: number, fichier: File, messageId?: number | null) => {
+    const corps = new FormData()
+    corps.append('file', fichier)
+    if (messageId) corps.append('messageId', String(messageId))
+    return api.post<{
+      success: boolean
+      document: { id: number; nom: string; url: string; mime: string; taille: number }
+    }>(`/tickets/${id}/documents`, corps, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  retirerPiece: (id: number, docId: number) =>
+    api.delete<{ success: boolean }>(`/tickets/${id}/documents/${docId}`),
+
+  ajouterObservateur: (id: number, cible: { userId?: number; serviceId?: number }) =>
+    api.post<{ success: boolean; id: number }>(`/tickets/${id}/observateurs`, cible),
+  retirerObservateur: (id: number, obsId: number) =>
+    api.delete<{ success: boolean }>(`/tickets/${id}/observateurs/${obsId}`),
+}
+
+export const ticketReferentielApi = {
+  statuts: (tous = false) =>
+    api.get<{ success: boolean; statuts: StatutTicket[] }>(
+      `/tickets/referentiel/statuts${tous ? '?tous=true' : ''}`
+    ),
+  creerStatut: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>('/tickets/referentiel/statuts', data),
+  modifierStatut: (id: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/tickets/referentiel/statuts/${id}`, data),
+  supprimerStatut: (id: number) => api.delete<{ success: boolean }>(`/tickets/referentiel/statuts/${id}`),
+
+  categories: (toutes = false) =>
+    api.get<{ success: boolean; categories: CategorieDemande[] }>(
+      `/tickets/referentiel/categories${toutes ? '?toutes=true' : ''}`
+    ),
+  creerCategorie: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>('/tickets/referentiel/categories', data),
+  modifierCategorie: (id: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/tickets/referentiel/categories/${id}`, data),
+  supprimerCategorie: (id: number) =>
+    api.delete<{ success: boolean }>(`/tickets/referentiel/categories/${id}`),
+  /** Étend la visibilité aux demandes déjà ouvertes — un geste, jamais automatique. */
+  appliquerVisibilite: (id: number) =>
+    api.post<{ success: boolean; modifiees: number }>(
+      `/tickets/referentiel/categories/${id}/appliquer-visibilite`,
+      {}
+    ),
+
+  rattachements: (userId: number) =>
+    api.get<{
+      success: boolean
+      sites: { siteId: number; nom: string; peutVoirTickets: boolean }[]
+      categories: { categorieId: number; materielAutorise: boolean | null }[]
+    }>(`/tickets/referentiel/utilisateurs/${userId}`),
+  definirRattachements: (userId: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/tickets/referentiel/utilisateurs/${userId}`, data),
+}
+
+export const siteApi = {
+  mesSites: () =>
+    api.get<{
+      success: boolean
+      sites: SiteBatiment[]
+      rattaches: SiteBatiment[]
+      impose: number | null
+      partages: number[]
+    }>('/sites/mes-sites'),
+  liste: (tous = false) =>
+    api.get<{ success: boolean; sites: SiteBatiment[] }>(`/sites${tous ? '?tous=true' : ''}`),
+  lire: (id: number) => api.get<{ success: boolean; site: SiteBatiment; ouvrants: any[] }>(`/sites/${id}`),
+  membres: (id: number) =>
+    api.get<{
+      success: boolean
+      membres: { id: number; userId: number; nom: string; email: string | null; peutVoirTickets: boolean }[]
+    }>(`/sites/${id}/membres`),
+  creer: (data: Record<string, unknown>) => api.post<{ success: boolean; id: number }>('/sites', data),
+  modifier: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/sites/${id}`, data),
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/sites/${id}`),
+}
+
+// --------------------------------------------- Tickets : règles de diffusion
+
+export interface RegleNotification {
+  id: number
+  /** `null` vaut « tous les événements » : c'est le cas d'un élu qui suit un bâtiment. */
+  evenement: string | null
+  libelle: string | null
+  actif: boolean
+  /** Chaque champ à `null` vaut « peu importe », et élargit la règle. */
+  portee: {
+    categorieId: number | null
+    categorieNom: string | null
+    sousCategorieId: number | null
+    sousCategorieNom: string | null
+    siteId: number | null
+    siteNom: string | null
+    serviceId: number | null
+    serviceNom: string | null
+  }
+  destinataire: {
+    type: 'user' | 'service' | 'role'
+    userId: number | null
+    userNom: string | null
+    serviceId: number | null
+    serviceNom: string | null
+    role: string | null
+  }
+}
+
+export const ticketRegleApi = {
+  liste: () =>
+    api.get<{ success: boolean; regles: RegleNotification[] }>('/tickets/referentiel/regles'),
+  creer: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>('/tickets/referentiel/regles', data),
+  activer: (id: number, actif: boolean) =>
+    api.put<{ success: boolean }>(`/tickets/referentiel/regles/${id}`, { actif }),
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/tickets/referentiel/regles/${id}`),
+  /** Qui recevrait, et pourquoi — sans rien envoyer. */
+  simuler: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; destinataires: { email: string; raison: string }[] }>(
+      '/tickets/referentiel/regles/simulation',
+      data
+    ),
+}
+
+/** Le catalogue d'événements d'un module, et les rôles configurables. */
+export const notificationCatalogueApi = {
+  evenements: (domaine: 'manifestation' | 'ticket') =>
+    api.get<{
+      success: boolean
+      data: {
+        events: Array<{
+          domaine: string
+          evenement: string
+          libelle: string
+          description: string
+          engageant: boolean
+        }>
+        roles: { role: string; label: string }[]
+      }
+    }>(`/notifications/events?domaine=${domaine}`),
+  defauts: (domaine: 'manifestation' | 'ticket') =>
+    api.get<{ success: boolean; data: Record<string, { roles: string[]; services: boolean }> }>(
+      `/notifications/defaults?domaine=${domaine}`
+    ),
+  enregistrerDefauts: (domaine: 'manifestation' | 'ticket', defaults: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/notifications/defaults?domaine=${domaine}`, { defaults }),
 }

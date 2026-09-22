@@ -17,6 +17,7 @@ Plugins intégrés à l'application avec des pages React dédiées, mais gérés
 | Manifestations | `manifestations` | `/manifestations` | Gestion événements et prêt matériel |
 | Espaces Verts | `espaces-verts` | `/espaces-verts` | Plan annoté, composition botanique, entretiens |
 | Plannings et heures | `plannings` | `/plannings` | Temps passé par tâche, statistiques et rapports |
+| Tickets | `tickets` | `/tickets` | Demandes internes : ouverture, routage, échanges et suivi |
 
 S'y ajoutent trois plugins associables à une catégorie, sans route propre, qui
 enrichissent la fiche d'un matériel : `fuel` (carburant **et** recharges

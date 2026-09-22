@@ -44,6 +44,7 @@ jest.mock('../src/database', () => {
 
 import { appliquerMigrations, type BaseMigration } from '../src/database/migrationRunner';
 import planningsEtHeures from '../src/database/migrations/031_plannings_et_heures';
+import ticketsTempsEtReprise from '../src/database/migrations/034_tickets_temps_et_reprise';
 import {
   Perimetre,
   SaisieInvalide,
@@ -88,6 +89,13 @@ beforeAll(async () => {
       title VARCHAR(255) NOT NULL,
       date_start DATE NOT NULL
     );
+    -- Une tâche peut se rattacher à une demande depuis la migration 034, au
+    -- même titre qu'à une manifestation. La lecture en fait la jointure.
+    CREATE TABLE tickets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      reference VARCHAR(30),
+      titre VARCHAR(255) NOT NULL
+    );
   `);
 
   sqlite.prepare("INSERT INTO users (id, first_name, last_name, role) VALUES (?, ?, ?, ?)")
@@ -99,6 +107,7 @@ beforeAll(async () => {
   sqlite.prepare("INSERT INTO users (id, first_name, last_name, role) VALUES (?, ?, ?, ?)")
     .run(ETRANGER, 'Sam', 'Etranger', 'agent');
   sqlite.prepare("INSERT INTO manifestations (id, title, date_start) VALUES (1, 'Brocante', '2026-03-18')").run();
+  sqlite.prepare("INSERT INTO tickets (id, reference, titre) VALUES (1, 'T-2026-1', 'Rideau cassé')").run();
 
   const adaptateur: BaseMigration = {
     getType: () => 'sqlite',
@@ -114,7 +123,7 @@ beforeAll(async () => {
     },
   };
 
-  await appliquerMigrations(adaptateur, { migrations: [planningsEtHeures] });
+  await appliquerMigrations(adaptateur, { migrations: [planningsEtHeures, ticketsTempsEtReprise] });
 });
 
 afterEach(() => {

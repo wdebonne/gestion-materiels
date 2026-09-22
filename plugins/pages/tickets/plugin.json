@@ -1,0 +1,100 @@
+{
+  "name": "Tickets",
+  "slug": "tickets",
+  "version": "1.0.0",
+  "description": "Demandes internes : ouverture, routage automatique, échanges et suivi",
+  "author": "Système",
+  "icon": "life-buoy",
+  "type": "menu",
+  "route": "tickets",
+  "config": {
+    "visibilites": ["privee", "site"],
+    "materiel_modes": ["aucun", "optionnel", "requis"],
+    "site_modes": ["auto", "requis", "masque"],
+    "priorites": ["basse", "normale", "haute", "urgente"],
+    "statuts_initiaux": [
+      "À traiter",
+      "En cours",
+      "En attente de retour",
+      "En commande",
+      "Résolu",
+      "Refusé"
+    ],
+    "categories_initiales": [
+      "Informatique",
+      "Bâtiment",
+      "Voirie",
+      "Espaces verts",
+      "Matériel et véhicules"
+    ]
+  },
+  "api": {
+    "endpoints": [
+      { "method": "GET", "path": "/tickets/permissions", "description": "Ce que l'utilisateur peut faire, et de quelles équipes il est" },
+      { "method": "GET", "path": "/tickets/formulaire", "description": "De quoi dessiner le formulaire : ses bâtiments, ses catégories" },
+      { "method": "GET", "path": "/tickets/formulaire/routage", "description": "Où partira la demande, une fois la catégorie choisie" },
+      { "method": "GET", "path": "/tickets/formulaire/materiels", "description": "Le parc que cette catégorie propose, déjà cloisonné" },
+      { "method": "GET", "path": "/tickets/compteurs", "description": "Le nombre de demandes par statut, dans la portée du lecteur" },
+      { "method": "GET", "path": "/tickets", "description": "La file, filtrée et paginée" },
+      { "method": "POST", "path": "/tickets", "description": "Ouvrir une demande — ouvert à tout compte connecté" },
+      { "method": "GET", "path": "/tickets/:id", "description": "La fiche, son fil et ses pièces" },
+      { "method": "PUT", "path": "/tickets/:id", "description": "Corriger une demande" },
+      { "method": "PUT", "path": "/tickets/:id/statut", "description": "Changer le statut, et poser les horodatages qu'il implique" },
+      { "method": "DELETE", "path": "/tickets/:id", "description": "Supprimer définitivement (administrateur)" },
+      { "method": "GET", "path": "/tickets/:id/fil", "description": "Le fil unifié : messages et traces mêlés" },
+      { "method": "POST", "path": "/tickets/:id/messages", "description": "Écrire dans le fil, en public ou en note interne" },
+      { "method": "POST", "path": "/tickets/:id/documents", "description": "Joindre une pièce — gardé par la portée, pas par le rôle" },
+      { "method": "DELETE", "path": "/tickets/:id/documents/:docId", "description": "Retirer une pièce" },
+      { "method": "POST", "path": "/tickets/:id/observateurs", "description": "Mettre une personne ou un service en copie" },
+      { "method": "DELETE", "path": "/tickets/:id/observateurs/:obsId", "description": "Retirer un observateur" },
+      { "method": "GET", "path": "/tickets/referentiel/statuts", "description": "Les statuts, personnalisables par la collectivité" },
+      { "method": "POST", "path": "/tickets/referentiel/statuts", "description": "Créer un statut (superviseur)" },
+      { "method": "PUT", "path": "/tickets/referentiel/statuts/:id", "description": "Renommer, recolorer, réordonner un statut" },
+      { "method": "DELETE", "path": "/tickets/referentiel/statuts/:id", "description": "Supprimer un statut inemployé (administrateur)" },
+      { "method": "GET", "path": "/tickets/referentiel/categories", "description": "Les catégories de demande et leur routage" },
+      { "method": "POST", "path": "/tickets/referentiel/categories", "description": "Créer une catégorie ou une sous-catégorie" },
+      { "method": "PUT", "path": "/tickets/referentiel/categories/:id", "description": "Régler le routage, les délais, la visibilité" },
+      { "method": "POST", "path": "/tickets/referentiel/categories/:id/appliquer-visibilite", "description": "Étendre la visibilité aux demandes déjà ouvertes" },
+      { "method": "DELETE", "path": "/tickets/referentiel/categories/:id", "description": "Supprimer une catégorie inemployée (administrateur)" },
+      { "method": "GET", "path": "/tickets/referentiel/utilisateurs/:userId", "description": "Les bâtiments et catégories d'une personne" },
+      { "method": "PUT", "path": "/tickets/referentiel/utilisateurs/:userId", "description": "Rattacher une personne à ses bâtiments et catégories" },
+      { "method": "GET", "path": "/tickets/referentiel/regles", "description": "Les règles de diffusion des courriels (administrateur)" },
+      { "method": "POST", "path": "/tickets/referentiel/regles", "description": "Ajouter une règle : quand, pour quoi, prévenir qui" },
+      { "method": "PUT", "path": "/tickets/referentiel/regles/:id", "description": "Activer ou désactiver une règle" },
+      { "method": "DELETE", "path": "/tickets/referentiel/regles/:id", "description": "Supprimer une règle" },
+      { "method": "POST", "path": "/tickets/referentiel/regles/simulation", "description": "Qui recevrait, et pourquoi, sans rien envoyer" },
+      { "method": "GET", "path": "/tickets/rapport", "description": "Volumes, délais tenus et temps passé, dans la portée du lecteur" },
+      { "method": "GET", "path": "/tickets/materiel/:objectId", "description": "Les demandes qui concernent un matériel, pour sa fiche" },
+      { "method": "POST", "path": "/tickets/referentiel/import/gestsup", "description": "Reprendre un export GestSup — essai à blanc par défaut" },
+      { "method": "GET", "path": "/tickets/referentiel/import/correspondances", "description": "Les rapprochements retenus, à relire et corriger" },
+      { "method": "GET", "path": "/sites/mes-sites", "description": "Mes bâtiments, et celui à imposer s'il n'y en a qu'un" },
+      { "method": "GET", "path": "/sites", "description": "Les sites et bâtiments de la collectivité" },
+      { "method": "POST", "path": "/sites", "description": "Créer un bâtiment (superviseur)" },
+      { "method": "PUT", "path": "/sites/:id", "description": "Corriger ou désactiver un bâtiment" },
+      { "method": "DELETE", "path": "/sites/:id", "description": "Supprimer un bâtiment inemployé (administrateur)" }
+    ]
+  },
+  "database": {
+    "tables": [
+      { "name": "ticket_statuts", "description": "Les états, que la collectivité renomme à sa guise" },
+      { "name": "ticket_categories", "description": "La nature de la demande, et vers quelle équipe elle part" },
+      { "name": "ticket_categorie_materiels", "description": "Le parc qu'une catégorie propose au demandeur" },
+      { "name": "user_sites", "description": "À quels bâtiments une personne est rattachée" },
+      { "name": "user_ticket_categories", "description": "Ce qu'une personne a le droit de demander" },
+      { "name": "tickets", "description": "La demande elle-même" },
+      { "name": "ticket_messages", "description": "Ce qu'une personne écrit dans le fil" },
+      { "name": "ticket_history", "description": "Ce que le système constate" },
+      { "name": "ticket_documents", "description": "Les pièces, du ticket ou d'un message" },
+      { "name": "ticket_watchers", "description": "Ceux qui suivent sans rien traiter" },
+      { "name": "ticket_notification_regles", "description": "Qui prévenir, et à quelle condition" },
+      { "name": "ticket_import_correspondances", "description": "Ce qu'un libellé GestSup désigne ici" }
+    ]
+  },
+  "pages": {
+    "index": {
+      "title": "Tickets",
+      "layout": "default",
+      "components": ["header", "stats", "statuts", "categories", "liste", "fiche"]
+    }
+  }
+}

@@ -19,6 +19,23 @@ import { ROLES, type Role } from '../config/roles';
  * bloquer une manifestation sans jamais le savoir.
  */
 
+/**
+ * Le module auquel un événement appartient.
+ *
+ * Deux modules écrivent à des gens — les manifestations et les demandes — et
+ * chacun a ses événements, ses destinataires par défaut et son écran de
+ * réglage. Le catalogue est **commun** plutôt que dupliqué : `engageant`,
+ * `filtrerSelonPreferences` et `destinatairesParRole` sont la même mécanique,
+ * et deux copies auraient divergé au premier ajout.
+ *
+ * Les événements de tickets sont **préfixés**. `notification_preferences` est
+ * indexée par `(user_id, event)` : réemployer la clé `message` ferait que
+ * couper les messages de manifestation couperait aussi ceux des demandes. Aucun
+ * événement existant n'est renommé — les lignes déjà enregistrées restent
+ * valides, et aucune migration n'est nécessaire.
+ */
+export type DomaineNotification = 'manifestation' | 'ticket';
+
 export type EvenementNotification =
   | 'new_request'
   | 'approval_requested'
@@ -27,9 +44,16 @@ export type EvenementNotification =
   | 'dates_changed'
   | 'material_changed'
   | 'delivery_reminder'
-  | 'recovery_overdue';
+  | 'recovery_overdue'
+  | 'ticket_nouveau'
+  | 'ticket_assigne'
+  | 'ticket_message'
+  | 'ticket_statut'
+  | 'ticket_resolu'
+  | 'ticket_echeance';
 
 export interface DefinitionEvenement {
+  domaine: DomaineNotification;
   evenement: EvenementNotification;
   libelle: string;
   description: string;
@@ -44,6 +68,14 @@ export interface DefinitionEvenement {
   rolesParDefaut: Role[];
   /** Les services rattachés à la manifestation reçoivent-ils par défaut ? */
   servicesParDefaut: boolean;
+  /**
+   * Pourquoi cet avis ne peut pas être coupé, dit au destinataire.
+   *
+   * Le message était écrit en dur et parlait de manifestation ; il aurait
+   * expliqué à un technicien qu'il bloque une manifestation en refusant les
+   * demandes qu'on lui confie. Chaque événement engageant porte donc sa raison.
+   */
+  raisonEngageant?: string;
 }
 
 /**
@@ -56,6 +88,7 @@ export interface DefinitionEvenement {
  */
 export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
   {
+    domaine: 'manifestation',
     evenement: 'new_request',
     libelle: 'Demande reçue',
     description: "Une demande arrive d'un formulaire et attend d'être confirmée.",
@@ -64,6 +97,7 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     servicesParDefaut: true,
   },
   {
+    domaine: 'manifestation',
     evenement: 'approval_requested',
     libelle: 'Approbation attendue',
     description: 'Un service est sollicité pour approuver sa part de la demande.',
@@ -72,6 +106,7 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     servicesParDefaut: true,
   },
   {
+    domaine: 'manifestation',
     evenement: 'approval_decided',
     libelle: 'Décision rendue',
     description: 'Un service a approuvé, refusé, ou s’est déclaré non concerné.',
@@ -80,6 +115,7 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     servicesParDefaut: true,
   },
   {
+    domaine: 'manifestation',
     evenement: 'message',
     libelle: 'Message dans le fil',
     description: 'Quelqu’un écrit dans les échanges d’une manifestation suivie.',
@@ -88,6 +124,7 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     servicesParDefaut: true,
   },
   {
+    domaine: 'manifestation',
     evenement: 'dates_changed',
     libelle: 'Dates modifiées',
     description: 'La date, la livraison ou la récupération a changé.',
@@ -96,6 +133,7 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     servicesParDefaut: true,
   },
   {
+    domaine: 'manifestation',
     evenement: 'material_changed',
     libelle: 'Matériel modifié',
     description: 'Du matériel a été ajouté ou retiré d’une manifestation suivie.',
@@ -104,6 +142,7 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     servicesParDefaut: true,
   },
   {
+    domaine: 'manifestation',
     evenement: 'delivery_reminder',
     libelle: 'Livraison à préparer',
     description: 'Rappel envoyé quelques jours avant la livraison.',
@@ -112,6 +151,7 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     servicesParDefaut: true,
   },
   {
+    domaine: 'manifestation',
     evenement: 'recovery_overdue',
     libelle: 'Récupération en retard',
     description: 'Le matériel devait revenir et la récupération n’est pas saisie.',
@@ -119,7 +159,88 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     rolesParDefaut: ['admin', 'supervisor'],
     servicesParDefaut: true,
   },
+
+  // ------------------------------------------------------------- les demandes
+  //
+  // `rolesParDefaut` est volontairement vide presque partout : une demande a
+  // déjà son demandeur, son technicien et son service, qui sont notifiés à ce
+  // titre. Prévenir en plus tous les superviseurs de chaque ouverture ferait
+  // exactement ce que l'existant a appris à éviter — on cesse de lire, et on
+  // rate celle qui comptait. Ce qui dépasse ce socle se règle par les règles
+  // de diffusion, qui visent une catégorie, un bâtiment ou un service.
+  {
+    domaine: 'ticket',
+    evenement: 'ticket_nouveau',
+    libelle: 'Demande ouverte',
+    description: 'Quelqu’un signale un problème ou formule une demande.',
+    engageant: false,
+    rolesParDefaut: [],
+    servicesParDefaut: true,
+  },
+  {
+    domaine: 'ticket',
+    evenement: 'ticket_assigne',
+    libelle: 'Demande confiée',
+    description: 'Une demande vous est confiée, ou est confiée à votre équipe.',
+    engageant: true,
+    raisonEngageant:
+      'sans cet avis, une demande qu’on vous a confiée attendrait sans que vous le sachiez',
+    rolesParDefaut: [],
+    servicesParDefaut: true,
+  },
+  {
+    domaine: 'ticket',
+    evenement: 'ticket_message',
+    libelle: 'Message dans le fil',
+    description: 'Quelqu’un écrit dans une demande qui vous concerne.',
+    engageant: false,
+    rolesParDefaut: [],
+    servicesParDefaut: true,
+  },
+  {
+    domaine: 'ticket',
+    evenement: 'ticket_statut',
+    libelle: 'État modifié',
+    description: 'Une demande change d’état : prise en charge, mise en attente, commandée.',
+    engageant: false,
+    rolesParDefaut: [],
+    servicesParDefaut: true,
+  },
+  {
+    domaine: 'ticket',
+    evenement: 'ticket_resolu',
+    libelle: 'Demande close',
+    description: 'Une demande est résolue ou refusée.',
+    engageant: false,
+    rolesParDefaut: [],
+    servicesParDefaut: true,
+  },
+  {
+    domaine: 'ticket',
+    evenement: 'ticket_echeance',
+    libelle: 'Délai dépassé',
+    description: 'Le délai de prise en charge ou de résolution est passé.',
+    engageant: false,
+    rolesParDefaut: ['admin', 'supervisor'],
+    servicesParDefaut: true,
+  },
 ];
+
+/** Les événements d'un module, pour son écran de réglage. */
+export function evenementsDu(domaine: DomaineNotification): DefinitionEvenement[] {
+  return EVENEMENTS_NOTIFICATION.filter((d) => d.domaine === domaine);
+}
+
+/**
+ * À quel module appartient cet événement.
+ *
+ * Déduit du catalogue, et non transmis par l'appelant : c'est ce qui permet à
+ * `destinatairesParRole()` et `servicesNotifies()` de garder leur signature
+ * d'origine, donc à `manifestationNotify.service.ts` de ne pas bouger.
+ */
+export function domaineDe(evenement: string): DomaineNotification {
+  return definitionDe(evenement)?.domaine ?? 'manifestation';
+}
 
 const PAR_EVENEMENT = new Map(EVENEMENTS_NOTIFICATION.map((d) => [d.evenement, d]));
 
@@ -135,7 +256,16 @@ export interface ReglageEvenement {
 
 export type DefautsAdmin = Partial<Record<EvenementNotification, ReglageEvenement>>;
 
-const CLE_REGLAGE = 'manifestation_notification_defaults';
+/**
+ * Une clé de réglages par module.
+ *
+ * Deux clés plutôt qu'une : la clé existante n'est pas touchée, donc les
+ * réglages déjà en place continuent d'être relus tels quels.
+ */
+const CLES_REGLAGE: Record<DomaineNotification, string> = {
+  manifestation: 'manifestation_notification_defaults',
+  ticket: 'ticket_notification_defaults',
+};
 
 /**
  * Défauts administrateur, complétés par le catalogue.
@@ -144,9 +274,11 @@ const CLE_REGLAGE = 'manifestation_notification_defaults';
  * ajouter un événement au code ne doit pas obliger à rouvrir l'écran pour qu'il
  * parte, ni le laisser muet sans que personne le remarque.
  */
-export async function lireDefauts(): Promise<Record<EvenementNotification, ReglageEvenement>> {
+export async function lireDefauts(
+  domaine: DomaineNotification = 'manifestation'
+): Promise<Record<EvenementNotification, ReglageEvenement>> {
   const complets = {} as Record<EvenementNotification, ReglageEvenement>;
-  for (const definition of EVENEMENTS_NOTIFICATION) {
+  for (const definition of evenementsDu(domaine)) {
     complets[definition.evenement] = {
       roles: [...definition.rolesParDefaut],
       services: definition.servicesParDefaut,
@@ -156,13 +288,17 @@ export async function lireDefauts(): Promise<Record<EvenementNotification, Regla
   try {
     const reglage = await db.queryOne(
       'SELECT setting_value FROM settings WHERE setting_key = ?',
-      [CLE_REGLAGE]
+      [CLES_REGLAGE[domaine]]
     );
     if (!reglage?.setting_value) return complets;
 
     const enregistres = JSON.parse(reglage.setting_value) as DefautsAdmin;
     for (const [evenement, valeur] of Object.entries(enregistres)) {
       if (!PAR_EVENEMENT.has(evenement as EvenementNotification) || !valeur) continue;
+      // Un réglage rangé sous la mauvaise clé ne doit pas franchir la
+      // frontière des modules : il changerait un module sans qu'aucun écran
+      // ne le montre.
+      if (domaineDe(evenement) !== domaine) continue;
 
       complets[evenement as EvenementNotification] = {
         // Un rôle inconnu — supprimé du modèle depuis l'enregistrement — est
@@ -179,10 +315,14 @@ export async function lireDefauts(): Promise<Record<EvenementNotification, Regla
 }
 
 /** Enregistre les défauts, en n'acceptant que des événements et des rôles connus. */
-export async function enregistrerDefauts(brut: DefautsAdmin): Promise<void> {
+export async function enregistrerDefauts(
+  brut: DefautsAdmin,
+  domaine: DomaineNotification = 'manifestation'
+): Promise<void> {
   const propre: DefautsAdmin = {};
   for (const [evenement, valeur] of Object.entries(brut ?? {})) {
     if (!PAR_EVENEMENT.has(evenement as EvenementNotification) || !valeur) continue;
+    if (domaineDe(evenement) !== domaine) continue;
 
     propre[evenement as EvenementNotification] = {
       roles: (valeur.roles ?? []).filter((r): r is Role => (ROLES as readonly string[]).includes(r)),
@@ -191,22 +331,25 @@ export async function enregistrerDefauts(brut: DefautsAdmin): Promise<void> {
   }
 
   const maintenant = new Date().toISOString();
-  const existant = await db.queryOne('SELECT id FROM settings WHERE setting_key = ?', [CLE_REGLAGE]);
+  const cle = CLES_REGLAGE[domaine];
+  const existant = await db.queryOne('SELECT id FROM settings WHERE setting_key = ?', [cle]);
 
   if (existant) {
     await db.execute('UPDATE settings SET setting_value = ?, updated_at = ? WHERE setting_key = ?', [
       JSON.stringify(propre),
       maintenant,
-      CLE_REGLAGE,
+      cle,
     ]);
   } else {
     await db.execute(
       `INSERT INTO settings (setting_key, setting_value, setting_type, description, created_at, updated_at)
        VALUES (?, ?, 'json', ?, ?, ?)`,
       [
-        CLE_REGLAGE,
+        cle,
         JSON.stringify(propre),
-        'Destinataires par défaut des notifications de manifestation',
+        domaine === 'ticket'
+          ? 'Destinataires par défaut des notifications de demande'
+          : 'Destinataires par défaut des notifications de manifestation',
         maintenant,
         maintenant,
       ]
@@ -238,10 +381,12 @@ export async function enregistrerPreference(
   if (!definition) return { ok: false, message: 'Événement inconnu' };
 
   if (definition.engageant && !actif) {
+    const raison =
+      definition.raisonEngageant ??
+      'sans cet avis, vous bloqueriez une manifestation sans le savoir';
     return {
       ok: false,
-      message:
-        "« " + definition.libelle + " » ne peut pas être coupé : sans cet avis, vous bloqueriez une manifestation sans le savoir",
+      message: `« ${definition.libelle} » ne peut pas être coupé : ${raison}`,
     };
   }
 
@@ -320,7 +465,7 @@ export async function filtrerSelonPreferences(
  * les demandes reçues », indépendamment des services.
  */
 export async function destinatairesParRole(evenement: string): Promise<Destinataire[]> {
-  const defauts = await lireDefauts();
+  const defauts = await lireDefauts(domaineDe(evenement));
   const roles = defauts[evenement as EvenementNotification]?.roles ?? [];
   if (roles.length === 0) return [];
 
@@ -339,6 +484,6 @@ export async function destinatairesParRole(evenement: string): Promise<Destinata
 
 /** Les services rattachés reçoivent-ils cet événement, selon la grille ? */
 export async function servicesNotifies(evenement: string): Promise<boolean> {
-  const defauts = await lireDefauts();
+  const defauts = await lireDefauts(domaineDe(evenement));
   return defauts[evenement as EvenementNotification]?.services !== false;
 }

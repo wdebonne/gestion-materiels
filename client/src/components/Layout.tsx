@@ -39,7 +39,8 @@ import {
   PartyPopper,
   CalendarDays,
   TreePine,
-  KeyRound
+  KeyRound,
+  LifeBuoy
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -147,6 +148,9 @@ export default function Layout() {
     layoutgrid: LayoutGrid,
     Plug,
     plug: Plug,
+    LifeBuoy,
+    lifebuoy: LifeBuoy,
+    'life-buoy': LifeBuoy,
     fuel: Truck,
     BarChart3,
     barchart3: BarChart3,
@@ -187,7 +191,7 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings', 'tickets']
   // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
   const baseNavSlugs = ['manifestations']
   const pluginNavigation = menuPlugins
@@ -201,12 +205,20 @@ export default function Layout() {
       }
     })
 
-  // Un compte « service » n'a accès qu'aux manifestations : le serveur refuse
-  // tout le reste (`cloisonnementService.ts`). Afficher les autres entrées lui
-  // promettrait des pages qui répondront 403 — c'est le problème des « boutons
-  // qui mentent », déjà corrigé ailleurs.
+  // Un compte « service » n'a accès qu'aux manifestations et aux demandes : le
+  // serveur refuse tout le reste (`cloisonnementService.ts`). Afficher les
+  // autres entrées lui promettrait des pages qui répondront 403 — c'est le
+  // problème des « boutons qui mentent », déjà corrigé ailleurs.
+  //
+  // La liste est écrite ici plutôt que déduite des plugins : ouvrir un chemin
+  // dans le cloisonnement ne suffit donc pas, il faut aussi l'ajouter là. Un
+  // service partenaire qui traite des demandes sans voir l'entrée « Tickets »
+  // aurait une API accessible et aucun bouton pour y aller.
   const navigation = isService
-    ? [{ name: 'Manifestations', href: '/manifestations', icon: CalendarDays }]
+    ? [
+        { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
+        { name: 'Tickets', href: '/tickets', icon: LifeBuoy },
+      ]
     : [...baseNavigation, ...pluginNavigation]
 
   return (
