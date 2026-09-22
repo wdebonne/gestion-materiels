@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import QRCodeDisplay from '@/components/QRCodeDisplay'
+import DetenteursDuMateriel from '@/components/tickets/DetenteursDuMateriel'
 import DemandesDuMateriel from '@/components/tickets/DemandesDuMateriel'
 import ObjectTimeline from '@/components/ObjectTimeline'
 import ImplantationsDuMateriel, {
@@ -254,6 +255,7 @@ export default function ObjectDetailPage() {
         image?: string;
         status: string;
         reference?: string;
+        inventaireInterne?: string | null;
         serialNumber?: string;
         purchaseDate?: string;
         purchasePrice?: number;
@@ -1122,6 +1124,31 @@ export default function ObjectDetailPage() {
           </CardHeader>
           <CardBody>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/*
+                Les identifiants, toujours affichés.
+
+                Le reste de ce bloc suit la configuration des champs, qui
+                peut les masquer. Un numéro d'inventaire n'est pas une
+                décoration : c'est ce qu'on lit sur l'étiquette collée sur le
+                matériel, et ce qu'on rapproche de la comptabilité. Il ne
+                doit pas pouvoir disparaître d'un écran par un réglage.
+              */}
+              {object.reference && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">Référence</h4>
+                  <p className="text-gray-900 dark:text-gray-100 font-mono text-sm">{object.reference}</p>
+                </div>
+              )}
+              {object.inventaireInterne && (
+                <div>
+                  <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                    Inventaire interne
+                  </h4>
+                  <p className="text-gray-900 dark:text-gray-100 font-mono text-sm">
+                    {object.inventaireInterne}
+                  </p>
+                </div>
+              )}
               {/* Afficher les champs selon la configuration */}
               {fieldsConfig ? (
                 fieldsConfig.filter(f => f.isVisible).map((field) => {
@@ -2988,6 +3015,16 @@ export default function ObjectDetailPage() {
 
       {activeTab === 'implantations' && object && (
         <ImplantationsDuMateriel objectId={Number(id)} objectName={object.name} />
+      )}
+
+      {/*
+        À qui ce matériel est attribué, au-dessus des demandes qui le
+        concernent : c'est l'attribution qui décide de qui peut en ouvrir
+        une, et la lire juste au-dessus évite de chercher pourquoi le
+        formulaire ne propose ce matériel à personne.
+      */}
+      {activeTab === 'tickets' && object && (
+        <DetenteursDuMateriel objectId={Number(object.id)} />
       )}
 
       {activeTab === 'tickets' && object && <DemandesDuMateriel objectId={Number(object.id)} />}

@@ -285,6 +285,9 @@ describe('Tickets', () => {
       ['post', '/:id/observateurs'],
       ['get', '/formulaire'],
       ['get', '/compteurs'],
+      // Savoir qui détient le vidéoprojecteur est la question que la fiche
+      // existe pour répondre : la lecture n'a pas à être gardée par un rôle.
+      ['get', '/materiel/:objectId/detenteurs'],
     ] as Array<[string, string]>)('%s %s est ouvert à tout compte connecté', (method, path) => {
       expect(allowedRolesFor(ticketRoutes, method, path)).toBeNull();
     });
@@ -301,6 +304,15 @@ describe('Tickets', () => {
       const imports = source.match(/import\s*\{[^}]*\}\s*from\s*'[^']*auth\.middleware'/s)?.[0] ?? '';
       expect(imports).not.toContain('requireFieldWrite');
       expect(imports).toContain('authenticateToken');
+    });
+
+    it.each([
+      ['post', '/materiel/:objectId/detenteurs'],
+      ['delete', '/materiel/:objectId/detenteurs/:userId'],
+    ] as Array<[string, string]>)('%s %s est réservé à l’encadrement', (method, path) => {
+      // Attribuer un matériel décide de qui pourra ouvrir une demande dessus :
+      // le geste n'est pas anodin, il ne revient pas au premier venu.
+      expect(allowedRolesFor(ticketRoutes, method, path)).toEqual(GESTION);
     });
 
     it('réserve la suppression définitive à l’administrateur', () => {

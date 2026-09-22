@@ -25,6 +25,28 @@ import {
 } from '../services/compteurs.service';
 
 const router = Router();
+/**
+ * Un numéro d'inventaire déjà pris.
+ *
+ * L'index unique fait son travail, mais ressortirait en « Erreur serveur » :
+ * celui qui vient de saisir le numéro relu sur une étiquette n'apprendrait
+ * rien, et le ressaisirait à l'identique. Le message dit ce qui bloque, et
+ * l'écran de recherche permet de retrouver le matériel qui le porte déjà.
+ */
+function inventaireDejaPris(erreur: any): boolean {
+  const message = String(erreur?.message ?? '');
+  if (!/inventaire_interne/i.test(message)) return false;
+  return (
+    erreur?.code === 'SQLITE_CONSTRAINT_UNIQUE' ||
+    erreur?.code === 'ER_DUP_ENTRY' ||
+    /UNIQUE constraint failed/i.test(message) ||
+    /Duplicate entry/i.test(message)
+  );
+}
+
+const REFUS_INVENTAIRE =
+  'Ce numéro d’inventaire interne est déjà porté par un autre matériel : cherchez-le pour le retrouver';
+
 
 // Helper pour récupérer les paramètres d'alertes
 async function getAlertSettings(): Promise<{
@@ -117,9 +139,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
 
     if (search) {
       // Recherche dans les champs standards ET dans les champs personnalisés (JSON)
-      whereClause += ' AND (o.name LIKE ? OR o.reference LIKE ? OR o.serial_number LIKE ? OR o.custom_fields LIKE ?)';
+      whereClause += ' AND (o.name LIKE ? OR o.reference LIKE ? OR o.inventaire_interne LIKE ? OR o.serial_number LIKE ? OR o.custom_fields LIKE ?)';
       const searchPattern = `%${search}%`;
-      params.push(searchPattern, searchPattern, searchPattern, searchPattern);
+      params.push(searchPattern, searchPattern, searchPattern, searchPattern, searchPattern);
     }
 
     // Pagination
@@ -175,6 +197,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         image: o.image,
         reference: o.reference,
         serialNumber: o.serial_number,
+        inventaireInterne: o.inventaire_interne ?? null,
         purchaseDate: o.purchase_date,
         purchasePrice: o.purchase_price,
         status: o.status,
@@ -348,6 +371,7 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         image: obj.image,
         reference: obj.reference,
         serialNumber: obj.serial_number,
+        inventaireInterne: obj.inventaire_interne ?? null,
         purchaseDate: obj.purchase_date,
         purchasePrice: obj.purchase_price,
         status: obj.status,
@@ -467,7 +491,7 @@ router.post('/', authenticateToken, requireSupervisor, [
 
     const {
       categoryId, subcategoryId, name, description, image,
-      reference, serialNumber, purchaseDate, purchasePrice,
+      reference, inventaireInterne, serialNumber, purchaseDate, purchasePrice,
       status = 'active', location, notes, customFields, isPrestation,
       materialType, quantityTotal, unitCost, availableForManifestations
     } = req.body;
@@ -492,12 +516,12 @@ router.post('/', authenticateToken, requireSupervisor, [
 
     const result = await db.execute(
       `INSERT INTO objects (category_id, subcategory_id, name, description, image, 
-       reference, serial_number, purchase_date, purchase_price, status, location, notes, custom_fields,
+       reference, inventaire_interne, serial_number, purchase_date, purchase_price, status, location, notes, custom_fields,
        is_prestation, material_type, quantity_total, unit_cost, available_for_manifestations)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         categoryId || null, subcategoryId || null, name, description || null, finalImage,
-        reference || null, serialNumber || null, purchaseDate || null, purchasePrice || null,
+        reference || null, inventaireInterne || null, serialNumber || null, purchaseDate || null, purchasePrice || null,
         status, location || null, notes || null, customFields ? JSON.stringify(customFields) : null,
         // Laissé à `null` par défaut : le matériel hérite de sa sous-catégorie,
         // puis de sa catégorie. C'est ce qui permet de marquer une branche une
@@ -528,6 +552,9 @@ router.post('/', authenticateToken, requireSupervisor, [
       objectId: result.lastInsertRowid
     });
   } catch (error: any) {
+    if (inventaireDejaPris(error)) {
+      return res.status(409).json({ success: false, message: REFUS_INVENTAIRE });
+    }
     console.error('Erreur create object:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
@@ -539,7 +566,7 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     const { id } = req.params;
     const {
       categoryId, subcategoryId, name, description, image,
-      reference, serialNumber, purchaseDate, purchasePrice,
+      reference, inventaireInterne, serialNumber, purchaseDate, purchasePrice,
       status, location, notes, customFields, isPrestation, materialType, quantityTotal,
       unitCost, availableForManifestations
     } = req.body;
@@ -588,6 +615,12 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
     if (serialNumber !== undefined) {
       updateFields.push('serial_number = ?');
       values.push(serialNumber);
+    }
+    if (inventaireInterne !== undefined) {
+      updateFields.push('inventaire_interne = ?');
+      // La chaîne vide devient `null` : elle serait une valeur comme une autre
+      // pour l'index unique, et n'accepterait qu'un seul matériel sans numéro.
+      values.push(String(inventaireInterne ?? '').trim() || null);
     }
     if (purchaseDate !== undefined) {
       updateFields.push('purchase_date = ?');
@@ -653,6 +686,9 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
 
     res.json({ success: true, message: 'Objet mis à jour' });
   } catch (error: any) {
+    if (inventaireDejaPris(error)) {
+      return res.status(409).json({ success: false, message: REFUS_INVENTAIRE });
+    }
     console.error('Erreur update object:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }

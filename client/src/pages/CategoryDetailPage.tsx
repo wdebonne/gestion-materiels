@@ -41,6 +41,7 @@ export default function CategoryDetailPage() {
     description: '',
     image: '',
     reference: '',
+    inventaireInterne: '',
     serialNumber: '',
     status: 'available',
     location: '',
@@ -224,6 +225,7 @@ export default function CategoryDetailPage() {
         description: object.description || '',
         image: object.image || '',
         reference: object.reference || '',
+        inventaireInterne: object.inventaireInterne || '',
         serialNumber: object.serialNumber || '',
         status: object.status || 'available',
         location: object.location || '',
@@ -240,6 +242,7 @@ export default function CategoryDetailPage() {
         description: '',
         image: '',
         reference: '',
+        inventaireInterne: '',
         serialNumber: '',
         status: 'available',
         location: '',
@@ -261,6 +264,7 @@ export default function CategoryDetailPage() {
       description: '',
       image: '',
       reference: '',
+      inventaireInterne: '',
       serialNumber: '',
       status: 'available',
       location: '',
@@ -748,6 +752,27 @@ export default function CategoryDetailPage() {
                 placeholder="Ex: SN-123456"
               />
             </div>
+
+            {/*
+              Le numéro d'inventaire **interne**, à côté de la référence et non
+              à sa place.
+
+              Le service comptable numérote ce qu'il a amorti — une acquisition,
+              parfois un lot entier sous un seul numéro. Les services numérotent
+              ce qu'ils manipulent — un exemplaire, une étiquette collée dessus.
+              Un même camion porte donc deux numéros de forme différente, et
+              c'est précisément ce qui rend le rapprochement possible : on tient
+              les deux.
+            */}
+            <Input
+              label="Numéro d'inventaire interne"
+              value={objectFormData.inventaireInterne}
+              onChange={(e) =>
+                setObjectFormData({ ...objectFormData, inventaireInterne: e.target.value })
+              }
+              placeholder="Ex: INV-2026-0042"
+              hint="Le numéro de la collectivité, distinct du numéro comptable. Unique, et cherché depuis la barre de recherche du parc."
+            />
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input

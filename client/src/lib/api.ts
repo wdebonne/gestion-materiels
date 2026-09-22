@@ -223,6 +223,14 @@ export interface GestionObject {
   description?: string
   image?: string
   reference?: string
+  /**
+   * Le numéro d'inventaire de la collectivité, distinct du numéro comptable.
+   *
+   * La comptabilité numérote ce qu'elle a amorti, les services numérotent ce
+   * qu'ils manipulent : tenir les deux fait du rapprochement une jointure
+   * plutôt qu'un après-midi de recopie.
+   */
+  inventaireInterne?: string | null
   serialNumber?: string
   purchaseDate?: string
   purchasePrice?: number
