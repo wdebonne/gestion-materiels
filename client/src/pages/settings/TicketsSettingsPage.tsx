@@ -21,6 +21,7 @@ import {
   Tabs,
 } from '@/components/ui'
 import ReglesNotification from '@/components/tickets/ReglesNotification'
+import Rattachements from '@/components/tickets/Rattachements'
 
 /**
  * Réglages du module Tickets.
@@ -58,12 +59,14 @@ export default function TicketsSettingsPage() {
       <Tabs value={onglet} onChange={setOnglet}>
         <Tab value="statuts" label="États" />
         <Tab value="categories" label="Catégories et acheminement" />
+        <Tab value="rattachements" label="Qui a droit à quoi" />
         <Tab value="batiments" label="Sites et bâtiments" />
         <Tab value="notifications" label="Notifications" />
       </Tabs>
 
       {onglet === 'statuts' && <ReglagesStatuts />}
       {onglet === 'categories' && <ReglagesCategories />}
+      {onglet === 'rattachements' && <Rattachements />}
       {onglet === 'batiments' && <ReglagesBatiments />}
       {onglet === 'notifications' && <ReglesNotification />}
     </div>

@@ -56,6 +56,8 @@
       { "method": "PUT", "path": "/tickets/referentiel/categories/:id", "description": "Régler le routage, les délais, la visibilité" },
       { "method": "POST", "path": "/tickets/referentiel/categories/:id/appliquer-visibilite", "description": "Étendre la visibilité aux demandes déjà ouvertes" },
       { "method": "DELETE", "path": "/tickets/referentiel/categories/:id", "description": "Supprimer une catégorie inemployée (administrateur)" },
+      { "method": "GET", "path": "/tickets/referentiel/rattachements", "description": "Qui a droit à quoi — et qui n'a rien" },
+      { "method": "POST", "path": "/tickets/referentiel/rattachements/en-masse", "description": "Attribuer à plusieurs comptes — ajoute sans retirer" },
       { "method": "GET", "path": "/tickets/referentiel/utilisateurs/:userId", "description": "Les bâtiments et catégories d'une personne" },
       { "method": "PUT", "path": "/tickets/referentiel/utilisateurs/:userId", "description": "Rattacher une personne à ses bâtiments et catégories" },
       { "method": "GET", "path": "/tickets/referentiel/regles", "description": "Les règles de diffusion des courriels (administrateur)" },
@@ -87,7 +89,8 @@
       { "name": "ticket_documents", "description": "Les pièces, du ticket ou d'un message" },
       { "name": "ticket_watchers", "description": "Ceux qui suivent sans rien traiter" },
       { "name": "ticket_notification_regles", "description": "Qui prévenir, et à quelle condition" },
-      { "name": "ticket_import_correspondances", "description": "Ce qu'un libellé GestSup désigne ici" }
+      { "name": "ticket_import_correspondances", "description": "Ce qu'un libellé GestSup désigne ici" },
+      { "name": "user_materiels", "description": "Le matériel attribué à une personne — son téléphone, son ordinateur" }
     ]
   },
   "pages": {

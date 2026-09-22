@@ -7,7 +7,7 @@ Application web de gestion du matériel municipal (véhicules, tondeuses, équip
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
 ![TailwindCSS](https://img.shields.io/badge/TailwindCSS-3.4-38bdf8.svg)
-![Tests](https://img.shields.io/badge/tests-1349-brightgreen.svg)
+![Tests](https://img.shields.io/badge/tests-1364-brightgreen.svg)
 
 ## ✨ Points forts
 
@@ -239,6 +239,10 @@ Les signalements passaient par **GestSup**, une application séparée : deuxièm
 
 - 🎯 **Une demande part toute seule au bon endroit** : la catégorie — Informatique, Bâtiment, Voirie — porte son **service destinataire** et son **technicien**. Le demandeur ne les choisit pas ; l'écran lui dit en clair où cela part (« cette demande partira au service Technique (Tom Tech) »), parce que personne n'aime envoyer dans le vide. Une sous-catégorie laissée sans réglage **hérite** de sa catégorie : l'acheminement s'écrit une fois, pas dix
 - 🏢 **Le formulaire ne demande pas ce qu'il sait déjà** : rattaché à **un seul bâtiment**, le champ est masqué et rempli ; rattaché à **plusieurs**, il est proposé. Une catégorie peut forcer la question (la voirie, où le lieu *est* la demande) ou la supprimer (une création de compte n'a pas de lieu)
+- 🔐 **Rien n'est attribué par défaut** : une personne demande dans les **catégories** qu'on lui donne, sur le **matériel qui lui est attribué**, et — si elle est **responsable** — pour son bâtiment. Proposer les douze bâtiments de la commune à un agent d'accueil garantit qu'il s'y trompe. L'écran d'attribution **nomme les comptes qui n'ont rien**, et le formulaire dit à qui n'a rien vers qui se tourner
+- 🏫 **Une école a plusieurs responsables**, et trois cases indépendantes sur chaque lien personne↔bâtiment le disent : **signale pour le bâtiment**, **voit les demandes**, **reçoit les courriels**. La directrice coche les trois, l'élu regarde sans être dérangé à chaque ampoule grillée, le responsable des écoles est responsable de l'école et simple occupant de la mairie où est son bureau
+- 💻 **« Mon matériel »** : son téléphone, son ordinateur. C'est ce que le formulaire propose quand il signale une panne, plutôt que tout le parc — où l'on finit par choisir le premier de la liste et envoyer la demande sur le matériel d'un collègue
+- 🧰 **Attribuer en masse** : sélectionner douze personnes et leur donner une catégorie ou un bâtiment. Le geste **ajoute sans retirer** — il n'efface rien de ce qui était déjà donné, et ne défait aucun droit réglé finement
 - 🔧 **Le matériel concerné, quand il a du sens** : proposé seulement si la catégorie l'autorise — et réglable **par personne** — puis limité au parc que cette catégorie associe. Le sélecteur de « souci de bruit sur le Nemo » ne déroule pas l'inventaire de la commune, et un ticket ainsi rattaché documente l'entretien du matériel
 - 🚧 **Cloisonnement par équipe** : le service technique ne voit pas les demandes informatiques, et réciproquement. **Aucun rôle n'ouvre tout par lui-même**, pas même superviseur — qui doit tout voir le reçoit explicitement dans l'écran des droits. Un responsable voit en plus les demandes des agents qu'il encadre, par le lien qui sert déjà aux heures
 - 👀 **Voir n'est pas lire** : les collègues d'un bâtiment voient les demandes qui le concernent — c'est ce qui évite trois signalements pour un même rideau — mais en **voisinage** : titre, état, date, demandeur. Ni le fil, ni les pièces, ni les notes internes. Et seulement sur les catégories déclarées partageables : l'informatique reste privée, parce qu'une demande de mot de passe n'a pas à circuler dans l'open space

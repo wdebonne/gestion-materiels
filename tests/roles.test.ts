@@ -332,6 +332,8 @@ describe('Tickets', () => {
       ['put', '/utilisateurs/:userId'],
       // Une règle décide de qui reçoit quoi : la laisser au superviseur
       // reviendrait à le laisser s'abonner aux demandes des autres services.
+      ['get', '/rattachements'],
+      ['post', '/rattachements/en-masse'],
       ['get', '/regles'],
       ['post', '/regles'],
       ['put', '/regles/:id'],

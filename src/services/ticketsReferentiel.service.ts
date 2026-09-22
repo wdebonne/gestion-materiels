@@ -287,25 +287,56 @@ export async function resoudreRoutage(
 /**
  * Les catégories qu'une personne a le droit de demander.
  *
- * Aucune ligne dans `user_ticket_categories` vaut « toutes les catégories
- * actives ». Sans cette convention, une installation neuve présenterait un
- * formulaire vide à tout le monde, et le module serait jugé cassé avant d'avoir
- * servi.
+ * **Aucune ligne vaut « aucune catégorie ».** La première version faisait
+ * l'inverse — tout proposer à qui n'avait rien — pour que le module serve avant
+ * d'être configuré. C'était un mauvais calcul : chacun n'a pas les mêmes
+ * besoins, et présenter à un agent d'accueil les catégories de la voirie et des
+ * espaces verts lui fait ranger sa demande au hasard, ce qui coûte plus cher
+ * qu'un formulaire vide.
+ *
+ * La contrepartie est assumée, et compensée : l'écran d'attribution signale
+ * nommément les comptes sans rattachement, et le formulaire dit à qui n'a rien
+ * vers qui se tourner plutôt que d'afficher une liste déserte sans explication.
+ *
+ * Le rattachement porte sur une catégorie racine ; ses sous-catégories suivent.
+ * Rattacher quelqu'un à « Informatique » sans lui donner « Écran » serait un
+ * piège à administrateur.
  */
 export async function categoriesProposeesA(userId: number | string): Promise<CategorieDemande[]> {
   const rattachees = await db.query(
     'SELECT ticket_categorie_id FROM user_ticket_categories WHERE user_id = ?',
     [userId]
   );
+  if (rattachees.length === 0) return [];
 
   const toutes = await listerCategories();
-  if (rattachees.length === 0) return toutes;
-
-  // Le rattachement porte sur une catégorie racine ; ses sous-catégories
-  // suivent. Rattacher quelqu'un à « Informatique » sans lui donner « Écran »
-  // serait un piège à administrateur.
   const autorisees = new Set(rattachees.map((l: any) => Number(l.ticket_categorie_id)));
   return toutes.filter((c) => autorisees.has(c.id) || (c.parentId !== null && autorisees.has(c.parentId)));
+}
+
+/**
+ * Le matériel attribué à cette personne — son téléphone, son ordinateur.
+ *
+ * C'est la réponse à « je veux signaler une panne sur *mon* poste » sans
+ * dérouler l'inventaire de la commune. `objects.location` ne pouvait pas y
+ * répondre : c'est du texte libre, et il désigne un lieu, pas une personne.
+ *
+ * `filtreParc` restreint en plus au parc que la catégorie de demande propose :
+ * choisir « Informatique » ne doit pas faire apparaître la tondeuse qu'on a par
+ * ailleurs en charge.
+ */
+export async function materielsDe(
+  userId: number | string,
+  filtreParc: { sql: string; params: any[] } = { sql: '', params: [] }
+): Promise<Array<{ id: number; name: string; reference: string | null; location: string | null }>> {
+  return db.query(
+    `SELECT o.id, o.name, o.reference, o.location
+       FROM user_materiels um
+       JOIN objects o ON o.id = um.object_id
+      WHERE um.user_id = ?${filtreParc.sql}
+      ORDER BY o.name ASC`,
+    [userId, ...filtreParc.params]
+  );
 }
 
 /**

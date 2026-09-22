@@ -36,9 +36,10 @@ import {
   filtreMaterielDe,
   listerStatuts,
   materielAutorisePour,
+  materielsDe,
   resoudreRoutage,
 } from '../services/ticketsReferentiel.service';
-import { sitesProposesA } from '../services/sites.service';
+import { sitesDe, sitesProposesA } from '../services/sites.service';
 import {
   notifierAffectation,
   notifierMessage,
@@ -112,21 +113,32 @@ async function estIntervenant(req: AuthRequest, ticket: any): Promise<boolean> {
 router.get('/formulaire', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.user!.userId;
-    const [sites, categories, statuts] = await Promise.all([
-      sitesProposesA(userId),
+    const [rattachements, categories, statuts] = await Promise.all([
+      sitesDe(userId),
       categoriesProposeesA(userId),
       listerStatuts(),
     ]);
 
+    const sites = await sitesProposesA(userId);
+    // Signaler *pour le bâtiment* — un bureau abîmé, une fuite — suppose d'en
+    // être responsable. Un simple occupant reste rattaché : c'est ce qui
+    // pré-remplit son bâtiment quand il signale une panne sur son poste.
+    const sitesDontResponsable = rattachements.filter((s) => s.estResponsable);
+
     res.json({
       success: true,
       sites,
+      sitesResponsable: sitesDontResponsable.map(({ estResponsable, peutVoirTickets, notifie, ...site }) => site),
+      estResponsable: sitesDontResponsable.length > 0,
       // L'arbre est rendu à plat : l'écran regroupe sur `parentId`, ce qui lui
       // évite de redescendre une structure imbriquée pour remplir un `select`.
       categories,
       statuts,
       // Un seul bâtiment : le champ n'a pas à être posé.
       siteImpose: sites.length === 1 ? sites[0].id : null,
+      // Rien ne lui a été attribué : l'écran le dit et vers qui se tourner,
+      // plutôt que d'afficher des listes vides sans explication.
+      sansRattachement: sites.length === 0 && categories.length === 0,
     });
   } catch (erreur: any) {
     console.error('Erreur formulaire ticket :', erreur);
@@ -186,27 +198,30 @@ router.get('/formulaire/materiels', authenticateToken, async (req: AuthRequest, 
       return res.json({ success: true, materiels: [] });
     }
 
-    const { filtreObjets } = await import('../middleware/objectScope');
-    const portee = await filtreObjets(req, 'o');
-    if (portee === null) return res.json({ success: true, materiels: [] });
-
     const filtreCategorie = await filtreMaterielDe(categorieId, sousCategorieId);
-    const recherche = String(req.query.recherche ?? '').trim();
-    const params: any[] = [...portee.params, ...filtreCategorie.params];
-    let sqlRecherche = '';
-    if (recherche.length > 0) {
-      sqlRecherche = ' AND (o.name LIKE ? OR o.reference LIKE ? OR o.serial_number LIKE ?)';
-      params.push(`%${recherche}%`, `%${recherche}%`, `%${recherche}%`);
-    }
 
-    const materiels = await db.query(
-      `SELECT o.id, o.name, o.reference, o.location
-         FROM objects o
-        WHERE 1 = 1${portee.sql}${filtreCategorie.sql}${sqlRecherche}
-        ORDER BY o.name ASC
-        LIMIT 100`,
-      params
-    );
+    /*
+     * Le matériel qui lui est **attribué**, et lui seul.
+     *
+     * C'est la demande : « je signale une panne sur mon téléphone ou mon PC ».
+     * Dérouler tout le parc informatique de la commune obligerait à retrouver
+     * son poste parmi trois cents, ce que personne ne fait — on choisit le
+     * premier de la liste, et la demande part sur le matériel d'un collègue.
+     *
+     * `objectScope` n'a pas à s'appliquer ici : un matériel qu'on a attribué à
+     * quelqu'un est, par définition, un matériel qu'il peut nommer. Le filtrer
+     * par les catégories de parc qui lui sont ouvertes lui cacherait son propre
+     * ordinateur.
+     */
+    const mesMateriels = await materielsDe(req.user!.userId, filtreCategorie);
+
+    const recherche = String(req.query.recherche ?? '').trim();
+    const materiels = recherche
+      ? mesMateriels.filter((m) =>
+          [m.name, m.reference].some((v) => String(v ?? '').toLowerCase().includes(recherche.toLowerCase()))
+        )
+      : mesMateriels;
+
     res.json({ success: true, materiels });
   } catch (erreur: any) {
     console.error('Erreur matériels proposés :', erreur);
