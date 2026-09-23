@@ -7,6 +7,101 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Les pièces d'un bâtiment, ce qui se prête, et qui l'occupe
+
+> Le référentiel des lieux tenait deux niveaux : un bâtiment, et ses portes. Il
+> en tient trois — **bâtiment › pièce › ouvrant** — et ce n'est pas un raffinement.
+>
+> Deux usages butaient sur le niveau manquant. Une clé ne pouvait pas être un
+> **passe partiel** : celui du service état civil, qui ouvre la salle des mariages
+> et ses deux accès, et rien d'autre. Faute d'étage intermédiaire, il fallait le
+> décrire en listant ses portes une à une, et la liste se périmait à la première
+> porte ajoutée. Et surtout : **on ne prête pas une porte, on prête une salle.**
+> « La salle des mariages est-elle libre le 28 ? » n'avait aucun objet à désigner
+> — ni la mairie, ni sa porte principale.
+>
+> Une pièce porte sa nature (salle, hall, cour, préau), sa capacité, et le
+> drapeau qui décide de tout : **prêtable**. Trois états, comme pour le matériel
+> — *oui*, *non*, *comme le bâtiment* — pour qu'ouvrir une salle des fêtes
+> n'oblige pas à recocher chacune de ses pièces. Avec une différence assumée : un
+> lieu dont personne n'a rien dit n'est **pas** prêtable. Le repli inverse
+> mettrait d'un coup le centre technique, le local électrique et le cimetière
+> dans la liste des salles à louer.
+>
+> Un ouvrant peut rester accroché au bâtiment, sans pièce : la barrière
+> principale et le portail du stade ne sont dans aucune salle, et les forcer dans
+> une pièce fictive « Extérieur » ferait inventer à chaque commune sa propre
+> convention. Supprimer une pièce rend ses portes au bâtiment — jamais ne les
+> efface, car une porte effacée emporte avec elle ce que des clés ouvrent.
+>
+> **Le référentiel reste unique.** Il est physiquement celui du module Clés, et
+> il sert déjà aux demandes ; il sert maintenant aussi aux manifestations. Un
+> bâtiment saisi une fois est le même partout, et c'est bien pour cela qu'on ne
+> l'a pas dupliqué en catégories de matériel — une mairie n'est pas un bien
+> amortissable du parc.
+>
+> ### Qui occupe quoi, et ce qui se heurte
+>
+> L'information tenait de l'agenda mural. La salle des mariages était retenue le
+> 28 septembre de 16h à 18h dans la tête du régisseur, et la deuxième demande
+> pour le même créneau se découvrait au téléphone — ou le jour même.
+>
+> Chaque lieu porte désormais ses créneaux, liés ou non à une manifestation : un
+> mariage, un conseil, un chantier se saisissent à la main. **Le conflit suit la
+> hiérarchie** : réserver la mairie entière rend la salle des mariages
+> indisponible, et réciproquement ; deux pièces différentes ne se gênent pas.
+>
+> Une subtilité qui décide de tout au quotidien : **les bornes sont exclusives**.
+> Une salle libérée à 18h est reprise à 18h — c'est même le cas normal d'une
+> salle des fêtes un samedi. La règle du parc est l'inverse, et pour une aussi
+> bonne raison : un matériel n'est pas rendu et repris dans la même seconde.
+>
+> Trois statuts, et ils ne bloquent pas pareil. Un créneau **confirmé** refuse ;
+> une **demande** s'affiche et laisse arbitrer, parce que trancher entre deux
+> associations n'est pas le travail du serveur ; un créneau **annulé** reste
+> lisible et ne bloque plus personne. Le conflit d'une manifestation est calculé
+> à chaque affichage, jamais stocké : il naît et meurt quand *l'autre*
+> réservation bouge, et une colonne deviendrait fausse sans que rien ne l'ait
+> touchée.
+>
+> ### Le formulaire avertit, sans jamais refuser
+>
+> Le formulaire de demande envoyait déjà ses salles — « Mairie : Salle des
+> mariages ; Maison Pour Tous : Le hall ». La réponse était conservée, lue, et
+> reliée à rien. Elle devient des créneaux : la salle apparaît demandée dès la
+> réception, et le régisseur voit le conflit à l'arbitrage.
+>
+> Le formulaire peut interroger la disponibilité avant l'envoi, sans compte, et
+> **l'alerte n'empêche jamais d'envoyer** : un refus sec ferait perdre une
+> demande légitime, et le demandeur rappellerait par téléphone. Ce qui n'est pas
+> reconnu dans le référentiel n'est pas perdu non plus — le libellé d'origine est
+> conservé tel qu'il est arrivé, nommé dans le journal de réception, et l'agent
+> l'apparie à la main.
+>
+> Sur cette adresse publique, un inconnu voit **les bornes** des créneaux pris, et
+> rien d'autre : il choisit un autre horaire sans savoir qui se marie. Un agent
+> connecté voit l'intitulé et le demandeur. Seuls les lieux marqués prêtables y
+> répondent.
+>
+> ### Un agenda par salle, à coller dans le sien
+>
+> Le régisseur, l'élu aux associations et l'amicale qui occupe le préau tous les
+> mardis ne se connecteront pas à l'application pour savoir si une salle est
+> libre : ils ont déjà un agenda, et c'est là qu'ils regardent.
+>
+> Chaque lieu peut donc être partagé par une adresse à coller dans Google Agenda,
+> Outlook ou Apple Calendrier. En lecture seule, et **une adresse par
+> destinataire** : retirer l'accès à une association qui n'occupe plus la salle ne
+> doit pas casser l'abonnement du régisseur, qui n'y est pour rien. Chaque
+> abonnement porte le nom de celui à qui il a été donné — sans quoi la liste
+> devient une colonne de jetons illisibles dont plus personne n'ose retirer aucun.
+>
+> L'agenda d'une pièce montre aussi les jours où **tout le bâtiment** est retenu :
+> l'afficher libre pendant les élections ferait promettre une salle occupée. Un
+> créneau annulé disparaît du flux au lieu d'y rester marqué. Une adresse révoquée
+> répond « introuvable » et non « accès refusé » : une URL retirée doit
+> disparaître, pas confirmer à qui l'a gardée qu'elle a existé.
+
 ### Attribuer un matériel depuis sa fiche, et lui donner un numéro d'inventaire
 
 > **L'attribution se règle désormais depuis les deux bouts.** Elle existait

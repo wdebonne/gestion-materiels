@@ -62,6 +62,7 @@ import planningsRoutes from './routes/plannings.routes';
 import ticketRoutes from './routes/ticket.routes';
 import ticketReferentielRoutes from './routes/ticketReferentiel.routes';
 import siteRoutes from './routes/site.routes';
+import lieuPublicRoutes from './routes/lieuPublic.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -309,6 +310,12 @@ app.use('/api/plannings', planningsRoutes);
 // introuvable » sur chaque écran de réglage.
 app.use('/api/tickets/referentiel', ticketReferentielRoutes);
 app.use('/api/tickets', ticketRoutes);
+// Monté avant `/api/sites` : la disponibilité d'une salle est la seule route des
+// lieux ouverte sans compte — le formulaire externe l'interroge pour avertir le
+// demandeur — et « public » ne doit pas être pris pour un identifiant de
+// bâtiment par le routeur principal. Le limiteur la protège de l'énumération,
+// et elle ne répond que pour les lieux marqués prêtables.
+app.use('/api/lieux/public', intakeLimiter, lieuPublicRoutes);
 // Les sites sont le référentiel des lieux du module Clés, ouvert aux demandes
 // qui ont besoin de désigner un bâtiment. Voir `sites.service.ts`.
 app.use('/api/sites', siteRoutes);

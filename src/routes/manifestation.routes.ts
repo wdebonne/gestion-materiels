@@ -26,6 +26,7 @@ import {
   rechercherObjetsPretables,
   versColonne,
 } from '../services/materielPretable.service';
+import { conflitsDeLaManifestation } from '../services/occupationLieux.service';
 import { logService } from '../services/log.service';
 import {
   approbationsDe,
@@ -786,6 +787,31 @@ router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req
     res.json({ success: true, data: await typesDocuments(true) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Les conflits de lieu d'une manifestation.
+ *
+ * Calculé à chaque appel, et non stocké sur la manifestation : un conflit naît
+ * et meurt quand *l'autre* réservation bouge, et une colonne `en_conflit`
+ * deviendrait fausse sans que rien ne l'ait touchée. Le coût est un index déjà
+ * posé par la migration 038.
+ *
+ * Déclarée avant `/:id`, qui avalerait autrement le chemin.
+ */
+router.get('/:id/conflits', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const conflits = await conflitsDeLaManifestation(Number(req.params.id));
+    res.json({
+      success: true,
+      data: conflits,
+      // Ce qui refuse vraiment, par opposition à ce qui mérite d'être signalé.
+      bloquants: conflits.filter((c) => c.conflits.some((x) => x.statut === 'confirme')).length,
+    });
+  } catch (error: any) {
+    console.error('Erreur conflits de lieu :', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
 

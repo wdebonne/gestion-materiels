@@ -26,6 +26,8 @@ import {
   valeurDuStock,
 } from '../services/cles.service';
 import { enfantsDe } from '../utils/batchQuery';
+import { arbreDesLieux } from '../services/lieux.service';
+import { lireDisponibilite, versColonne } from '../services/disponibiliteParc.service';
 import { urlPubliqueDe } from './clePublic.routes';
 
 /**
@@ -99,23 +101,21 @@ router.get('/sites/:id/ouvrants', authenticateToken, async (req: AuthRequest, re
   }
 });
 
-/** Le référentiel entier, sites et ouvrants imbriqués — ce que lisent les écrans. */
+/**
+ * Le référentiel entier — bâtiments, pièces et ouvrants imbriqués.
+ *
+ * L'assemblage est délégué à `arbreDesLieux` depuis la migration 037 : le même
+ * arbre est lu par le module Clés et par `/api/sites/arbre`, et deux
+ * assemblages parallèles finiraient par ranger la barrière principale à deux
+ * endroits différents.
+ *
+ * `site.ouvrants` ne porte plus que les ouvrants rattachés à aucune pièce ; les
+ * autres sont sous `site.pieces[].ouvrants`. C'est précisément le niveau qui
+ * manquait, et l'écran l'affiche tel quel.
+ */
 router.get('/referentiel', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
-    const sites = await db.query('SELECT * FROM cle_sites ORDER BY sort_order, name');
-    const ouvrants = await db.query('SELECT * FROM cle_ouvrants ORDER BY sort_order, name');
-
-    const parSite = new Map<number, any[]>();
-    for (const ouvrant of ouvrants) {
-      const liste = parSite.get(ouvrant.site_id);
-      if (liste) liste.push(ouvrant);
-      else parSite.set(ouvrant.site_id, [ouvrant]);
-    }
-
-    res.json({
-      success: true,
-      data: sites.map((site: any) => ({ ...site, ouvrants: parSite.get(site.id) ?? [] })),
-    });
+    res.json({ success: true, data: await arbreDesLieux(true) });
   } catch (error) {
     console.error('Erreur référentiel clés:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
@@ -131,8 +131,16 @@ router.post('/sites', authenticateToken, requireSupervisor, async (req: AuthRequ
     }
 
     const resultat = await db.execute(
-      'INSERT INTO cle_sites (name, code, address, sort_order) VALUES (?, ?, ?, ?)',
-      [name, texte(req.body?.code, 50), texte(req.body?.address, 500), Number(req.body?.sortOrder) || 0]
+      'INSERT INTO cle_sites (name, code, address, sort_order, pretable) VALUES (?, ?, ?, ?, ?)',
+      [
+        name,
+        texte(req.body?.code, 50),
+        texte(req.body?.address, 500),
+        Number(req.body?.sortOrder) || 0,
+        // Trois états : une chaîne vide dit « hérite », pas « non ». Voir
+        // `lieux.service.ts` pour le repli, qui est « non » chez les lieux.
+        versColonne(lireDisponibilite(req.body?.pretable)),
+      ]
     );
 
     res.status(201).json({ success: true, data: { id: resultat.lastInsertRowid, name } });
@@ -151,12 +159,13 @@ router.put('/sites/:id', authenticateToken, requireSupervisor, async (req: AuthR
     }
 
     await db.execute(
-      'UPDATE cle_sites SET name = ?, code = ?, address = ?, sort_order = ? WHERE id = ?',
+      'UPDATE cle_sites SET name = ?, code = ?, address = ?, sort_order = ?, pretable = ? WHERE id = ?',
       [
         name,
         texte(req.body?.code, 50),
         texte(req.body?.address, 500),
         Number(req.body?.sortOrder) || 0,
+        versColonne(lireDisponibilite(req.body?.pretable)),
         req.params.id,
       ]
     );
@@ -211,9 +220,12 @@ router.post('/ouvrants', authenticateToken, requireSupervisor, async (req: AuthR
     }
 
     const resultat = await db.execute(
-      'INSERT INTO cle_ouvrants (site_id, name, code, description, sort_order) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO cle_ouvrants (site_id, piece_id, name, code, description, sort_order) VALUES (?, ?, ?, ?, ?, ?)',
       [
         siteId,
+        // Nul est le cas normal de la barrière et du portail, qui ne sont dans
+        // aucune salle : voir `lieux.service.ts`.
+        entier(req.body?.pieceId) || null,
         name,
         texte(req.body?.code, 50),
         texte(req.body?.description, 2000),
@@ -237,12 +249,13 @@ router.put('/ouvrants/:id', authenticateToken, requireSupervisor, async (req: Au
     }
 
     await db.execute(
-      'UPDATE cle_ouvrants SET name = ?, code = ?, description = ?, sort_order = ? WHERE id = ?',
+      'UPDATE cle_ouvrants SET name = ?, code = ?, description = ?, sort_order = ?, piece_id = ? WHERE id = ?',
       [
         name,
         texte(req.body?.code, 50),
         texte(req.body?.description, 2000),
         Number(req.body?.sortOrder) || 0,
+        entier(req.body?.pieceId) || null,
         req.params.id,
       ]
     );
