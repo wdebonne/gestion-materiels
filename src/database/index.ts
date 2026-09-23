@@ -2107,31 +2107,17 @@ class DatabaseManager {
       this.config.type = 'mysql';
       await this.createTables();
 
-      // Liste des tables à migrer
-      const tablesToMigrate = [
-        'users', 'user_permissions', 'settings', 'smtp_config', 'email_templates',
-        'categories', 'subcategories', 'objects', 'plugins', 'plugin_categories',
-        'fuel_entries', 'technical_controls', 'maintenances', 'calendar_events',
-        'alerts', 'backups', 'activity_logs'
-      ];
+      // Toutes les tables, identifiants compris. La liste écrite en dur ne
+      // comptait que 17 tables — ni tickets, ni manifestations, ni clés, ni
+      // lieux — et la réinsertion sans `id` renumérotait tout : chaque lien
+      // entre deux tables pointait ensuite vers une autre ligne.
+      const { copierTables, sourceSqlite } = await import('../services/sauvegarde.service');
+      const rapport = await copierTables(sourceSqlite(this.sqliteDb!));
 
-      // Migrer les données
-      for (const table of tablesToMigrate) {
-        const rows = this.sqliteDb!.prepare(`SELECT * FROM ${table}`).all() as any[];
-        
-        if (rows.length > 0) {
-          const columns = Object.keys(rows[0]).filter(col => col !== 'id');
-          const placeholders = columns.map(() => '?').join(', ');
-          const insertSql = `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`;
-          
-          for (const row of rows) {
-            const values = columns.map(col => row[col]);
-            await newPool.execute(insertSql, values);
-          }
-        }
-      }
-
-      return { success: true, message: 'Migration réussie vers MySQL' };
+      return {
+        success: true,
+        message: `Migration réussie vers MySQL : ${rapport.tables} tables, ${rapport.lignes} lignes copiées.`,
+      };
     } catch (error: any) {
       // Rétablir SQLite en cas d'erreur
       this.config.type = 'sqlite';

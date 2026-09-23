@@ -10,6 +10,7 @@ import multer from 'multer';
 import { sendBackupEmail, sendBackupDownloadLink } from '../services/email.service';
 import { logService } from '../services/log.service';
 import { notifierWebhooks } from '../services/webhook.service';
+import { ArchiveInvalide, RapportRestauration, creerSauvegarde, restaurerArchive } from '../services/sauvegarde.service';
 
 /**
  * Liens de téléchargement temporaires d'une sauvegarde.
@@ -113,83 +114,11 @@ router.get('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: R
 // POST /api/backup - Créer une sauvegarde
 router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const { notes, backupType = 'manual', sendEmail: shouldSendEmail, emailAddress } = req.body;
-    const dbType = db.getType();
+    const { notes, sendEmail: shouldSendEmail, emailAddress } = req.body;
+    const backupType = req.body?.backupType === 'auto' ? 'auto' : 'manual';
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `backup-${timestamp}-${uuidv4().substring(0, 8)}.zip`;
-    const filePath = path.join(BACKUP_DIR, filename);
-
-    // Créer l'archive
-    const output = fs.createWriteStream(filePath);
-    const archive = archiver('zip', { zlib: { level: 9 } });
-
-    archive.pipe(output);
-
-    // Ajouter la base de données SQLite
-    if (dbType === 'sqlite') {
-      const dbPath = process.env.DB_PATH || './data/database.sqlite';
-      
-      // IMPORTANT: Forcer un checkpoint WAL pour s'assurer que toutes les données
-      // sont écrites dans le fichier principal avant la sauvegarde
-      const sqliteDb = db.getSQLiteDb();
-      sqliteDb.pragma('wal_checkpoint(TRUNCATE)');
-      
-      if (fs.existsSync(dbPath)) {
-        archive.file(dbPath, { name: 'database.sqlite' });
-      }
-    } else {
-      // Pour MySQL, exporter les données en JSON
-      const tables = ['users', 'user_permissions', 'settings', 'smtp_config', 'email_templates',
-        'categories', 'subcategories', 'objects', 'plugins', 'plugin_categories',
-        'fuel_entries', 'technical_controls', 'maintenances', 'calendar_events',
-        'alerts', 'backups', 'activity_logs'];
-
-      const exportData: any = {};
-      for (const table of tables) {
-        exportData[table] = await db.query(`SELECT * FROM ${table}`);
-      }
-      
-      archive.append(JSON.stringify(exportData, null, 2), { name: 'database.json' });
-    }
-
-    // Ajouter les uploads
-    const uploadDir = process.env.UPLOAD_DIR || './uploads';
-    if (fs.existsSync(uploadDir)) {
-      archive.directory(uploadDir, 'uploads');
-    }
-
-    // Ajouter les plugins personnalisés
-    const pluginsDir = './plugins';
-    if (fs.existsSync(pluginsDir)) {
-      archive.directory(pluginsDir, 'plugins');
-    }
-
-    // Ajouter les informations de backup
-    const backupInfo = {
-      version: process.env.SITE_VERSION || '1.0.0',
-      createdAt: new Date().toISOString(),
-      dbType,
-      notes
-    };
-    archive.append(JSON.stringify(backupInfo, null, 2), { name: 'backup-info.json' });
-
-    await archive.finalize();
-
-    // Attendre que le fichier soit écrit
-    await new Promise<void>((resolve, reject) => {
-      output.on('close', resolve);
-      output.on('error', reject);
-    });
-
-    // Obtenir la taille du fichier
-    const stats = fs.statSync(filePath);
-
-    // Enregistrer dans la base
-    const result = await db.execute(
-      'INSERT INTO backups (filename, file_path, file_size, backup_type, status, notes) VALUES (?, ?, ?, ?, ?, ?)',
-      [filename, filePath, stats.size, backupType, 'completed', notes]
-    );
+    const { id: backupId, filename, filePath, fileSize } = await creerSauvegarde({ type: backupType, notes });
+    const stats = { size: fileSize };
 
     // Envoyer par email si demandé
     let emailSent = false;
@@ -210,7 +139,7 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
         const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 jours
         await enregistrerLien(
           token,
-          result.lastInsertRowid as number,
+          backupId,
           expiresAt,
           req.user?.email || 'unknown'
         );
@@ -233,7 +162,7 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
       success: true,
       message: 'Sauvegarde créée avec succès' + (emailSent ? ' et envoyée par email' : ''),
       backup: {
-        id: result.lastInsertRowid,
+        id: backupId,
         filename,
         fileSize: stats.size
       },
@@ -417,200 +346,69 @@ router.post('/:id/send-email', authenticateToken, requireAdmin, async (req: Auth
   }
 });
 
+/**
+ * Réponse commune aux deux restaurations. Une archive inutilisable est une
+ * erreur de saisie (400), pas une panne du serveur.
+ */
+function repondreRestauration(res: Response, rapport: RapportRestauration, message: string) {
+  const avertissements: string[] = [];
+  if (rapport.liensOrphelins > 0) {
+    avertissements.push(`${rapport.liensOrphelins} ligne(s) pointent vers un élément absent de la sauvegarde.`);
+  }
+  if (rapport.tablesIgnorees.length > 0) {
+    avertissements.push(`Tables inconnues de cette version, ignorées : ${rapport.tablesIgnorees.join(', ')}.`);
+  }
+  if (rapport.colonnesIgnorees.length > 0) {
+    avertissements.push(`Colonnes disparues du schéma, ignorées : ${rapport.colonnesIgnorees.join(', ')}.`);
+  }
+  res.json({ success: true, message, rapport, avertissements });
+}
+
+function repondreErreurRestauration(res: Response, error: any) {
+  console.error('Erreur restauration :', error);
+  res
+    .status(error instanceof ArchiveInvalide ? 400 : 500)
+    .json({ success: false, message: `La restauration a échoué et la base n'a pas été modifiée : ${error.message}` });
+}
+
 // POST /api/backup/restore - Restaurer une sauvegarde
 router.post('/restore', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
-    const { backupId } = req.body;
-
-    const backup = await db.queryOne('SELECT * FROM backups WHERE id = ?', [backupId]);
+    const backup = await db.queryOne('SELECT * FROM backups WHERE id = ?', [req.body?.backupId]);
     if (!backup) {
       return res.status(404).json({ success: false, message: 'Sauvegarde non trouvée' });
     }
-
     if (!fs.existsSync(backup.file_path)) {
       return res.status(404).json({ success: false, message: 'Fichier de sauvegarde non trouvé' });
     }
 
-    const extractDir = path.join(BACKUP_DIR, `extract-${Date.now()}`);
-    
-    // Extraire l'archive
-    await extract(backup.file_path, { dir: path.resolve(extractDir) });
-
-    // Lire les informations de backup
-    const infoPath = path.join(extractDir, 'backup-info.json');
-    if (!fs.existsSync(infoPath)) {
-      throw new Error('Fichier backup-info.json manquant');
-    }
-
-    const backupInfo = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
-    const dbType = db.getType();
-
-    // Restaurer la base de données
-    if (backupInfo.dbType === 'sqlite' && dbType === 'sqlite') {
-      const backupDbPath = path.join(extractDir, 'database.sqlite');
-      const targetDbPath = process.env.DB_PATH || './data/database.sqlite';
-      
-      if (fs.existsSync(backupDbPath)) {
-        // Fermer la connexion actuelle
-        const sqliteDb = db.getSQLiteDb();
-        sqliteDb.close();
-        
-        // Supprimer les fichiers WAL existants pour éviter les conflits
-        const walPath = targetDbPath + '-wal';
-        const shmPath = targetDbPath + '-shm';
-        if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
-        if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
-        
-        // Copier la base de données
-        fs.copyFileSync(backupDbPath, targetDbPath);
-        
-        // Réinitialiser la connexion
-        await db.init();
-      }
-    } else if (fs.existsSync(path.join(extractDir, 'database.json'))) {
-      // Restaurer depuis JSON (pour MySQL ou migration)
-      const exportData = JSON.parse(fs.readFileSync(path.join(extractDir, 'database.json'), 'utf8'));
-
-      // Tout ou rien. Chaque table est d'abord vidée, puis réinsérée ligne à
-      // ligne : une coupure au milieu — disque plein, ligne refusée par une
-      // contrainte, serveur arrêté — laissait la base à moitié vide, sans
-      // aucun moyen de revenir en arrière. Et c'est la restauration, donc le
-      // dernier recours, qui échouait ainsi.
-      await db.transaction(async () => {
-        for (const [table, rows] of Object.entries(exportData) as [string, any[]][]) {
-          if (rows.length === 0) continue;
-
-          await db.execute(`DELETE FROM ${table}`);
-
-          const columns = Object.keys(rows[0]).filter((col) => col !== 'id');
-          const placeholders = columns.map(() => '?').join(', ');
-
-          for (const row of rows) {
-            await db.execute(
-              `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`,
-              columns.map((col) => row[col])
-            );
-          }
-        }
-      });
-    }
-
-    // Restaurer les uploads
-    const uploadsBackupDir = path.join(extractDir, 'uploads');
-    const targetUploadDir = process.env.UPLOAD_DIR || './uploads';
-    if (fs.existsSync(uploadsBackupDir)) {
-      // Copier récursivement
-      copyDirRecursive(uploadsBackupDir, targetUploadDir);
-    }
-
-    // Restaurer les plugins
-    const pluginsBackupDir = path.join(extractDir, 'plugins');
-    if (fs.existsSync(pluginsBackupDir)) {
-      copyDirRecursive(pluginsBackupDir, './plugins');
-    }
-
-    // Nettoyer le dossier d'extraction
-    fs.rmSync(extractDir, { recursive: true, force: true });
-
-    res.json({ success: true, message: 'Restauration effectuée avec succès. Veuillez redémarrer l\'application.' });
+    const rapport = await restaurerArchive(backup.file_path);
+    await logService.success('backup', 'Sauvegarde restaurée', { filename: backup.filename, ...rapport }, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email,
+    });
+    repondreRestauration(res, rapport, "Restauration effectuée avec succès. Veuillez redémarrer l'application.");
   } catch (error: any) {
-    console.error('Erreur restore backup:', error);
-    res.status(500).json({ success: false, message: error.message });
+    repondreErreurRestauration(res, error);
   }
 });
 
 // POST /api/backup/upload - Uploader et restaurer une sauvegarde externe
 router.post('/upload', authenticateToken, requireAdmin, backupUpload.single('backup'), async (req: AuthRequest, res: Response) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
+  }
   try {
-    if (!req.file) {
-      return res.status(400).json({ success: false, message: 'Aucun fichier fourni' });
-    }
-
-    const tempFilePath = req.file.path;
-    const extractDir = path.join(BACKUP_DIR, `extract-${Date.now()}`);
-
-    // Extraire l'archive
-    await extract(tempFilePath, { dir: path.resolve(extractDir) });
-
-    // Lire les informations de backup
-    const infoPath = path.join(extractDir, 'backup-info.json');
-    if (!fs.existsSync(infoPath)) {
-      // Nettoyer
-      fs.rmSync(extractDir, { recursive: true, force: true });
-      fs.unlinkSync(tempFilePath);
-      return res.status(400).json({ success: false, message: 'Fichier backup-info.json manquant. Ce n\'est pas une sauvegarde valide.' });
-    }
-
-    const backupInfo = JSON.parse(fs.readFileSync(infoPath, 'utf8'));
-    const dbType = db.getType();
-
-    // Restaurer la base de données
-    if (backupInfo.dbType === 'sqlite' && dbType === 'sqlite') {
-      const backupDbPath = path.join(extractDir, 'database.sqlite');
-      const targetDbPath = process.env.DB_PATH || './data/database.sqlite';
-      
-      if (fs.existsSync(backupDbPath)) {
-        // Fermer la connexion actuelle
-        const sqliteDb = db.getSQLiteDb();
-        sqliteDb.close();
-        
-        // Supprimer les fichiers WAL existants pour éviter les conflits
-        const walPath = targetDbPath + '-wal';
-        const shmPath = targetDbPath + '-shm';
-        if (fs.existsSync(walPath)) fs.unlinkSync(walPath);
-        if (fs.existsSync(shmPath)) fs.unlinkSync(shmPath);
-        
-        // Copier la base de données
-        fs.copyFileSync(backupDbPath, targetDbPath);
-        
-        // Réinitialiser la connexion
-        await db.init();
-      }
-    } else if (fs.existsSync(path.join(extractDir, 'database.json'))) {
-      // Restaurer depuis JSON (pour MySQL ou migration)
-      const exportData = JSON.parse(fs.readFileSync(path.join(extractDir, 'database.json'), 'utf8'));
-      
-      for (const [table, rows] of Object.entries(exportData) as [string, any[]][]) {
-        if (rows.length > 0) {
-          // Vider la table
-          await db.execute(`DELETE FROM ${table}`);
-          
-          // Insérer les données
-          const columns = Object.keys(rows[0]).filter(col => col !== 'id');
-          const placeholders = columns.map(() => '?').join(', ');
-          
-          for (const row of rows) {
-            const values = columns.map(col => row[col]);
-            await db.execute(
-              `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`,
-              values
-            );
-          }
-        }
-      }
-    }
-
-    // Restaurer les uploads
-    const uploadsBackupDir = path.join(extractDir, 'uploads');
-    const targetUploadDir = process.env.UPLOAD_DIR || './uploads';
-    if (fs.existsSync(uploadsBackupDir)) {
-      copyDirRecursive(uploadsBackupDir, targetUploadDir);
-    }
-
-    // Restaurer les plugins
-    const pluginsBackupDir = path.join(extractDir, 'plugins');
-    if (fs.existsSync(pluginsBackupDir)) {
-      copyDirRecursive(pluginsBackupDir, './plugins');
-    }
-
-    // Nettoyer les fichiers temporaires
-    fs.rmSync(extractDir, { recursive: true, force: true });
-    fs.unlinkSync(tempFilePath);
-
-    res.json({ success: true, message: 'Sauvegarde externe restaurée avec succès. Veuillez redémarrer l\'application.' });
+    const rapport = await restaurerArchive(req.file.path);
+    await logService.success('backup', 'Sauvegarde externe restaurée', { filename: req.file.originalname, ...rapport }, {
+      userId: req.user?.userId,
+      userEmail: req.user?.email,
+    });
+    repondreRestauration(res, rapport, "Sauvegarde externe restaurée avec succès. Veuillez redémarrer l'application.");
   } catch (error: any) {
-    console.error('Erreur upload backup:', error);
-    res.status(500).json({ success: false, message: error.message });
+    repondreErreurRestauration(res, error);
+  } finally {
+    fs.rmSync(req.file.path, { force: true });
   }
 });
 
@@ -638,25 +436,5 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
-
-// Fonction utilitaire pour copier un dossier récursivement
-function copyDirRecursive(src: string, dest: string) {
-  if (!fs.existsSync(dest)) {
-    fs.mkdirSync(dest, { recursive: true });
-  }
-
-  const entries = fs.readdirSync(src, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    if (entry.isDirectory()) {
-      copyDirRecursive(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-}
 
 export default router;
