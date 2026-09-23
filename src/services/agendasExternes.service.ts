@@ -280,6 +280,35 @@ function versICalDateHeure(valeur: string): string {
   return utilisable.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 }
 
+/**
+ * Une heure locale « flottante » : `20260928T160000`, sans `Z`.
+ *
+ * `versICalDateHeure` passe par `new Date(…).toISOString()`, ce qui interprète
+ * l'heure stockée **selon le fuseau du serveur** avant de la publier en UTC. Sur
+ * une machine réglée sur Paris le résultat est juste ; dans un conteneur, où
+ * Node tourne en UTC faute de `TZ` — et `docker-compose.yml` n'en fixe aucun —
+ * « 16:00 » part en `160000Z` et s'affiche **18:00** chez l'abonné parisien. Le
+ * décalage ne se voit qu'en production, et sur chaque créneau.
+ *
+ * Une occupation de salle est une heure murale : la salle des mariages est prise
+ * de 16h à 18h, et cela ne dépend d'aucun fuseau. On publie donc l'heure telle
+ * qu'elle est écrite, sans `Z` — la norme iCalendar la dit « flottante », et le
+ * client l'affiche dans son propre fuseau, ce qui est exactement voulu pour des
+ * gens qui vivent tous dans la même commune.
+ *
+ * Purement textuel, et c'est la raison d'être de la fonction : aucun objet
+ * `Date` n'intervient, donc aucun fuseau ne peut s'inviter.
+ */
+function versICalHeureLocale(valeur: string): string {
+  const trouve = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/.exec(
+    String(valeur).trim()
+  );
+  if (!trouve) return versICalDateHeure(valeur);
+
+  const [, annee, mois, jour, heures, minutes, secondes] = trouve;
+  return `${annee}${mois}${jour}T${heures}${minutes}${secondes ?? '00'}`;
+}
+
 /** Une date iCalendar sans heure : `20260912`. */
 function versICalDate(valeur: string): string {
   return String(valeur).slice(0, 10).replace(/-/g, '');
@@ -311,34 +340,106 @@ export const uidDe = (evenement: { id: number }): string =>
  * CalDAV refusent le dépôt, et ceux qui l'acceptent créent un doublon à chaque
  * passage au lieu de remplacer.
  */
-export function versICS(evenement: EvenementExportable): string {
+/** Le minimum qu'il faut savoir d'un événement pour en écrire un `VEVENT`. */
+export interface EvenementICal {
+  title: string;
+  description?: string | null;
+  start_date: string;
+  end_date?: string | null;
+  all_day?: number | boolean;
+  /** Où ça se passe, quand on le sait — `LOCATION` dans le fichier. */
+  location?: string | null;
+}
+
+/**
+ * Les lignes d'un `VEVENT`, sans son enveloppe.
+ *
+ * Extrait de `versICS` le jour où les agendas de lieu ont eu besoin d'un flux
+ * de *plusieurs* événements : un `VCALENDAR` par événement convient au dépôt
+ * CalDAV, qui pousse un rendez-vous à la fois, et pas du tout à une URL
+ * d'abonnement, qui en publie cent.
+ *
+ * L'`uid` est passé par l'appelant plutôt que déduit : deux familles
+ * d'événements coexistent désormais — ceux de `calendar_events` et les
+ * occupations de lieu — et un identifiant tiré du seul numéro de ligne les
+ * ferait se recouvrir dans l'agenda de qui s'abonne aux deux.
+ */
+export function versVEVENT(
+  evenement: EvenementICal,
+  uid: string,
+  options: { heuresFlottantes?: boolean } = {}
+): string[] {
+  // Le dépôt CalDAV garde l'UTC, qui est ce que les serveurs distants attendent
+  // et ce qu'ils reçoivent depuis la migration 020. Les agendas de lieu
+  // publient l'heure murale : voir `versICalHeureLocale`.
+  const horodater = options.heuresFlottantes ? versICalHeureLocale : versICalDateHeure;
+
   const journeeEntiere = !!evenement.all_day;
   const debut = journeeEntiere
     ? `DTSTART;VALUE=DATE:${versICalDate(evenement.start_date)}`
-    : `DTSTART:${versICalDateHeure(evenement.start_date)}`;
+    : `DTSTART:${horodater(evenement.start_date)}`;
 
   const finBrute = evenement.end_date || evenement.start_date;
   const fin = journeeEntiere
     ? `DTEND;VALUE=DATE:${versICalDate(prochainJour(finBrute))}`
-    : `DTEND:${versICalDateHeure(finBrute)}`;
+    : `DTEND:${horodater(finBrute)}`;
 
+  return [
+    'BEGIN:VEVENT',
+    `UID:${uid}`,
+    `DTSTAMP:${versICalDateHeure(new Date().toISOString())}`,
+    debut,
+    fin,
+    `SUMMARY:${echapper(evenement.title)}`,
+    evenement.location ? `LOCATION:${echapper(evenement.location)}` : null,
+    evenement.description ? `DESCRIPTION:${echapper(evenement.description)}` : null,
+    'END:VEVENT',
+  ].filter(Boolean) as string[];
+}
+
+export function versICS(evenement: EvenementExportable): string {
   return [
     'BEGIN:VCALENDAR',
     'VERSION:2.0',
     'PRODID:-//Gestion Materiels//FR',
     'CALSCALE:GREGORIAN',
-    'BEGIN:VEVENT',
-    `UID:${uidDe(evenement)}`,
-    `DTSTAMP:${versICalDateHeure(new Date().toISOString())}`,
-    debut,
-    fin,
-    `SUMMARY:${echapper(evenement.title)}`,
-    evenement.description ? `DESCRIPTION:${echapper(evenement.description)}` : null,
-    'END:VEVENT',
+    ...versVEVENT(evenement, uidDe(evenement)),
     'END:VCALENDAR',
-  ]
-    .filter(Boolean)
-    .join('\r\n');
+  ].join('\r\n');
+}
+
+/**
+ * Un flux d'abonnement : un `VCALENDAR`, autant de `VEVENT` qu'il en faut.
+ *
+ * `X-WR-CALNAME` est ce que Google et Outlook affichent dans la liste des
+ * agendas de l'abonné. Sans lui, l'agenda s'appelle du nom de l'URL, et
+ * quelqu'un qui s'abonne à trois salles se retrouve avec trois lignes
+ * indiscernables.
+ *
+ * `REFRESH-INTERVAL` et son doublon `X-PUBLISHED-TTL` disent au client à quelle
+ * fréquence revenir : les deux sont là parce que les clients ne lisent pas le
+ * même — la norme pour les uns, l'extension Microsoft pour les autres.
+ */
+export function versFluxICS(
+  evenements: Array<{ evenement: EvenementICal; uid: string }>,
+  nomDuCalendrier: string
+): string {
+  return [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Gestion Materiels//FR',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    `X-WR-CALNAME:${echapper(nomDuCalendrier)}`,
+    'REFRESH-INTERVAL;VALUE=DURATION:PT1H',
+    'X-PUBLISHED-TTL:PT1H',
+    // Heures flottantes : un flux d'abonnement publie des heures murales, et ne
+    // doit pas dépendre du fuseau dans lequel tourne le serveur.
+    ...evenements.flatMap(({ evenement, uid }) =>
+      versVEVENT(evenement, uid, { heuresFlottantes: true })
+    ),
+    'END:VCALENDAR',
+  ].join('\r\n');
 }
 
 /**

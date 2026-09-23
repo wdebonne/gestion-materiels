@@ -9,6 +9,7 @@ import {
   Modal, ModalBody, ModalFooter, LoadingInline, Alert
 } from '@/components/ui'
 import api from '@/lib/api'
+import DonneesDeTest from '@/components/settings/DonneesDeTest'
 import toast from 'react-hot-toast'
 
 export default function DatabasePage() {
@@ -34,9 +35,12 @@ export default function DatabasePage() {
   })
 
   // Mutation pour tester la connexion MySQL
+  // Le serveur attend `user` ; le formulaire l'appelle `username`.
+  const versServeur = (config: typeof migrationConfig) => ({ ...config, user: config.username })
+
   const testConnectionMutation = useMutation({
     mutationFn: async (config: typeof migrationConfig) => {
-      return api.post('/settings/database/test-connection', config)
+      return api.post('/settings/database/test-connection', versServeur(config))
     },
     onSuccess: () => {
       setTestResult({ success: true, message: 'Connexion réussie !' })
@@ -44,7 +48,7 @@ export default function DatabasePage() {
     onError: (err: any) => {
       setTestResult({ 
         success: false, 
-        message: err.response?.data?.error || 'Impossible de se connecter à la base de données'
+        message: err.response?.data?.message || 'Impossible de se connecter à la base de données'
       })
     }
   })
@@ -52,7 +56,7 @@ export default function DatabasePage() {
   // Mutation pour lancer la migration
   const migrateMutation = useMutation({
     mutationFn: async (config: typeof migrationConfig) => {
-      return api.post('/settings/database/migrate', config)
+      return api.post('/settings/database/migrate', versServeur(config))
     },
     onSuccess: () => {
       toast.success('Migration réussie ! L\'application va redémarrer...')
@@ -60,7 +64,7 @@ export default function DatabasePage() {
       setTimeout(() => window.location.reload(), 3000)
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || 'Erreur lors de la migration')
+      toast.error(err.response?.data?.message || 'Erreur lors de la migration')
     }
   })
 
@@ -133,6 +137,8 @@ export default function DatabasePage() {
           )}
         </CardBody>
       </Card>
+
+      <DonneesDeTest />
 
       {/* Migration */}
       {dbInfo?.type === 'sqlite' && (

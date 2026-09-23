@@ -15,7 +15,7 @@ import api from '@/lib/api'
 import { Badge, Button, Card, Input, LoadingInline, Tabs, Tab } from '@/components/ui'
 import Can from '@/components/Can'
 import { BoutonEtiquettesAvery } from '@/components/EtiquettesAvery'
-import ReferentielLieux from '@/components/ReferentielLieux'
+import GestionLieux from '@/components/lieux/GestionLieux'
 import ComposerTrousseau from '@/components/ComposerTrousseau'
 
 /**
@@ -182,7 +182,7 @@ export default function ClesPage() {
       </Tabs>
 
       {onglet === 'lieux' ? (
-        <ReferentielLieux />
+        <GestionLieux />
       ) : (
         <div className="space-y-4">
           <Input

@@ -349,74 +349,13 @@ async function autoBackup(): Promise<void> {
       return;
     }
 
-    // Importer dynamiquement pour éviter les dépendances circulaires
-    const { Router } = await import('express');
-    const fs = await import('fs');
-    const path = await import('path');
-    const archiver = await import('archiver');
-    const { v4: uuidv4 } = await import('uuid');
+    // Même archive que la sauvegarde manuelle : jusqu'ici, sur MySQL, la
+    // sauvegarde automatique ne contenait que les fichiers téléversés.
+    const { creerSauvegarde, elaguerSauvegardes } = await import('./sauvegarde.service');
+    const { filename } = await creerSauvegarde({ type: 'auto' });
 
-    const BACKUP_DIR = './backups';
-    if (!fs.existsSync(BACKUP_DIR)) {
-      fs.mkdirSync(BACKUP_DIR, { recursive: true });
-    }
-
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const filename = `backup-auto-${timestamp}-${uuidv4().substring(0, 8)}.zip`;
-    const filePath = path.join(BACKUP_DIR, filename);
-
-    const output = fs.createWriteStream(filePath);
-    const archive = archiver.default('zip', { zlib: { level: 9 } });
-
-    archive.pipe(output);
-
-    // Ajouter la base de données
-    const dbType = db.getType();
-    if (dbType === 'sqlite') {
-      const dbPath = process.env.DB_PATH || './data/database.sqlite';
-      if (fs.existsSync(dbPath)) {
-        archive.file(dbPath, { name: 'database.sqlite' });
-      }
-    }
-
-    // Ajouter les uploads
-    const uploadDir = process.env.UPLOAD_DIR || './uploads';
-    if (fs.existsSync(uploadDir)) {
-      archive.directory(uploadDir, 'uploads');
-    }
-
-    archive.append(JSON.stringify({
-      version: process.env.SITE_VERSION || '1.0.0',
-      createdAt: new Date().toISOString(),
-      dbType,
-      type: 'auto'
-    }, null, 2), { name: 'backup-info.json' });
-
-    await archive.finalize();
-
-    await new Promise<void>((resolve, reject) => {
-      output.on('close', resolve);
-      output.on('error', reject);
-    });
-
-    const stats = fs.statSync(filePath);
-
-    await db.execute(
-      'INSERT INTO backups (filename, file_path, file_size, backup_type, status) VALUES (?, ?, ?, ?, ?)',
-      [filename, filePath, stats.size, 'auto', 'completed']
-    );
-
-    // Supprimer les anciennes sauvegardes automatiques (garder les 10 dernières)
-    const oldBackups = await db.query(
-      `SELECT * FROM backups WHERE backup_type = 'auto' ORDER BY created_at DESC LIMIT -1 OFFSET 10`
-    );
-
-    for (const backup of oldBackups) {
-      if (fs.existsSync(backup.file_path)) {
-        fs.unlinkSync(backup.file_path);
-      }
-      await db.execute('DELETE FROM backups WHERE id = ?', [backup.id]);
-    }
+    // Garder les 10 dernières sauvegardes automatiques.
+    await elaguerSauvegardes('auto', 10);
 
     console.log(`✅ Sauvegarde automatique créée: ${filename}`);
   } catch (error) {

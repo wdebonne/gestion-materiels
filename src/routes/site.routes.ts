@@ -7,6 +7,32 @@ import {
   requireSupervisor,
 } from '../middleware/auth.middleware';
 import { listerSites, lireSite, ouvrantsDe, sitesDe, sitesProposesA, usagesSite } from '../services/sites.service';
+import {
+  arbreDesLieux,
+  creerPiece,
+  lieuxPretables,
+  lirePiece,
+  listerPieces,
+  modifierPiece,
+  usagesPiece,
+} from '../services/lieux.service';
+import {
+  creerJetonAgenda,
+  jetonsDuSite,
+  revoquerJetonAgenda,
+} from '../services/agendaLieu.service';
+import {
+  avertissements,
+  bloquants,
+  conflitsPour,
+  creerOccupation,
+  listerOccupations,
+  lireOccupation,
+  modifierOccupation,
+  supprimerOccupation,
+  STATUTS_OCCUPATION,
+  type StatutOccupation,
+} from '../services/occupationLieux.service';
 import { versDateTime } from '../services/tickets.service';
 
 /**
@@ -25,6 +51,45 @@ const router = Router();
 
 function refuser(res: Response, code: number, message: string) {
   return res.status(code).json({ success: false, message });
+}
+
+/**
+ * Lit un créneau depuis une requête, ou dit ce qui manque.
+ *
+ * Écrit une fois pour les quatre routes qui en prennent un : la disponibilité,
+ * la création, la modification et le filtre. Quatre lectures séparées finiraient
+ * par diverger sur ce qu'elles acceptent, et l'écran demanderait alors une
+ * disponibilité sur des bornes que l'enregistrement refuserait.
+ *
+ * `fin` doit être **après** `debut`, jamais égale : un créneau de durée nulle
+ * n'occupe rien, et ne heurterait jamais rien puisque les bornes sont
+ * exclusives. L'accepter laisserait poser des réservations invisibles.
+ */
+function lireCreneau(
+  source: any
+): { siteId: number; pieceId: number | null; debut: string; fin: string } | { erreur: string } {
+  const siteId = Number(source?.siteId);
+  if (!Number.isFinite(siteId) || siteId <= 0) return { erreur: 'Le bâtiment est obligatoire' };
+
+  const debut = String(source?.debut ?? '').trim();
+  const fin = String(source?.fin ?? '').trim();
+  if (!debut || !fin) return { erreur: 'Les dates de début et de fin sont obligatoires' };
+  if (fin <= debut) return { erreur: 'La fin doit être après le début' };
+
+  const pieceBrute = source?.pieceId;
+  const pieceId =
+    pieceBrute === undefined || pieceBrute === null || pieceBrute === '' ? null : Number(pieceBrute);
+  if (pieceId !== null && !Number.isFinite(pieceId)) return { erreur: 'Pièce invalide' };
+
+  return { siteId, pieceId, debut, fin };
+}
+
+/** Un statut inconnu retombe sur `confirme` plutôt que d'entrer en base tel quel. */
+function lireStatut(brut: unknown): StatutOccupation {
+  const valeur = String(brut ?? '').trim();
+  return (STATUTS_OCCUPATION as readonly string[]).includes(valeur)
+    ? (valeur as StatutOccupation)
+    : 'confirme';
 }
 
 /**
@@ -62,11 +127,366 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// ============================ PIÈCES ET LIEUX ============================
+
+/*
+ * Tout ce qui suit jusqu'à `/:id` porte un segment littéral, et doit donc être
+ * déclaré ici. C'est l'avertissement déjà posé plus haut pour `/mes-sites` :
+ * Express résout dans l'ordre de déclaration, et `/:id` avalerait autrement
+ * `arbre` et `pretables` en les prenant pour des identifiants.
+ */
+
+/** Le référentiel entier — bâtiments, pièces, ouvrants — en une lecture. */
+router.get('/arbre', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, sites: await arbreDesLieux(req.query.tous === 'true') });
+  } catch (erreur: any) {
+    console.error('Erreur lecture du référentiel des lieux :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Les lieux ouverts au prêt.
+ *
+ * `capacite` écarte les salles trop petites pour le nombre annoncé. Une pièce
+ * dont la jauge n'est pas renseignée reste proposée : voir `lieuxPretables`.
+ */
+router.get('/pretables', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const brut = req.query.capacite;
+    const capacite = brut === undefined || brut === '' ? undefined : Number(brut);
+    if (capacite !== undefined && !Number.isFinite(capacite)) {
+      return refuser(res, 400, 'Capacité invalide');
+    }
+    res.json({ success: true, lieux: await lieuxPretables({ capaciteMinimale: capacite }) });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des lieux prêtables :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.post('/pieces', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const siteId = Number(req.body?.siteId);
+    const nom = String(req.body?.nom ?? '').trim();
+    if (!Number.isFinite(siteId) || siteId <= 0) return refuser(res, 400, 'Le bâtiment est obligatoire');
+    if (!nom) return refuser(res, 400, 'Le nom est obligatoire');
+    if (!(await lireSite(siteId))) return refuser(res, 404, 'Bâtiment introuvable');
+
+    const id = await creerPiece({
+      siteId,
+      nom,
+      code: req.body?.code ?? null,
+      description: req.body?.description ?? null,
+      typeLieu: req.body?.typeLieu ?? null,
+      capacite: req.body?.capacite === undefined || req.body?.capacite === '' ? null : Number(req.body.capacite),
+      pretable: req.body?.pretable,
+      ordre: Number(req.body?.ordre ?? 0),
+    });
+    res.status(201).json({ success: true, id });
+  } catch (erreur: any) {
+    console.error('Erreur création de pièce :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.get('/pieces/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const piece = await lirePiece(req.params.id);
+    if (!piece) return refuser(res, 404, 'Pièce introuvable');
+    res.json({ success: true, piece });
+  } catch (erreur: any) {
+    console.error('Erreur lecture de pièce :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.put('/pieces/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await lirePiece(req.params.id))) return refuser(res, 404, 'Pièce introuvable');
+
+    await modifierPiece(req.params.id, {
+      nom: req.body?.nom === undefined ? undefined : String(req.body.nom).trim(),
+      code: req.body?.code,
+      description: req.body?.description,
+      typeLieu: req.body?.typeLieu,
+      capacite:
+        req.body?.capacite === undefined
+          ? undefined
+          : req.body.capacite === '' || req.body.capacite === null
+            ? null
+            : Number(req.body.capacite),
+      // Passé tel quel : c'est `lireDisponibilite` qui distingue « hérite »
+      // (chaîne vide, null) de « non » (false), et la route n'a pas à refaire
+      // cette lecture d'une deuxième façon.
+      pretable: req.body?.pretable,
+      ordre: req.body?.ordre === undefined ? undefined : Number(req.body.ordre),
+      actif: req.body?.actif === undefined ? undefined : Boolean(req.body.actif),
+    });
+    res.json({ success: true });
+  } catch (erreur: any) {
+    console.error('Erreur modification de pièce :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Supprime une pièce — seulement si rien ne la cite.
+ *
+ * Même règle que pour un bâtiment, et même raison : une clé qui ouvre cette
+ * pièce deviendrait un bout de métal sans usage connu, et un ticket perdrait
+ * son lieu. Le refus porte le nombre, parce qu'il dit alors quoi faire.
+ *
+ * Les ouvrants ne bloquent pas : ils retombent sur le bâtiment, comme le
+ * `ON DELETE SET NULL` de la migration 037 l'organise.
+ */
+router.delete('/pieces/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await lirePiece(req.params.id))) return refuser(res, 404, 'Pièce introuvable');
+
+    const usages = await usagesPiece(req.params.id);
+    const { ouvrants, ...bloquants } = usages;
+    const empeche = Object.entries(bloquants).filter(([, n]) => n > 0);
+    if (empeche.length > 0) {
+      const detail = empeche.map(([quoi, n]) => `${n} ${quoi}`).join(', ');
+      return refuser(res, 409, `Cette pièce est encore employée (${detail}) : désactivez-la plutôt`);
+    }
+
+    await db.execute('DELETE FROM site_pieces WHERE id = ?', [req.params.id]);
+    res.json({ success: true, message: 'Pièce supprimée' });
+  } catch (erreur: any) {
+    console.error('Erreur suppression de pièce :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+// =========================== OCCUPATION DES LIEUX ===========================
+
+/** Les créneaux d'une période, pour l'agenda d'une salle ou d'un bâtiment. */
+router.get('/occupations', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      occupations: await listerOccupations({
+        debut: req.query.debut ? String(req.query.debut) : undefined,
+        fin: req.query.fin ? String(req.query.fin) : undefined,
+        siteId: req.query.siteId ? Number(req.query.siteId) : null,
+        pieceId: req.query.pieceId ? Number(req.query.pieceId) : null,
+        // `tous` ramène les annulés, que l'agenda masque par défaut.
+        statuts: req.query.tous === 'true' ? STATUTS_OCCUPATION : undefined,
+      }),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des occupations :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Ce qui heurte un créneau, avant de l'enregistrer.
+ *
+ * Le même appel que celui du refus, pour que l'écran et le serveur ne puissent
+ * pas dire deux choses différentes — la règle posée par `requeteConflits` dans
+ * `reservation.routes.ts`.
+ */
+router.get('/disponibilite', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const creneau = lireCreneau(req.query);
+    if ('erreur' in creneau) return refuser(res, 400, creneau.erreur);
+
+    const conflits = await conflitsPour({
+      ...creneau,
+      ignorerId: req.query.ignorerId ? Number(req.query.ignorerId) : null,
+    });
+    res.json({
+      success: true,
+      libre: conflits.length === 0,
+      conflits,
+      bloquants: bloquants(conflits),
+      avertissements: avertissements(conflits),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur lecture de disponibilité :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Pose un créneau.
+ *
+ * Un conflit **confirmé** refuse : deux manifestations ne tiennent pas dans la
+ * même salle. Une simple **demande** n'est rendue qu'en avertissement, avec le
+ * créneau créé : c'est au superviseur d'arbitrer, et refuser ici ferait perdre
+ * la seconde demande.
+ *
+ * `force` permet de passer outre un conflit confirmé — le régisseur sait parfois
+ * que l'autre occupation va être annulée, et l'application ne doit pas être plus
+ * têtue que lui. Le créneau est alors posé tel quel, et les deux se voient.
+ */
+router.post('/occupations', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const creneau = lireCreneau(req.body);
+    if ('erreur' in creneau) return refuser(res, 400, creneau.erreur);
+
+    const titre = String(req.body?.titre ?? '').trim();
+    if (!titre) return refuser(res, 400, 'Le titre est obligatoire');
+
+    const conflits = await conflitsPour(creneau);
+    const durs = bloquants(conflits);
+    if (durs.length > 0 && req.body?.force !== true) {
+      return res.status(409).json({
+        success: false,
+        message: `Ce lieu est déjà retenu sur ce créneau (${durs.length})`,
+        conflits: durs,
+      });
+    }
+
+    const id = await creerOccupation({
+      ...creneau,
+      titre,
+      statut: lireStatut(req.body?.statut),
+      demandeur: req.body?.demandeur ?? null,
+      notes: req.body?.notes ?? null,
+      creePar: req.user!.userId,
+    });
+
+    res.status(201).json({ success: true, id, avertissements: avertissements(conflits) });
+  } catch (erreur: any) {
+    console.error('Erreur création d’occupation :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.put('/occupations/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const existante = await lireOccupation(req.params.id);
+    if (!existante) return refuser(res, 404, 'Créneau introuvable');
+
+    // Le créneau n'est revérifié que s'il bouge : changer le seul titre ne doit
+    // pas buter sur un conflit qui existait déjà et qu'on a accepté.
+    const bouge =
+      req.body?.debut !== undefined ||
+      req.body?.fin !== undefined ||
+      req.body?.siteId !== undefined ||
+      req.body?.pieceId !== undefined;
+
+    if (bouge) {
+      const creneau = lireCreneau({
+        siteId: req.body?.siteId ?? existante.site_id,
+        pieceId: req.body?.pieceId === undefined ? existante.piece_id : req.body.pieceId,
+        debut: req.body?.debut ?? existante.debut,
+        fin: req.body?.fin ?? existante.fin,
+      });
+      if ('erreur' in creneau) return refuser(res, 400, creneau.erreur);
+
+      const durs = bloquants(await conflitsPour({ ...creneau, ignorerId: Number(req.params.id) }));
+      if (durs.length > 0 && req.body?.force !== true) {
+        return res.status(409).json({
+          success: false,
+          message: `Ce lieu est déjà retenu sur ce créneau (${durs.length})`,
+          conflits: durs,
+        });
+      }
+    }
+
+    await modifierOccupation(req.params.id, {
+      siteId: req.body?.siteId === undefined ? undefined : Number(req.body.siteId),
+      pieceId:
+        req.body?.pieceId === undefined ? undefined : req.body.pieceId ? Number(req.body.pieceId) : null,
+      titre: req.body?.titre === undefined ? undefined : String(req.body.titre).trim(),
+      debut: req.body?.debut,
+      fin: req.body?.fin,
+      statut: req.body?.statut === undefined ? undefined : lireStatut(req.body.statut),
+      demandeur: req.body?.demandeur,
+      notes: req.body?.notes,
+    });
+    res.json({ success: true });
+  } catch (erreur: any) {
+    console.error('Erreur modification d’occupation :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.delete('/occupations/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await lireOccupation(req.params.id))) return refuser(res, 404, 'Créneau introuvable');
+    await supprimerOccupation(req.params.id);
+    res.json({ success: true, message: 'Créneau supprimé' });
+  } catch (erreur: any) {
+    console.error('Erreur suppression d’occupation :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+// ============================ PARTAGE D'AGENDA ============================
+
+/**
+ * Les abonnements ouverts sur les lieux d'un bâtiment.
+ *
+ * Réservé au superviseur : la liste porte les URL, et une URL d'agenda vaut
+ * l'accès qu'elle ouvre.
+ */
+router.get('/:id/agenda', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await lireSite(req.params.id))) return refuser(res, 404, 'Bâtiment introuvable');
+    res.json({ success: true, jetons: await jetonsDuSite(req.params.id) });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des abonnements :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.post('/:id/agenda', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const site = await lireSite(req.params.id);
+    if (!site) return refuser(res, 404, 'Bâtiment introuvable');
+
+    const pieceId = req.body?.pieceId ? Number(req.body.pieceId) : null;
+    if (pieceId !== null) {
+      const piece = await lirePiece(pieceId);
+      // Une pièce d'un autre bâtiment ouvrirait un agenda que l'écran croirait
+      // rattaché à celui-ci.
+      if (!piece || piece.siteId !== Number(req.params.id)) {
+        return refuser(res, 400, 'Cette pièce n’appartient pas à ce bâtiment');
+      }
+    }
+
+    const jeton = await creerJetonAgenda({
+      siteId: Number(req.params.id),
+      pieceId,
+      label: req.body?.label ?? null,
+      creePar: req.user!.userId,
+    });
+    res.status(201).json({ success: true, jeton });
+  } catch (erreur: any) {
+    console.error('Erreur création d’abonnement :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.delete('/agenda/:jetonId', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    await revoquerJetonAgenda(req.params.jetonId);
+    res.json({ success: true, message: 'Abonnement révoqué' });
+  } catch (erreur: any) {
+    console.error('Erreur révocation d’abonnement :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+// ============================== UN BÂTIMENT ==============================
+
 router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const site = await lireSite(req.params.id);
     if (!site) return refuser(res, 404, 'Site introuvable');
-    res.json({ success: true, site, ouvrants: await ouvrantsDe(req.params.id) });
+    res.json({
+      success: true,
+      site,
+      ouvrants: await ouvrantsDe(req.params.id),
+      pieces: await listerPieces(req.params.id),
+    });
   } catch (erreur: any) {
     console.error('Erreur lecture de site :', erreur);
     refuser(res, 500, 'Erreur serveur');
@@ -78,6 +498,18 @@ router.get('/:id/ouvrants', authenticateToken, async (req: AuthRequest, res: Res
     res.json({ success: true, ouvrants: await ouvrantsDe(req.params.id) });
   } catch (erreur: any) {
     console.error('Erreur lecture des ouvrants :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.get('/:id/pieces', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      pieces: await listerPieces(req.params.id, req.query.tous === 'true'),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur lecture des pièces :', erreur);
     refuser(res, 500, 'Erreur serveur');
   }
 });

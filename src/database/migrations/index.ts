@@ -35,6 +35,9 @@ import ticketsNotifications from './033_tickets_notifications';
 import ticketsTempsEtReprise from './034_tickets_temps_et_reprise';
 import ticketsRattachements from './035_tickets_rattachements';
 import inventaireInterne from './036_inventaire_interne';
+import lieuxPiecesEtPret from './037_lieux_pieces_et_pret';
+import occupationDesLieux from './038_occupation_des_lieux';
+import agendasDeLieu from './039_agendas_de_lieu';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -82,6 +85,9 @@ export const MIGRATIONS: readonly Migration[] = [
   ticketsTempsEtReprise,
   ticketsRattachements,
   inventaireInterne,
+  lieuxPiecesEtPret,
+  occupationDesLieux,
+  agendasDeLieu,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

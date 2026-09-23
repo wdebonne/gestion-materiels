@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import { tirerJeton } from '../utils/jetonOpaque';
 import { db } from '../database';
 import { grouperEnfants, enfantsDe } from '../utils/batchQuery';
 
@@ -172,21 +172,44 @@ export async function recalculerDepuisLots(objectId: number): Promise<StockCle> 
  */
 export async function ouvrantsDeLaCle(objectId: number): Promise<any[]> {
   return db.query(
-    `SELECT co.id, co.site_id, co.ouvrant_id,
+    `SELECT co.id, co.site_id, co.piece_id, co.ouvrant_id,
             s.name AS site_name, s.code AS site_code,
+            p.name AS piece_name, p.code AS piece_code,
             o.name AS ouvrant_name, o.code AS ouvrant_code,
-            CASE WHEN co.site_id IS NOT NULL THEN 1 ELSE 0 END AS est_passe
+            CASE WHEN co.site_id IS NOT NULL THEN 1 ELSE 0 END AS est_passe,
+            CASE
+              WHEN co.site_id IS NOT NULL THEN 'site'
+              WHEN co.piece_id IS NOT NULL THEN 'piece'
+              ELSE 'ouvrant'
+            END AS portee
        FROM cle_ouvre co
        LEFT JOIN cle_sites s ON s.id = co.site_id
+       LEFT JOIN site_pieces p ON p.id = co.piece_id
        LEFT JOIN cle_ouvrants o ON o.id = co.ouvrant_id
        LEFT JOIN cle_sites so ON so.id = o.site_id
+       LEFT JOIN cle_sites sp ON sp.id = p.site_id
+       LEFT JOIN site_pieces op ON op.id = o.piece_id
       WHERE co.object_id = ?
-      ORDER BY COALESCE(s.name, so.name), o.name`,
+      ORDER BY COALESCE(s.name, sp.name, so.name), COALESCE(p.name, op.name), o.name`,
     [objectId]
   );
 }
 
-/** Les clés qui ouvrent une porte donnée, passes du site compris. */
+/**
+ * Les clés qui ouvrent une porte donnée — passes du bâtiment et de la pièce
+ * compris.
+ *
+ * Trois portées y répondent, et les oublier ferait dire « aucune clé n'ouvre
+ * cette porte » à un trousseau qui l'ouvre tous les jours :
+ *
+ *   le passe du bâtiment   `co.site_id` = le site de la porte
+ *   le passe de la pièce   `co.piece_id` = la pièce de la porte
+ *   la clé de la porte     `co.ouvrant_id` = la porte elle-même
+ *
+ * La porte peut n'appartenir à aucune pièce — la barrière principale — et
+ * `ouv.piece_id` vaut alors `NULL` ; la comparaison est simplement fausse, ce
+ * qui est le résultat voulu.
+ */
 export async function clesQuiOuvrent(ouvrantId: number): Promise<any[]> {
   return db.query(
     `SELECT DISTINCT ob.id, ob.name, ob.reference, ob.quantity_total
@@ -195,6 +218,7 @@ export async function clesQuiOuvrent(ouvrantId: number): Promise<any[]> {
        LEFT JOIN cle_ouvrants ouv ON ouv.id = ?
       WHERE co.ouvrant_id = ?
          OR co.site_id = ouv.site_id
+         OR co.piece_id = ouv.piece_id
       ORDER BY ob.name`,
     [ouvrantId, ouvrantId]
   );
@@ -209,24 +233,31 @@ export async function clesQuiOuvrent(ouvrantId: number): Promise<any[]> {
  */
 export async function definirOuvrants(
   objectId: number,
-  entrees: Array<{ siteId?: number | null; ouvrantId?: number | null }>
+  entrees: Array<{ siteId?: number | null; pieceId?: number | null; ouvrantId?: number | null }>
 ): Promise<void> {
   await db.execute('DELETE FROM cle_ouvre WHERE object_id = ?', [objectId]);
 
   for (const entree of entrees) {
     const siteId = entree.siteId ? Number(entree.siteId) : null;
+    const pieceId = entree.pieceId ? Number(entree.pieceId) : null;
     const ouvrantId = entree.ouvrantId ? Number(entree.ouvrantId) : null;
 
-    // Exactement un des deux, faute de contrainte CHECK portable (voir la
-    // migration 024). Une entrée qui porte les deux, ou aucun, est ignorée
-    // plutôt que d'écrire une ligne dont personne ne saurait dire le sens.
-    if ((siteId === null) === (ouvrantId === null)) continue;
+    /*
+     * Exactement un des trois depuis la migration 037, faute de contrainte
+     * CHECK portable (voir la migration 024). Les trois portées sont
+     * exclusives par nature : une clé qui ouvrirait « le bâtiment et cette
+     * porte-là » ouvre le bâtiment, et la seconde moitié ne veut rien dire.
+     *
+     * Une entrée qui en porte deux, ou aucune, est ignorée plutôt que d'écrire
+     * une ligne dont personne ne saurait dire le sens.
+     */
+    const renseignes = [siteId, pieceId, ouvrantId].filter((v) => v !== null);
+    if (renseignes.length !== 1) continue;
 
-    await db.execute('INSERT INTO cle_ouvre (object_id, site_id, ouvrant_id) VALUES (?, ?, ?)', [
-      objectId,
-      siteId,
-      ouvrantId,
-    ]);
+    await db.execute(
+      'INSERT INTO cle_ouvre (object_id, site_id, piece_id, ouvrant_id) VALUES (?, ?, ?, ?)',
+      [objectId, siteId, pieceId, ouvrantId]
+    );
   }
 }
 
@@ -388,38 +419,12 @@ export async function prochainNumero(prefixe: string): Promise<string> {
 
 // ======================== JETON PUBLIC ========================
 
-/**
- * Alphabet sans caractère ambigu : ni `O`/`0`, ni `I`/`1`, ni `L`.
- *
- * Le jeton finit imprimé sur une étiquette, et quelqu'un le recopiera un jour à
- * la main parce que le QR sera rayé. Un `0` lu `O` renvoie alors vers rien.
+/*
+ * L'alphabet et le tirage vivent dans `utils/jetonOpaque.ts` depuis que les
+ * agendas de lieu ont eu besoin du même : deux copies auraient divergé sur
+ * l'alphabet ou sur le rejet du biais, et l'une aurait perdu en silence la
+ * propriété qui compte. La longueur par défaut est celle de l'étiquette.
  */
-const ALPHABET_JETON = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-
-/** Longueur du jeton : 8 caractères sur 31 symboles, soit ~40 bits. */
-const LONGUEUR_JETON = 8;
-
-/**
- * Tire un jeton court et imprévisible.
- *
- * Le rejet des valeurs au-delà du plus grand multiple de l'alphabet évite le
- * biais qu'introduirait un simple modulo : sans lui les premières lettres
- * sortiraient un peu plus souvent, ce qui réduit l'entropie réelle.
- */
-function tirerJeton(): string {
-  const limite = Math.floor(256 / ALPHABET_JETON.length) * ALPHABET_JETON.length;
-  let jeton = '';
-
-  while (jeton.length < LONGUEUR_JETON) {
-    for (const octet of crypto.randomBytes(LONGUEUR_JETON * 2)) {
-      if (octet >= limite) continue;
-      jeton += ALPHABET_JETON[octet % ALPHABET_JETON.length];
-      if (jeton.length === LONGUEUR_JETON) break;
-    }
-  }
-
-  return jeton;
-}
 
 /**
  * Jeton public d'un objet, créé à la première demande.

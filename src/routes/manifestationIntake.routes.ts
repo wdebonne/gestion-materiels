@@ -23,6 +23,8 @@ import {
   servicesPourArticles,
   servicesPourObjetsDuParc,
 } from '../services/manifestationServices.service';
+import { rapprocherLieux } from '../services/rapprochementLieux.service';
+import { ecrireOccupationsDeLaManifestation } from '../services/occupationLieux.service';
 import { modeleDuService } from '../services/generationDocuments.service';
 import { VALEURS_MODELE } from '../services/donneesModele.service';
 import { produireEtNotifier } from '../services/generationDocuments.service';
@@ -583,6 +585,46 @@ router.post('/:slug', async (req: Request, res: Response) => {
       }
     }
 
+    /*
+     * Les salles demandées, rapprochées du référentiel.
+     *
+     * Le formulaire les envoie en une phrase — « Mairie : Salle des mariages ;
+     * Maison Pour Tous : Le hall » — que la migration 029 conservait telle
+     * quelle, lue puis jamais reliée à rien. Elle devient ici des créneaux, en
+     * statut `demande` : la salle apparaît prise à l'agenda, et le régisseur
+     * voit le conflit sans qu'aucune demande n'ait été refusée à sa place.
+     *
+     * Ce qui n'est pas reconnu **reste dans `intake_details`**, intact — il y
+     * est déjà écrit plus haut, et rien ici ne l'efface. Un rapprochement raté
+     * ne doit jamais supprimer la réponse d'origine : c'est la règle du module
+     * depuis la migration 029, et c'est ce qui permet à l'agent de relire et
+     * d'apparier à la main.
+     */
+    let lieuxNonReconnus: string[] = [];
+    try {
+      const { trouves, nonReconnus } = await rapprocherLieux(champs.lieux_interieurs);
+      lieuxNonReconnus = nonReconnus;
+      if (trouves.length > 0) {
+        await ecrireOccupationsDeLaManifestation(
+          Number(manifestationId),
+          {
+            title: String(champs.title ?? ''),
+            date_start: champs.date_start,
+            date_end: champs.date_end,
+            start_time: champs.start_time,
+            end_time: champs.end_time,
+          },
+          trouves.map((t) => ({ siteId: t.siteId, pieceId: t.pieceId })),
+          { statut: 'demande', demandeur: String(champs.contact_name ?? '') || null }
+        );
+      }
+    } catch (erreur: any) {
+      // Une demande reçue ne doit pas être refusée parce que ses salles n'ont
+      // pas pu être posées : la manifestation est déjà enregistrée, et c'est
+      // elle qui compte. On le note, et l'agent reprend la main.
+      console.error('Rapprochement des lieux impossible :', erreur);
+    }
+
     const journalId = await journaliser({
       sourceId: source.id,
       externalId,
@@ -596,9 +638,17 @@ router.post('/:slug', async (req: Request, res: Response) => {
       manifestationId,
     ]);
 
-    const resume = nonApparies.length
-      ? `Reçue de « ${source.name} » — ${apparies.length} article(s) rattaché(s), ${nonApparies.length} à rattacher`
-      : `Reçue de « ${source.name} » — ${apparies.length} article(s) rattaché(s)`;
+    const morceaux = [
+      `Reçue de « ${source.name} » — ${apparies.length} article(s) rattaché(s)`,
+      nonApparies.length ? `${nonApparies.length} à rattacher` : null,
+      // Nommés plutôt que comptés : « le parc municipal » dit à l'agent quoi
+      // aller chercher, là où « 1 lieu non reconnu » l'oblige à rouvrir la
+      // demande pour savoir lequel.
+      lieuxNonReconnus.length
+        ? `lieu(x) non reconnu(s) : ${lieuxNonReconnus.join(', ')}`
+        : null,
+    ].filter(Boolean);
+    const resume = morceaux.join(', ');
     await consignerHistorique(manifestationId, undefined, 'Demande reçue', {
       toStatus: 'pending',
       comment: resume,

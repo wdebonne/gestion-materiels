@@ -19,11 +19,18 @@ interface Backup {
   size: number
   fileSize?: number
   createdAt: string
-  type: 'manual' | 'auto'
-  backupType?: 'manual' | 'auto'
+  type: 'manual' | 'auto' | 'securite'
+  backupType?: 'manual' | 'auto' | 'securite'
 }
 
 const MAX_EMAIL_SIZE = 25 * 1024 * 1024 // 25 MB
+
+/** Relaie les avertissements d'une restauration, puis recharge la page. */
+function apresRestauration(avertissements: string[] | undefined, message: string) {
+  toast.success(message)
+  for (const avertissement of avertissements ?? []) toast(avertissement, { icon: '⚠️', duration: 10000 })
+  setTimeout(() => window.location.reload(), avertissements?.length ? 6000 : 2000)
+}
 
 export default function BackupPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<Backup | null>(null)
@@ -52,6 +59,22 @@ export default function BackupPage() {
     localStorage.setItem('backup_auto_send_email', autoSendEmail.toString())
     localStorage.setItem('backup_auto_email_address', autoEmailAddress)
   }, [autoSendEmail, autoEmailAddress])
+
+  // La sauvegarde nocturne n'avait aucun interrupteur : le réglage valait
+  // `false` à l'installation et l'écran annonçait pourtant une sauvegarde par nuit.
+  const { data: reglages, refetch: relireReglages } = useQuery({
+    queryKey: ['settings', 'auto_backup'],
+    queryFn: async () => (await api.get('/settings')).data.settings as { auto_backup?: boolean },
+  })
+  const sauvegardeAuto = reglages?.auto_backup === true
+  const basculerSauvegardeAuto = useMutation({
+    mutationFn: async (active: boolean) => api.put('/settings', { settings: { auto_backup: active } }),
+    onSuccess: (_reponse, active) => {
+      relireReglages()
+      toast.success(active ? 'Sauvegarde automatique activée' : 'Sauvegarde automatique désactivée')
+    },
+    onError: (err: any) => toast.error(err.response?.data?.message || 'Réglage non enregistré'),
+  })
 
   // Récupérer les sauvegardes
   const { data, isLoading, refetch } = useQuery({
@@ -87,7 +110,7 @@ export default function BackupPage() {
       }
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || 'Erreur lors de la création de la sauvegarde')
+      toast.error(err.response?.data?.message || 'Erreur lors de la création de la sauvegarde')
     }
   })
 
@@ -96,12 +119,11 @@ export default function BackupPage() {
     mutationFn: async (id: number) => {
       return api.post('/backup/restore', { backupId: id })
     },
-    onSuccess: () => {
-      toast.success('Base de données restaurée avec succès. Rechargement de la page...')
-      setTimeout(() => window.location.reload(), 2000)
+    onSuccess: (response) => {
+      apresRestauration(response.data?.avertissements, 'Base de données restaurée avec succès. Rechargement de la page...')
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || 'Erreur lors de la restauration')
+      toast.error(err.response?.data?.message || 'Erreur lors de la restauration')
     }
   })
 
@@ -116,7 +138,7 @@ export default function BackupPage() {
       setDeleteConfirm(null)
     },
     onError: (err: any) => {
-      toast.error(err.response?.data?.error || 'Erreur lors de la suppression')
+      toast.error(err.response?.data?.message || 'Erreur lors de la suppression')
     }
   })
 
@@ -129,10 +151,9 @@ export default function BackupPage() {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
     },
-    onSuccess: () => {
-      toast.success('Sauvegarde externe restaurée avec succès. Rechargement de la page...')
+    onSuccess: (response) => {
       setUploadConfirm(null)
-      setTimeout(() => window.location.reload(), 2000)
+      apresRestauration(response.data?.avertissements, 'Sauvegarde externe restaurée avec succès. Rechargement de la page...')
     },
     onError: (err: any) => {
       toast.error(err.response?.data?.message || 'Erreur lors de la restauration')
@@ -319,7 +340,7 @@ export default function BackupPage() {
             </p>
 
             <Alert type="warning">
-              <strong>Attention :</strong> La restauration remplacera toutes les données actuelles. Cette action est irréversible.
+              <strong>Attention :</strong> La restauration remplacera toutes les données actuelles. Une sauvegarde de sécurité de l’état actuel est prise automatiquement juste avant.
             </Alert>
 
             <input
@@ -386,10 +407,30 @@ export default function BackupPage() {
         </CardBody>
       </Card>
 
-      {/* Info */}
-      <Alert type="info" title="Sauvegardes automatiques">
-        Une sauvegarde automatique est créée chaque nuit à 2h00. Les sauvegardes de plus de 30 jours sont automatiquement supprimées.
-      </Alert>
+      {/* Sauvegarde automatique */}
+      <Card>
+        <CardBody>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h4 className="font-medium text-gray-900">Sauvegarde automatique chaque nuit</h4>
+              <p className="text-sm text-gray-500">
+                Une sauvegarde complète est créée à 2h00 ; les 10 dernières sont conservées.
+              </p>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={sauvegardeAuto}
+                disabled={basculerSauvegardeAuto.isPending}
+                onChange={(e) => basculerSauvegardeAuto.mutate(e.target.checked)}
+                className="sr-only peer"
+                aria-label="Sauvegarde automatique chaque nuit"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
+          </div>
+        </CardBody>
+      </Card>
 
       {/* Liste des sauvegardes */}
       <Card>
@@ -441,8 +482,8 @@ export default function BackupPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={backup.type === 'auto' ? 'info' : 'default'}>
-                          {backup.type === 'auto' ? 'Automatique' : 'Manuelle'}
+                        <Badge variant={backup.type === 'auto' ? 'info' : backup.type === 'securite' ? 'warning' : 'default'}>
+                          {backup.type === 'auto' ? 'Automatique' : backup.type === 'securite' ? 'Sécurité' : 'Manuelle'}
                         </Badge>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-500">
@@ -538,8 +579,9 @@ export default function BackupPage() {
             </ul>
           </div>
           
-          <p className="text-sm text-red-600 mt-4 font-medium">
-            ⚠️ Cette action est irréversible.
+          <p className="text-sm text-gray-600 mt-4">
+            Une sauvegarde de sécurité de l’état actuel est prise automatiquement juste avant : elle apparaîtra
+            dans cette liste et permettra de revenir en arrière.
           </p>
         </ModalBody>
         <ModalFooter>
@@ -615,8 +657,9 @@ export default function BackupPage() {
             </ul>
           </div>
           
-          <p className="text-sm text-red-600 mt-4 font-medium">
-            ⚠️ Cette action est irréversible.
+          <p className="text-sm text-gray-600 mt-4">
+            Une sauvegarde de sécurité de l’état actuel est prise automatiquement juste avant : elle apparaîtra
+            dans la liste des sauvegardes et permettra de revenir en arrière.
           </p>
         </ModalBody>
         <ModalFooter>

@@ -75,10 +75,19 @@ beforeAll(() => {
     CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name VARCHAR(100), last_name VARCHAR(100), email VARCHAR(255));
     CREATE TABLE services (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(255));
     CREATE TABLE cle_sites (id INTEGER PRIMARY KEY AUTOINCREMENT, name VARCHAR(255), code VARCHAR(50));
-    CREATE TABLE cle_ouvrants (id INTEGER PRIMARY KEY AUTOINCREMENT, site_id INTEGER, name VARCHAR(255), code VARCHAR(50));
+    -- Le troisième niveau du référentiel, depuis la migration 037 : une clé
+    -- ouvre un bâtiment, une pièce, ou une seule porte.
+    CREATE TABLE site_pieces (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      site_id INTEGER NOT NULL, name VARCHAR(255), code VARCHAR(50)
+    );
+    CREATE TABLE cle_ouvrants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      site_id INTEGER, piece_id INTEGER, name VARCHAR(255), code VARCHAR(50)
+    );
     CREATE TABLE cle_ouvre (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      object_id INTEGER NOT NULL, site_id INTEGER, ouvrant_id INTEGER
+      object_id INTEGER NOT NULL, site_id INTEGER, piece_id INTEGER, ouvrant_id INTEGER
     );
     CREATE TABLE cle_lots (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -312,6 +321,54 @@ describe('Ce qu’une clé ouvre', () => {
     const ouvre = await ouvrantsDeLaCle(10);
     expect(ouvre).toHaveLength(1);
     expect(ouvre[0].ouvrant_id).toBe(2);
+  });
+
+  /**
+   * La portée intermédiaire, arrivée avec la migration 037.
+   *
+   * C'est le passe du service état civil : il ouvre la salle des mariages et
+   * ses accès, et rien d'autre. Avant, il fallait le décrire en listant ses
+   * portes une à une — et la liste se périmait à la première porte ajoutée.
+   */
+  it('reconnaît le passe partiel, entre le passe général et la clé d’une porte', async () => {
+    base.exec(`
+      INSERT INTO site_pieces (id, site_id, name) VALUES (1, 1, 'Salle des Mariages');
+      UPDATE cle_ouvrants SET piece_id = 1 WHERE id = 2;
+    `);
+
+    await definirOuvrants(10, [{ pieceId: 1 }]);
+
+    const passePartiel = await ouvrantsDeLaCle(10);
+    expect(passePartiel).toHaveLength(1);
+    expect(passePartiel[0].portee).toBe('piece');
+    expect(passePartiel[0].piece_name).toBe('Salle des Mariages');
+    // Ce n'est pas un passe général : il n'ouvre pas tout le bâtiment.
+    expect(passePartiel[0].est_passe).toBe(0);
+
+    base.exec('UPDATE cle_ouvrants SET piece_id = NULL WHERE id = 2; DELETE FROM site_pieces;');
+  });
+
+  it('refuse une entrée qui mêle deux portées', async () => {
+    base.exec(`INSERT INTO site_pieces (id, site_id, name) VALUES (1, 1, 'Salle des Mariages');`);
+
+    // « Le bâtiment et cette pièce-là » ouvre le bâtiment : la seconde moitié
+    // ne veut rien dire, et une ligne dont personne ne sait dire le sens ne
+    // vaut pas mieux que pas de ligne.
+    await definirOuvrants(10, [{ siteId: 1, pieceId: 1 }, { pieceId: 1 }]);
+
+    const ouvre = await ouvrantsDeLaCle(10);
+    expect(ouvre).toHaveLength(1);
+    expect(ouvre[0].portee).toBe('piece');
+
+    base.exec('DELETE FROM site_pieces;');
+  });
+
+  it('marque chaque ligne de sa portée, pour que l’écran n’ait pas à la deviner', async () => {
+    await definirOuvrants(10, [{ siteId: 1 }]);
+    expect((await ouvrantsDeLaCle(10))[0].portee).toBe('site');
+
+    await definirOuvrants(10, [{ ouvrantId: 1 }]);
+    expect((await ouvrantsDeLaCle(10))[0].portee).toBe('ouvrant');
   });
 });
 

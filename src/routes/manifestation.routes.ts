@@ -26,6 +26,12 @@ import {
   rechercherObjetsPretables,
   versColonne,
 } from '../services/materielPretable.service';
+import {
+  conflitsDeLaManifestation,
+  ecrireOccupationsDeLaManifestation,
+  listerOccupations,
+  manifestationsEnConflit,
+} from '../services/occupationLieux.service';
 import { logService } from '../services/log.service';
 import {
   approbationsDe,
@@ -786,6 +792,109 @@ router.delete('/doc-types/:id', authenticateToken, requireSupervisor, async (req
     res.json({ success: true, data: await typesDocuments(true) });
   } catch (error: any) {
     res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * Les manifestations dont un lieu est en conflit.
+ *
+ * Une seule requête pour toute la liste, plutôt qu'un appel par ligne. Déclarée
+ * avant `/:id`, qui prendrait autrement « conflits » pour un identifiant.
+ */
+router.get('/conflits', authenticateToken, async (_req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, data: await manifestationsEnConflit() });
+  } catch (error: any) {
+    console.error('Erreur liste des conflits de lieu :', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/** Les lieux retenus par une manifestation, tels que l'agenda les porte. */
+router.get('/:id/lieux', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({
+      success: true,
+      data: await listerOccupations({ manifestationId: Number(req.params.id) }),
+    });
+  } catch (error: any) {
+    console.error('Erreur lecture des lieux :', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * Remplace les lieux retenus par une manifestation.
+ *
+ * Remplacement et non ajout, comme `definirOuvrants` pour les clés : l'écran
+ * présente la liste entière, et en retirer un s'y fait en le décochant. Une
+ * fusion le laisserait en place, et la salle resterait bloquée sans que
+ * personne ne comprenne pourquoi.
+ *
+ * Les conflits ne **refusent pas** ici. Une manifestation est un dossier qu'on
+ * instruit, pas une réservation de guichet : c'est au superviseur d'arbitrer
+ * entre deux demandes, et refuser l'enregistrement l'obligerait à défaire
+ * l'autre avant de pouvoir noter celle-ci. Ils sont donc rendus avec la
+ * réponse, et l'écran les montre.
+ */
+router.put('/:id/lieux', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const manifestation = await db.queryOne(
+      'SELECT id, title, date_start, date_end, start_time, end_time, contact_name FROM manifestations WHERE id = ?',
+      [req.params.id]
+    );
+    if (!manifestation) {
+      return res.status(404).json({ success: false, message: 'Manifestation introuvable' });
+    }
+
+    const lieux = Array.isArray(req.body?.lieux) ? req.body.lieux : [];
+    await ecrireOccupationsDeLaManifestation(
+      Number(req.params.id),
+      manifestation,
+      lieux.map((l: any) => ({
+        siteId: Number(l.siteId),
+        pieceId: l.pieceId ? Number(l.pieceId) : null,
+      })),
+      {
+        statut: req.body?.statut === 'confirme' ? 'confirme' : 'demande',
+        demandeur: manifestation.contact_name ?? null,
+        creePar: req.user!.userId,
+      }
+    );
+
+    res.json({
+      success: true,
+      data: await listerOccupations({ manifestationId: Number(req.params.id) }),
+      conflits: await conflitsDeLaManifestation(Number(req.params.id)),
+    });
+  } catch (error: any) {
+    console.error('Erreur enregistrement des lieux :', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+/**
+ * Les conflits de lieu d'une manifestation.
+ *
+ * Calculé à chaque appel, et non stocké sur la manifestation : un conflit naît
+ * et meurt quand *l'autre* réservation bouge, et une colonne `en_conflit`
+ * deviendrait fausse sans que rien ne l'ait touchée. Le coût est un index déjà
+ * posé par la migration 038.
+ *
+ * Déclarée avant `/:id`, qui avalerait autrement le chemin.
+ */
+router.get('/:id/conflits', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const conflits = await conflitsDeLaManifestation(Number(req.params.id));
+    res.json({
+      success: true,
+      data: conflits,
+      // Ce qui refuse vraiment, par opposition à ce qui mérite d'être signalé.
+      bloquants: conflits.filter((c) => c.conflits.some((x) => x.statut === 'confirme')).length,
+    });
+  } catch (error: any) {
+    console.error('Erreur conflits de lieu :', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
 });
 

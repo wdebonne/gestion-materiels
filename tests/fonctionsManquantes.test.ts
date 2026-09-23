@@ -28,7 +28,7 @@ const lire = (...bouts: string[]): string => {
  */
 describe('1 — la couche base sait annuler', () => {
   const base = lire('src', 'database', 'index.ts');
-  const backup = lire('src', 'routes', 'backup.routes.ts');
+  const sauvegarde = lire('src', 'services', 'sauvegarde.service.ts');
 
   it('expose une transaction', () => {
     expect(base).toMatch(/public async transaction<T>\(travail: \(\) => Promise<T>\)/);
@@ -53,12 +53,19 @@ describe('1 — la couche base sait annuler', () => {
     expect(base).toMatch(/if \(dejaDedans\) return travail\(\);/);
   });
 
-  it('protège la restauration par JSON', () => {
-    expect(backup).toMatch(/await db\.transaction\(async \(\) => \{/);
-    const debut = backup.indexOf('await db.transaction');
-    const bloc = backup.slice(debut, debut + 900);
-    expect(bloc).toMatch(/DELETE FROM \$\{table\}/);
-    expect(bloc).toMatch(/INSERT INTO \$\{table\}/);
+  it('protège la restauration par tables', () => {
+    // Vidage et réinsertion forment un seul `travail`, exécuté dans une
+    // transaction sur chacun des deux moteurs.
+    const debut = sauvegarde.indexOf('const travail = async () => {');
+    const fin = sauvegarde.indexOf('let liensOrphelins');
+    expect(debut).toBeGreaterThan(-1);
+    const bloc = sauvegarde.slice(debut, fin);
+    expect(bloc).toMatch(/DELETE FROM \$\{identifiant\(table\)\}/);
+    expect(bloc).toMatch(/insererPaquet\(table, colonnes, paquet\)/);
+
+    const suite = sauvegarde.slice(fin, fin + 1200);
+    expect(suite).toMatch(/await db\.transaction\(async \(\) => \{[\s\S]*await travail\(\);/);
+    expect(suite).toMatch(/await db\.transaction\(travail\)/);
   });
 });
 

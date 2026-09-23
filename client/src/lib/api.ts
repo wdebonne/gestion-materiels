@@ -358,7 +358,7 @@ export interface Backup {
   id: number
   filename: string
   fileSize: number
-  backupType: 'manual' | 'auto'
+  backupType: 'manual' | 'auto' | 'securite'
   status: string
   notes?: string
   createdAt: string
