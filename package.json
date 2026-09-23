@@ -14,6 +14,7 @@
     "start": "node dist/server.js",
     "db:migrate": "ts-node src/database/migrate.ts",
     "db:seed": "ts-node src/database/seed.ts",
+    "db:charge": "ts-node --transpile-only src/database/charge.ts",
     "test": "jest",
     "test:client": "cd client && npm run test:run",
     "test:all": "npm test && npm run test:client",
