@@ -374,6 +374,38 @@ export async function ecrireOccupationsDeLaManifestation(
 }
 
 /**
+ * Les manifestations dont un lieu est en conflit, toutes d'un coup.
+ *
+ * La liste des manifestations en affiche une pastille. Appeler
+ * `conflitsDeLaManifestation` pour chaque ligne ferait une requête par
+ * manifestation, plus une par créneau — le motif « une requête par ligne »
+ * retiré partout ailleurs dans ce dépôt.
+ *
+ * La règle hiérarchique s'écrit ici en jointure de la table sur elle-même, et
+ * dit exactement la même chose que `conflitsPour` : deux créneaux du même
+ * bâtiment se heurtent si l'un des deux porte sur le bâtiment entier, ou s'ils
+ * portent sur la même pièce, et si leurs bornes se chevauchent.
+ */
+export async function manifestationsEnConflit(): Promise<number[]> {
+  const marqueurs = STATUTS_OCCUPANTS.map(() => '?').join(', ');
+  const lignes = await db.query<{ id: number }>(
+    `SELECT DISTINCT a.manifestation_id AS id
+       FROM lieu_occupations a
+       JOIN lieu_occupations b
+         ON b.site_id = a.site_id
+        AND b.id <> a.id
+        AND (b.manifestation_id IS NULL OR b.manifestation_id <> a.manifestation_id)
+        AND (b.piece_id IS NULL OR a.piece_id IS NULL OR b.piece_id = a.piece_id)
+        AND b.debut < a.fin AND b.fin > a.debut
+        AND b.statut IN (${marqueurs})
+      WHERE a.manifestation_id IS NOT NULL
+        AND a.statut IN (${marqueurs})`,
+    [...STATUTS_OCCUPANTS, ...STATUTS_OCCUPANTS]
+  );
+  return lignes.map((l) => Number(l.id));
+}
+
+/**
  * Les conflits d'une manifestation, tous lieux confondus.
  *
  * Calculé et non stocké. Un conflit naît et meurt quand *l'autre* réservation

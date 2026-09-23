@@ -56,6 +56,7 @@ import {
   heureDe,
   jourDe,
   listerOccupations,
+  manifestationsEnConflit,
 } from '../src/services/occupationLieux.service';
 
 const base: BetterSqlite3.Database = (global as any).__baseOccupations;
@@ -362,5 +363,83 @@ describe('Les créneaux d’une manifestation', () => {
     ]);
 
     expect(await conflitsDeLaManifestation(MANIF)).toHaveLength(0);
+  });
+});
+
+// ------------------------------------------- la liste des manifestations
+
+describe('Repérer d’un coup les manifestations en conflit', () => {
+  /**
+   * La liste des manifestations en affiche une pastille. La règle est la même
+   * que celle de `conflitsPour`, mais écrite en jointure de la table sur
+   * elle-même : si les deux divergeaient, la liste signalerait un conflit que
+   * la fiche ne montrerait pas, ou l'inverse — et plus personne ne croirait
+   * la pastille.
+   */
+  it('nomme les deux manifestations qui se disputent une salle', async () => {
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '16:00', '18:00', {
+      manifestationId: 1,
+      titre: 'Loto',
+    });
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '17:00', '19:00', {
+      manifestationId: 2,
+      titre: 'Concert',
+    });
+
+    expect((await manifestationsEnConflit()).sort()).toEqual([1, 2]);
+  });
+
+  it('applique la hiérarchie, comme la vérification d’un créneau', async () => {
+    await occuper({ siteId: MAIRIE, pieceId: null }, '16:00', '18:00', { manifestationId: 1 });
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '17:00', '19:00', {
+      manifestationId: 2,
+    });
+
+    expect((await manifestationsEnConflit()).sort()).toEqual([1, 2]);
+  });
+
+  it('signale aussi celle que heurte un créneau saisi à la main', async () => {
+    // Le mariage n'a pas de manifestation derrière : il n'apparaît donc pas
+    // dans la liste, mais il met bien la manifestation en conflit.
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '16:00', '18:00');
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '17:00', '19:00', {
+      manifestationId: 7,
+    });
+
+    expect(await manifestationsEnConflit()).toEqual([7]);
+  });
+
+  it('ne signale pas une manifestation qui occupe deux salles distinctes', async () => {
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '16:00', '18:00', {
+      manifestationId: 3,
+    });
+    await occuper({ siteId: MAIRIE, pieceId: HALL }, '16:00', '18:00', { manifestationId: 3 });
+
+    // Ses deux créneaux ne se heurtent pas : ce sont deux pièces différentes,
+    // et de toute façon ils sont à elle.
+    expect(await manifestationsEnConflit()).toEqual([]);
+  });
+
+  it('ne signale rien quand chacune est seule sur son créneau', async () => {
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '08:00', '10:00', {
+      manifestationId: 4,
+    });
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '14:00', '16:00', {
+      manifestationId: 5,
+    });
+
+    expect(await manifestationsEnConflit()).toEqual([]);
+  });
+
+  it('ignore les créneaux annulés', async () => {
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '16:00', '18:00', {
+      manifestationId: 1,
+      statut: 'annule',
+    });
+    await occuper({ siteId: MAIRIE, pieceId: SALLE_DES_MARIAGES }, '17:00', '19:00', {
+      manifestationId: 2,
+    });
+
+    expect(await manifestationsEnConflit()).toEqual([]);
   });
 });

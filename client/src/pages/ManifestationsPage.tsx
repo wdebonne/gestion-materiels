@@ -14,6 +14,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import ManifestationPDFExport from '@/components/ManifestationPDFExport'
 import ManifestationSuivi from '@/components/ManifestationSuivi'
 import ManifestationDocuments from '@/components/ManifestationDocuments'
+import LieuxDeLaManifestation from '@/components/lieux/LieuxDeLaManifestation'
 import ManifestationObjetsParc, { type ObjetChoisi } from '@/components/ManifestationObjetsParc'
 import ManifestationTournee from '@/components/ManifestationTournee'
 import { SaisieTerrainDeLaManifestation } from '@/components/SaisieTerrain'
@@ -865,6 +866,17 @@ function ManifestationsTab({
   dateFrom, setDateFrom, dateTo, setDateTo,
   onEdit, onView, onDelivery, onStatusChange, onDelete
 }: any) {
+  /*
+   * Les manifestations en conflit de lieu, en **un** appel pour toute la liste.
+   * Une interrogation par carte ferait autant d'allers-retours que de lignes,
+   * et le serveur sait répondre d'une seule requête (`manifestationsEnConflit`).
+   */
+  const { data: idsEnConflit = [] } = useQuery<number[]>({
+    queryKey: ['manifestations-conflits'],
+    queryFn: async () => (await api.get('/manifestations/conflits')).data.data,
+  })
+  const enConflit = useMemo(() => new Set(idsEnConflit), [idsEnConflit])
+
   return (
     <div className="space-y-4">
       {/* Barre de recherche et filtres */}
@@ -913,7 +925,8 @@ function ManifestationsTab({
       ) : (
         <div className="space-y-3">
           {manifestations.map((m: Manifestation) => (
-            <ManifCard key={m.id} manif={m} isSupervisor={isSupervisor} peutSaisir={peutSaisir}
+            <ManifCard key={m.id} manif={m} enConflit={enConflit.has(m.id)}
+              isSupervisor={isSupervisor} peutSaisir={peutSaisir}
               onEdit={onEdit} onView={onView} onDelivery={onDelivery}
               onStatusChange={onStatusChange} onDelete={onDelete} />
           ))}
@@ -925,7 +938,7 @@ function ManifestationsTab({
 
 // ==================== CARTE MANIFESTATION ====================
 
-function ManifCard({ manif: m, isSupervisor, peutSaisir, onEdit, onView, onDelivery, onStatusChange, onDelete }: any) {
+function ManifCard({ manif: m, enConflit, isSupervisor, peutSaisir, onEdit, onView, onDelivery, onStatusChange, onDelete }: any) {
   const [expanded, setExpanded] = useState(false)
   const formatD = (d: string) => d ? new Date(d).toLocaleDateString('fr-FR') : ''
 
@@ -958,6 +971,14 @@ function ManifCard({ manif: m, isSupervisor, peutSaisir, onEdit, onView, onDeliv
               <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${statusColors[m.status]}`}>
                 {statusLabels[m.status]}
               </span>
+              {/* Le conflit de lieu se voit depuis la liste : c'est ce qui décide
+                  quelle demande ouvrir en premier. Les identifiants viennent
+                  d'un appel unique pour toute la page, jamais un par ligne. */}
+              {enConflit && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                  Conflit de lieu
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1 text-sm text-gray-500 dark:text-gray-400">
               <span className="flex items-center gap-1">
@@ -1744,6 +1765,16 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
     queryKey: ['manifestation-approvals', m.id],
     queryFn: async () => (await suiviApi.getApprovals(m.id)).data.data,
   })
+  // Même clé que `LieuxDeLaManifestation` : le compteur de l'onglet ne coûte
+  // pas un second appel, comme pour les documents et le suivi.
+  const { data: lieux = [] } = useQuery<any[]>({
+    queryKey: ['manifestation-lieux', m.id],
+    queryFn: async () => (await api.get(`/manifestations/${m.id}/lieux`)).data.data,
+  })
+  const { data: conflitsLieux = [] } = useQuery<any[]>({
+    queryKey: ['manifestation-conflits', m.id],
+    queryFn: async () => (await api.get(`/manifestations/${m.id}/conflits`)).data.data,
+  })
 
   const materiels = (m.materials ?? []).filter(mat => !mat.is_prestation)
   const prestations = (m.materials ?? []).filter(mat => mat.is_prestation)
@@ -1764,11 +1795,20 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
                 {enAttente} approbation(s) en attente
               </span>
             )}
+            {/* Le conflit se voit dès l'ouverture de la fiche, et pas seulement
+                en allant dans l'onglet Lieux : c'est ce qui décide s'il faut
+                arbitrer avant d'aller plus loin. */}
+            {conflitsLieux.length > 0 && (
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400">
+                Conflit de lieu
+              </span>
+            )}
           </div>
 
           <Tabs value={onglet} onChange={setOnglet}>
             <Tab value="resume" label="Résumé" />
             <Tab value="materiel" label="Matériel" count={materiels.length + prestations.length + objets.length} />
+            <Tab value="lieux" label="Lieux" count={lieux.length} />
             <Tab value="documents" label="Documents" count={documents.length} />
             <Tab value="suivi" label="Suivi" count={approbations.length} />
             <Tab value="historique" label="Historique" />
@@ -1788,6 +1828,10 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
                 </p>
               )}
             </div>
+          )}
+
+          {onglet === 'lieux' && (
+            <LieuxDeLaManifestation manifestationId={m.id} modifiable={canManage} />
           )}
 
           {onglet === 'documents' && <ManifestationDocuments manifestation={m} />}
