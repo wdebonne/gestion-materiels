@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Save, Mail, Server, Lock, Send, CheckCircle, XCircle, Eye, EyeOff } from 'lucide-react'
 import { Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert } from '@/components/ui'
 import api from '@/lib/api'
+import SuspensionEmails from '@/components/settings/SuspensionEmails'
 import toast from 'react-hot-toast'
 
 export default function SmtpSettingsPage() {
@@ -110,6 +111,8 @@ export default function SmtpSettingsPage() {
 
   return (
     <div className="space-y-6">
+      <SuspensionEmails />
+
       <form onSubmit={handleSubmit} className="space-y-6">
         <Card>
           <CardHeader>

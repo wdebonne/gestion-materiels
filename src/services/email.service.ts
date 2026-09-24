@@ -19,6 +19,73 @@ interface EmailOptions {
   subject: string;
   html: string;
   attachments?: PieceJointe[];
+  /**
+   * Envoi demandé par la personne elle-même — mot de passe oublié, compte
+   * créé : il part même quand les envois automatiques sont suspendus.
+   */
+  essentiel?: boolean;
+}
+
+/**
+ * Réglage qui suspend les envois automatiques.
+ *
+ * Trois valeurs : `false` (les envois partent), `manuel` (suspendus par un
+ * administrateur), `donnees_test` (suspendus par le chargement du jeu de test,
+ * et rétablis par sa purge). Un jeu de test compte des milliers de tickets dont
+ * l'échéance est déjà dépassée : sans cette suspension, la vérification des
+ * échéances les signalait tous au premier passage, y compris aux vrais
+ * administrateurs désignés par les règles de diffusion.
+ */
+export const CLE_SUSPENSION = 'emails_suspendus';
+export type EtatSuspension = 'manuel' | 'donnees_test';
+
+/** Gabarits qui partent toujours : la personne les attend, elle vient de les demander. */
+const GABARITS_ESSENTIELS = new Set(['password_reset', 'welcome']);
+
+/**
+ * Domaines réservés aux essais (RFC 2606 et 6761) : aucun courrier n'y est
+ * jamais remis. Les comptes du jeu de test sont en `@charge.test` ; tenter de
+ * leur écrire ne produit qu'une erreur par destinataire dans les journaux.
+ */
+const DOMAINE_RESERVE = /@(?:[^@\s]+\.)?(?:[^@.\s]+\.(?:test|example|invalid|localhost)|example\.(?:com|net|org))$/i;
+
+export function adresseReservee(adresse: string): boolean {
+  return DOMAINE_RESERVE.test(adresse.trim());
+}
+
+export async function etatSuspension(): Promise<EtatSuspension | null> {
+  const ligne = await db.queryOne<{ setting_value: string }>(
+    'SELECT setting_value FROM settings WHERE setting_key = ?',
+    [CLE_SUSPENSION]
+  );
+  const valeur = ligne?.setting_value;
+  return valeur === 'manuel' || valeur === 'donnees_test' ? valeur : null;
+}
+
+export async function definirSuspension(etat: EtatSuspension | null): Promise<void> {
+  const valeur = etat ?? 'false';
+  const deja = await db.queryOne('SELECT id FROM settings WHERE setting_key = ?', [CLE_SUSPENSION]);
+  if (deja) {
+    await db.execute('UPDATE settings SET setting_value = ? WHERE setting_key = ?', [valeur, CLE_SUSPENSION]);
+  } else {
+    await db.execute(
+      'INSERT INTO settings (setting_key, setting_value, setting_type, description) VALUES (?, ?, ?, ?)',
+      [CLE_SUSPENSION, valeur, 'string', 'Suspend les envois automatiques d’e-mails (false, manuel, donnees_test).']
+    );
+  }
+}
+
+// Un courrier retenu n'est pas une erreur : on le compte, et on le dit de temps
+// en temps plutôt qu'une ligne de journal par destinataire.
+let retenus = 0;
+let dernierBilan = 0;
+function compterRetenu(): void {
+  retenus++;
+  if (Date.now() - dernierBilan > 5 * 60_000) {
+    console.info(`✉️  ${retenus} e-mail(s) automatique(s) retenu(s) : envois suspendus.`);
+    dernierBilan = Date.now();
+    retenus = 0;
+  }
 }
 
 // Créer le transporteur SMTP
@@ -42,12 +109,23 @@ async function createTransporter() {
 
 // Envoyer un email
 export async function sendEmailRaw(options: EmailOptions): Promise<void> {
+  const destinataires = options.to
+    .split(',')
+    .map((a) => a.trim())
+    .filter((a) => a && !adresseReservee(a));
+  if (destinataires.length === 0) return;
+
+  if (!options.essentiel && (await etatSuspension())) {
+    compterRetenu();
+    return;
+  }
+
   const transporter = await createTransporter();
   const smtp = await db.queryOne('SELECT * FROM smtp_config WHERE is_active = 1 ORDER BY id DESC LIMIT 1');
 
   await transporter.sendMail({
     from: `"${smtp.from_name || 'Gestion Matériels'}" <${smtp.from_email}>`,
-    to: options.to,
+    to: destinataires.join(', '),
     subject: options.subject,
     html: options.html,
     // Omise quand il n'y en a pas : nodemailer accepte un tableau vide, mais
@@ -94,7 +172,8 @@ export async function sendEmail(
     to,
     subject: compiledSubject,
     html: compiledBody,
-    attachments
+    attachments,
+    essentiel: GABARITS_ESSENTIELS.has(templateName)
   });
 }
 

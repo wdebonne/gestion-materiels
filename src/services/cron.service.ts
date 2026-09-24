@@ -662,7 +662,7 @@ async function checkOverdueReservations(): Promise<void> {
     
     // Marquer les réservations dont la date de fin est passée et qui sont encore "borrowed"
     const overdueReservations = await db.query(
-      `SELECT r.id, r.object_id, o.name as object_name, u.email, u.first_name, u.last_name
+      `SELECT r.id, r.object_id, r.end_date, o.name as object_name, u.email, u.first_name, u.last_name
        FROM reservations r
        LEFT JOIN objects o ON r.object_id = o.id
        LEFT JOIN users u ON r.user_id = u.id
@@ -676,15 +676,17 @@ async function checkOverdueReservations(): Promise<void> {
         [now, res.id]
       );
 
-      // Créer une alerte
+      // Créer une alerte. L'échéance est la date de retour prévue : sans elle,
+      // l'alerte arrivait sans date et le tableau de bord, qui l'affiche, tombait.
       const overdueMessage = `Le matériel "${res.object_name}" emprunté par ${res.first_name} ${res.last_name} n'a pas été retourné.`;
       const alertResult = await db.execute(
-        `INSERT INTO alerts (title, message, alert_type, severity, object_id, created_at)
-         VALUES (?, ?, 'reservation_overdue', 'warning', ?, ?)`,
+        `INSERT INTO alerts (title, message, alert_type, severity, object_id, due_date, created_at)
+         VALUES (?, ?, 'reservation_overdue', 'warning', ?, ?, ?)`,
         [
           `Retour en retard: ${res.object_name}`,
           overdueMessage,
           res.object_id,
+          res.end_date,
           now
         ]
       );
