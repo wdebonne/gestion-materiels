@@ -10,6 +10,11 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { objectId, alertType, type, severity, status, showDismissed = 'false' } = req.query;
 
+    // Le tableau de bord demande `limit=5` depuis toujours, et recevait toutes
+    // les alertes — plusieurs mégaoctets sur un parc chargé, pour en afficher cinq.
+    const limiteDemandee = Number(req.query.limit);
+    const limite = Number.isInteger(limiteDemandee) && limiteDemandee > 0 ? Math.min(limiteDemandee, 1000) : null;
+
     let whereClause = '1=1';
     const params: any[] = [];
 
@@ -67,9 +72,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
            ELSE 4 
          END,
          a.due_date ASC,
-         a.created_at DESC`,
+         a.created_at DESC
+       ${limite ? 'LIMIT ?' : ''}`,
       // L'utilisateur alimente la jointure de lecture, placée avant le WHERE.
-      [req.user!.userId, ...params]
+      [req.user!.userId, ...params, ...(limite ? [limite] : [])]
     );
 
     res.json({
