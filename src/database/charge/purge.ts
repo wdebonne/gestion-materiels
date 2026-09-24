@@ -1,4 +1,5 @@
 import { db } from '../index';
+import { definirSuspension, etatSuspension } from '../../services/email.service';
 import { ARTICLES_STOCK } from './manifestations';
 import { DOMAINE_COURRIEL, PREFIXE, PREFIXE_SLUG, tableExiste } from './outils';
 import { CENTRES, PRESTATAIRES, STATIONS } from './vehicules';
@@ -43,6 +44,10 @@ export async function purger(): Promise<Record<string, number>> {
       if (changes > 0) bilan[table] = changes;
     }
   });
+
+  // Les envois suspendus par le chargement reprennent avec le départ du jeu ;
+  // une suspension décidée par un administrateur, elle, reste.
+  if ((await etatSuspension()) === 'donnees_test') await definirSuspension(null);
   return bilan;
 }
 

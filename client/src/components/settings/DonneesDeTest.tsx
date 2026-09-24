@@ -7,6 +7,7 @@ import {
   Modal, ModalBody, ModalFooter, Select, useConfirm,
 } from '@/components/ui'
 import api from '@/lib/api'
+import SuspensionEmails, { CLE_REQUETE_SUSPENSION } from './SuspensionEmails'
 
 /**
  * Charger un gros jeu de données de test, le retirer, ou repartir d'une base
@@ -94,7 +95,10 @@ export default function DonneesDeTest() {
   // Une opération terminée change les statistiques affichées plus bas dans la page.
   const finOperation = operation?.fin
   useEffect(() => {
-    if (finOperation) queryClient.invalidateQueries({ queryKey: ['database-info'] })
+    if (!finOperation) return
+    queryClient.invalidateQueries({ queryKey: ['database-info'] })
+    // Le chargement suspend les envois, la purge les rétablit.
+    queryClient.invalidateQueries({ queryKey: CLE_REQUETE_SUSPENSION })
   }, [finOperation, queryClient])
 
   const verrouille = Boolean(etat?.enProductionDepuis) && !etat?.verrouLeve
@@ -105,7 +109,8 @@ export default function DonneesDeTest() {
       title: 'Charger les données de test',
       message:
         (jeuPresent ? 'Le jeu de test actuel sera remplacé. ' : '') +
-        'Tous les plugins seront activés. Évitez de travailler dans l’application pendant le chargement.',
+        'Tous les plugins seront activés, et les envois d’e-mails automatiques suspendus jusqu’à la purge. ' +
+        'Évitez de travailler dans l’application pendant le chargement.',
       confirmLabel: 'Charger',
       variant: 'primary',
     })
@@ -167,6 +172,8 @@ export default function DonneesDeTest() {
         {operation && (
           <SuiviOperation operation={operation} />
         )}
+
+        <SuspensionEmails compact />
 
         {verrouille && (
           <Alert type="info" title="Base en production">

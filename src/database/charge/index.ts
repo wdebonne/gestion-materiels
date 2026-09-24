@@ -15,6 +15,7 @@ import { genererEspacesVerts } from './espacesVerts';
 import { genererMobilier } from './mobilier';
 import { genererJournal } from './journal';
 import { dejaCharge, purger } from './purge';
+import { definirSuspension, etatSuspension } from '../../services/email.service';
 
 /**
  * Jeu de données de test : le point d'entrée commun à la ligne de commande
@@ -65,6 +66,11 @@ export async function chargerDonneesTest(options: OptionsChargement, suivi: Suiv
   suivi('Retrait du jeu précédent', 0);
   if (await dejaCharge()) await purger();
   suivi('Retrait du jeu précédent', 0, Date.now() - debutPurge);
+
+  // Avant la moindre ligne : le jeu contient des milliers d'échéances dépassées
+  // et de rappels, que les tâches planifiées enverraient au premier passage.
+  // Une suspension posée à la main reste à la main ; la nôtre, la purge la lève.
+  if (!(await etatSuspension())) await definirSuspension('donnees_test');
 
   const admin = await db.queryOne<{ id: number }>("SELECT id FROM users WHERE role = 'admin' ORDER BY id LIMIT 1");
   if (!admin) throw new Error('Aucun administrateur en base.');
