@@ -21,7 +21,12 @@ export function useWebSocket() {
     socket = io(wsUrl, {
       path: '/ws',
       auth: { token },
-      transports: ['websocket', 'polling']
+      // Polling d'abord, puis passage au WebSocket si le chemin le permet — l'ordre
+      // par défaut de Socket.IO. L'ordre inverse ne se rabattait jamais sur le
+      // polling (engine.io ne le fait qu'avec `tryAllTransports`) : derrière un
+      // reverse proxy qui ne relaie pas `Upgrade`, le client retentait le
+      // WebSocket en boucle et le temps réel restait coupé.
+      transports: ['polling', 'websocket']
     })
 
     socket.on('connect', () => {

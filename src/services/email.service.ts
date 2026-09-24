@@ -107,17 +107,17 @@ async function createTransporter() {
   });
 }
 
-// Envoyer un email
-export async function sendEmailRaw(options: EmailOptions): Promise<void> {
+/** Envoie un e-mail ; rend `false` s'il a été retenu (suspension, domaine réservé). */
+export async function sendEmailRaw(options: EmailOptions): Promise<boolean> {
   const destinataires = options.to
     .split(',')
     .map((a) => a.trim())
     .filter((a) => a && !adresseReservee(a));
-  if (destinataires.length === 0) return;
+  if (destinataires.length === 0) return false;
 
   if (!options.essentiel && (await etatSuspension())) {
     compterRetenu();
-    return;
+    return false;
   }
 
   const transporter = await createTransporter();
@@ -132,6 +132,7 @@ export async function sendEmailRaw(options: EmailOptions): Promise<void> {
     // certains serveurs alourdissent alors le message d'un corps multipart.
     ...(options.attachments?.length ? { attachments: options.attachments } : {})
   });
+  return true;
 }
 
 // Envoyer un email avec un template
@@ -140,7 +141,7 @@ export async function sendEmail(
   to: string,
   data: Record<string, any>,
   attachments?: PieceJointe[]
-): Promise<void> {
+): Promise<boolean> {
   // Récupérer le template
   const template = await db.queryOne(
     'SELECT * FROM email_templates WHERE name = ? AND is_active = 1',
@@ -168,7 +169,7 @@ export async function sendEmail(
   const compiledBody = Handlebars.compile(template.body)(templateData);
 
   // Envoyer l'email
-  await sendEmailRaw({
+  return sendEmailRaw({
     to,
     subject: compiledSubject,
     html: compiledBody,
@@ -271,6 +272,13 @@ export async function sendAlertEmail(alertId: number): Promise<void> {
     throw new Error('Alerte non trouvée');
   }
 
+  // Retenue d'emblée : inutile de chercher des destinataires pour ne rien leur
+  // écrire, et le journal disait « 45/45 envoyés » pour des courriers retenus.
+  if (await etatSuspension()) {
+    compterRetenu();
+    return;
+  }
+
   const emails = await destinatairesAlerte(alert.categorie_id ?? null);
 
   if (emails.length === 0) {
@@ -281,14 +289,14 @@ export async function sendAlertEmail(alertId: number): Promise<void> {
   let envoyes = 0;
   for (const email of emails) {
     try {
-      await sendEmail('alert_notification', email, {
+      const parti = await sendEmail('alert_notification', email, {
         alert_title: alert.title,
         alert_message: alert.message,
         object_name: alert.object_name || 'N/A',
         object_id: alert.object_id || '',
         due_date: alert.due_date ? new Date(alert.due_date).toLocaleDateString('fr-FR') : 'N/A'
       });
-      envoyes++;
+      if (parti) envoyes++;
     } catch (error: any) {
       // SMTP non configuré : le dire une fois, clairement, plutôt que de
       // répéter la même erreur pour chaque destinataire. Sans ce message,

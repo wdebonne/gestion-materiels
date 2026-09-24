@@ -7,6 +7,31 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Une échéance remplacée ne reste plus en alerte
+
+> Chaque contrôle technique expiré levait sa propre alerte critique, fût-il
+> remplacé depuis longtemps : un véhicule contrôlé tous les deux ans depuis 2020
+> portait une alerte « expiré » par contrôle passé, et le tableau de bord
+> affichait en tête des échéances de 2020. Les entretiens avaient le même
+> défaut : une vidange refaite depuis restait « en retard ».
+>
+> Seul le dernier contrôle d'un véhicule, et le dernier entretien de chaque type,
+> peuvent désormais lever une alerte ; celles déjà posées sur une échéance
+> remplacée disparaissent au passage suivant de la vérification. Le tableau de
+> bord demandait cinq alertes et les recevait toutes — plusieurs mégaoctets sur
+> un parc chargé : la limite est respectée.
+>
+> Un courrier retenu par la suspension des envois n'est plus compté comme
+> envoyé dans les journaux.
+
+### Le temps réel se rabat sur le polling derrière un proxy
+
+> Le client essayait le WebSocket en premier et, faute de l'option qui l'y
+> autorise, ne se rabattait jamais sur le polling. Derrière un reverse proxy qui
+> ne relaie pas `Upgrade`, il retentait le WebSocket en boucle et le compteur
+> d'alertes comme les notifications instantanées restaient muets. Il commence
+> désormais en polling, puis passe au WebSocket quand le chemin le permet.
+
 ### Les sauvegardes MySQL gardent enfin toute la base
 
 > Une sauvegarde MySQL ne permettait pas de retrouver ses données. Elle ne

@@ -89,20 +89,67 @@ function rejetToujoursValable(alerte: AlerteExistante | null, echeance: unknown)
   return String(alerte.due_date ?? '') === String(echeance ?? '');
 }
 
+/**
+ * Un contrôle technique est dépassé dès que le même véhicule en a un plus
+ * récent ; un entretien, dès que le même entretien a été refait depuis. Leur
+ * échéance n'a plus de sens — la vidange de 2021 n'est pas « en retard » si la
+ * voiture a été vidangée en 2023.
+ */
+const CONTROLE_PLUS_RECENT = `SELECT 1 FROM technical_controls plus
+   WHERE plus.object_id = tc.object_id
+     AND (plus.expiry_date > tc.expiry_date OR (plus.expiry_date = tc.expiry_date AND plus.id > tc.id))`;
+
+const ENTRETIEN_PLUS_RECENT = `SELECT 1 FROM maintenances plus
+   WHERE plus.object_id = m.object_id
+     AND plus.maintenance_type = m.maintenance_type
+     AND (plus.maintenance_date > m.maintenance_date OR (plus.maintenance_date = m.maintenance_date AND plus.id > m.id))`;
+
+/**
+ * Retire les alertes posées sur une échéance depuis dépassée.
+ *
+ * Avant ce filtre, chaque contrôle technique expiré levait sa propre alerte
+ * critique, fût-il remplacé depuis longtemps : un véhicule contrôlé tous les
+ * deux ans depuis 2020 portait trois alertes « expiré », et le tableau de bord
+ * affichait en tête des échéances de 2020. Une alerte écartée par quelqu'un est
+ * retirée aussi : elle ne désigne plus rien.
+ */
+async function retirerAlertesDepassees(): Promise<void> {
+  await db.execute(
+    `DELETE FROM alerts
+      WHERE plugin_reference = 'technical-control'
+        AND plugin_reference_id IN (
+          SELECT tc.id FROM technical_controls tc WHERE EXISTS (${CONTROLE_PLUS_RECENT})
+        )`
+  );
+  await db.execute(
+    `DELETE FROM alerts
+      WHERE plugin_reference = 'maintenance'
+        AND plugin_reference_id IN (
+          SELECT m.id FROM maintenances m WHERE EXISTS (${ENTRETIEN_PLUS_RECENT})
+        )`
+  );
+}
+
 // Vérifier les alertes à envoyer
 export async function checkAlerts(): Promise<void> {
   try {
     // Récupérer les paramètres d'alerte configurés
     const alertSettings = await getAlertSettings();
 
-    // Vérifier les contrôles techniques arrivant à échéance (à venir dans les X jours OU expirés)
+    await retirerAlertesDepassees();
+
+    // Vérifier les contrôles techniques arrivant à échéance (à venir dans les X jours OU expirés).
+    // Seul le dernier contrôle d'un véhicule compte : un contrôle de 2020 est
+    // « expiré », mais il a été remplacé par celui de 2022, et en faire une
+    // alerte critique en afficherait une par contrôle passé.
     const technicalControls = await db.query(
       `SELECT tc.*, o.name as object_name FROM technical_controls tc
        INNER JOIN objects o ON o.id = tc.object_id
        WHERE (
          (tc.reminder_sent = 0 AND date(tc.expiry_date) <= ${db.dateDecalee(alertSettings.technical_control.days)} AND date(tc.expiry_date) >= CURRENT_DATE)
          OR date(tc.expiry_date) < CURRENT_DATE
-       )`
+       )
+       AND NOT EXISTS (${CONTROLE_PLUS_RECENT})`
     );
 
     for (const tc of technicalControls) {
@@ -170,7 +217,8 @@ export async function checkAlerts(): Promise<void> {
        AND (
          (m.reminder_sent = 0 AND date(m.next_date) <= ${db.dateDecalee(alertSettings.maintenance.days)} AND date(m.next_date) >= CURRENT_DATE)
          OR date(m.next_date) < CURRENT_DATE
-       )`
+       )
+       AND NOT EXISTS (${ENTRETIEN_PLUS_RECENT})`
     );
 
     for (const m of maintenances) {
