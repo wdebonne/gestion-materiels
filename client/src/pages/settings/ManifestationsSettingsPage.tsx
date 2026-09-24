@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router-dom'
 import { CalendarDays, Inbox, Building2, PackageCheck, FileSpreadsheet } from 'lucide-react'
 import { Tabs, Tab } from '@/components/ui'
 import ManifestationIntakePage from './ManifestationIntakePage'
-import ServicesPage from './ServicesPage'
+import RenvoiOrganisation from '@/components/RenvoiOrganisation'
 import MaterielPretablePage from './MaterielPretablePage'
 import ManifestationExportPage from './ManifestationExportPage'
 
@@ -56,7 +56,7 @@ export default function ManifestationsSettingsPage() {
 
       <div className="mt-6">
         {actif === 'reception' && <ManifestationIntakePage />}
-        {actif === 'services' && <ServicesPage />}
+        {actif === 'services' && <RenvoiOrganisation onglet="services" quoi="Les services" />}
         {actif === 'materiel-pretable' && <MaterielPretablePage />}
         {actif === 'export' && <ManifestationExportPage />}
       </div>

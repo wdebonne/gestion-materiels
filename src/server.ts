@@ -64,6 +64,7 @@ import ticketRoutes from './routes/ticket.routes';
 import ticketReferentielRoutes from './routes/ticketReferentiel.routes';
 import siteRoutes from './routes/site.routes';
 import lieuPublicRoutes from './routes/lieuPublic.routes';
+import organisationRoutes from './routes/organisation.routes';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -321,6 +322,9 @@ app.use('/api/lieux/public', intakeLimiter, lieuPublicRoutes);
 // Les sites sont le référentiel des lieux du module Clés, ouvert aux demandes
 // qui ont besoin de désigner un bâtiment. Voir `sites.service.ts`.
 app.use('/api/sites', siteRoutes);
+// Qui gère les bâtiments, les salles et les services. Les référentiels restent
+// servis par leurs routes ; celle-ci porte la délégation et la vue des salles.
+app.use('/api/organisation', organisationRoutes);
 // Monté avant `/api/cles` : la page d'un trousseau trouvé est la seule route du
 // module ouverte sans compte, et « public » ne doit pas être pris pour un
 // identifiant de matériel par le routeur principal. Le limiteur la protège de

@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Building2, DoorOpen, LayoutGrid, Plus, Pencil, Trash2, ChevronRight } from 'lucide-react'
-import api from '@/lib/api'
+import api, { siteApi } from '@/lib/api'
+import { useGestion } from '@/lib/gestion'
 import toast from 'react-hot-toast'
 import {
   Badge,
@@ -16,7 +17,6 @@ import {
   TextArea,
   useConfirm,
 } from '@/components/ui'
-import Can from '@/components/Can'
 
 /**
  * Référentiel des lieux : un bâtiment, ses pièces, ses ouvrants.
@@ -39,6 +39,11 @@ import Can from '@/components/Can'
  * La suppression d'un lieu encore employé est refusée par le serveur plutôt que
  * cascadée : effacer ce qu'une clé ouvre la réduirait à un bout de métal sans
  * usage connu — précisément la donnée qu'on tient ici.
+ *
+ * **Les boutons suivent la gestion, bâtiment par bâtiment** (`useGestion`) : le
+ * gestionnaire de l'école modifie l'école, ses salles et ses portes, et voit la
+ * mairie sans pouvoir y toucher. Créer ou supprimer un bâtiment reste au
+ * gestionnaire de toute l'organisation.
  */
 
 interface Ouvrant {
@@ -70,6 +75,7 @@ interface Site {
   address: string | null
   pretable: number | null
   pretable_effectif: boolean
+  is_active?: number
   pieces: Piece[]
   /** Les ouvrants rattachés à aucune pièce. */
   ouvrants: Ouvrant[]
@@ -87,6 +93,8 @@ interface FormSite {
   code: string
   address: string
   pretable: TroisEtats
+  /** Absent à la création : un bâtiment naît actif. */
+  actif?: boolean
 }
 
 interface FormPiece {
@@ -118,9 +126,20 @@ interface FormOuvrant {
  */
 const TYPES_DE_LIEU = ['Salle', 'Hall', 'Cour', 'Terrain', 'Préau', 'Bureau', 'Local', 'Cuisine']
 
-export default function ReferentielLieux() {
+/** Une salle est une pièce de type « Salle », quelle que soit la casse saisie. */
+const estSalle = (piece: Piece) => (piece.type_lieu ?? '').trim().toLowerCase() === 'salle'
+
+interface ReferentielLieuxProps {
+  /** Ne montrer que les bâtiments que l'on gère — pour un gestionnaire local. */
+  seulementGeres?: boolean
+  /** Contenu ajouté sous un bâtiment déplié — les personnes, dans Organisation. */
+  panneauSite?: (siteId: number) => ReactNode
+}
+
+export default function ReferentielLieux({ seulementGeres = false, panneauSite }: ReferentielLieuxProps = {}) {
   const queryClient = useQueryClient()
   const confirm = useConfirm()
+  const gestion = useGestion()
 
   const [siteOuvert, setSiteOuvert] = useState<number | null>(null)
   const [piecesOuvertes, setPiecesOuvertes] = useState<Set<number>>(new Set())
@@ -128,16 +147,21 @@ export default function ReferentielLieux() {
   const [formPiece, setFormPiece] = useState<FormPiece | null>(null)
   const [formOuvrant, setFormOuvrant] = useState<FormOuvrant | null>(null)
 
-  const { data: sites = [], isLoading } = useQuery<Site[]>({
+  const { data: tousLesSites = [], isLoading } = useQuery<Site[]>({
     queryKey: ['cles-referentiel'],
     queryFn: async () => (await api.get('/cles/referentiel')).data.data,
   })
+  const sites = seulementGeres
+    ? tousLesSites.filter((s) => gestion.peutGererSite(s.id))
+    : tousLesSites
 
   const rafraichir = () => {
     queryClient.invalidateQueries({ queryKey: ['cles-referentiel'] })
     // L'arbre partagé sert aussi aux demandes et aux manifestations : le laisser
     // périmé ferait proposer une salle qu'on vient de retirer.
     queryClient.invalidateQueries({ queryKey: ['lieux-arbre'] })
+    queryClient.invalidateQueries({ queryKey: ['sites'] })
+    queryClient.invalidateQueries({ queryKey: ['organisation'] })
   }
 
   const basculerPiece = (id: number) =>
@@ -156,7 +180,12 @@ export default function ReferentielLieux() {
         address: valeurs.address,
         pretable: valeurs.pretable,
       }
-      if (valeurs.id) return api.put(`/cles/sites/${valeurs.id}`, corps)
+      if (valeurs.id) {
+        await api.put(`/cles/sites/${valeurs.id}`, corps)
+        // L'activité passe par `/api/sites`, qui la tient depuis la migration 032.
+        if (valeurs.actif !== undefined) await siteApi.modifier(valeurs.id, { actif: valeurs.actif })
+        return
+      }
       return api.post('/cles/sites', corps)
     },
     onSuccess: () => {
@@ -242,27 +271,40 @@ export default function ReferentielLieux() {
 
   if (isLoading) return <LoadingInline />
 
-  /** Les boutons d'une ligne, identiques aux trois niveaux. */
-  const actions = (modifier: () => void, effacer: () => void, quoi: string) => (
-    <Can manage>
+  /**
+   * Les boutons d'une ligne, identiques aux trois niveaux. `peutSupprimer`
+   * n'est distinct que pour le bâtiment : son gestionnaire le modifie, mais ne
+   * le supprime pas.
+   */
+  const actions = (
+    modifier: () => void,
+    effacer: () => void,
+    quoi: string,
+    peutModifier: boolean,
+    peutSupprimer = peutModifier
+  ) =>
+    peutModifier || peutSupprimer ? (
       <div className="flex flex-shrink-0 items-center gap-1">
-        <button
-          onClick={modifier}
-          className="touch-target rounded p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
-          title={`Modifier ${quoi}`}
-        >
-          <Pencil className="h-4 w-4" />
-        </button>
-        <button
-          onClick={effacer}
-          className="touch-target rounded p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30"
-          title={`Supprimer ${quoi}`}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        {peutModifier && (
+          <button
+            onClick={modifier}
+            className="touch-target rounded p-2 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+            title={`Modifier ${quoi}`}
+          >
+            <Pencil className="h-4 w-4" />
+          </button>
+        )}
+        {peutSupprimer && (
+          <button
+            onClick={effacer}
+            className="touch-target rounded p-2 text-gray-500 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/30"
+            title={`Supprimer ${quoi}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        )}
       </div>
-    </Can>
-  )
+    ) : null
 
   const ligneOuvrant = (ouvrant: Ouvrant, site: Site) => (
     <div
@@ -294,7 +336,8 @@ export default function ReferentielLieux() {
             description: ouvrant.description ?? '',
           }),
         () => supprimer('ouvrants', ouvrant.id, ouvrant.name),
-        'la porte'
+        'la porte',
+        gestion.peutGererSite(site.id)
       )}
     </div>
   )
@@ -302,14 +345,14 @@ export default function ReferentielLieux() {
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
-        <Can manage>
+        {gestion.gereLieux && (
           <Button
             onClick={() => setFormSite({ name: '', code: '', address: '', pretable: '0' })}
           >
             <Plus className="mr-2 h-4 w-4" />
             Nouveau bâtiment
           </Button>
-        </Can>
+        )}
       </div>
 
       {sites.length === 0 ? (
@@ -323,7 +366,10 @@ export default function ReferentielLieux() {
       ) : (
         <div className="space-y-3">
           {sites.map((site) => {
-            const nbPieces = site.pieces?.length ?? 0
+            const nbSalles = (site.pieces ?? []).filter(estSalle).length
+            const nbAutres = (site.pieces?.length ?? 0) - nbSalles
+            const gere = gestion.peutGererSite(site.id)
+            const inactif = site.is_active !== undefined && !Number(site.is_active)
             const nbOuvrants =
               (site.ouvrants?.length ?? 0) +
               (site.pieces ?? []).reduce((total, p) => total + (p.ouvrants?.length ?? 0), 0)
@@ -352,9 +398,16 @@ export default function ReferentielLieux() {
                             Prêtable
                           </Badge>
                         )}
+                        {inactif && (
+                          <Badge variant="default" size="sm">
+                            Inactif
+                          </Badge>
+                        )}
                       </div>
                       <div className="truncate text-sm text-gray-600 dark:text-gray-300">
-                        {nbPieces} pièce{nbPieces > 1 ? 's' : ''} · {nbOuvrants} ouvrant
+                        {nbSalles} salle{nbSalles > 1 ? 's' : ''}
+                        {nbAutres > 0 ? ` · ${nbAutres} autre${nbAutres > 1 ? 's' : ''} pièce${nbAutres > 1 ? 's' : ''}` : ''}
+                        {' · '}{nbOuvrants} ouvrant
                         {nbOuvrants > 1 ? 's' : ''}
                         {site.address ? ` · ${site.address}` : ''}
                       </div>
@@ -369,9 +422,12 @@ export default function ReferentielLieux() {
                         code: site.code ?? '',
                         address: site.address ?? '',
                         pretable: site.pretable ? '1' : '0',
+                        actif: !inactif,
                       }),
                     () => supprimer('sites', site.id, site.name),
-                    'le bâtiment'
+                    'le bâtiment',
+                    gere,
+                    gestion.gereLieux
                   )}
                 </div>
 
@@ -435,14 +491,15 @@ export default function ReferentielLieux() {
                                 pretable: versTroisEtats(piece.pretable),
                               }),
                             () => supprimer('pieces', piece.id, piece.name),
-                            'la pièce'
+                            estSalle(piece) ? 'la salle' : 'la pièce',
+                            gere
                           )}
                         </div>
 
                         {piecesOuvertes.has(piece.id) && (
                           <div className="space-y-2 border-t border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-900/40">
                             {(piece.ouvrants ?? []).map((ouvrant) => ligneOuvrant(ouvrant, site))}
-                            <Can manage>
+                            {gere && (
                               <Button
                                 size="sm"
                                 variant="outline"
@@ -459,13 +516,13 @@ export default function ReferentielLieux() {
                                 <Plus className="mr-2 h-4 w-4" />
                                 Ajouter une porte à cette pièce
                               </Button>
-                            </Can>
+                            )}
                           </div>
                         )}
                       </div>
                     ))}
 
-                    <Can manage>
+                    {gere && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -475,16 +532,17 @@ export default function ReferentielLieux() {
                             name: '',
                             code: '',
                             description: '',
-                            typeLieu: '',
+                            // La commune raisonne en salles : c'est le cas courant.
+                            typeLieu: 'Salle',
                             capacite: '',
                             pretable: '',
                           })
                         }
                       >
                         <Plus className="mr-2 h-4 w-4" />
-                        Ajouter une pièce
+                        Ajouter une salle ou une pièce
                       </Button>
-                    </Can>
+                    )}
 
                     {/* ------------------------- ouvrants sans pièce */}
                     {(site.ouvrants?.length ?? 0) > 0 && (
@@ -496,7 +554,7 @@ export default function ReferentielLieux() {
                       </div>
                     )}
 
-                    <Can manage>
+                    {gere && (
                       <Button
                         size="sm"
                         variant="outline"
@@ -513,7 +571,9 @@ export default function ReferentielLieux() {
                         <Plus className="mr-2 h-4 w-4" />
                         Ajouter une porte au bâtiment
                       </Button>
-                    </Can>
+                    )}
+
+                    {panneauSite?.(site.id)}
                   </div>
                 )}
               </Card>
@@ -562,6 +622,21 @@ export default function ReferentielLieux() {
                 ]}
                 hint="Une salle des fêtes se prête d'un bloc pour un loto. Un centre technique, jamais."
               />
+              {formSite.actif !== undefined && (
+                <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    className="mt-1 rounded border-gray-300"
+                    checked={formSite.actif}
+                    onChange={(e) => setFormSite({ ...formSite, actif: e.target.checked })}
+                  />
+                  <span>
+                    <strong>Actif</strong> — un bâtiment désactivé disparaît des formulaires sans
+                    toucher à l'historique. C'est ce qu'on fait d'un bâtiment encore cité par une
+                    demande ou une clé, qui ne peut plus être supprimé.
+                  </span>
+                </label>
+              )}
             </div>
           </ModalBody>
           <ModalFooter>
@@ -582,7 +657,11 @@ export default function ReferentielLieux() {
         <Modal
           isOpen
           onClose={() => setFormPiece(null)}
-          title={formPiece.id ? 'Modifier la pièce' : 'Nouvelle pièce'}
+          title={
+            formPiece.id
+              ? formPiece.typeLieu.trim().toLowerCase() === 'salle' ? 'Modifier la salle' : 'Modifier la pièce'
+              : formPiece.typeLieu.trim().toLowerCase() === 'salle' ? 'Nouvelle salle' : 'Nouvelle pièce'
+          }
         >
           <ModalBody>
             <div className="space-y-4">
@@ -590,7 +669,7 @@ export default function ReferentielLieux() {
                 label="Nom"
                 value={formPiece.name}
                 onChange={(e) => setFormPiece({ ...formPiece, name: e.target.value })}
-                placeholder="Salle des mariages, Hall, Cour…"
+                placeholder="Salle du conseil, Salle des mariages, Hall…"
               />
               <Input
                 label="Nature"

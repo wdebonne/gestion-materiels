@@ -12,9 +12,10 @@ import {
   Code2,
   Key,
   ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound, Cloud, Clock,
-  LifeBuoy
+  LifeBuoy, Network
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
+import { useGestion } from '@/lib/gestion'
 
 interface EntreeParametres {
   to: string
@@ -27,9 +28,22 @@ interface EntreeParametres {
    * que l'écran lui-même se charge de tenir — et que le serveur impose.
    */
   manageOnly?: boolean
+  /**
+   * Ouvert à qui gère au moins un bâtiment ou un service, quel que soit son
+   * rôle : c'est le seul onglet qu'un agent gestionnaire de l'école y trouve.
+   */
+  gestionOnly?: boolean
 }
 
 const settingsNavItems: EntreeParametres[] = [
+  {
+    to: '/settings/organisation',
+    icon: Network,
+    // Bâtiments, salles et services servent à tous les modules : ils se
+    // tiennent ici, et non plus dans celui qui les a vus naître.
+    label: 'Organisation',
+    gestionOnly: true
+  },
   {
     to: '/settings/tickets',
     icon: LifeBuoy,
@@ -174,10 +188,16 @@ export default function SettingsPage() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
   const canManage = isAdmin || user?.role === 'supervisor'
+  const { gereQuelqueChose } = useGestion()
 
   // Filtrer les éléments selon le rôle
   const visibleItems = settingsNavItems.filter(
-    (item) => (!item.adminOnly || isAdmin) && (!item.manageOnly || canManage)
+    (item) =>
+      (!item.adminOnly || isAdmin) &&
+      (!item.manageOnly || canManage) &&
+      (!item.gestionOnly || isAdmin || gereQuelqueChose) &&
+      // Hors encadrement, seule l'organisation est ouverte.
+      (canManage || item.gestionOnly)
   )
 
   return (

@@ -25,6 +25,11 @@ import { cheminSurDisque, supprimerFichier } from '../services/manifestationDocu
 import { lireFichier, listerDossier } from '../services/webdav.service';
 import { convertirEnPdf } from '../services/conversionPdf.service';
 import slugify from '../utils/slugify';
+import {
+  peutGererServices,
+  requireGestionService,
+  requireGestionServices,
+} from '../services/gestionOrganisation.service';
 
 /**
  * Services concernés par les manifestations.
@@ -137,7 +142,7 @@ router.get('/nextcloud-templates', authenticateToken, requireAdmin, async (req: 
   }
 });
 
-router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.get('/:id', authenticateToken, requireGestionService(), async (req: AuthRequest, res: Response) => {
   try {
     const service = await lireService(req.params.id);
     if (!service) return res.status(404).json({ success: false, message: 'Service non trouvé' });
@@ -147,7 +152,7 @@ router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
   }
 });
 
-router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.post('/', authenticateToken, requireGestionServices, async (req: AuthRequest, res: Response) => {
   try {
     const { name, email, description, is_observer, is_coordinator, is_active } = req.body;
     if (!name?.trim()) {
@@ -186,7 +191,7 @@ router.post('/', authenticateToken, requireAdmin, async (req: AuthRequest, res: 
   }
 });
 
-router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/:id', authenticateToken, requireGestionServices, async (req: AuthRequest, res: Response) => {
   try {
     const {
       name, email, description, is_observer, is_coordinator, is_active,
@@ -228,7 +233,7 @@ router.put('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res
   }
 });
 
-router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticateToken, requireGestionServices, async (req: AuthRequest, res: Response) => {
   try {
     // Un service qui a rendu des décisions fait partie de la traçabilité d'une
     // manifestation : le supprimer effacerait qui a approuvé quoi. On le
@@ -275,7 +280,7 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
  * Remplace la liste entière : c'est la forme que prend l'écran, une grille de
  * cases à cocher.
  */
-router.put('/:id/categories', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/:id/categories', authenticateToken, requireGestionServices, async (req: AuthRequest, res: Response) => {
   try {
     const { category_ids } = req.body;
     if (!Array.isArray(category_ids)) {
@@ -298,9 +303,21 @@ router.put('/:id/categories', authenticateToken, requireAdmin, async (req: AuthR
 
 // ======================== MEMBRES ========================
 
-router.post('/:id/members', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+/**
+ * Le responsable d'un service en tient la liste des membres — sans désigner
+ * d'autre responsable ni retirer ceux qui le sont : il élargirait sinon lui-même
+ * le cercle de ceux qui décident au nom du service. Voir
+ * `gestionOrganisation.service.ts`.
+ */
+const REFUS_RESPONSABLE =
+  'Seul un gestionnaire de toute l’organisation désigne ou retire le responsable d’un service';
+
+router.post('/:id/members', authenticateToken, requireGestionService(), async (req: AuthRequest, res: Response) => {
   try {
     const { user_id, is_manager } = req.body;
+    if (is_manager && !(await peutGererServices(req.user))) {
+      return res.status(403).json({ success: false, message: REFUS_RESPONSABLE });
+    }
     const utilisateur = await db.queryOne('SELECT id FROM users WHERE id = ?', [user_id]);
     if (!utilisateur) return res.status(404).json({ success: false, message: 'Utilisateur introuvable' });
 
@@ -324,7 +341,7 @@ router.post('/:id/members', authenticateToken, requireAdmin, async (req: AuthReq
  * sans responsable ne peut plus rien approuver : l'écran le signale plutôt que
  * de laisser découvrir le blocage le jour d'une validation.
  */
-router.put('/:id/members/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.put('/:id/members/:userId', authenticateToken, requireGestionServices, async (req: AuthRequest, res: Response) => {
   try {
     const resultat = await db.execute(
       'UPDATE service_members SET is_manager = ? WHERE service_id = ? AND user_id = ?',
@@ -346,8 +363,17 @@ router.put('/:id/members/:userId', authenticateToken, requireAdmin, async (req: 
   }
 });
 
-router.delete('/:id/members/:userId', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/:id/members/:userId', authenticateToken, requireGestionService(), async (req: AuthRequest, res: Response) => {
   try {
+    if (!(await peutGererServices(req.user))) {
+      const membre = await db.queryOne(
+        'SELECT is_manager FROM service_members WHERE service_id = ? AND user_id = ?',
+        [req.params.id, req.params.userId]
+      );
+      if (Number(membre?.is_manager ?? 0) === 1) {
+        return res.status(403).json({ success: false, message: REFUS_RESPONSABLE });
+      }
+    }
     const resultat = await db.execute(
       'DELETE FROM service_members WHERE service_id = ? AND user_id = ?',
       [req.params.id, req.params.userId]

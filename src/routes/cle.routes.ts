@@ -28,6 +28,13 @@ import {
 import { enfantsDe } from '../utils/batchQuery';
 import { arbreDesLieux } from '../services/lieux.service';
 import { lireDisponibilite, versColonne } from '../services/disponibiliteParc.service';
+import {
+  requireGestionLieux,
+  requireGestionSite,
+  siteDeLOuvrant,
+  siteDuCorps,
+  siteDuParametre,
+} from '../services/gestionOrganisation.service';
 import { urlPubliqueDe } from './clePublic.routes';
 
 /**
@@ -73,6 +80,20 @@ async function materielAccessible(
 }
 
 // ======================== RÉFÉRENTIEL DES LIEUX ========================
+
+/**
+ * La pièce d'une porte est-elle bien dans son bâtiment ?
+ *
+ * Rien ne l'empêchait : la porte du hall de l'école pouvait se ranger sous la
+ * salle du conseil de la mairie. Depuis que le gestionnaire d'un bâtiment n'a
+ * la main que sur le sien, c'est aussi ce qui l'empêche d'accrocher ses portes
+ * aux salles d'un autre. Pas de pièce : la porte reste au bâtiment, c'est permis.
+ */
+async function pieceDuSite(pieceId: number | null | undefined, siteId: number | null): Promise<boolean> {
+  if (!pieceId) return true;
+  const piece = await db.queryOne<{ site_id: number }>('SELECT site_id FROM site_pieces WHERE id = ?', [pieceId]);
+  return Boolean(piece) && Number(piece!.site_id) === Number(siteId);
+}
 
 router.get('/sites', authenticateToken, async (_req: AuthRequest, res: Response) => {
   try {
@@ -122,7 +143,7 @@ router.get('/referentiel', authenticateToken, async (_req: AuthRequest, res: Res
   }
 });
 
-router.post('/sites', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/sites', authenticateToken, requireGestionLieux, async (req: AuthRequest, res: Response) => {
   try {
     const name = texte(req.body?.name);
     if (!name) {
@@ -150,7 +171,7 @@ router.post('/sites', authenticateToken, requireSupervisor, async (req: AuthRequ
   }
 });
 
-router.put('/sites/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.put('/sites/:id', authenticateToken, requireGestionSite(siteDuParametre), async (req: AuthRequest, res: Response) => {
   try {
     const name = texte(req.body?.name);
     if (!name) {
@@ -184,7 +205,7 @@ router.put('/sites/:id', authenticateToken, requireSupervisor, async (req: AuthR
  * que ces clés ouvrent, et la clé deviendrait un bout de métal sans usage connu
  * — la donnée qu'on cherchait justement à ne pas perdre.
  */
-router.delete('/sites/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.delete('/sites/:id', authenticateToken, requireGestionLieux, async (req: AuthRequest, res: Response) => {
   try {
     const attaches = await db.queryOne<{ total: number }>(
       `SELECT COUNT(*) AS total FROM cle_ouvre
@@ -209,13 +230,17 @@ router.delete('/sites/:id', authenticateToken, requireSupervisor, async (req: Au
   }
 });
 
-router.post('/ouvrants', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/ouvrants', authenticateToken, requireGestionSite(siteDuCorps), async (req: AuthRequest, res: Response) => {
   try {
     const siteId = entier(req.body?.siteId);
     const name = texte(req.body?.name);
 
     if (!siteId || !name) {
       res.status(400).json({ success: false, message: 'Le site et le nom sont obligatoires' });
+      return;
+    }
+    if (!(await pieceDuSite(entier(req.body?.pieceId), siteId))) {
+      res.status(400).json({ success: false, message: 'Cette pièce n’est pas dans ce bâtiment' });
       return;
     }
 
@@ -240,11 +265,15 @@ router.post('/ouvrants', authenticateToken, requireSupervisor, async (req: AuthR
   }
 });
 
-router.put('/ouvrants/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.put('/ouvrants/:id', authenticateToken, requireGestionSite(siteDeLOuvrant), async (req: AuthRequest, res: Response) => {
   try {
     const name = texte(req.body?.name);
     if (!name) {
       res.status(400).json({ success: false, message: 'Le nom est obligatoire' });
+      return;
+    }
+    if (!(await pieceDuSite(entier(req.body?.pieceId), await siteDeLOuvrant(req)))) {
+      res.status(400).json({ success: false, message: 'Cette pièce n’est pas dans le bâtiment de la porte' });
       return;
     }
 
@@ -267,7 +296,7 @@ router.put('/ouvrants/:id', authenticateToken, requireSupervisor, async (req: Au
   }
 });
 
-router.delete('/ouvrants/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.delete('/ouvrants/:id', authenticateToken, requireGestionSite(siteDeLOuvrant), async (req: AuthRequest, res: Response) => {
   try {
     const attaches = await db.queryOne<{ total: number }>(
       'SELECT COUNT(*) AS total FROM cle_ouvre WHERE ouvrant_id = ?',

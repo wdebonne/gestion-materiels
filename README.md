@@ -255,7 +255,7 @@ Les signalements passaient par **GestSup**, une application séparée : deuxièm
 - 🚦 **Six états personnalisables** : à traiter, en cours, en attente de retour, en commande, résolu, refusé. Ils se renomment, se recolorent et se réordonnent — ce sont ceux de la collectivité, pas ceux du code, qui ne s'appuie que sur trois drapeaux (*ouvert*, *par défaut*, *final*). « En attente de retour » est ouvert sans être le défaut ; « refusé » est final sans être une résolution
 - ⏱️ **Délais par catégorie** : prise en charge et résolution, en minutes. Les échéances sont posées à l'ouverture, la file signale d'un liseré rouge ce qui est en retard, et la prise en charge **ne rajeunit jamais** — un aller-retour par « en attente » ne remet pas le compteur à zéro
 - 🗂️ **File façon GestSup** : les états en colonne de gauche avec leur compteur, l'arbre des catégories en dessous, la liste à droite. Les filtres vivent **dans l'URL** (`?statut=2&categorie=5`), donc se copient dans un message
-- 🏛️ **Les bâtiments sont ceux du module Clés**, promus en référentiel partagé : une seule liste à tenir, et les lieux déjà saisis servent immédiatement. Un bâtiment cité par une demande ne se supprime plus — l'historique perdrait son lieu — mais se **désactive**
+- 🏛️ **Les bâtiments sont ceux du module Clés**, promus en référentiel partagé : une seule liste à tenir, et les lieux déjà saisis servent immédiatement. Ils se tiennent dans **Paramètres › Organisation** (voir plus bas). Un bâtiment cité par une demande ne se supprime plus — l'historique perdrait son lieu — mais se **désactive**
 - 🤝 **Ouvert au rôle « Service partenaire »** : c'est lui qui traite les demandes qu'on lui adresse, et qui en ouvre au service voisin
 - ⏱️ **Le temps passé vient des plannings**, pas d'une seconde comptabilité : une tâche se rattache à une demande comme elle se rattache déjà à une manifestation. L'agent saisit ses heures **une fois**, et le rapport sait ce qu'une demande a coûté — renforts compris
 - 🔧 **La fiche d'un matériel montre ses demandes** : « souci de bruit sur le Nemo » entre dans l'historique du Nemo, aux côtés de ses entretiens. Le bouton « Signaler un problème » ouvre le formulaire avec le matériel **déjà rempli**
@@ -273,6 +273,40 @@ Les signalements passaient par **GestSup**, une application séparée : deuxièm
 - 🙋 **Une personne sans compte reste joignable** : l'élu chargé des travaux figure à l'annuaire sans identifiants. La grille par rôle l'écarte à dessein — les liens mèneraient à un écran de connexion — mais une règle qui le **nomme** l'atteint : on lui écrit qu'il y a une fuite, pas qu'il doit se connecter
 - 🔕 **Chacun règle ce qu'il reçoit**, sauf une demande qu'on lui confie : la couper laisserait le travail attendre sans que personne le sache. Une **note interne** ne part jamais par courriel — c'est tout son objet
 - ⏰ **Le délai dépassé se signale une fois**, pas toutes les quinze minutes : une trace au fil de la demande sert de témoin. Sans elle, un retard de trois semaines aurait produit deux mille courriels. Une alerte est posée au passage, donc la pastille du menu la compte sans qu'on ait rien branché
+
+### 🏢 Organisation — bâtiments, salles, services, et qui les gère (Nouveau!)
+
+Bâtiments et services servent à tous les modules — demandes, clés, manifestations, prêt de salles — mais se réglaient chacun dans le module qui les avait vus naître : les bâtiments dans Tickets, leur arbre dans Clés, les services dans Manifestations. Ils se tiennent désormais au même endroit, **Paramètres › Organisation**, et les anciens onglets y renvoient.
+
+- 🏛️ **Bâtiments** : l'arbre bâtiment › salles et pièces › portes, et sous chaque bâtiment les **personnes rattachées** avec leurs quatre droits indépendants — *Responsable*, *Voit*, *Reçoit*, et **Gère**
+- 🚪 **Salles** : la salle du conseil, des mariages, du CCAS… dans un seul tableau, tous bâtiments confondus — places, prêt, activité — modifiable sur place. Une salle est une pièce de nature « Salle », c'est la nature proposée par défaut, et les variantes de casse déjà saisies sont ramenées à « Salle »
+- 👥 **Services** : membres, périmètre, responsable et délégations, comme avant
+- 🛡️ **Gestionnaires** : qui gère quoi, et surtout ce que personne ne tient — un service sans responsable ne peut rien approuver
+
+**La gestion se confie sans changer le rôle.** Faire du régisseur des salles un superviseur lui donnait au passage la suppression du matériel et les seuils d'alerte ; on lui confie désormais la seule chose qu'il doit faire :
+
+| Qui | Ce qu'il gère |
+|---|---|
+| **Gestionnaire de toute l'organisation** (désigné par l'administrateur) | tous les bâtiments, salles et services, et désigne les gestionnaires locaux |
+| **Gestionnaire d'un bâtiment** (case « Gère ») | ce bâtiment, ses salles, ses portes et les personnes qui y sont rattachées |
+| **Responsable d'un service** (l'étoile) | la liste des membres de son service, en plus d'approuver et de déléguer |
+
+Un gestionnaire local **ne s'étend pas lui-même** : il ne fait pas d'autres gestionnaires, ne touche ni à un bâtiment ni à un service voisin, et n'accroche pas ses portes aux salles d'un autre bâtiment. Le superviseur garde la gestion des bâtiments, qu'il avait déjà. Le serveur tranche, l'interface ne montre que ce qu'il accepterait.
+
+**Les salles pour le formulaire de réservation** — sans compte, derrière le limiteur de la réception :
+
+```http
+GET /api/lieux/public/salles?debut=2026-10-03T14:00&fin=2026-10-03T18:00&capacite=30
+```
+
+```json
+{ "success": true, "lieux": [
+  { "siteId": 1, "pieceId": 4, "nom": "Salle du conseil", "siteNom": "Mairie",
+    "libelle": "Salle du conseil — Mairie", "typeLieu": "Salle", "capacite": 40,
+    "libre": true, "occupe": [] } ] }
+```
+
+Seules les salles **ouvertes au prêt** y figurent, jamais un bâtiment entier ; un visiteur anonyme ne voit que les bornes des créneaux pris, pas l'intitulé ni le demandeur. `GET /api/lieux/public/disponibilite?type=Salle` rend la même chose, et `type` accepte toute autre nature de pièce.
 
 ### 🌳 Espaces Verts (Nouveau!)
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante

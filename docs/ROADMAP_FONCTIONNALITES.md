@@ -424,3 +424,14 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Migration `014_compteurs_et_energie`** avec reprise des champs existants : tout champ Nombre dont le nom ou le libellé évoque un kilométrage devient un compteur en km. Sans elle, les catégories qui suivaient déjà leur kilométrage auraient perdu le report le jour de la mise à jour, sans que personne ne le remarque avant de lire une fiche restée à la valeur de la veille
 - **Impact :** l'entretien d'une tondeuse ne demande plus de kilomètres, et une voiture électrique se saisit enfin dans ses propres unités.
 - **Reste à faire :** le module Suivi et les exports lisent encore la colonne `mileage`, alimentée avec le compteur principal. Les compteurs secondaires d'une branche qui en déclare plusieurs n'y apparaissent donc pas.
+
+### 19. Organisation : bâtiments, salles, services — et qui les gère
+
+- **Contexte :** bâtiments et services servent à tous les modules, mais se réglaient là où ils étaient nés — les bâtiments dans Tickets, leur arbre dans Clés, les services dans Manifestations. Et leur gestion tenait au rôle : confier les salles au régisseur obligeait à le faire superviseur, donc à lui donner la suppression du matériel et les seuils d'alerte.
+- **Livré (septembre 2026) :**
+  - **Paramètres › Organisation**, quatre onglets : Bâtiments (arbre et personnes rattachées), Salles, Services, Gestionnaires. Les anciens onglets renvoient vers la nouvelle page
+  - **Deux niveaux de délégation, indépendants du rôle** (migration `040_gestion_organisation`) : `users.gere_organisation` pour le gestionnaire global, `user_sites.gere_lieu` pour le gestionnaire d'un bâtiment ; le responsable d'un service (`service_members.is_manager`, déjà là) tient désormais ses membres
+  - **Un gestionnaire local ne s'étend pas lui-même** : pas d'autre gestionnaire, pas de bâtiment ni de service voisin. Gardes `requireGestionLieux`, `requireGestionSite`, `requireGestionServices`, `requireGestionService` dans `gestionOrganisation.service.ts`, figées par les tests de contrat
+  - **Les salles** : une pièce de nature « Salle », normalisée ; un tableau transversal ; `GET /api/lieux/public/salles` pour le formulaire, avec un `libelle` lisible, et `?type=` sur `/disponibilite`
+  - **Au passage** : une porte ne peut plus être rangée sous la salle d'un autre bâtiment ; enregistrer la fiche d'un compte dans « Qui a droit à quoi » ne retire plus la gestion de son bâtiment
+- **Reste à faire :** le rôle « Service partenaire » reste cloisonné aux manifestations, et ne peut donc pas tenir les membres de son service même s'il en est responsable.

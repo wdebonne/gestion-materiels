@@ -31,6 +31,7 @@ const CalendarPage = lazy(() => import('@/pages/CalendarPage'))
 const AlertsPage = lazy(() => import('@/pages/AlertsPage'))
 const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
 const GeneralSettingsPage = lazy(() => import('@/pages/settings/GeneralSettingsPage'))
+const OrganisationPage = lazy(() => import('@/pages/settings/OrganisationPage'))
 const UsersPage = lazy(() => import('@/pages/settings/UsersPage'))
 const PermissionsPage = lazy(() => import('@/pages/settings/PermissionsPage'))
 const EmailSettingsPage = lazy(() => import('@/pages/settings/EmailSettingsPage'))
@@ -83,7 +84,9 @@ export function getRedirectTarget(location: { state?: unknown }): string {
  */
 function AccueilParametres() {
   const role = useAuthStore((etat) => etat.user?.role)
-  return <Navigate to={role === 'admin' ? 'general' : 'users'} replace />
+  // Hors encadrement, on n'entre dans les paramètres que pour l'organisation.
+  const cible = role === 'admin' ? 'general' : role === 'supervisor' ? 'users' : 'organisation'
+  return <Navigate to={cible} replace />
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -183,6 +186,7 @@ function App() {
           <Route path="settings" element={<SettingsPage />}>
             <Route index element={<AccueilParametres />} />
             <Route path="general" element={<GeneralSettingsPage />} />
+            <Route path="organisation" element={<OrganisationPage />} />
             <Route path="users" element={<UsersPage />} />
             <Route path="permissions" element={<PermissionsPage />} />
             <Route path="auth" element={<AuthSettingsPage />} />
@@ -208,7 +212,7 @@ function App() {
             <Route path="smtp" element={<Navigate to="/settings/email" replace />} />
             <Route path="email-templates" element={<Navigate to="/settings/email?onglet=templates" replace />} />
             <Route path="manifestations-reception" element={<Navigate to="/settings/manifestations" replace />} />
-            <Route path="services" element={<Navigate to="/settings/manifestations?onglet=services" replace />} />
+            <Route path="services" element={<Navigate to="/settings/organisation?onglet=services" replace />} />
             <Route path="materiel-pretable" element={<Navigate to="/settings/manifestations?onglet=materiel-pretable" replace />} />
             <Route path="manifestations-export" element={<Navigate to="/settings/manifestations?onglet=export" replace />} />
             <Route path="api" element={<ApiPage />} />

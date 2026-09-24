@@ -2750,6 +2750,8 @@ export interface RattachementSite {
   peutVoirTickets: boolean
   /** Reçoit un courriel à chaque demande du bâtiment. */
   notifie: boolean
+  /** Gère le bâtiment : ses salles, ses portes, ses rattachements. */
+  gereLieu?: boolean
 }
 
 export interface CompteRattache {
@@ -2784,11 +2786,93 @@ export const siteApi = {
   membres: (id: number) =>
     api.get<{
       success: boolean
-      membres: { id: number; userId: number; nom: string; email: string | null; peutVoirTickets: boolean }[]
+      /** Faux pour le gestionnaire d'un bâtiment : il ne fait pas d'autres gestionnaires. */
+      peutAccorderGestion: boolean
+      membres: MembreSite[]
     }>(`/sites/${id}/membres`),
+  /** Rattache la personne si elle ne l'est pas ; les droits absents ne sont pas touchés. */
+  reglerMembre: (
+    id: number,
+    userId: number,
+    droits: Partial<Pick<MembreSite, 'estResponsable' | 'peutVoirTickets' | 'notifie' | 'gereLieu'>>
+  ) => api.put<{ success: boolean }>(`/sites/${id}/membres/${userId}`, droits),
+  retirerMembre: (id: number, userId: number) =>
+    api.delete<{ success: boolean }>(`/sites/${id}/membres/${userId}`),
   creer: (data: Record<string, unknown>) => api.post<{ success: boolean; id: number }>('/sites', data),
   modifier: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/sites/${id}`, data),
   supprimer: (id: number) => api.delete<{ success: boolean }>(`/sites/${id}`),
+}
+
+/** Une personne rattachée à un bâtiment, et ses quatre droits indépendants. */
+export interface MembreSite {
+  id: number
+  userId: number
+  nom: string
+  email: string | null
+  /** Signale pour le bâtiment, pas seulement pour son matériel. */
+  estResponsable: boolean
+  /** Lit les demandes du bâtiment. */
+  peutVoirTickets: boolean
+  /** Reçoit un courriel à chaque demande. */
+  notifie: boolean
+  /** Gère le bâtiment : ses salles, ses portes, ses rattachements. */
+  gereLieu: boolean
+}
+
+// ------------------------------------------------------------- Organisation
+
+/** Ce que le compte courant gère. Voir `gestionOrganisation.service.ts`. */
+export interface PerimetreGestion {
+  /** Case « gère toute l'organisation » cochée par l'administrateur. */
+  gereOrganisation: boolean
+  /** Tous les bâtiments et salles : administrateur, superviseur ou gestionnaire global. */
+  gereLieux: boolean
+  /** Tous les services : administrateur ou gestionnaire global. */
+  gereServices: boolean
+  sitesGeres: number[]
+  servicesGeres: number[]
+}
+
+export interface Salle {
+  id: number
+  siteId: number
+  siteNom: string
+  nom: string
+  /** « Salle du conseil — Mairie ». */
+  libelle: string
+  code: string | null
+  description: string | null
+  typeLieu: string | null
+  capacite: number | null
+  /** `null` = suit le bâtiment. */
+  pretable: boolean | null
+  pretableEffectif: boolean
+  actif: boolean
+  modifiable: boolean
+}
+
+export interface PersonneGestion {
+  userId: number
+  nom: string
+  email: string | null
+}
+
+export const organisationApi = {
+  moi: () => api.get<{ success: boolean } & PerimetreGestion>('/organisation/moi'),
+  salles: (tous = false) =>
+    api.get<{ success: boolean; salles: Salle[] }>(`/organisation/salles${tous ? '?tous=true' : ''}`),
+  gestionnaires: () =>
+    api.get<{
+      success: boolean
+      globaux: Array<PersonneGestion & { role: string }>
+      batiments: Array<{ siteId: number; nom: string; actif: boolean; gestionnaires: PersonneGestion[] }>
+      services: Array<{ serviceId: number; nom: string; actif: boolean; responsables: PersonneGestion[] }>
+    }>('/organisation/gestionnaires'),
+  /** Comptes actifs qui se connectent — ce qu'un gestionnaire peut rattacher ou ajouter. */
+  personnes: () =>
+    api.get<{ success: boolean; personnes: PersonneGestion[] }>('/organisation/personnes'),
+  definirGestionnaire: (userId: number, gereOrganisation: boolean) =>
+    api.put<{ success: boolean }>(`/organisation/gestionnaires/${userId}`, { gereOrganisation }),
 }
 
 // --------------------------------------------- Tickets : règles de diffusion

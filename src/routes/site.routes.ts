@@ -3,7 +3,6 @@ import { db } from '../database';
 import {
   authenticateToken,
   AuthRequest,
-  requireAdmin,
   requireSupervisor,
 } from '../middleware/auth.middleware';
 import { listerSites, lireSite, ouvrantsDe, sitesDe, sitesProposesA, usagesSite } from '../services/sites.service';
@@ -34,6 +33,14 @@ import {
   type StatutOccupation,
 } from '../services/occupationLieux.service';
 import { versDateTime } from '../services/tickets.service';
+import {
+  peutGererLieux,
+  requireGestionLieux,
+  requireGestionSite,
+  siteDeLaPiece,
+  siteDuCorps,
+  siteDuParametre,
+} from '../services/gestionOrganisation.service';
 
 /**
  * Les sites et bâtiments de la commune.
@@ -166,7 +173,7 @@ router.get('/pretables', authenticateToken, async (req: AuthRequest, res: Respon
   }
 });
 
-router.post('/pieces', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.post('/pieces', authenticateToken, requireGestionSite(siteDuCorps), async (req: AuthRequest, res: Response) => {
   try {
     const siteId = Number(req.body?.siteId);
     const nom = String(req.body?.nom ?? '').trim();
@@ -202,7 +209,7 @@ router.get('/pieces/:id', authenticateToken, async (req: AuthRequest, res: Respo
   }
 });
 
-router.put('/pieces/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.put('/pieces/:id', authenticateToken, requireGestionSite(siteDeLaPiece), async (req: AuthRequest, res: Response) => {
   try {
     if (!(await lirePiece(req.params.id))) return refuser(res, 404, 'Pièce introuvable');
 
@@ -241,7 +248,7 @@ router.put('/pieces/:id', authenticateToken, requireSupervisor, async (req: Auth
  * Les ouvrants ne bloquent pas : ils retombent sur le bâtiment, comme le
  * `ON DELETE SET NULL` de la migration 037 l'organise.
  */
-router.delete('/pieces/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/pieces/:id', authenticateToken, requireGestionSite(siteDeLaPiece), async (req: AuthRequest, res: Response) => {
   try {
     if (!(await lirePiece(req.params.id))) return refuser(res, 404, 'Pièce introuvable');
 
@@ -514,11 +521,18 @@ router.get('/:id/pieces', authenticateToken, async (req: AuthRequest, res: Respo
   }
 });
 
-/** Qui est rattaché à ce bâtiment — pour l'écran de réglage. */
-router.get('/:id/membres', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+/**
+ * Qui est rattaché à ce bâtiment, et avec quels droits.
+ *
+ * Les quatre droits sont ceux de `sites.service.ts`, plus `gereLieu` depuis la
+ * migration 040. Lisible et modifiable par le gestionnaire du bâtiment, pour
+ * qu'il tienne lui-même la liste de ceux qui y travaillent — à une exception
+ * près, tenue par `peutAccorderGestion` : il ne fait pas d'autres gestionnaires.
+ */
+router.get('/:id/membres', authenticateToken, requireGestionSite(siteDuParametre), async (req: AuthRequest, res: Response) => {
   try {
     const membres = await db.query(
-      `SELECT us.id, us.user_id, us.peut_voir_tickets, u.first_name, u.last_name, u.email
+      `SELECT us.*, u.first_name, u.last_name, u.email
          FROM user_sites us
          JOIN users u ON u.id = us.user_id
         WHERE us.site_id = ?
@@ -527,12 +541,16 @@ router.get('/:id/membres', authenticateToken, requireAdmin, async (req: AuthRequ
     );
     res.json({
       success: true,
+      peutAccorderGestion: await peutGererLieux(req.user),
       membres: membres.map((m: any) => ({
         id: Number(m.id),
         userId: Number(m.user_id),
-        nom: [m.first_name, m.last_name].filter(Boolean).join(' ').trim(),
+        nom: [m.first_name, m.last_name].filter(Boolean).join(' ').trim() || m.email,
         email: m.email ?? null,
-        peutVoirTickets: Boolean(m.peut_voir_tickets),
+        estResponsable: Boolean(Number(m.est_responsable ?? 0)),
+        peutVoirTickets: Boolean(Number(m.peut_voir_tickets ?? 0)),
+        notifie: Boolean(Number(m.notifie ?? 0)),
+        gereLieu: Boolean(Number(m.gere_lieu ?? 0)),
       })),
     });
   } catch (erreur: any) {
@@ -541,7 +559,99 @@ router.get('/:id/membres', authenticateToken, requireAdmin, async (req: AuthRequ
   }
 });
 
-router.post('/', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+/** Les droits d'un rattachement, lus depuis le corps ; absent = non touché. */
+function lireDroits(corps: any): Partial<Record<'est_responsable' | 'peut_voir_tickets' | 'notifie' | 'gere_lieu', number>> {
+  const droits: Partial<Record<'est_responsable' | 'peut_voir_tickets' | 'notifie' | 'gere_lieu', number>> = {};
+  if (corps?.estResponsable !== undefined) droits.est_responsable = corps.estResponsable ? 1 : 0;
+  if (corps?.peutVoirTickets !== undefined) droits.peut_voir_tickets = corps.peutVoirTickets ? 1 : 0;
+  if (corps?.notifie !== undefined) droits.notifie = corps.notifie ? 1 : 0;
+  if (corps?.gereLieu !== undefined) droits.gere_lieu = corps.gereLieu ? 1 : 0;
+  return droits;
+}
+
+/**
+ * Rattache une personne au bâtiment, ou règle ses droits si elle l'est déjà.
+ *
+ * Une seule route pour les deux gestes : l'écran coche une case, et n'a pas à
+ * savoir si la ligne existait.
+ */
+router.put('/:id/membres/:userId', authenticateToken, requireGestionSite(siteDuParametre), async (req: AuthRequest, res: Response) => {
+  try {
+    const siteId = Number(req.params.id);
+    const userId = Number(req.params.userId);
+    if (!(await lireSite(siteId))) return refuser(res, 404, 'Bâtiment introuvable');
+    if (!(await db.queryOne('SELECT id FROM users WHERE id = ?', [userId]))) {
+      return refuser(res, 404, 'Compte introuvable');
+    }
+
+    const droits = lireDroits(req.body);
+    const existant = await db.queryOne('SELECT * FROM user_sites WHERE user_id = ? AND site_id = ?', [
+      userId,
+      siteId,
+    ]);
+
+    // Faire ou défaire un gestionnaire revient au gestionnaire global : celui
+    // d'un bâtiment se donnerait sinon des pairs, ou retirerait les siens.
+    const toucheGestion =
+      droits.gere_lieu !== undefined && droits.gere_lieu !== Number(existant?.gere_lieu ?? 0);
+    if (toucheGestion && !(await peutGererLieux(req.user))) {
+      return refuser(res, 403, 'Seul un gestionnaire de toute l’organisation désigne les gestionnaires d’un bâtiment');
+    }
+
+    if (existant) {
+      const colonnes = Object.keys(droits);
+      if (colonnes.length > 0) {
+        await db.execute(
+          `UPDATE user_sites SET ${colonnes.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
+          [...colonnes.map((c) => (droits as any)[c]), existant.id]
+        );
+      }
+    } else {
+      await db.execute(
+        `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie, gere_lieu, created_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          userId,
+          siteId,
+          droits.est_responsable ?? 0,
+          droits.peut_voir_tickets ?? 0,
+          droits.notifie ?? 0,
+          droits.gere_lieu ?? 0,
+          req.user!.userId,
+          versDateTime(),
+        ]
+      );
+    }
+    res.json({ success: true });
+  } catch (erreur: any) {
+    console.error('Erreur réglage d’un rattachement :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.delete('/:id/membres/:userId', authenticateToken, requireGestionSite(siteDuParametre), async (req: AuthRequest, res: Response) => {
+  try {
+    const existant = await db.queryOne('SELECT * FROM user_sites WHERE user_id = ? AND site_id = ?', [
+      req.params.userId,
+      req.params.id,
+    ]);
+    if (!existant) return refuser(res, 404, 'Cette personne n’est pas rattachée au bâtiment');
+
+    // Même règle qu'à la modification : retirer la ligne d'un gestionnaire
+    // retire sa gestion.
+    if (Number(existant.gere_lieu ?? 0) === 1 && !(await peutGererLieux(req.user))) {
+      return refuser(res, 403, 'Seul un gestionnaire de toute l’organisation retire un gestionnaire de bâtiment');
+    }
+
+    await db.execute('DELETE FROM user_sites WHERE id = ?', [existant.id]);
+    res.json({ success: true });
+  } catch (erreur: any) {
+    console.error('Erreur retrait d’un rattachement :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+router.post('/', authenticateToken, requireGestionLieux, async (req: AuthRequest, res: Response) => {
   try {
     const nom = String(req.body?.nom ?? '').trim();
     if (!nom) return refuser(res, 400, 'Le nom est obligatoire');
@@ -559,7 +669,7 @@ router.post('/', authenticateToken, requireSupervisor, async (req: AuthRequest, 
   }
 });
 
-router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+router.put('/:id', authenticateToken, requireGestionSite(siteDuParametre), async (req: AuthRequest, res: Response) => {
   try {
     const site = await lireSite(req.params.id);
     if (!site) return refuser(res, 404, 'Site introuvable');
@@ -596,7 +706,7 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
  * relire. L'écran propose de le désactiver, ce qui le retire des formulaires
  * sans toucher au passé.
  */
-router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticateToken, requireGestionLieux, async (req: AuthRequest, res: Response) => {
   try {
     const site = await lireSite(req.params.id);
     if (!site) return refuser(res, 404, 'Site introuvable');

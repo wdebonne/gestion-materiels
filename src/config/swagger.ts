@@ -653,6 +653,55 @@ const options: swaggerJSDoc.Options = {
       '/dashboard/depreciation': {
         get: { tags: ['Dashboard'], summary: 'Données de dépréciation', responses: { '200': { description: 'Dépréciation' } } },
       },
+
+      // ─── Lieux : ce que le formulaire externe peut demander, sans compte ───
+      '/lieux/public/salles': {
+        get: {
+          tags: ['Sites'],
+          summary: 'Salles ouvertes au prêt (salle du conseil, des mariages, du CCAS…), et leur occupation sur un créneau',
+          description: "Équivaut à `/lieux/public/disponibilite?type=Salle`. Sans compte. Sans `debut`/`fin`, rend la liste ; avec, ajoute `libre` et les créneaux occupés — l'intitulé et le demandeur seulement pour un agent connecté.",
+          security: [],
+          parameters: [
+            { name: 'debut', in: 'query', schema: { type: 'string', example: '2026-10-03T14:00' } },
+            { name: 'fin', in: 'query', schema: { type: 'string', example: '2026-10-03T18:00' } },
+            { name: 'capacite', in: 'query', description: 'Écarte les salles trop petites ; une salle sans jauge est gardée', schema: { type: 'integer' } },
+          ],
+          responses: {
+            '200': {
+              description: 'Salles',
+              content: { 'application/json': { example: { success: true, creneau: null, lieux: [{ siteId: 1, pieceId: 4, nom: 'Salle du conseil', siteNom: 'Mairie', libelle: 'Salle du conseil — Mairie', typeLieu: 'Salle', capacite: 40 }] } } },
+            },
+          },
+        },
+      },
+      '/lieux/public/disponibilite': {
+        get: {
+          tags: ['Sites'],
+          summary: 'Lieux ouverts au prêt — bâtiments entiers et pièces —, et leur occupation sur un créneau',
+          security: [],
+          parameters: [
+            { name: 'type', in: 'query', description: 'Type de pièce, sans tenir compte de la casse (`Salle`, `Préau`…) ; écarte les bâtiments entiers', schema: { type: 'string' } },
+            { name: 'debut', in: 'query', schema: { type: 'string' } },
+            { name: 'fin', in: 'query', schema: { type: 'string' } },
+            { name: 'capacite', in: 'query', schema: { type: 'integer' } },
+          ],
+          responses: { '200': { description: 'Lieux' } },
+        },
+      },
+
+      // ─── Organisation : qui gère les bâtiments, les salles et les services ───
+      '/organisation/moi': {
+        get: { tags: ['Sites'], summary: 'Ce que le compte courant gère : tout (global), ou certains bâtiments et services', responses: { '200': { description: 'Périmètre de gestion' } } },
+      },
+      '/organisation/salles': {
+        get: { tags: ['Sites'], summary: 'Toutes les salles, tous bâtiments confondus, avec ce que l’appelant peut modifier', responses: { '200': { description: 'Salles' } } },
+      },
+      '/organisation/gestionnaires': {
+        get: { tags: ['Sites'], summary: 'Qui gère quoi (administrateur)', responses: { '200': { description: 'Gestionnaires' } } },
+      },
+      '/organisation/gestionnaires/{userId}': {
+        put: { tags: ['Sites'], summary: 'Faire ou défaire un gestionnaire de toute l’organisation (administrateur)', parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+      },
     },
   },
   apis: [], // No JSDoc annotations needed, paths are defined inline

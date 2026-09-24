@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import jwt from 'jsonwebtoken';
 import { getJwtSecret } from '../config/secrets';
 import type { JwtPayload } from '../middleware/auth.middleware';
-import { lieuxPretables } from '../services/lieux.service';
+import { lieuxPretables, TYPE_SALLE } from '../services/lieux.service';
 import { conflitsPour } from '../services/occupationLieux.service';
 import { fluxDuLieu, lieuDuJeton } from '../services/agendaLieu.service';
 
@@ -62,8 +62,27 @@ function agentConnecte(req: Request): boolean {
  * Sans `debut`/`fin`, rend simplement la liste des lieux prêtables — ce dont le
  * formulaire a besoin pour composer sa question. Avec, il ajoute à chacun ce qui
  * l'occupe déjà.
+ *
+ * `type` restreint à un type de pièce (`?type=Salle`), sans tenir compte de la
+ * casse ; les bâtiments entiers sont alors écartés. Chaque lieu porte un
+ * `libelle` — « Salle du conseil — Mairie » — que le formulaire affiche tel
+ * quel, sans avoir à recomposer nom et bâtiment.
  */
-router.get('/disponibilite', async (req: Request, res: Response) => {
+router.get('/disponibilite', (req: Request, res: Response) =>
+  repondreDisponibilite(req, res, req.query.type ? String(req.query.type) : null)
+);
+
+/**
+ * Les salles qu'on peut demander : `/disponibilite?type=Salle`, sous un nom
+ * qui se lit.
+ *
+ * C'est l'adresse à donner au formulaire de réservation de salle — la salle du
+ * conseil, des mariages, du CCAS. Mêmes paramètres (`debut`, `fin`,
+ * `capacite`), même réponse, mêmes règles d'anonymat.
+ */
+router.get('/salles', (req: Request, res: Response) => repondreDisponibilite(req, res, TYPE_SALLE));
+
+async function repondreDisponibilite(req: Request, res: Response, typeLieu: string | null) {
   try {
     const debut = req.query.debut ? String(req.query.debut) : null;
     const fin = req.query.fin ? String(req.query.fin) : null;
@@ -75,7 +94,7 @@ router.get('/disponibilite', async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Capacité invalide' });
     }
 
-    const lieux = await lieuxPretables({ capaciteMinimale: capacite });
+    const lieux = await lieuxPretables({ capaciteMinimale: capacite, typeLieu });
 
     if (!debut || !fin) {
       return res.json({ success: true, lieux, creneau: null });
@@ -113,7 +132,7 @@ router.get('/disponibilite', async (req: Request, res: Response) => {
     console.error('Erreur disponibilité publique des lieux :', erreur);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
   }
-});
+}
 
 /**
  * Le flux d'abonnement d'un lieu.

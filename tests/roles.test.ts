@@ -56,6 +56,15 @@ function allowedRolesFor(router: any, method: string, path: string): readonly st
   return guard ? guard.allowedRoles : null;
 }
 
+/** La garde de gestion d'organisation posée sur une route, s'il y en a une. */
+function gestionFor(router: any, method: string, path: string): string | null {
+  const layer = router.stack.find(
+    (l: any) => l.route?.path === path && l.route?.methods?.[method.toLowerCase()]
+  );
+  const garde = layer?.route.stack.map((s: any) => s.handle).find((h: any) => typeof h?.gestion === 'string');
+  return garde ? garde.gestion : null;
+}
+
 // ---------------------------------------------------------------- le référentiel
 
 describe('Référentiel des rôles', () => {
@@ -364,18 +373,25 @@ describe('Tickets', () => {
       expect(allowedRolesFor(siteRoutes, 'get', '/mes-sites')).toBeNull();
     });
 
+    /*
+     * Depuis la migration 040, ces routes ne sont plus gardées par un rôle mais
+     * par la gestion de l'organisation : un agent peut gérer « son » bâtiment
+     * sans devenir superviseur. `gestionOrganisation.test.ts` éprouve les
+     * refus ; on fige ici quelle garde tient quelle route.
+     */
     it.each([
-      ['post', '/'],
-      ['put', '/:id'],
-    ] as Array<[string, string]>)('%s %s est réservé à l’encadrement', (method, path) => {
-      expect(allowedRolesFor(siteRoutes, method, path)).toEqual(GESTION);
-    });
-
-    it.each([
-      ['delete', '/:id'],
-      ['get', '/:id/membres'],
-    ] as Array<[string, string]>)('%s %s reste à l’administrateur', (method, path) => {
-      expect(allowedRolesFor(siteRoutes, method, path)).toEqual(ADMIN);
+      ['post', '/', 'lieux'],
+      ['delete', '/:id', 'lieux'],
+      ['put', '/:id', 'site'],
+      ['get', '/:id/membres', 'site'],
+      ['put', '/:id/membres/:userId', 'site'],
+      ['delete', '/:id/membres/:userId', 'site'],
+      ['post', '/pieces', 'site'],
+      ['put', '/pieces/:id', 'site'],
+      ['delete', '/pieces/:id', 'site'],
+    ] as Array<[string, string, string]>)('%s %s est gardé par la gestion « %s »', (method, path, gestion) => {
+      expect(allowedRolesFor(siteRoutes, method, path)).toBeNull();
+      expect(gestionFor(siteRoutes, method, path)).toBe(gestion);
     });
   });
 });

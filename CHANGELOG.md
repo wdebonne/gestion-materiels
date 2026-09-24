@@ -7,6 +7,31 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Organisation : bâtiments, salles et services au même endroit, et qui les gère
+
+> Les bâtiments se réglaient dans Tickets, leur arbre dans Clés, les services
+> dans Manifestations — alors qu'ils servent à tous les modules. Ils se tiennent
+> désormais dans **Paramètres › Organisation**, en quatre onglets : Bâtiments
+> (arbre et personnes rattachées), Salles, Services et Gestionnaires. Les
+> anciens onglets renvoient vers la nouvelle page.
+>
+> La gestion se confie **sans changer le rôle** : un gestionnaire de toute
+> l'organisation (désigné par l'administrateur), le gestionnaire d'un bâtiment
+> (case « Gère » sur le bâtiment) et le responsable d'un service, qui tient
+> désormais la liste de ses membres. Un gestionnaire local ne peut ni se donner
+> de pairs, ni toucher à un bâtiment ou un service voisin. Le superviseur garde
+> la gestion des bâtiments, qu'il avait déjà.
+>
+> Les **salles** — salle du conseil, des mariages, du CCAS — ont leur tableau,
+> et le formulaire de réservation les obtient par `GET /api/lieux/public/salles`,
+> avec un libellé lisible (« Salle du conseil — Mairie »). `/disponibilite`
+> accepte aussi `?type=Salle`. La migration 040 réécrit en « Salle » les
+> variantes de casse déjà saisies.
+>
+> Au passage : une porte ne peut plus être rangée sous la salle d'un autre
+> bâtiment, et enregistrer la fiche d'un compte dans « Qui a droit à quoi »
+> ne retire plus la gestion de son bâtiment.
+
 ### Une échéance remplacée ne reste plus en alerte
 
 > Chaque contrôle technique expiré levait sa propre alerte critique, fût-il

@@ -60,6 +60,8 @@ export interface SiteRattache extends Site {
   peutVoirTickets: boolean;
   /** Reçoit un courriel à chaque demande du bâtiment. */
   notifie: boolean;
+  /** Gère le bâtiment : ses salles, ses portes, ses rattachements (migration 040). */
+  gereLieu: boolean;
 }
 
 export interface Ouvrant {
@@ -120,7 +122,7 @@ export async function ouvrantsDe(siteId: number | string): Promise<Ouvrant[]> {
 /** Les bâtiments auxquels cette personne est rattachée, avec son droit de lecture. */
 export async function sitesDe(userId: number | string): Promise<SiteRattache[]> {
   const lignes = await db.query(
-    `SELECT s.*, us.peut_voir_tickets, us.est_responsable, us.notifie
+    `SELECT s.*, us.*, s.id AS id
        FROM user_sites us
        JOIN cle_sites s ON s.id = us.site_id
       WHERE us.user_id = ?
@@ -132,13 +134,16 @@ export async function sitesDe(userId: number | string): Promise<SiteRattache[]> 
     estResponsable: Boolean(l.est_responsable),
     peutVoirTickets: Boolean(l.peut_voir_tickets),
     notifie: Boolean(l.notifie),
+    gereLieu: Boolean(Number(l.gere_lieu ?? 0)),
   }));
 }
 
 /** Les bâtiments dont cette personne est responsable — ceux pour lesquels elle signale. */
 export async function sitesDontResponsable(userId: number | string): Promise<Site[]> {
   const rattaches = await sitesDe(userId);
-  return rattaches.filter((s) => s.estResponsable).map(({ estResponsable, peutVoirTickets, notifie, ...site }) => site);
+  return rattaches
+    .filter((s) => s.estResponsable)
+    .map(({ estResponsable, peutVoirTickets, notifie, gereLieu, ...site }) => site);
 }
 
 /**
@@ -175,7 +180,7 @@ export async function notifiesDuSite(siteId: number | string): Promise<Array<{ i
  */
 export async function sitesProposesA(userId: number | string): Promise<Site[]> {
   const rattaches = await sitesDe(userId);
-  return rattaches.map(({ estResponsable, peutVoirTickets, notifie, ...site }) => site);
+  return rattaches.map(({ estResponsable, peutVoirTickets, notifie, gereLieu, ...site }) => site);
 }
 
 /**
@@ -184,6 +189,11 @@ export async function sitesProposesA(userId: number | string): Promise<Site[]> {
  * Remplacement et non fusion : l'écran montre l'état complet, et c'est cet état
  * qu'il enregistre. Une fusion obligerait l'appelant à dire ce qu'il retire,
  * donc à tenir un journal de différences que personne ne lirait.
+ *
+ * **Sauf pour `gereLieu`**, qu'un écran plus ancien ne connaît pas : absent, il
+ * est repris de la ligne qu'on remplace. Sans cela, enregistrer la fiche d'un
+ * compte depuis « Qui a droit à quoi » lui retirait en silence la gestion de
+ * son bâtiment.
  */
 export async function definirSitesDe(
   userId: number,
@@ -192,15 +202,19 @@ export async function definirSitesDe(
     estResponsable?: boolean;
     peutVoirTickets?: boolean;
     notifie?: boolean;
+    gereLieu?: boolean;
   }>,
   auteurId: number | null
 ): Promise<void> {
+  const avant = new Map((await sitesDe(userId)).map((s) => [s.id, s.gereLieu]));
+
   await db.transaction(async () => {
     await db.execute('DELETE FROM user_sites WHERE user_id = ?', [userId]);
     for (const r of rattachements) {
+      const gere = r.gereLieu ?? avant.get(Number(r.siteId)) ?? false;
       await db.execute(
-        `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie, created_by)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie, created_by${gere ? ', gere_lieu' : ''})
+         VALUES (?, ?, ?, ?, ?, ?${gere ? ', 1' : ''})`,
         [
           userId,
           r.siteId,
