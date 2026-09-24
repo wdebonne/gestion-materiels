@@ -7,6 +7,96 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Les sauvegardes MySQL gardent enfin toute la base
+
+> Une sauvegarde MySQL ne permettait pas de retrouver ses données. Elle ne
+> copiait que **17 tables** — une liste écrite avant les manifestations, les
+> clés, les lieux, les tickets et les plannings, jamais tenue à jour. La
+> restauration réinsérait chaque ligne **sans son identifiant** : tout était
+> renuméroté, et chaque lien — le plein vers son véhicule, le droit vers son
+> utilisateur — pointait ensuite ailleurs. Vider les utilisateurs ou les
+> catégories effaçait en cascade des tables déjà restaurées, et les dates
+> revenaient décalées du fuseau.
+>
+> Désormais **toutes les tables** sont sauvegardées, identifiants compris, une
+> table par fichier dans l'archive, lue par pages et sans jamais tenir la base
+> entière en mémoire. La restauration remplace tout en une seule transaction,
+> clés étrangères suspendues le temps de la copie, puis compte les liens restés
+> orphelins et le dit. Elle relit les anciennes archives, et accepte une
+> sauvegarde SQLite sur un serveur MySQL : c'est une vraie voie de migration.
+> La migration intégrée vers MySQL passe par le même moteur — elle avait les
+> mêmes 17 tables et perdait les mêmes identifiants.
+>
+> Une **sauvegarde de sécurité** de l'état actuel est prise avant chaque
+> restauration ; elle apparaît dans la liste, badge « Sécurité », et permet de
+> revenir en arrière. Une archive sans base échoue franchement, là où l'ancienne
+> route annonçait « restauration effectuée » sans rien restaurer.
+>
+> La sauvegarde nocturne n'avait **aucun interrupteur** : le réglage valait
+> « non » à l'installation, et l'écran annonçait pourtant une sauvegarde chaque
+> nuit. Il est sur la page des sauvegardes ; les dix dernières sont gardées.
+> Sur MySQL, elle ne contenait que les fichiers téléversés, et son ménage
+> utilisait une syntaxe que MySQL refuse.
+>
+> Les clés qui signent les sessions ne voyagent plus dans les archives : les
+> restaurer déconnecterait tout le monde, à commencer par l'administrateur qui
+> restaure.
+
+### Un jeu de données de test, puis une base vierge pour la production
+
+> Paramètres › Base de données charge un gros volume de données cohérentes dans
+> tous les modules — environ 400 000 lignes au volume « Gros » : 20 000
+> matériels, 15 000 tickets et leurs 90 000 messages, 2 000 manifestations,
+> clés, salles, plannings, espaces verts, journaux. Les compteurs ne reculent
+> pas, le stock d'une clé est la somme de ses lots, les statuts suivent les
+> dates, et une part des prêts et des réservations de salle se heurtent exprès.
+> Les textes mêlent accents, apostrophes, émojis et descriptions très longues.
+>
+> Trois boutons. **Charger** remplace le jeu précédent. **Purger** ne retire que
+> ce que le générateur a créé, reconnaissable à ses marques (`@charge.test`,
+> `CHG-`) : ce qui a été saisi à la main reste. **Réinitialiser pour la
+> production** efface toutes les données, saisies comprises, et ne garde que la
+> configuration et les administrateurs ; il faut taper `REINITIALISER`, et une
+> sauvegarde de sécurité précède chaque purge.
+>
+> Après la réinitialisation, la base est déclarée **en production** : charger et
+> réinitialiser sont refusés, pour qu'un clic égaré six mois plus tard ne vide
+> pas le parc. `AUTORISER_DONNEES_TEST=true` au démarrage du serveur les rouvre.
+> Sur SQLite, la base est compactée — 89 Mo avant, 1,3 Mo après.
+>
+> Le même jeu se charge en ligne de commande : `npm run db:charge`, qui refuse
+> une base dont le nom ne contient ni « test » ni « charge ».
+>
+> Le formulaire de migration vers MySQL envoyait l'utilisateur sous un nom que
+> le serveur ne lisait pas : le test de connexion comme la migration partaient
+> sans utilisateur.
+
+### Les envois automatiques se suspendent
+
+> Un jeu de test compte des milliers de tickets dont l'échéance est déjà
+> dépassée : au premier passage de la vérification, un avis est parti pour
+> chacun — vers les comptes de test, en autant d'erreurs dans les journaux, et
+> vers les **vrais administrateurs** désignés par les règles de diffusion.
+>
+> Un interrupteur, en tête de Paramètres › Emails et dans la carte des données
+> de test, retient désormais tout ce que l'application envoie d'elle-même :
+> échéances, rappels de manifestation, alertes. Le mot de passe oublié,
+> l'e-mail de bienvenue, l'e-mail de test et l'envoi d'une sauvegarde partent
+> toujours : quelqu'un vient de les demander. Le chargement du jeu de test pose
+> la suspension avant d'écrire la moindre ligne, et sa purge la lève ; une
+> suspension posée à la main, elle, reste.
+>
+> Plus aucun courrier ne part vers un domaine réservé aux essais (`.test`,
+> `.example`, `.invalid`, `example.com`) : aucun n'y est jamais remis.
+
+### Un prêt en retard ne fait plus tomber le tableau de bord
+
+> L'alerte « retour en retard » était créée sans échéance. Le tableau de bord
+> l'affiche avec sa date : le premier prêt en retard remplaçait la page
+> d'accueil par l'écran d'erreur. L'alerte porte maintenant la date de retour
+> prévue, et une date absente s'affiche « — » partout au lieu de faire tomber
+> l'écran qui la montre.
+
 ### Les pièces d'un bâtiment, ce qui se prête, et qui l'occupe
 
 > Le référentiel des lieux tenait deux niveaux : un bâtiment, et ses portes. Il

@@ -390,8 +390,10 @@ a réellement consommé, chaque écriture portant sa propre nature.
 - ⚙️ Paramètres généraux (nom du site, logo, favicon)
 - 📧 Configuration SMTP avec test d'envoi
 - 📝 Templates d'emails personnalisables
-- 💾 Sauvegarde et restauration de base de données
-- 🔄 Migration SQLite vers MySQL/MariaDB
+- 💾 **Sauvegarde et restauration** complètes, SQLite comme MySQL : toutes les tables, identifiants compris, fichiers téléversés et plugins. Une sauvegarde de sécurité précède chaque restauration ; la sauvegarde nocturne s'active depuis la page des sauvegardes
+- 🔄 Migration SQLite vers MySQL/MariaDB — depuis l'écran Base de données, ou en restaurant une sauvegarde SQLite sur un serveur MySQL
+- 🧪 **Données de test** : un gros jeu cohérent dans tous les modules pour éprouver l'application, une purge qui ne retire que lui, et une réinitialisation vers une base vierge avant la mise en production (voir ci-dessous)
+- ✉️ **Suspension des envois automatiques** : échéances, rappels et alertes retenus d'un interrupteur ; posée d'elle-même pendant les essais
 - 🔐 Gestion des permissions par catégorie
 - 📋 **Journal des logs** avec filtrage, export et paramètres avancés
 - 🔗 **Webhooks** : notifications HTTP vers des services externes sur douze événements (matériel, catégorie, alerte, entretien, plein, sauvegarde, utilisateur, connexion), signées en HMAC-SHA256 quand un secret est configuré
@@ -493,6 +495,23 @@ npm run dev
 5. **Accéder à l'application**
 - Frontend : http://localhost:5173
 - Backend API : http://localhost:3001
+
+### Tester avec beaucoup de données
+
+Paramètres › **Base de données** › *Données de test* charge un jeu cohérent dans tous les modules, du volume « Petit » (≈ 40 000 lignes) à « Très gros » (≈ 1,2 million). Les comptes générés sont en `prenom.nom.N@charge.test`, mot de passe `Charge2026!`.
+
+- Le chargement **suspend les envois d'e-mails automatiques** ; la purge les rétablit.
+- **Purger** ne retire que le jeu généré ; ce qui a été saisi à la main reste.
+- **Réinitialiser pour la production** efface toutes les données et ne garde que la configuration et les administrateurs. Une sauvegarde de sécurité est prise avant, puis la base est verrouillée : chargement et réinitialisation sont refusés tant que le serveur n'est pas démarré avec `AUTORISER_DONNEES_TEST=true`.
+
+En ligne de commande, sur une base dont le nom contient « test » ou « charge » :
+
+```bash
+MYSQL_DATABASE=gestion_materiels_charge DB_TYPE=mysql npm run db:charge -- --echelle=1
+npm run db:charge -- --purger
+```
+
+`--echelle` règle le volume (`0.1` pour un essai rapide), `--graine` rend le même jeu d'une fois sur l'autre, `--forcer` passe outre le nom de la base (jamais en `NODE_ENV=production`).
 
 ### Identifiants par défaut
 
@@ -602,7 +621,9 @@ gestion-materiels/
 │   ├── services/          # Services métier
 │   │   ├── plugin.service.ts         # Gestion plugins
 │   │   ├── pluginAdvanced.service.ts # Plugins avancés (ZIP, tables)
-│   │   ├── email.service.ts          # Service email
+│   │   ├── email.service.ts          # Service email, suspension des envois automatiques
+│   │   ├── sauvegarde.service.ts     # Sauvegarde et restauration, SQLite comme MySQL
+│   │   ├── donneesTest.service.ts    # État, verrou et réinitialisation pour la production
 │   │   ├── cron.service.ts           # Tâches planifiées
 │   │   ├── disponibiliteParc.service.ts   # Ce qu'un module accepte du parc
 │   │   ├── coutEspaceVert.service.ts      # Coûts d'implantation, prix figé
@@ -611,7 +632,10 @@ gestion-materiels/
 │   ├── database/          # Gestion BDD
 │   │   ├── migrations/    # Migrations versionnées
 │   │   ├── migrationRunner.ts # Journal, sauvegarde, application
-│   │   └── migrate.ts     # Commande `npm run db:migrate`
+│   │   ├── migrate.ts     # Commande `npm run db:migrate`
+│   │   ├── lots.ts        # Schéma lu à l'exécution, insertion par paquets
+│   │   ├── charge/        # Générateur du jeu de données de test
+│   │   └── charge.ts      # Commande `npm run db:charge`
 │   └── server.ts          # Point d'entrée
 ├── data/                   # Base de données SQLite
 ├── uploads/                # Fichiers uploadés
@@ -620,7 +644,7 @@ gestion-materiels/
 │   └── pages/             # Pages des plugins
 ├── examples/               # Exemples de plugins
 │   └── plugins/           # Plugins d'exemple (ZIP)
-├── tests/                  # Tests backend (Jest) — 64 suites
+├── tests/                  # Tests backend (Jest) — 70 suites
 │   ├── roles.test.ts      # Matrice rôle × endpoint
 │   ├── personnes.test.ts  # Annuaire : reconstruction de `users`, accès accordé ou retiré
 │   ├── saisie-terrain.test.ts # Validation des relevés de terrain

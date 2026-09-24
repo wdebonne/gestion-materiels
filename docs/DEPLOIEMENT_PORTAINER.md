@@ -175,8 +175,16 @@ Les données importantes sont stockées dans des volumes Docker :
 |--------|---------|------------|
 | `data/` | Base de données SQLite | ⚠️ Critique |
 | `uploads/` | Images et fichiers uploadés | ⚠️ Critique |
-| `backups/` | Sauvegardes automatiques | Important |
+| `backups/` | Sauvegardes (manuelles, automatiques, de sécurité) | Important |
 | `plugins/` | Plugins installés | Important |
+
+### Sauvegardes de l'application
+
+Paramètres › **Sauvegardes** produit une archive ZIP complète — base, fichiers téléversés, plugins — **quel que soit le moteur** : sur MySQL, chaque table y est écrite dans `tables/<nom>.jsonl`, identifiants compris. La sauvegarde nocturne (2 h) s'active depuis cette même page ; elle est désactivée à l'installation. Une sauvegarde de sécurité est prise avant chaque restauration et avant toute purge des données de test.
+
+> Les archives MySQL créées avant cette version ne contenaient que 17 tables et ne permettent pas une restauration complète : refaites une sauvegarde après la mise à jour.
+
+Ces archives vivent dans le volume `backups/` : copiez-les hors du serveur. Sur MySQL, un `mysqldump` régulier reste un complément utile.
 
 ### Sauvegarde des volumes
 
@@ -255,10 +263,15 @@ docker exec gestion-materiels chown -R node:node /app/data /app/uploads
 
 ### La base de données est corrompue
 
+Si l'application démarre encore, restaurez depuis Paramètres › **Sauvegardes** : une sauvegarde de sécurité de l'état actuel est prise avant.
+
+Sinon, sur SQLite :
+
 1. Arrêtez la stack
-2. Restaurez depuis une sauvegarde :
+2. Extrayez la base de l'archive :
 ```bash
-cp backups/backup-YYYYMMDD.sqlite data/database.sqlite
+unzip -p backups/backup-AAAA-MM-JJ….zip database.sqlite > data/database.sqlite
+rm -f data/database.sqlite-wal data/database.sqlite-shm
 ```
 3. Redémarrez la stack
 
