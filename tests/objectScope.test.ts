@@ -39,6 +39,8 @@ const EXEMPTIONS: Record<string, string> = {
     "Lit la catégorie d'un matériel pour rendre la configuration de ses champs, jamais ses données. Révèle au plus l'existence d'un identifiant.",
   'routes/espaceVert.routes.ts':
     "Les jointures restantes ne concernent que des matériels explicitement rattachés à un élément d'espace vert par un superviseur : l'accès y est gouverné par l'espace vert, pas par la catégorie du matériel. Les trois entrées qui lisent le parc lui-même appliquent la portée : la recherche libre, le catalogue implantable et la pose depuis le parc, qui refuse ligne à ligne ce que l'appelant n'a pas le droit de consulter.",
+  'services/droitsUtilisateur.service.ts':
+    "Ne nomme que le matériel attribué à une personne, pour l'onglet Droits de sa fiche, et ne sert qu'aux routes `/users/:id/droits`, réservées à l'administrateur — qui voit tout le parc. Aucun autre appelant ne l'expose.",
   'services/cron.service.ts':
     "Tâche planifiée, sans requête ni utilisateur : il n'y a pas de portée à appliquer.",
   'services/email.service.ts':

@@ -19,9 +19,10 @@ import {
   usagesStatut,
   VISIBILITES,
 } from '../services/ticketsReferentiel.service';
-import { versDateTime } from '../services/tickets.service';
+import { SaisieInvalide, versDateTime } from '../services/tickets.service';
 import { definirSitesDe, sitesDe } from '../services/sites.service';
-import { estNiveauTicket, NiveauTicket, NIVEAUX_TICKET } from '../middleware/ticketScope';
+import { estNiveauTicket } from '../middleware/ticketScope';
+import { definirCategoriesDe, definirMaterielsDe } from '../services/droitsUtilisateur.service';
 
 /**
  * Le référentiel des demandes, et les rattachements des personnes.
@@ -478,69 +479,22 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
       );
     }
 
+    // Un seul écrivain pour ces rattachements : celui de l'écran des
+    // utilisateurs (`droitsUtilisateur.service`), qui les règle aussi.
     if (Array.isArray(req.body?.categories)) {
-      // Le niveau porte sur la racine : une sous-catégorie transmise y est
-      // ramenée, et deux lignes sur la même racine n'en font qu'une — la plus
-      // haute. Sans cela, la contrainte `UNIQUE` refuserait l'enregistrement
-      // entier pour un doublon que l'écran n'a pas vu.
-      const parents = new Map<number, number | null>(
-        (await db.query('SELECT id, parent_id FROM ticket_categories')).map((l: any) => [
-          Number(l.id),
-          l.parent_id === null ? null : Number(l.parent_id),
-        ])
-      );
-      const parRacine = new Map<
-        number,
-        { niveau: NiveauTicket; peutCloturer: number; materielAutorise: number | null }
-      >();
-      for (const c of req.body.categories) {
-        const categorieId = entierOuNull(c?.categorieId);
-        if (categorieId === null || !parents.has(categorieId)) continue;
-        const racine = parents.get(categorieId) ?? categorieId;
-        const niveau: NiveauTicket = estNiveauTicket(c?.niveau) ? c.niveau : 'demandeur';
-        const deja = parRacine.get(racine);
-        if (deja && NIVEAUX_TICKET.indexOf(deja.niveau) >= NIVEAUX_TICKET.indexOf(niveau)) continue;
-        parRacine.set(racine, {
-          niveau,
-          // Autonome par défaut : c'est ce que tout le monde était avant la 046.
-          peutCloturer: c?.peutCloturer === false ? 0 : 1,
-          // `null` veut dire « ce que la catégorie a décidé ».
-          materielAutorise:
-            c?.materielAutorise === null || c?.materielAutorise === undefined
-              ? null
-              : c.materielAutorise
-                ? 1
-                : 0,
-        });
-      }
-
-      await db.execute('DELETE FROM user_ticket_categories WHERE user_id = ?', [userId]);
-      for (const [racine, { niveau, peutCloturer, materielAutorise }] of parRacine) {
-        await db.execute(
-          `INSERT INTO user_ticket_categories
-             (user_id, ticket_categorie_id, niveau, peut_cloturer, materiel_autorise, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-          [userId, racine, niveau, peutCloturer, materielAutorise, req.user!.userId, versDateTime()]
-        );
-      }
+      await definirCategoriesDe(userId, req.body.categories, req.user!.userId);
     }
-
     if (Array.isArray(req.body?.materiels)) {
-      // Remplacement et non fusion : l'écran montre l'état complet, et c'est
-      // cet état qu'il enregistre.
-      await db.execute('DELETE FROM user_materiels WHERE user_id = ?', [userId]);
-      for (const m of req.body.materiels) {
-        const objectId = entierOuNull(m?.objectId ?? m);
-        if (objectId === null) continue;
-        await db.execute(
-          `INSERT INTO user_materiels (user_id, object_id, created_by, created_at) VALUES (?, ?, ?, ?)`,
-          [userId, objectId, req.user!.userId, versDateTime()]
-        );
-      }
+      await definirMaterielsDe(
+        userId,
+        req.body.materiels.map((m: any) => Number(m?.objectId ?? m)),
+        req.user!.userId
+      );
     }
 
     res.json({ success: true, message: 'Rattachements enregistrés' });
   } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
     console.error('Erreur enregistrement des rattachements :', erreur);
     refuser(res, 500, 'Erreur serveur');
   }

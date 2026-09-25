@@ -65,6 +65,7 @@ import migration032 from '../src/database/migrations/032_tickets';
 import migration035 from '../src/database/migrations/035_tickets_rattachements';
 import migration045 from '../src/database/migrations/045_tickets_niveaux';
 import migration046 from '../src/database/migrations/046_tickets_cloture';
+import migration047 from '../src/database/migrations/047_formulaire_par_personne';
 import type { ContexteMigration } from '../src/database/migrations/types';
 import ticketRoutes from '../src/routes/ticket.routes';
 
@@ -207,6 +208,7 @@ beforeAll(async () => {
 
   await migration045.up(ctx);
   await migration046.up(ctx);
+  await migration047.up(ctx);
 });
 
 describe('Le rattrapage de la migration 045', () => {
@@ -319,5 +321,29 @@ describe('Les gardes des routes', () => {
     expect(res.body.niveaux).toEqual(
       expect.arrayContaining([expect.objectContaining({ categorieId: CAT_BATIMENT, niveau: 'superviseur' })])
     );
+  });
+});
+
+describe('Les champs du formulaire, tenus par le serveur', () => {
+  afterEach(() => {
+    base.prepare('DELETE FROM user_ticket_reglages').run();
+  });
+
+  it('refuse une demande sans le bâtiment qu’on exige de cette personne', async () => {
+    base.prepare("INSERT INTO user_ticket_reglages (user_id, site_mode) VALUES (?, 'requis')").run(DEMANDEUR);
+    commeSi(DEMANDEUR, 'user');
+    const res = await request(app).post('/api/tickets').send({ titre: 'Volet cassé', categorieId: CAT_BATIMENT });
+    expect(res.status).toBe(400);
+    expect(res.body.message).toMatch(/bâtiment/);
+  });
+
+  it('ignore le bâtiment qu’on a masqué pour elle', async () => {
+    base.prepare("INSERT INTO user_ticket_reglages (user_id, site_mode) VALUES (?, 'masque')").run(DEMANDEUR);
+    commeSi(DEMANDEUR, 'user');
+    const res = await request(app)
+      .post('/api/tickets')
+      .send({ titre: 'Radiateur', categorieId: CAT_BATIMENT, siteId: MAIRIE });
+    expect(res.status).toBe(201);
+    expect((base.prepare('SELECT site_id FROM tickets WHERE id = ?').get(res.body.id) as any).site_id).toBeNull();
   });
 });

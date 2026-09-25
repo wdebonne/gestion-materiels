@@ -8,6 +8,8 @@ import { lirePolitique, verifierMotDePasse } from '../services/passwordPolicy.se
 import { notifierWebhooks } from '../services/webhook.service';
 import { logService } from '../services/log.service';
 import { anonymiser, desactiver, estDernierAdmin, tracesDe } from '../services/comptes.service';
+import { definirDroits, lireDroits } from '../services/droitsUtilisateur.service';
+import { SaisieInvalide } from '../services/tickets.service';
 
 const router = Router();
 
@@ -207,6 +209,36 @@ router.post('/:id/revoke-sessions', authenticateToken, requireAdmin, async (req:
 });
 
 // GET /api/users/:id - Détail d'un utilisateur
+/**
+ * Tous les droits d'une personne, d'un bloc : les modules qu'elle voit, ce
+ * qu'elle fait de chaque catégorie de demandes, ses bâtiments, son matériel,
+ * les champs de son formulaire. Voir `droitsUtilisateur.service`.
+ *
+ * Déclarées avant `/:id` pour ne pas être prises pour un identifiant.
+ */
+router.get('/:id/droits', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    const droits = await lireDroits(Number(req.params.id));
+    if (!droits) return res.status(404).json({ success: false, message: 'Personne introuvable' });
+    res.json({ success: true, ...droits });
+  } catch (error) {
+    console.error('Erreur lecture des droits :', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+router.put('/:id/droits', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
+  try {
+    await definirDroits(Number(req.params.id), req.body ?? {}, Number(req.user!.userId));
+    const droits = await lireDroits(Number(req.params.id));
+    res.json({ success: true, message: 'Droits enregistrés', ...droits });
+  } catch (error: any) {
+    if (error instanceof SaisieInvalide) return res.status(400).json({ success: false, message: error.message });
+    console.error('Enregistrement des droits :', error);
+    res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
 router.get('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;

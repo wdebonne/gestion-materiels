@@ -109,7 +109,7 @@ export default function Layout() {
   })
 
   // Récupérer les plugins de type menu
-  const { data: menuPlugins = [] } = useQuery({
+  const { data: menuPlugins = [], isSuccess: menuCharge } = useQuery({
     queryKey: ['menuPlugins'],
     queryFn: async () => {
       const response = await api.get('/plugins/menu')
@@ -189,8 +189,15 @@ export default function Layout() {
     { name: t('nav.dashboard'), href: '/', icon: Home },
     { name: t('nav.categories'), href: '/categories', icon: FolderOpen },
     { name: t('nav.alerts'), href: '/alerts', icon: Bell, badge: alertsCount },
-    { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
   ]
+
+  // Les manifestations sont un module comme les autres : masquées à qui on les
+  // a retirées (Paramètres › Utilisateurs › Droits) — un demandeur qui n'a
+  // besoin que des tickets. Tant que le menu n'est pas chargé, l'entrée reste,
+  // pour ne pas la voir apparaître et disparaître à chaque ouverture.
+  if (!menuCharge || menuPlugins.some((p: any) => p.slug === 'manifestations')) {
+    baseNavigation.push({ name: 'Manifestations', href: '/manifestations', icon: CalendarDays })
+  }
 
   // Ajouter le menu Suivi si l'utilisateur a les permissions
   if (trackingPermissions?.canView) {

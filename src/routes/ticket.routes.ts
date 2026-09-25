@@ -45,6 +45,7 @@ import {
   lireStatut,
   listerStatuts,
   materielAutorisePour,
+  modesFormulairePour,
   materielsDe,
   resoudreRoutage,
 } from '../services/ticketsReferentiel.service';
@@ -171,7 +172,8 @@ router.get('/formulaire/routage', authenticateToken, async (req: AuthRequest, re
     const sousCategorieId = req.query.sousCategorieId ? Number(req.query.sousCategorieId) : null;
 
     const routage = await resoudreRoutage(categorieId, sousCategorieId);
-    const materielAutorise = await materielAutorisePour(req.user!.userId, categorieId, routage);
+    // Catégorie et réglage propre à la personne : `modesFormulairePour` tranche.
+    const modes = await modesFormulairePour(req.user!.userId, categorieId, sousCategorieId, routage);
 
     // Le nom du service destinataire est rendu en clair : « cette demande
     // partira au service Informatique ». Personne n'aime envoyer dans le vide.
@@ -185,8 +187,8 @@ router.get('/formulaire/routage', authenticateToken, async (req: AuthRequest, re
     res.json({
       success: true,
       routage: {
-        siteMode: routage.siteMode,
-        materielMode: materielAutorise ? routage.materielMode : 'aucun',
+        siteMode: modes.siteMode,
+        materielMode: modes.materielMode,
         visibilite: routage.visibilite,
       },
       destinataire: {
@@ -664,16 +666,36 @@ router.delete(
  * demandeur — n'est retenu que d'un intervenant de la catégorie ; pour les
  * autres, la catégorie décide, comme le formulaire le promet.
  */
-async function saisieAutorisee(req: AuthRequest): Promise<{ saisie: any } | { refus: string }> {
+async function saisieAutorisee(
+  req: AuthRequest
+): Promise<{ saisie: any } | { refus: string; code: number }> {
   const saisie = { ...(req.body ?? {}) };
   const ctx = await contexteTickets(req);
+
+  /*
+   * Les champs du formulaire, tenus aussi par le serveur : un bâtiment exigé
+   * qui manque est refusé, un bâtiment masqué est ignoré. Le matériel masqué ne
+   * l'est pas — une demande ouverte depuis la fiche d'un matériel le porte
+   * légitimement, quelle que soit la catégorie choisie ensuite.
+   */
+  if (saisie.categorieId || saisie.sousCategorieId) {
+    const modes = await modesFormulairePour(ctx.moi, saisie.categorieId, saisie.sousCategorieId);
+    if (modes.siteMode === 'masque') saisie.siteId = null;
+    if (modes.siteMode === 'requis' && !saisie.siteId) {
+      return { refus: 'Indiquez le bâtiment concerné', code: 400 };
+    }
+    if (modes.materielMode === 'requis' && !saisie.objectId) {
+      return { refus: 'Indiquez le matériel concerné', code: 400 };
+    }
+  }
+
   if (ctx.role === 'admin' || ctx.voitTout) return { saisie };
 
   const proposees = new Set((await categoriesProposeesA(ctx.moi)).map((c) => c.id));
   for (const id of [saisie.categorieId, saisie.sousCategorieId]) {
     if (id === null || id === undefined || id === '') continue;
     if (!proposees.has(Number(id))) {
-      return { refus: 'Cette catégorie ne fait pas partie de celles qui vous sont proposées' };
+      return { refus: 'Cette catégorie ne fait pas partie de celles qui vous sont proposées', code: 403 };
     }
   }
 
@@ -695,7 +717,7 @@ async function saisieAutorisee(req: AuthRequest): Promise<{ saisie: any } | { re
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const autorisee = await saisieAutorisee(req);
-    if ('refus' in autorisee) return refuser(res, 403, autorisee.refus);
+    if ('refus' in autorisee) return refuser(res, autorisee.code, autorisee.refus);
 
     const id = await creerTicket(autorisee.saisie, req.user!.userId);
     const ticket = await lireTicket(id);

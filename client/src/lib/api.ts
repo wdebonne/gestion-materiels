@@ -186,7 +186,7 @@ export interface User {
   email: string | null
   firstName?: string
   lastName?: string
-  role: 'admin' | 'supervisor' | 'agent' | 'user'
+  role: 'admin' | 'supervisor' | 'agent' | 'user' | 'service'
   avatar?: string
   isActive: boolean
   /** Faux pour une fiche d'annuaire : elle est désignable, jamais connectée. */
@@ -2621,6 +2621,56 @@ export const NIVEAUX_TICKET: { valeur: NiveauTicket; libelle: string; aide: stri
   },
   { valeur: 'superviseur', libelle: 'Superviseur', aide: 'Tout cela, et valide ce que les agents clôturent' },
 ]
+
+/** Un module du menu, et ce qu'en voit une personne. */
+export interface ModuleVisible {
+  pluginId: number
+  slug: string
+  nom: string
+  /** Ce que le rôle donne, faute de réglage individuel. */
+  parRole: boolean
+  /** `null` : le rôle décide. */
+  individuel: boolean | null
+  effectif: boolean
+}
+
+export interface CategorieDroits {
+  categorieId: number
+  nom: string
+  couleur: string | null
+  /** `null` : catégorie non attribuée. */
+  niveau: NiveauTicket | null
+  peutCloturer: boolean
+  materielAutorise: boolean | null
+  proposeMateriel: boolean
+  aUnSuperviseur: boolean
+}
+
+/** Tous les droits d'une personne, lus et écrits d'un bloc. */
+export interface DroitsPersonne {
+  personne: { id: number; nom: string; role: string }
+  modules: ModuleVisible[]
+  tickets: {
+    categories: CategorieDroits[]
+    sites: RattachementSite[]
+    materiels: { objectId: number; nom: string; reference: string | null }[]
+    formulaire: { siteMode: string | null; materielMode: string | null }
+  }
+  avertissements: string[]
+}
+
+export const droitsApi = {
+  lire: (userId: number) => api.get<{ success: boolean } & DroitsPersonne>(`/users/${userId}/droits`),
+  enregistrer: (
+    userId: number,
+    data: {
+      modules?: { pluginId: number; acces: boolean | null }[]
+      categories?: { categorieId: number; niveau: NiveauTicket; peutCloturer: boolean; materielAutorise: boolean | null }[]
+      sites?: RattachementSite[]
+      formulaire?: { siteMode: string | null; materielMode: string | null }
+    }
+  ) => api.put<{ success: boolean; message: string } & DroitsPersonne>(`/users/${userId}/droits`, data),
+}
 
 /** Ce que le lecteur peut faire d'une demande, calculé par le serveur. */
 export interface DroitsTicket {

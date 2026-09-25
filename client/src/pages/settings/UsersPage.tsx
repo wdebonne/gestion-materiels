@@ -4,8 +4,9 @@ import { Plus, Edit2, Trash2, User, Search, ShieldOff, Fingerprint } from 'lucid
 import { 
   Card, CardBody, Button, Input, Select,
   Modal, ModalBody, ModalFooter, Badge, LoadingInline,
-  Alert, useConfirm
+  Alert, useConfirm, Tabs, Tab
 } from '@/components/ui'
+import DroitsUtilisateur from '@/components/users/DroitsUtilisateur'
 import { useAuthStore } from '@/stores/auth.store'
 import api, { User as UserType } from '@/lib/api'
 import { compteApi } from '@/lib/api'
@@ -65,6 +66,7 @@ export default function UsersPage() {
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingUser, setEditingUser] = useState<UserType | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<UserType | null>(null)
+  const [onglet, setOnglet] = useState<'infos' | 'droits'>('infos')
 
   const [formData, setFormData] = useState({ ...FICHE_VIERGE })
 
@@ -197,6 +199,7 @@ export default function UsersPage() {
       // s'affiche pas, plutôt que de proposer un geste que le serveur refusera.
       setFormData({ ...FICHE_VIERGE, canLogin: canAdmin })
     }
+    setOnglet('infos')
     setIsModalOpen(true)
   }
 
@@ -252,6 +255,8 @@ export default function UsersPage() {
         return <Badge variant="warning">Superviseur</Badge>
       case 'agent':
         return <Badge variant="info">{ROLE_LABELS.agent}</Badge>
+      case 'service':
+        return <Badge variant="default">{ROLE_LABELS.service}</Badge>
       default:
         return <Badge variant="default">Utilisateur</Badge>
     }
@@ -429,14 +434,36 @@ export default function UsersPage() {
         </CardBody>
       </Card>
 
-      {/* Modal création/édition */}
+      {/*
+        Modal création/édition.
+
+        Pour un compte existant, l'administrateur y trouve deux onglets : ses
+        informations, et tous ses droits — les modules qu'il voit, ce qu'il
+        fait de chaque catégorie de demandes, ses bâtiments, son formulaire.
+        Un seul endroit, au lieu de quatre écrans à recouper.
+      */}
       <Modal
         isOpen={isModalOpen}
         onClose={closeModal}
+        size={editingUser && canAdmin ? 'xl' : 'md'}
         title={
-          editingUser ? 'Modifier la fiche' : canAdmin ? "Ajouter quelqu'un" : 'Ajouter une personne'
+          editingUser
+            ? `${editingUser.firstName ?? ''} ${editingUser.lastName ?? ''}`.trim() || 'Modifier la fiche'
+            : canAdmin ? "Ajouter quelqu'un" : 'Ajouter une personne'
         }
       >
+        {editingUser && canAdmin && (
+          <div className="px-6 pt-2">
+            <Tabs value={onglet} onChange={(v: string) => setOnglet(v as 'infos' | 'droits')}>
+              <Tab value="infos" label="Informations" />
+              <Tab value="droits" label="Droits" />
+            </Tabs>
+          </div>
+        )}
+
+        {onglet === 'droits' && editingUser && canAdmin ? (
+          <DroitsUtilisateur userId={editingUser.id} onFerme={closeModal} />
+        ) : (
         <form onSubmit={handleSubmit}>
           <ModalBody className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -526,6 +553,7 @@ export default function UsersPage() {
                     { value: 'user', label: ROLE_LABELS.user },
                     { value: 'agent', label: ROLE_LABELS.agent },
                     { value: 'supervisor', label: ROLE_LABELS.supervisor },
+                    { value: 'service', label: ROLE_LABELS.service },
                     { value: 'admin', label: ROLE_LABELS.admin }
                   ]}
                 />
@@ -557,6 +585,7 @@ export default function UsersPage() {
             </Button>
           </ModalFooter>
         </form>
+        )}
       </Modal>
 
       {/* Modal confirmation suppression */}
