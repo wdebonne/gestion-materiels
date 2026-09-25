@@ -395,3 +395,58 @@ describe('Tickets', () => {
     });
   });
 });
+
+describe('Bâtiments', () => {
+  const batimentRoutes = require('../src/routes/batiment.routes').default;
+
+  /*
+   * Aucune garde de rôle dans ce module : la directrice d'école est un compte
+   * `user`, et c'est elle qui dépose le PPMS. Ce qui ouvre ou ferme une route,
+   * c'est le lien au bâtiment — le consulter (gestionnaire ou responsable), le
+   * gérer, ou gérer tous les lieux pour le catalogue commun des contrôles.
+   * `batiments.test.ts` éprouve les refus ; on fige ici quelle garde tient
+   * quelle route.
+   */
+  it.each([
+    ['post', '/rubriques', 'lieux'],
+    ['put', '/rubriques/:id(\\d+)', 'lieux'],
+    ['delete', '/rubriques/:id(\\d+)', 'lieux'],
+    ['post', '/rubriques/:id(\\d+)/appliquer', 'lieux'],
+    ['get', '/suivis/:id(\\d+)', 'consultation'],
+    ['put', '/suivis/:id(\\d+)', 'site'],
+    ['delete', '/suivis/:id(\\d+)', 'site'],
+    ['get', '/documents/:id(\\d+)', 'consultation'],
+    ['get', '/documents/:id(\\d+)/fichier', 'consultation'],
+    ['put', '/documents/:id(\\d+)', 'site'],
+    ['post', '/documents/:id(\\d+)/valider', 'site'],
+    ['post', '/documents/:id(\\d+)/refuser', 'site'],
+    ['delete', '/documents/:id(\\d+)', 'consultation'],
+    ['get', '/:id(\\d+)', 'consultation'],
+    ['get', '/:id(\\d+)/suivis', 'consultation'],
+    ['post', '/:id(\\d+)/suivis', 'site'],
+    ['get', '/:id(\\d+)/documents', 'consultation'],
+    ['post', '/:id(\\d+)/documents', 'consultation'],
+  ] as Array<[string, string, string]>)('%s %s est gardé par « %s »', (method, path, gestion) => {
+    expect(allowedRolesFor(batimentRoutes, method, path)).toBeNull();
+    expect(gestionFor(batimentRoutes, method, path)).toBe(gestion);
+  });
+
+  it('filtre lui-même ses vues d’ensemble, sans garde à la porte', () => {
+    for (const path of ['/', '/a-valider', '/rubriques']) {
+      expect(allowedRolesFor(batimentRoutes, 'get', path)).toBeNull();
+      expect(gestionFor(batimentRoutes, 'get', path)).toBeNull();
+    }
+  });
+
+  /*
+   * Une entreprise intervient dans plusieurs bâtiments : lui ouvrir l'école
+   * n'appartient pas au seul gestionnaire de la mairie. La garde est posée sur
+   * le routeur entier, avant toute route — une route ajoutée plus tard en hérite.
+   */
+  it('confie les entreprises à qui gère tous les lieux, pour toutes leurs routes', () => {
+    const entrepriseRoutes = require('../src/routes/entreprise.routes').default;
+    const premieres = entrepriseRoutes.stack.slice(0, 2).map((l: any) => l.handle);
+    expect(premieres.some((h: any) => h?.gestion === 'lieux')).toBe(true);
+    expect(entrepriseRoutes.stack.findIndex((l: any) => l.route)).toBeGreaterThanOrEqual(2);
+  });
+});

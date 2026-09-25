@@ -19,6 +19,12 @@ import DashboardPage from '@/pages/DashboardPage'
  */
 const ScanPage = lazy(() => import('@/pages/ScanPage'))
 const ClesPage = lazy(() => import('@/pages/ClesPage'))
+const BatimentsPage = lazy(() => import('@/pages/BatimentsPage'))
+const BatimentDetailPage = lazy(() => import('@/pages/BatimentDetailPage'))
+const BatimentsAValiderPage = lazy(() => import('@/pages/BatimentsAValiderPage'))
+const BatimentsSettingsPage = lazy(() => import('@/pages/settings/BatimentsSettingsPage'))
+const EntreprisesPage = lazy(() => import('@/pages/EntreprisesPage'))
+const PortailPrestatairePage = lazy(() => import('@/pages/PortailPrestatairePage'))
 const CleDetailPage = lazy(() => import('@/pages/CleDetailPage'))
 const TrousseauPublicPage = lazy(() => import('@/pages/TrousseauPublicPage'))
 const ForgotPasswordPage = lazy(() => import('@/pages/ForgotPasswordPage'))
@@ -152,6 +158,12 @@ function App() {
             faire d'une barre de navigation qu'il ne peut pas utiliser. */}
         <Route path="/t/:token" element={<TrousseauPublicPage />} />
 
+        {/* Portail d'une entreprise extérieure, par son lien et son code.
+            Même raison que l'étiquette : ni compte, ni mise en page — et un
+            agent connecté qui essaie le lien avant de l'envoyer doit voir ce
+            que verra l'entreprise, pas être redirigé. */}
+        <Route path="/prestataires/:lien" element={<PortailPrestatairePage />} />
+
         {/* Routes protégées */}
         <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<DashboardPage />} />
@@ -164,6 +176,10 @@ function App() {
           <Route path="scan" element={<ScanPage />} />
           <Route path="cles" element={<ClesPage />} />
           <Route path="cles/:objectId" element={<CleDetailPage />} />
+          <Route path="batiments" element={<BatimentsPage />} />
+          <Route path="batiments/a-valider" element={<BatimentsAValiderPage />} />
+          <Route path="batiments/entreprises" element={<EntreprisesPage />} />
+          <Route path="batiments/:id" element={<BatimentDetailPage />} />
           <Route path="calendar" element={<CalendarPage />} />
           <Route path="alerts" element={<AlertsPage />} />
           <Route path="tracking" element={<TrackingPage />} />
@@ -202,6 +218,7 @@ function App() {
             <Route path="tickets" element={<TicketsSettingsPage />} />
             <Route path="cartographie" element={<CartographieSettingsPage />} />
             <Route path="cles" element={<ClesSettingsPage />} />
+            <Route path="batiments" element={<BatimentsSettingsPage />} />
             <Route path="cles/import-snipeit" element={<ImportSnipeItPage />} />
             <Route path="agendas" element={<AgendasExternesPage />} />
             <Route path="nextcloud" element={<NextcloudPage />} />

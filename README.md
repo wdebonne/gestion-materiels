@@ -308,6 +308,33 @@ GET /api/lieux/public/salles?debut=2026-10-03T14:00&fin=2026-10-03T18:00&capacit
 
 Seules les salles **ouvertes au prêt** y figurent, jamais un bâtiment entier ; un visiteur anonyme ne voit que les bornes des créneaux pris, pas l'intitulé ni le demandeur. `GET /api/lieux/public/disponibilite?type=Salle` rend la même chose, et `type` accepte toute autre nature de pièce.
 
+### 🏛️ Bâtiments — contrôles obligatoires, rapports et échéances (Nouveau!)
+
+Électricité tous les ans, extincteurs, alarme incendie, amiante tous les trois ans, ascenseur tous les cinq : le module **Bâtiments** suit, bâtiment par bâtiment, les contrôles qu'une collectivité doit faire, les rapports qui les prouvent, et prévient avant l'échéance.
+
+- 📋 **Un catalogue livré** de 27 contrôles et objets (électricité, extincteurs, SSI, désenfumage, éclairage de sécurité, RIA, gaz, chaudière, ramonage, portes automatiques, ascenseur, amiante DTA, légionellose, radon, aires de jeux, équipements sportifs, commission de sécurité, exercice d'évacuation, PPMS, hottes, paratonnerre, DPE, OPERAT, factures, contrats…), avec la référence réglementaire quand elle est sûre
+- ⏰ **Périodicité et rappel réglés en un clic** dans *Paramètres › Bâtiments* — « tous les ans », « prévenir 2 mois avant » —, appliqués à tous les bâtiments d'un bouton, surchargeables bâtiment par bâtiment
+- 📄 **L'échéance se lit sur le dernier rapport validé** : sa date plus la périodicité, ou la prochaine échéance qu'il indique. Un rapport en attente ou refusé ne compte pas
+- ✅ **Dépôt et validation** : le gestionnaire du bâtiment dépose et valide d'un geste ; le **responsable** (la directrice d'école pour le PPMS) dépose, et le document attend dans la file *À valider*, relu à côté de l'aperçu, reclassé puis validé ou refusé avec motif
+- 🔔 **Alertes « Bâtiment »** dans le délai de rappel, critiques une fois l'échéance passée, envoyées aux gestionnaires du bâtiment ; elles disparaissent quand un rapport validé repousse l'échéance, et ne se montrent qu'à qui suit le bâtiment
+- 🔒 **Fichiers privés** : rangés sous `uploads/prive/`, jamais servis en statique, lus par une route qui vérifie les droits et ne met rien en cache ; pas de SVG
+
+| Qui | Ce qu'il peut faire |
+|---|---|
+| **Administrateur, superviseur, gestionnaire de toute l'organisation** | tous les bâtiments, et le catalogue des contrôles |
+| **Gestionnaire d'un bâtiment** (case « Gère ») | suivre et régler les contrôles de son bâtiment, déposer, valider, reclasser, refuser |
+| **Responsable d'un bâtiment** (case « Responsable ») | voir les contrôles et documents de son bâtiment, y déposer — un gestionnaire valide |
+
+Le rôle « Service partenaire » n'y a pas accès.
+
+**Les entreprises extérieures** — électricien, société d'ascenseur, bureau de contrôle — ont un **portail sans compte**, `/prestataires/<lien>`, ouvert par un lien et un code :
+
+- 🏢 **Fiche** dans *Bâtiments › Entreprises* : nom et courriel obligatoires, téléphone, adresse, SIRET, et des **contacts** (nom, fonction, téléphone, courriel) dont on coche ceux qui reçoivent l'accès
+- ✅ **Droits en deux listes** : les bâtiments ouverts, puis les objets, chacun en **Lecture** (documents validés) et/ou en **Dépôt**
+- 🔑 **Code `ABCD-EFGH` permanent**, montré une seule fois à la génération et envoyé avec le lien ; date de fin facultative, suspension, régénération (l'ancien code et ses sessions tombent)
+- 📤 **Dépôt simplifié** : titre, date, objet — le champ objet (et bâtiment) ne s'affiche pas quand un seul est ouvert ; le document attend la validation, au nom de l'entreprise
+- 🛡️ Même réponse pour un lien inconnu et un code faux ; dix essais par quart d'heure et par poste, verrou d'une demi-heure après vingt échecs d'affilée ; session de huit heures, jamais mise en cache
+
 ### 🌳 Espaces Verts (Nouveau!)
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante
 - 💶 **Prix figé à la pose** : repris du parc ou corrigé selon la facture. Mettre à jour un tarif ne réévalue **jamais** ce qui a déjà été planté — c'est ce qui permet de dire ce qu'un massif a réellement coûté, des années après
@@ -1252,6 +1279,43 @@ l'est). Ce qui ne désigne aucun matériel — une tonte de parc, un rendez-vous
 saisi à la main — passe ou non selon `include_uncategorized`. Un événement
 **importé** n'est jamais réexporté : la boucle recopierait indéfiniment les
 mêmes rendez-vous d'un agenda à l'autre.
+
+### Bâtiments — contrôles et documents
+
+```
+GET    /api/batiments                        # Bâtiments consultés, avec l'état de leurs contrôles
+GET    /api/batiments/a-valider              # Documents en attente, dans les bâtiments gérés
+GET    /api/batiments/rubriques              # Catalogue des objets (?toutes=true : désactivés compris)
+POST   /api/batiments/rubriques              # Ajouter un objet (gestionnaire de tous les lieux)
+PUT    /api/batiments/rubriques/:id          # Périodicité, rappel, libellé, activation
+POST   /api/batiments/rubriques/:id/appliquer # Suivre cet objet partout ({ tous: true }) ou dans { siteIds }
+GET    /api/batiments/:id                    # Un bâtiment et ses pièces
+GET    /api/batiments/:id/suivis             # État des contrôles : dernière réalisation, échéance, statut
+POST   /api/batiments/:id/suivis             # Suivre un contrôle (gestionnaire du bâtiment)
+PUT    /api/batiments/suivis/:id             # Régler un suivi (périodicité et rappel propres, échéance initiale)
+GET    /api/batiments/:id/documents          # Documents (?statut=a_valider|valide|refuse&rubrique=&q=)
+POST   /api/batiments/:id/documents          # Déposer (multipart, champ « fichier ») — validé si gestionnaire
+POST   /api/batiments/documents/:id/valider  # Valider en reclassant ; le document fait foi pour l'échéance
+POST   /api/batiments/documents/:id/refuser  # Refuser, { motif } renvoyé au déposant
+GET    /api/batiments/documents/:id/fichier  # Le fichier — jamais mis en cache
+```
+
+**Entreprises** (gestionnaire de tous les lieux) et **portail** (session `X-Session-Portail`, sans compte) :
+
+```
+GET    /api/entreprises                      # Entreprises et état de leur accès
+POST   /api/entreprises                      # Créer (nom, email obligatoires)
+PUT    /api/entreprises/:id/contacts         # Remplacer les contacts
+PUT    /api/entreprises/:id/droits           # { sites: [..], rubriques: [{ rubriqueId, lecture, depot }] }
+POST   /api/entreprises/:id/acces            # Nouveau code (rendu une fois) et envoi { envoyer, inclureCode }
+PUT    /api/entreprises/:id/acces            # { fin, suspendu }
+POST   /api/portail/:lien/connexion          # { code } → jeton de session (8 h)
+GET    /api/portail/moi                      # Bâtiments, objets ouverts, échéances à venir
+GET    /api/portail/documents                # Documents validés ouverts en lecture, et ses dépôts
+POST   /api/portail/documents                # Déposer (multipart) — en attente de validation
+```
+
+Les fichiers ne passent jamais par `/uploads`, qui refuse `uploads/prive/` quelle que soit l'écriture du chemin. Derrière un autre reverse proxy que le nginx fourni, relevez la taille des envois (`client_max_body_size 30m;` ou équivalent) : par défaut, un rapport de plus de 1 Mo est refusé avant d'atteindre l'application.
 
 ### QR Codes
 

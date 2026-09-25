@@ -124,10 +124,11 @@ describe('06 — une alerte rejetée ne revient plus', () => {
   it('passe par un point de recherche unique', () => {
     expect(cron).toMatch(/async function alertePosee\(/);
     const appels = cron.match(/await alertePosee\(/g) ?? [];
-    expect(appels).toHaveLength(4); // CT, entretien, espace vert, récupération
+    // CT, entretien, espace vert, récupération, contrôle de bâtiment
+    expect(appels).toHaveLength(5);
   });
 
-  it('couvre les quatre types d’alertes', () => {
+  it('couvre les cinq types d’alertes', () => {
     for (const reference of [
       'technical-control',
       'maintenance',
@@ -136,17 +137,19 @@ describe('06 — une alerte rejetée ne revient plus', () => {
     ]) {
       expect(cron).toMatch(new RegExp(`alertePosee\\('${reference}'`));
     }
+    // Les contrôles de bâtiment passent par la constante de leur service.
+    expect(cron).toMatch(/alertePosee\(REFERENCE_BATIMENT,/);
   });
 
   it('fait dépendre le rejet de l’échéance sur laquelle il portait', () => {
     expect(cron).toMatch(/function rejetToujoursValable\(/);
     const gardes = cron.match(/rejetToujoursValable\(/g) ?? [];
-    expect(gardes.length).toBeGreaterThanOrEqual(5); // 1 définition + 4 usages
+    expect(gardes.length).toBeGreaterThanOrEqual(6); // 1 définition + 5 usages
   });
 
   it('remet l’échéance à jour quand elle a bougé', () => {
     const majs = cron.match(/due_date = \?, is_dismissed = 0/g) ?? [];
-    expect(majs).toHaveLength(4);
+    expect(majs).toHaveLength(5);
   });
 });
 

@@ -435,3 +435,24 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Les salles** : une pièce de nature « Salle », normalisée ; un tableau transversal ; `GET /api/lieux/public/salles` pour le formulaire, avec un `libelle` lisible, et `?type=` sur `/disponibilite`
   - **Au passage** : une porte ne peut plus être rangée sous la salle d'un autre bâtiment ; enregistrer la fiche d'un compte dans « Qui a droit à quoi » ne retire plus la gestion de son bâtiment
 - **Reste à faire :** le rôle « Service partenaire » reste cloisonné aux manifestations, et ne peut donc pas tenir les membres de son service même s'il en est responsable.
+
+### 20. Bâtiments : contrôles obligatoires, entreprises, plans, énergie, statistiques
+
+- **Contexte :** une collectivité doit faire vérifier ses bâtiments à intervalles fixés — électricité, extincteurs, alarme, amiante, ascenseur… — et garder les rapports. Rien ne le suivait : le rapport arrivait par courriel, l'échéance vivait dans une mémoire. S'y ajoutent l'énergie, les contrats de maintenance, les plans des étages et les entreprises extérieures qui déposent leurs rapports.
+- **Livré — lot A, contrôles et documents (septembre 2026) :**
+  - **Migration `041_batiments_controles`** : `batiment_rubriques` (l'« objet » à l'écran : périodicité, délai de rappel), `batiment_suivis` (une obligation dans un bâtiment, surchargeable, plusieurs par objet), `batiment_documents` (fichier, classement, circuit `a_valider` → `valide` | `refuse`). Jours métier en `VARCHAR(10)` ; `RESTRICT` du document vers son bâtiment
+  - **Catalogue de 27 objets** semé code par code (`CATALOGUE_RUBRIQUES`), réglable dans *Paramètres › Bâtiments* : périodicité et rappel choisis dans le tableau, application à tous les bâtiments d'un geste
+  - **L'échéance se lit sur le dernier document validé** (`etatDesSuivis`, seule source) ; statuts en retard, réserves à lever, à prévoir, à jour, à planifier
+  - **Deux cercles** : consulter (gestionnaire ou responsable du bâtiment, garde `requireConsultationSite`) et gérer (`requireGestionSite`) ; le dépôt d'un responsable attend la file *À valider*, reclassement impossible vers un bâtiment non géré
+  - **Alertes `batiment-suivi`** (`verifierEcheancesBatiments`, à part de `checkAlerts`), retirées dès qu'un rapport validé repousse l'échéance, visibles des seuls suiveurs du bâtiment ; courriels `batiment_echeance`, `batiment_document_depose`, `batiment_document_refuse`
+  - **Fichiers privés** sous `uploads/prive/`, fermés au statique (`fermerDossierPrive`), servis sans cache, SVG refusé ; nginx à 30 Mo
+- **Livré — lot B, portail des entreprises (septembre 2026) :**
+  - **Migration `042_entreprises_portail`** : `entreprises` (identité, lien, empreinte bcrypt du code, fin, suspension, verrou), `entreprise_contacts`, `entreprise_sites`, `entreprise_rubriques` (lecture, dépôt), `entreprise_sessions` (empreinte SHA-256, 8 h) ; `batiment_documents.entreprise_id`
+  - **Pas un compte utilisateur** : le portail a ses routes (`/api/portail`), sa session (`X-Session-Portail`) et son client HTTP, et ne touche jamais l'API interne
+  - **Code permanent**, montré une fois, régénérable, suspendable, avec date de fin ; courriel `entreprise_acces` (essentiel : il part même quand les envois automatiques sont suspendus)
+  - **Même réponse pour un lien inconnu et un code faux** (comparaison bcrypt factice au même coût) ; `connexionPortailLimiter` par adresse et par lien ; verrou souple après vingt échecs
+  - **Dépôt** : bâtiment et objet déduits quand un seul est ouvert, champs masqués côté portail ; le document entre dans la file *À valider*, au nom de l'entreprise
+- **À venir :**
+  - **Lot C — étages et plans** : étages, plan importé (PDF ou image), pièces dessinées en zones, matériel et clés de chaque pièce au clic
+  - **Lot D — énergie et contrats** : compteurs, relevés, factures (électricité, gaz, eau), contrats de maintenance avec préavis, interventions
+  - **Lot E — statistiques** : coûts par catégorie, période et bâtiment, comparatifs, graphiques et export PDF filtrable

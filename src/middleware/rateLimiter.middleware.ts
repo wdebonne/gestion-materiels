@@ -172,6 +172,48 @@ export const intakeLimiter = rateLimit({
 });
 
 /**
+ * Le portail des entreprises extérieures.
+ *
+ * Un compteur à lui, et non `intakeLimiter` : celui-ci est partagé par trois
+ * préfixes publics, et une entreprise qui parcourt ses documents en
+ * consommerait le budget. Large — une page du portail déclenche trois ou quatre
+ * requêtes —, il sert à borner un robot, pas une personne.
+ */
+export const portailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  keyGenerator: (req: Request) => `ip:${ipKeyGenerator(req.ip || '')}`,
+  message: {
+    success: false,
+    message: 'Trop de requêtes. Veuillez réessayer dans quelques minutes.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
+ * La saisie du code d'accès d'une entreprise.
+ *
+ * Compté par adresse **et** par lien : dix essais manqués par quart d'heure
+ * depuis un poste, sur un portail donné. Les réussites ne comptent pas — une
+ * entreprise qui se reconnecte dix fois dans la journée n'a rien à se
+ * reprocher. Le verrou du service, lui, ne tombe qu'après vingt échecs
+ * d'affilée toutes adresses confondues.
+ */
+export const connexionPortailLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  skipSuccessfulRequests: true,
+  keyGenerator: (req: Request) => `ip:${ipKeyGenerator(req.ip || '')}:${String(req.params?.lien ?? '').slice(0, 32)}`,
+  message: {
+    success: false,
+    message: 'Trop d\'essais. Veuillez réessayer dans un quart d\'heure.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+/**
  * Cérémonies WebAuthn.
  *
  * `authLimiter` serait trop serré ici, et pour une mauvaise raison. Ses dix

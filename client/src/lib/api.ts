@@ -2830,6 +2830,8 @@ export interface PerimetreGestion {
   /** Tous les services : administrateur ou gestionnaire global. */
   gereServices: boolean
   sitesGeres: number[]
+  /** Gérés ou dont le compte est responsable : ce que le module Bâtiments lui montre. */
+  sitesConsultes: number[]
   servicesGeres: number[]
 }
 
@@ -2873,6 +2875,238 @@ export const organisationApi = {
     api.get<{ success: boolean; personnes: PersonneGestion[] }>('/organisation/personnes'),
   definirGestionnaire: (userId: number, gereOrganisation: boolean) =>
     api.put<{ success: boolean }>(`/organisation/gestionnaires/${userId}`, { gereOrganisation }),
+}
+
+// ------------------------------------------------------------------ Bâtiments
+
+/** Ce qu'on range : l'« objet » d'un document. Voir `batiments.service.ts`. */
+export type NatureRubrique = 'controle' | 'rapport' | 'facture' | 'contrat' | 'autre'
+export type ResultatControle = 'conforme' | 'reserves' | 'non_conforme'
+export type StatutDocumentBatiment = 'a_valider' | 'valide' | 'refuse'
+/** Du plus urgent au plus calme. */
+export type StatutSuivi = 'en_retard' | 'non_conforme' | 'bientot' | 'a_jour' | 'jamais'
+
+export interface RubriqueBatiment {
+  id: number
+  code: string
+  libelle: string
+  nature: NatureRubrique
+  /** `null` : pas d'échéance, le document se range seulement. */
+  periodiciteMois: number | null
+  rappelJours: number
+  referenceReglementaire: string | null
+  description: string | null
+  actif: boolean
+  /** Livrée avec l'application : se désactive, ne se supprime pas. */
+  systeme: boolean
+  ordre: number
+  suivis: number
+  documents: number
+}
+
+export interface EtatSuivi {
+  suiviId: number
+  siteId: number
+  siteNom: string
+  rubriqueId: number
+  rubriqueLibelle: string
+  nature: NatureRubrique
+  libelle: string | null
+  pieceId: number | null
+  pieceNom: string | null
+  periodiciteMois: number | null
+  rappelJours: number
+  surcharge: { periodiciteMois: number | null; rappelJours: number | null }
+  echeanceInitiale: string | null
+  actif: boolean
+  notes: string | null
+  dernierDocument: { id: number; titre: string; date: string | null; resultat: ResultatControle | null } | null
+  echeance: string | null
+  joursRestants: number | null
+  enRetard: boolean
+  dansFenetre: boolean
+  statut: StatutSuivi
+}
+
+export interface DocumentBatiment {
+  id: number
+  siteId: number
+  siteNom: string
+  pieceId: number | null
+  pieceNom: string | null
+  rubriqueId: number | null
+  rubriqueLibelle: string | null
+  nature: NatureRubrique | null
+  suiviId: number | null
+  suiviLibelle: string | null
+  titre: string
+  description: string | null
+  commentaireDepot: string | null
+  nomOrigine: string
+  mime: string | null
+  taille: number | null
+  dateDocument: string | null
+  prochaineEcheance: string | null
+  resultat: ResultatControle | null
+  statut: StatutDocumentBatiment
+  motifRefus: string | null
+  source: 'interne' | 'entreprise'
+  deposePar: { id: number; nom: string } | null
+  /** L'entreprise extérieure qui l'a déposé par son portail. */
+  entreprise: { id: number; nom: string } | null
+  validePar: { id: number; nom: string } | null
+  valideLe: string | null
+  creeLe: string | null
+}
+
+export interface ResumeBatiment {
+  id: number
+  nom: string
+  code: string | null
+  adresse: string | null
+  /** Le compte gère ce bâtiment ; sinon il en est responsable, et dépose sans valider. */
+  gere: boolean
+  compteurs: Record<StatutSuivi | 'suivis' | 'aValider' | 'documents', number>
+}
+
+/** Ce qui classe un document : envoyé au dépôt, à la validation, au reclassement. */
+export interface ClassementDocument {
+  siteId?: number
+  pieceId?: number | null
+  rubriqueId?: number | null
+  suiviId?: number | null
+  titre?: string
+  description?: string | null
+  dateDocument?: string | null
+  prochaineEcheance?: string | null
+  resultat?: ResultatControle | null
+  creerSuivi?: boolean
+}
+
+export const batimentsApi = {
+  liste: () =>
+    api.get<{ success: boolean; gereTout: boolean; batiments: ResumeBatiment[] }>('/batiments'),
+  lire: (id: number) =>
+    api.get<{
+      success: boolean
+      batiment: { id: number; nom: string; code: string | null; adresse: string | null; actif: boolean }
+      gere: boolean
+      pieces: { id: number; nom: string }[]
+    }>(`/batiments/${id}`),
+  suivis: (id: number) => api.get<{ success: boolean; suivis: EtatSuivi[] }>(`/batiments/${id}/suivis`),
+  suivi: (suiviId: number) => api.get<{ success: boolean; suivi: EtatSuivi }>(`/batiments/suivis/${suiviId}`),
+  creerSuivi: (id: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${id}/suivis`, data),
+  modifierSuivi: (suiviId: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/batiments/suivis/${suiviId}`, data),
+  supprimerSuivi: (suiviId: number) => api.delete<{ success: boolean }>(`/batiments/suivis/${suiviId}`),
+
+  documents: (id: number, filtre: { statut?: StatutDocumentBatiment; rubrique?: number; suivi?: number; q?: string } = {}) =>
+    api.get<{ success: boolean; documents: DocumentBatiment[] }>(`/batiments/${id}/documents`, { params: filtre }),
+  aValider: () => api.get<{ success: boolean; documents: DocumentBatiment[] }>('/batiments/a-valider'),
+  /** Multipart : le fichier sous `fichier`, la classification en champs. */
+  deposer: (id: number, donnees: FormData) =>
+    api.post<{ success: boolean; id: number; statut: StatutDocumentBatiment; suiviId: number | null; suiviCree: boolean }>(
+      `/batiments/${id}/documents`,
+      donnees,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
+  modifierDocument: (docId: number, data: ClassementDocument) =>
+    api.put<{ success: boolean; suiviId: number | null; suiviCree: boolean }>(`/batiments/documents/${docId}`, data),
+  valider: (docId: number, data: ClassementDocument) =>
+    api.post<{ success: boolean; suiviId: number | null; suiviCree: boolean; prochaineEcheance: string | null }>(
+      `/batiments/documents/${docId}/valider`,
+      data
+    ),
+  refuser: (docId: number, motif: string) =>
+    api.post<{ success: boolean }>(`/batiments/documents/${docId}/refuser`, { motif }),
+  supprimerDocument: (docId: number) => api.delete<{ success: boolean }>(`/batiments/documents/${docId}`),
+  /** Le fichier, en blob : il ne passe jamais par une URL que l'on pourrait partager. */
+  fichier: (docId: number) => api.get<Blob>(`/batiments/documents/${docId}/fichier`, { responseType: 'blob' }),
+
+  rubriques: (toutes = false) =>
+    api.get<{ success: boolean; rubriques: RubriqueBatiment[] }>(`/batiments/rubriques${toutes ? '?toutes=true' : ''}`),
+  creerRubrique: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>('/batiments/rubriques', data),
+  modifierRubrique: (rubriqueId: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/batiments/rubriques/${rubriqueId}`, data),
+  supprimerRubrique: (rubriqueId: number) => api.delete<{ success: boolean }>(`/batiments/rubriques/${rubriqueId}`),
+  appliquerRubrique: (rubriqueId: number, cible: { tous: true } | { siteIds: number[] }) =>
+    api.post<{ success: boolean; crees: number }>(`/batiments/rubriques/${rubriqueId}/appliquer`, cible),
+}
+
+// ------------------------------------------------------ Entreprises extérieures
+
+export type EtatAccesEntreprise = 'aucun' | 'actif' | 'suspendu' | 'expire' | 'bloque' | 'inactive'
+
+export interface ContactEntreprise {
+  id?: number
+  nom: string
+  fonction: string | null
+  telephone: string | null
+  email: string | null
+  /** Reçoit le lien et le code avec l'entreprise. */
+  recoitAcces: boolean
+}
+
+export interface DroitObjet {
+  rubriqueId: number
+  lecture: boolean
+  depot: boolean
+}
+
+export interface Entreprise {
+  id: number
+  nom: string
+  email: string
+  telephone: string | null
+  adresse: string | null
+  codePostal: string | null
+  ville: string | null
+  siret: string | null
+  notes: string | null
+  actif: boolean
+  acces: {
+    etat: EtatAccesEntreprise
+    genereLe: string | null
+    fin: string | null
+    suspendu: boolean
+    bloqueJusqua: string | null
+    derniereConnexion: string | null
+  }
+  contacts: ContactEntreprise[]
+  sites: number[]
+  rubriques: DroitObjet[]
+  documents: number
+}
+
+export interface ResultatAcces {
+  success: boolean
+  /** En clair, une seule fois : il n'est jamais relu. */
+  code: string
+  lien: string
+  envoi: { resultat: 'envoye' | 'retenu' | 'echec' | 'non_demande'; destinataires: string[]; message?: string }
+}
+
+export const entreprisesApi = {
+  liste: () =>
+    api.get<{
+      success: boolean
+      entreprises: Array<Entreprise & { nbSites: number; nbRubriques: number; nbContacts: number }>
+    }>('/entreprises'),
+  lire: (id: number) => api.get<{ success: boolean; entreprise: Entreprise; lien: string }>(`/entreprises/${id}`),
+  creer: (data: Record<string, unknown>) => api.post<{ success: boolean; id: number }>('/entreprises', data),
+  modifier: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/entreprises/${id}`, data),
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/entreprises/${id}`),
+  contacts: (id: number, contacts: ContactEntreprise[]) =>
+    api.put<{ success: boolean }>(`/entreprises/${id}/contacts`, { contacts }),
+  droits: (id: number, droits: { sites: number[]; rubriques: DroitObjet[] }) =>
+    api.put<{ success: boolean }>(`/entreprises/${id}/droits`, droits),
+  genererAcces: (id: number, options: { envoyer: boolean; inclureCode: boolean }) =>
+    api.post<ResultatAcces>(`/entreprises/${id}/acces`, options),
+  reglerAcces: (id: number, reglage: { fin?: string | null; suspendu?: boolean }) =>
+    api.put<{ success: boolean }>(`/entreprises/${id}/acces`, reglage),
+  deverrouiller: (id: number) => api.post<{ success: boolean }>(`/entreprises/${id}/deverrouiller`),
 }
 
 // --------------------------------------------- Tickets : règles de diffusion

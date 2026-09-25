@@ -27,6 +27,7 @@ import {
 } from '../services/cles.service';
 import { enfantsDe } from '../utils/batchQuery';
 import { arbreDesLieux } from '../services/lieux.service';
+import { usagesSite } from '../services/sites.service';
 import { lireDisponibilite, versColonne } from '../services/disponibiliteParc.service';
 import {
   requireGestionLieux,
@@ -218,6 +219,18 @@ router.delete('/sites/:id', authenticateToken, requireGestionLieux, async (req: 
       res.status(409).json({
         success: false,
         message: `${attaches!.total} clé(s) ouvrent encore ce site. Détachez-les avant de le supprimer.`,
+      });
+      return;
+    }
+
+    // Les documents du module Bâtiments tiennent le site (`RESTRICT`) : sans ce
+    // contrôle, la suppression échouerait sur la clé étrangère avec une erreur
+    // serveur, au lieu de dire quoi faire.
+    const { documents } = await usagesSite(req.params.id);
+    if (documents > 0) {
+      res.status(409).json({
+        success: false,
+        message: `${documents} document(s) de contrôle sont rangés dans ce bâtiment : désactivez-le plutôt.`,
       });
       return;
     }

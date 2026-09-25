@@ -455,8 +455,9 @@ describe('Le référentiel vu du service', () => {
       INSERT INTO cle_ouvrants (site_id, piece_id, name) VALUES (1, 1, 'Porte');
     `);
 
-    // `lieu_occupations` n'existe pas encore : une base à mi-chemin ne doit pas
-    // faire échouer la lecture, elle n'a simplement rien à compter.
-    expect(await usagesPiece(1)).toEqual({ cles: 2, tickets: 1, ouvrants: 1, occupations: 0 });
+    // `lieu_occupations` et `batiment_documents` n'existent pas encore : une base
+    // à mi-chemin ne doit pas faire échouer la lecture, elle n'a simplement rien
+    // à compter.
+    expect(await usagesPiece(1)).toEqual({ cles: 2, tickets: 1, ouvrants: 1, occupations: 0, documents: 0 });
   });
 });

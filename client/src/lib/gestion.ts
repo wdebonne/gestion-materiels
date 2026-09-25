@@ -20,6 +20,7 @@ const RIEN: PerimetreGestion = {
   gereLieux: false,
   gereServices: false,
   sitesGeres: [],
+  sitesConsultes: [],
   servicesGeres: [],
 }
 
@@ -27,6 +28,11 @@ export interface Gestion extends PerimetreGestion {
   chargement: boolean
   /** Gère au moins quelque chose : l'entrée « Organisation » s'affiche. */
   gereQuelqueChose: boolean
+  /**
+   * Voit au moins un bâtiment dans le module Bâtiments : il le gère, ou en est
+   * responsable — la directrice d'école y dépose son PPMS.
+   */
+  consulteDesBatiments: boolean
   peutGererSite: (siteId: number) => boolean
   peutGererService: (serviceId: number) => boolean
 }
@@ -48,9 +54,11 @@ export function useGestion(): Gestion {
     staleTime: 60_000,
   })
 
-  const p = data ?? RIEN
+  // Un serveur d'avant le module ne renvoie pas `sitesConsultes`.
+  const p = { ...RIEN, ...(data ?? {}) }
   return {
     ...p,
+    consulteDesBatiments: p.gereLieux || p.sitesConsultes.length > 0,
     chargement: isLoading && connecte && !cloisonne,
     gereQuelqueChose:
       p.gereLieux || p.gereServices || p.sitesGeres.length > 0 || p.servicesGeres.length > 0,

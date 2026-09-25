@@ -122,6 +122,21 @@ export function decalerJours(jour: string, nombre: number): string {
   return enJour(date);
 }
 
+/**
+ * Le même quantième, `nombre` mois plus loin — borné à la fin du mois.
+ *
+ * `setUTCMonth` seul ferait déborder : un contrôle du 31 janvier, reporté d'un
+ * mois, tomberait le 3 mars. Une échéance réglementaire ne recule pas d'elle-même
+ * au mois suivant ; on la ramène donc au dernier jour du mois visé.
+ */
+export function decalerMois(jour: string, nombre: number): string {
+  const [annee, mois, quantieme] = jour.split('-').map(Number);
+  const cible = new Date(Date.UTC(annee, mois - 1 + nombre, 1));
+  const dernierJour = new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0)).getUTCDate();
+  cible.setUTCDate(Math.min(quantieme, dernierJour));
+  return enJour(cible);
+}
+
 /** Combien de jours séparent deux jours, bornes comprises. */
 export function nombreDeJours({ debut, fin }: Bornes): number {
   return Math.round((depuisJour(fin).getTime() - depuisJour(debut).getTime()) / MS_PAR_JOUR) + 1;

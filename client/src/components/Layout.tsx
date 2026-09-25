@@ -41,7 +41,8 @@ import {
   CalendarDays,
   TreePine,
   KeyRound,
-  LifeBuoy
+  LifeBuoy,
+  Building2
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -57,7 +58,7 @@ export default function Layout() {
   const { user, logout } = useAuthStore()
   const { isService, canManage } = usePermissions()
   // Un agent qui gère l'école doit trouver l'entrée Organisation des paramètres.
-  const { gereQuelqueChose } = useGestion()
+  const { gereQuelqueChose, consulteDesBatiments } = useGestion()
   const { settings, fetchSettings } = useSettingsStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -173,6 +174,9 @@ export default function Layout() {
     TreePine,
     treepine: TreePine,
     'tree-pine': TreePine,
+    Building2,
+    building2: Building2,
+    'building-2': Building2,
     KeyRound,
     keyround: KeyRound,
     'key-round': KeyRound,
@@ -194,11 +198,14 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings', 'tickets']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings', 'tickets', 'batiments']
   // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
   const baseNavSlugs = ['manifestations']
   const pluginNavigation = menuPlugins
     .filter((plugin: any) => !baseNavSlugs.includes(plugin.slug))
+    // Les bâtiments ne se montrent qu'à qui en suit un — gestionnaire ou
+    // responsable : les autres n'y trouveraient qu'un écran vide.
+    .filter((plugin: any) => plugin.slug !== 'batiments' || consulteDesBatiments)
     .map((plugin: any) => {
       const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
       return {

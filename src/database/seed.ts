@@ -712,6 +712,131 @@ const DEFAULT_EMAIL_TEMPLATES = [
     variables: JSON.stringify(['reference', 'titre', 'echeance', 'categorie', 'batiment', 'demandeur', 'technicien', 'statut', 'lien']),
     description: 'Envoyé une seule fois, quand un délai de prise en charge ou de résolution est passé'
   },
+  {
+    name: 'batiment_echeance',
+    subject: '{{#if en_retard}}⚠️ Contrôle en retard{{else}}⏰ Contrôle à prévoir{{/if}} — {{rubrique}} ({{site_nom}})',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: {{#if en_retard}}#dc2626{{else}}#d97706{{/if}}; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">{{#if en_retard}}Contrôle en retard{{else}}Contrôle à prévoir{{/if}}</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>{{#if en_retard}}L'échéance de ce contrôle est passée depuis le <strong>{{echeance}}</strong>.{{else}}Ce contrôle doit être réalisé avant le <strong>{{echeance}}</strong>.{{/if}}</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;"><strong>{{site_nom}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Contrôle</td><td style="padding: 4px 8px;">{{rubrique}}{{#if libelle}} — {{libelle}}{{/if}}</td></tr>
+        {{#if derniere_realisation}}<tr><td style="padding: 4px 8px; color: #6b7280;">Dernière réalisation</td><td style="padding: 4px 8px;">{{derniere_realisation}}</td></tr>{{/if}}
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{site_url}}/{{chemin}}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;">Voir les contrôles du bâtiment</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_nom', 'rubrique', 'libelle', 'echeance', 'en_retard', 'derniere_realisation', 'chemin']),
+    description: "Envoyé aux gestionnaires d'un bâtiment quand un contrôle entre dans son délai de rappel ou passe son échéance"
+  },
+  {
+    name: 'batiment_document_depose',
+    subject: '📄 Document à valider — {{titre}} ({{site_nom}})',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #2563eb; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Un document attend votre validation</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;"><strong>{{site_nom}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Titre</td><td style="padding: 4px 8px;">{{titre}}</td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Objet</td><td style="padding: 4px 8px;">{{rubrique}}</td></tr>
+        {{#if date_document}}<tr><td style="padding: 4px 8px; color: #6b7280;">Date du document</td><td style="padding: 4px 8px;">{{date_document}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Déposé par</td><td style="padding: 4px 8px;">{{depose_par}}</td></tr>
+      </table>
+      {{#if commentaire}}<p style="background: #eff6ff; border-left: 3px solid #2563eb; padding: 12px; white-space: pre-wrap;">{{commentaire}}</p>{{/if}}
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{site_url}}/{{chemin}}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;">Relire et valider</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['site_nom', 'titre', 'rubrique', 'date_document', 'depose_par', 'commentaire', 'chemin']),
+    description: "Envoyé aux gestionnaires d'un bâtiment quand un document y est déposé et attend d'être validé"
+  },
+  {
+    name: 'batiment_document_refuse',
+    subject: 'Document refusé — {{titre}} ({{site_nom}})',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #6b7280; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Document refusé</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Bonjour {{first_name}},</p>
+      <p>Le document <strong>{{titre}}</strong> déposé pour <strong>{{site_nom}}</strong> n'a pas été retenu, pour la raison suivante :</p>
+      <p style="background: #fef2f2; border-left: 3px solid #dc2626; padding: 12px; white-space: pre-wrap;">{{motif}}</p>
+      <p>Vous pouvez déposer une version corrigée.</p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['first_name', 'site_nom', 'titre', 'motif']),
+    description: "Envoyé à la personne qui a déposé un document de bâtiment quand il est refusé"
+  },
+  {
+    name: 'entreprise_acces',
+    subject: 'Votre accès à l\'espace documents — {{site_name}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #2563eb; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Votre espace documents</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Bonjour,</p>
+      <p>{{site_name}} ouvre à <strong>{{entreprise}}</strong> un espace pour consulter les documents qui vous concernent et déposer vos rapports (vérifications, contrôles, factures…).</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;">Ouvrir l'espace documents</a>
+      </p>
+      {{#if avec_code}}
+      <p>Votre code d'accès :</p>
+      <p style="text-align: center; font-family: 'Courier New', monospace; font-size: 26px; letter-spacing: 4px; background: #fff; border: 1px dashed #93c5fd; padding: 12px;"><strong>{{code}}</strong></p>
+      {{else}}
+      <p>Votre code d'accès vous sera communiqué séparément.</p>
+      {{/if}}
+      <p style="font-size: 13px; color: #6b7280;">Ce code est propre à votre entreprise : il reste valable tant qu'il n'est pas remplacé{{#if fin}}, et jusqu'au {{fin}}{{/if}}. Si vous recevez un nouveau code, l'ancien ne fonctionne plus.</p>
+      <p style="font-size: 13px; color: #6b7280;">Si le bouton ne s'ouvre pas, copiez cette adresse : {{lien}}</p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['entreprise', 'lien', 'code', 'avec_code', 'fin']),
+    description: "Envoyé à une entreprise extérieure et à ses contacts quand un gestionnaire lui ouvre (ou renouvelle) l'accès au portail des documents"
+  },
 ];
 
 const DEFAULT_PLUGINS = [
@@ -945,6 +1070,22 @@ const DEFAULT_PLUGINS = [
     })
   },
   {
+    name: 'Bâtiments',
+    slug: 'batiments',
+    version: '1.0.0',
+    description: 'Contrôles obligatoires, documents et échéances des bâtiments',
+    author: 'Système',
+    icon: 'building-2',
+    plugin_type: 'menu',
+    route: 'batiments',
+    is_system: 1,
+    is_active: 1,
+    // Le catalogue des contrôles ne vit pas ici mais dans `batiments.service`
+    // (`CATALOGUE_RUBRIQUES`) : il est semé code par code, et non une seule
+    // fois sur une table vide.
+    config: JSON.stringify({})
+  },
+  {
     name: 'Tickets',
     slug: 'tickets',
     version: '1.0.0',
@@ -1036,8 +1177,28 @@ export async function seedDatabase(): Promise<void> {
 
   await semerCategoriesPlanning();
   await semerReferentielTickets();
+  await semerRubriquesBatiments();
 
   console.log('🎉 Seed terminé avec succès!');
+}
+
+/**
+ * Le catalogue des contrôles obligatoires des bâtiments.
+ *
+ * Code par code, à chaque démarrage : une rubrique ajoutée au catalogue dans une
+ * version future arrive ainsi sur les installations existantes, sans reposer
+ * celles que la commune a renommées ou désactivées. Le catalogue et la règle
+ * vivent dans le service, qui est seul à écrire ces lignes.
+ */
+async function semerRubriquesBatiments(): Promise<void> {
+  try {
+    const { semerRubriques } = await import('../services/batiments.service');
+    const inserees = await semerRubriques();
+    if (inserees > 0) console.log(`✅ ${inserees} contrôle(s) de bâtiment ajouté(s) au catalogue`);
+  } catch (erreur) {
+    // Base pas encore migrée : le reste du seed n'a pas à s'arrêter pour ça.
+    console.warn('Catalogue des contrôles de bâtiment non semé :', (erreur as Error).message);
+  }
 }
 
 /**

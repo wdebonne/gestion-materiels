@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, getAccessibleCategoryIds } from '../middleware/auth.middleware';
+import { filtreAlertesBatiments } from '../services/batiments.service';
 
 const router = Router();
 
@@ -46,6 +47,12 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
       objectSubParams.push(...accessibleIds, ...accessibleIds);
     }
 
+    // Module Bâtiments pas encore migré : aucune restriction, comme avant lui.
+    const filtreBatiments = await filtreAlertesBatiments(req.user!).catch(() => ({
+      sql: '',
+      params: [] as unknown[],
+    }));
+
     const now = new Date();
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
     const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
@@ -74,10 +81,11 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
         `SELECT COUNT(*) as count FROM objects o WHERE 1=1${objectFilter}`,
         objectParams
       ),
-      // Nombre d'alertes actives (non rejetées)
+      // Nombre d'alertes actives (non rejetées), sans les échéances des
+      // bâtiments que ce compte ne suit pas — comme la liste des alertes.
       db.queryOne<{ count: number }>(
-        `SELECT COUNT(*) as count FROM alerts WHERE is_dismissed = 0${objectSubFilter}`,
-        objectSubParams
+        `SELECT COUNT(*) as count FROM alerts a WHERE a.is_dismissed = 0${objectSubFilter}${filtreBatiments.sql}`,
+        [...objectSubParams, ...filtreBatiments.params]
       ),
       // Nombre d'événements ce mois
       db.queryOne<{ count: number }>(

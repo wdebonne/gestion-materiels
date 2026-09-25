@@ -12,7 +12,7 @@ import {
   Code2,
   Key,
   ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound, Cloud, Clock,
-  LifeBuoy, Network
+  LifeBuoy, Network, Building2
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import { useGestion } from '@/lib/gestion'
@@ -33,6 +33,12 @@ interface EntreeParametres {
    * rôle : c'est le seul onglet qu'un agent gestionnaire de l'école y trouve.
    */
   gestionOnly?: boolean
+  /**
+   * Ouvert à qui gère **tous** les lieux — administrateur, superviseur,
+   * gestionnaire de l'organisation : le catalogue des contrôles des bâtiments
+   * vaut pour tous, le gestionnaire d'une seule école n'a pas à le changer.
+   */
+  lieuxOnly?: boolean
 }
 
 const settingsNavItems: EntreeParametres[] = [
@@ -43,6 +49,13 @@ const settingsNavItems: EntreeParametres[] = [
     // tiennent ici, et non plus dans celui qui les a vus naître.
     label: 'Organisation',
     gestionOnly: true
+  },
+  {
+    to: '/settings/batiments',
+    icon: Building2,
+    // La périodicité et le délai de rappel de chaque contrôle obligatoire.
+    label: 'Bâtiments',
+    lieuxOnly: true
   },
   {
     to: '/settings/tickets',
@@ -188,7 +201,7 @@ export default function SettingsPage() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
   const canManage = isAdmin || user?.role === 'supervisor'
-  const { gereQuelqueChose } = useGestion()
+  const { gereQuelqueChose, gereLieux } = useGestion()
 
   // Filtrer les éléments selon le rôle
   const visibleItems = settingsNavItems.filter(
@@ -196,8 +209,9 @@ export default function SettingsPage() {
       (!item.adminOnly || isAdmin) &&
       (!item.manageOnly || canManage) &&
       (!item.gestionOnly || isAdmin || gereQuelqueChose) &&
-      // Hors encadrement, seule l'organisation est ouverte.
-      (canManage || item.gestionOnly)
+      (!item.lieuxOnly || gereLieux) &&
+      // Hors encadrement, seules l'organisation et les bâtiments sont ouverts.
+      (canManage || item.gestionOnly || item.lieuxOnly)
   )
 
   return (

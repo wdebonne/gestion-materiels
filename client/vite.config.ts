@@ -31,6 +31,14 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,
         runtimeCaching: [
           {
+            // Jamais en cache, et avant la règle générale qui garderait tout
+            // `/api/` 24 h : un PPMS ouvert sur le poste partagé de l'accueil
+            // resterait lisible dans le stockage du navigateur, et le portail
+            // des entreprises n'a pas de session à y laisser.
+            urlPattern: /^https?:\/\/[^/]+\/api\/(portail\/|batiments\/documents\/\d+\/fichier)/,
+            handler: 'NetworkOnly'
+          },
+          {
             urlPattern: /^https?:\/\/.*\/api\//,
             handler: 'NetworkFirst',
             options: {

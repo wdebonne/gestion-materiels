@@ -37,6 +37,12 @@ const options: swaggerJSDoc.Options = {
           bearerFormat: 'JWT',
           description: 'Token JWT obtenu via /api/auth/login',
         },
+        sessionPortail: {
+          type: 'apiKey',
+          in: 'header',
+          name: 'X-Session-Portail',
+          description: 'Session du portail des entreprises, obtenue via /api/portail/{lien}/connexion (8 h)',
+        },
       },
       schemas: {
         Error: {
@@ -160,6 +166,9 @@ const options: swaggerJSDoc.Options = {
       { name: 'Passkey', description: 'Connexion WebAuthn / FIDO2 et gestion des clés' },
       { name: 'Tickets', description: 'Demandes internes : ouverture, routage, échanges et suivi' },
       { name: 'Sites', description: 'Sites et bâtiments de la collectivité' },
+      { name: 'Bâtiments', description: 'Contrôles obligatoires, documents et échéances des bâtiments' },
+      { name: 'Entreprises', description: 'Entreprises extérieures : contacts, droits et accès au portail' },
+      { name: 'Portail prestataires', description: 'Portail sans compte des entreprises : consulter et déposer des documents' },
       { name: 'Plannings', description: 'Temps passé, catégories, encadrement et rapports' },
     ],
     paths: {
@@ -701,6 +710,99 @@ const options: swaggerJSDoc.Options = {
       },
       '/organisation/gestionnaires/{userId}': {
         put: { tags: ['Sites'], summary: 'Faire ou défaire un gestionnaire de toute l’organisation (administrateur)', parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+      },
+
+      // ─── Bâtiments : contrôles obligatoires, documents, échéances ───
+      '/batiments': {
+        get: { tags: ['Bâtiments'], summary: 'Les bâtiments que le compte consulte, avec l’état de leurs contrôles', responses: { '200': { description: 'Bâtiments et compteurs (en retard, à prévoir, réserves, à valider)' } } },
+      },
+      '/batiments/a-valider': {
+        get: { tags: ['Bâtiments'], summary: 'Documents déposés qui attendent la validation, dans les bâtiments que le compte gère', responses: { '200': { description: 'Documents' } } },
+      },
+      '/batiments/rubriques': {
+        get: { tags: ['Bâtiments'], summary: 'Le catalogue des objets (contrôles, rapports, factures…)', parameters: [{ name: 'toutes', in: 'query', schema: { type: 'boolean' }, description: 'Inclure les désactivées (gestionnaire de tous les lieux)' }], responses: { '200': { description: 'Rubriques' } } },
+        post: { tags: ['Bâtiments'], summary: 'Ajouter un objet au catalogue (gestionnaire de tous les lieux)', responses: { '201': { description: 'Créé' } } },
+      },
+      '/batiments/rubriques/{id}': {
+        put: { tags: ['Bâtiments'], summary: 'Régler un objet : libellé, périodicité, délai de rappel, activation', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer un objet inutilisé (hors catalogue livré)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimé' }, '409': { description: 'Objet du catalogue, ou employé : à désactiver' } } },
+      },
+      '/batiments/rubriques/{id}/appliquer': {
+        post: { tags: ['Bâtiments'], summary: 'Suivre cet objet dans plusieurs bâtiments, ou tous (`{ tous: true }`)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Nombre de suivis créés' } } },
+      },
+      '/batiments/{id}': {
+        get: { tags: ['Bâtiments'], summary: 'Un bâtiment, ses pièces, et si le compte le gère', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Bâtiment' }, '403': { description: 'Ni gestionnaire ni responsable de ce bâtiment' } } },
+      },
+      '/batiments/{id}/suivis': {
+        get: { tags: ['Bâtiments'], summary: 'L’état des contrôles suivis : dernière réalisation, échéance, statut', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Suivis' } } },
+        post: { tags: ['Bâtiments'], summary: 'Suivre un contrôle dans ce bâtiment (gestionnaire du bâtiment)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '201': { description: 'Créé' } } },
+      },
+      '/batiments/suivis/{id}': {
+        get: { tags: ['Bâtiments'], summary: 'L’état d’un suivi (sert au lien des alertes)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Suivi' } } },
+        put: { tags: ['Bâtiments'], summary: 'Régler un suivi : périodicité et rappel propres, échéance initiale, activation', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Ne plus suivre ce contrôle (les documents restent)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimé' } } },
+      },
+      '/batiments/{id}/documents': {
+        get: { tags: ['Bâtiments'], summary: 'Les documents du bâtiment', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }, { name: 'statut', in: 'query', schema: { type: 'string', enum: ['a_valider', 'valide', 'refuse'] } }, { name: 'rubrique', in: 'query', schema: { type: 'integer' } }, { name: 'q', in: 'query', schema: { type: 'string' } }], responses: { '200': { description: 'Documents' } } },
+        post: {
+          tags: ['Bâtiments'],
+          summary: 'Déposer un document — validé d’emblée par un gestionnaire, en attente pour un responsable',
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
+          requestBody: { content: { 'multipart/form-data': { schema: { type: 'object', required: ['fichier'], properties: { fichier: { type: 'string', format: 'binary', description: 'PDF, JPEG, PNG, WebP, Word, Excel, OpenDocument — pas de SVG ; 25 Mo au plus' }, titre: { type: 'string' }, rubriqueId: { type: 'integer' }, suiviId: { type: 'integer' }, pieceId: { type: 'integer' }, dateDocument: { type: 'string', format: 'date' }, prochaineEcheance: { type: 'string', format: 'date' }, resultat: { type: 'string', enum: ['conforme', 'reserves', 'non_conforme'] }, commentaire: { type: 'string' } } } } } },
+          responses: { '201': { description: 'Déposé' }, '400': { description: 'Format refusé ou classement incohérent' } },
+        },
+      },
+      '/batiments/documents/{id}': {
+        get: { tags: ['Bâtiments'], summary: 'Un document', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Document' } } },
+        put: { tags: ['Bâtiments'], summary: 'Reclasser un document (gestionnaire du bâtiment actuel et du bâtiment visé)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer un document et son fichier (gestionnaire, ou déposant tant qu’il est en attente)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimé' } } },
+      },
+      '/batiments/documents/{id}/fichier': {
+        get: { tags: ['Bâtiments'], summary: 'Le fichier — jamais mis en cache', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Contenu du fichier' }, '404': { description: 'Fichier introuvable' } } },
+      },
+      '/batiments/documents/{id}/valider': {
+        post: { tags: ['Bâtiments'], summary: 'Valider un document en le reclassant ; il fait alors foi pour l’échéance', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Validé, avec le suivi et la prochaine échéance' } } },
+      },
+      '/entreprises': {
+        get: { tags: ['Entreprises'], summary: 'Les entreprises extérieures (gestionnaire de tous les lieux)', responses: { '200': { description: 'Entreprises, avec l’état de leur accès' } } },
+        post: { tags: ['Entreprises'], summary: 'Créer une entreprise — nom et courriel obligatoires', responses: { '201': { description: 'Créée' }, '400': { description: 'Nom ou courriel manquant' } } },
+      },
+      '/entreprises/{id}': {
+        get: { tags: ['Entreprises'], summary: 'Une entreprise, ses contacts, ses droits et l’adresse de son portail', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Entreprise (jamais le code ni son empreinte)' } } },
+        put: { tags: ['Entreprises'], summary: 'Modifier l’identité ; désactiver ferme les sessions', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+        delete: { tags: ['Entreprises'], summary: 'Supprimer une entreprise qui n’a rien déposé', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimée' }, '409': { description: 'Elle a déposé des documents : à désactiver' } } },
+      },
+      '/entreprises/{id}/contacts': {
+        put: { tags: ['Entreprises'], summary: 'Remplacer les contacts (nom, fonction, téléphone, courriel, reçoit l’accès)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+      },
+      '/entreprises/{id}/droits': {
+        put: { tags: ['Entreprises'], summary: 'Remplacer les droits : bâtiments ouverts, et objets en lecture et/ou dépôt', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { sites: { type: 'array', items: { type: 'integer' } }, rubriques: { type: 'array', items: { type: 'object', properties: { rubriqueId: { type: 'integer' }, lecture: { type: 'boolean' }, depot: { type: 'boolean' } } } } } } } } }, responses: { '200': { description: 'Enregistré' } } },
+      },
+      '/entreprises/{id}/acces': {
+        post: { tags: ['Entreprises'], summary: 'Tirer un nouveau code (l’ancien cesse de fonctionner) et l’envoyer ; le code n’est rendu qu’ici', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { envoyer: { type: 'boolean', default: true }, inclureCode: { type: 'boolean', default: true } } } } } }, responses: { '200': { description: 'Code, lien et résultat de l’envoi (envoye, retenu, echec, non_demande)' } } },
+        put: { tags: ['Entreprises'], summary: 'Date de fin facultative et suspension', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+      },
+      '/entreprises/{id}/deverrouiller': {
+        post: { tags: ['Entreprises'], summary: 'Lever le verrou posé après vingt essais manqués', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Déverrouillé' } } },
+      },
+      '/portail/{lien}/connexion': {
+        post: { tags: ['Portail prestataires'], summary: 'Ouvrir une session avec le code d’accès', security: [], parameters: [{ name: 'lien', in: 'path', required: true, schema: { type: 'string' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['code'], properties: { code: { type: 'string', example: 'ABCD-EFGH' } } } } } }, responses: { '200': { description: 'Jeton de session (8 h)' }, '401': { description: 'Lien ou code incorrect — même réponse dans les deux cas' }, '403': { description: 'Accès suspendu ou expiré (dit seulement au bon code)' }, '423': { description: 'Bloqué une demi-heure après vingt échecs' }, '429': { description: 'Trop d’essais depuis cette adresse' } } },
+      },
+      '/portail/moi': {
+        get: { tags: ['Portail prestataires'], summary: 'L’entreprise, ses bâtiments et objets ouverts, et les échéances à venir', security: [{ sessionPortail: [] }], responses: { '200': { description: 'Droits et échéances' }, '401': { description: 'Session absente ou expirée' } } },
+      },
+      '/portail/documents': {
+        get: { tags: ['Portail prestataires'], summary: 'Documents validés ouverts en lecture, et ses propres dépôts', security: [{ sessionPortail: [] }], responses: { '200': { description: 'Documents' } } },
+        post: { tags: ['Portail prestataires'], summary: 'Déposer un document — en attente de validation ; bâtiment et objet déduits s’ils sont seuls', security: [{ sessionPortail: [] }], requestBody: { content: { 'multipart/form-data': { schema: { type: 'object', required: ['fichier', 'titre'], properties: { fichier: { type: 'string', format: 'binary' }, titre: { type: 'string' }, siteId: { type: 'integer' }, rubriqueId: { type: 'integer' }, dateDocument: { type: 'string', format: 'date' }, resultat: { type: 'string', enum: ['conforme', 'reserves', 'non_conforme'] }, commentaire: { type: 'string' } } } } } }, responses: { '201': { description: 'Déposé' }, '400': { description: 'Bâtiment ou objet non ouvert au dépôt' } } },
+      },
+      '/portail/documents/{id}': {
+        delete: { tags: ['Portail prestataires'], summary: 'Retirer l’un de ses dépôts tant qu’il n’a pas été relu', security: [{ sessionPortail: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Retiré' }, '404': { description: 'Déjà relu, ou pas le sien' } } },
+      },
+      '/portail/documents/{id}/fichier': {
+        get: { tags: ['Portail prestataires'], summary: 'Le fichier, s’il lui est ouvert — sinon introuvable', security: [{ sessionPortail: [] }], parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Contenu du fichier' }, '404': { description: 'Introuvable ou non ouvert' } } },
+      },
+      '/batiments/documents/{id}/refuser': {
+        post: { tags: ['Bâtiments'], summary: 'Refuser un document ; le motif est envoyé au déposant', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['motif'], properties: { motif: { type: 'string' } } } } } }, responses: { '200': { description: 'Refusé' } } },
       },
     },
   },

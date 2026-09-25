@@ -99,6 +99,40 @@ export async function sitesGeresPar(userId: number): Promise<number[]> {
   }
 }
 
+/**
+ * Les bâtiments que ce compte **consulte** : ceux qu'il gère, et ceux dont il
+ * est responsable.
+ *
+ * La directrice d'une école n'en gère pas le référentiel — elle ne crée ni
+ * salle ni porte — mais c'est elle qui rédige le PPMS et consigne les exercices
+ * d'évacuation. Elle doit donc voir les contrôles de son école et y déposer ses
+ * rapports, qu'un gestionnaire validera. `est_responsable` le dit déjà pour les
+ * demandes (migration 035) ; il le dit ici pour les contrôles.
+ */
+export async function sitesConsultesPar(userId: number): Promise<number[]> {
+  try {
+    const lignes = await db.query(
+      'SELECT site_id FROM user_sites WHERE user_id = ? AND (gere_lieu = 1 OR est_responsable = 1)',
+      [userId]
+    );
+    return lignes.map((l: any) => Number(l.site_id));
+  } catch {
+    // Base pas encore migrée : on retombe sur les seuls bâtiments gérés.
+    return sitesGeresPar(userId);
+  }
+}
+
+/** Voir ce bâtiment dans le module Bâtiments : ses contrôles, ses documents. */
+export async function peutConsulterSite(
+  appelant: Appelant | undefined,
+  siteId: number | null
+): Promise<boolean> {
+  if (!appelant) return false;
+  if (await peutGererSite(appelant, siteId)) return true;
+  if (!siteId) return false;
+  return (await sitesConsultesPar(appelant.userId)).includes(Number(siteId));
+}
+
 /** Les services dont ce compte est responsable. */
 export async function servicesGeresPar(userId: number): Promise<number[]> {
   const lignes = await db.query(
@@ -117,16 +151,20 @@ export async function perimetreDeGestion(appelant: Appelant): Promise<{
   gereLieux: boolean;
   gereServices: boolean;
   sitesGeres: number[];
+  /** Gérés ou dont le compte est responsable : ce que le module Bâtiments lui montre. */
+  sitesConsultes: number[];
   servicesGeres: number[];
 }> {
-  const [gereOrganisation, gereLieux, gereServices, sitesGeres, servicesGeres] = await Promise.all([
-    estGestionnaireGlobal(appelant.userId),
-    peutGererLieux(appelant),
-    peutGererServices(appelant),
-    sitesGeresPar(appelant.userId),
-    servicesGeresPar(appelant.userId),
-  ]);
-  return { gereOrganisation, gereLieux, gereServices, sitesGeres, servicesGeres };
+  const [gereOrganisation, gereLieux, gereServices, sitesGeres, sitesConsultes, servicesGeres] =
+    await Promise.all([
+      estGestionnaireGlobal(appelant.userId),
+      peutGererLieux(appelant),
+      peutGererServices(appelant),
+      sitesGeresPar(appelant.userId),
+      sitesConsultesPar(appelant.userId),
+      servicesGeresPar(appelant.userId),
+    ]);
+  return { gereOrganisation, gereLieux, gereServices, sitesGeres, sitesConsultes, servicesGeres };
 }
 
 // ------------------------------------------------------------------ les gardes
@@ -134,8 +172,8 @@ export async function perimetreDeGestion(appelant: Appelant): Promise<{
 /** Garde de gestion, portant ce qu'elle protège pour que les tests le vérifient. */
 export interface GardeGestion {
   (req: AuthRequest, res: Response, next: NextFunction): Promise<void>;
-  /** `lieux`, `services`, `site` ou `service`. */
-  gestion: 'lieux' | 'services' | 'site' | 'service';
+  /** `lieux`, `services`, `site`, `service`, ou `consultation` d'un bâtiment. */
+  gestion: 'lieux' | 'services' | 'site' | 'service' | 'consultation';
 }
 
 const REFUS = "Vous ne gérez pas cet élément de l'organisation";
@@ -179,6 +217,18 @@ export function requireGestionSite(
   return garde('site', async (req) => peutGererSite(req.user, await lireSiteId(req)));
 }
 
+/**
+ * Consulter un bâtiment : le gérer, ou en être responsable.
+ *
+ * Plus large que `requireGestionSite`, et réservée aux lectures et aux dépôts
+ * qui passent par une validation — jamais à ce qui modifie le référentiel.
+ */
+export function requireConsultationSite(
+  lireSiteId: (req: AuthRequest) => Promise<number | null> | number | null
+): GardeGestion {
+  return garde('consultation', async (req) => peutConsulterSite(req.user, await lireSiteId(req)));
+}
+
 export function requireGestionService(
   lireServiceId: (req: AuthRequest) => number | null = (req) => Number(req.params.id) || null
 ): GardeGestion {
@@ -198,5 +248,17 @@ export async function siteDeLaPiece(req: AuthRequest): Promise<number | null> {
 
 export async function siteDeLOuvrant(req: AuthRequest): Promise<number | null> {
   const ligne = await db.queryOne('SELECT site_id FROM cle_ouvrants WHERE id = ?', [req.params.id]);
+  return ligne ? Number(ligne.site_id) : null;
+}
+
+/** Le bâtiment d'un document du module Bâtiments. */
+export async function siteDuDocument(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne('SELECT site_id FROM batiment_documents WHERE id = ?', [req.params.id]);
+  return ligne ? Number(ligne.site_id) : null;
+}
+
+/** Le bâtiment d'un suivi de contrôle. */
+export async function siteDuSuivi(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne('SELECT site_id FROM batiment_suivis WHERE id = ?', [req.params.id]);
   return ligne ? Number(ligne.site_id) : null;
 }

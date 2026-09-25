@@ -7,6 +7,91 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Bâtiments : les entreprises extérieures déposent leurs rapports elles-mêmes
+
+> L'électricien qui vérifie les écoles, la société de l'ascenseur, le bureau de
+> contrôle envoyaient leurs rapports par courriel ; un agent les enregistrait.
+> Ils ont désormais un **portail**, sans compte dans l'application : un lien
+> et un code.
+>
+> Dans **Bâtiments › Entreprises**, une entreprise se crée avec son nom et son
+> courriel ; ses contacts (nom, fonction, téléphone, courriel) s'y ajoutent,
+> et l'on coche ceux qui reçoivent l'accès. Ses **droits** se règlent en deux
+> listes : les bâtiments qui lui sont ouverts, puis les objets — chacun en
+> **Lecture** (voir les documents validés) et/ou en **Dépôt**.
+>
+> « Générer et envoyer l'accès » tire un code `ABCD-EFGH` et l'envoie avec le
+> lien. Le code est **montré une seule fois**, à copier si le courriel ne part
+> pas ; on peut aussi le taire dans le courriel pour le donner de vive voix.
+> Il est **permanent** — l'entreprise qui revient chaque année le garde —,
+> sauf date de fin (la fin du marché), suspension, ou régénération, qui rend
+> l'ancien caduc et ferme les sessions ouvertes.
+>
+> Sur son portail, l'entreprise voit les contrôles à venir de ses objets, les
+> documents validés qu'on lui ouvre, et ses propres dépôts avec leur sort —
+> et le motif d'un refus. Elle dépose un document avec un titre, une date et un
+> objet : **quand un seul bâtiment ou un seul objet lui est ouvert, le champ
+> ne s'affiche pas** ; sinon c'est une saisie à complétion. Le dépôt arrive
+> dans la file **À valider**, au nom de l'entreprise, et les gestionnaires du
+> bâtiment en sont avertis.
+>
+> Rien ne distingue un lien inconnu d'un code faux : même réponse, même temps.
+> « Suspendu » ou « expiré » ne se dit qu'au bon code. Dix essais manqués par
+> quart d'heure depuis un poste sont refusés ; vingt d'affilée verrouillent
+> l'accès une demi-heure, et un gestionnaire peut lever le verrou. La session
+> dure huit heures sur l'appareil ; seule l'empreinte du code est gardée.
+
+### Bâtiments : les contrôles obligatoires, leurs rapports et leurs échéances
+
+> La vérification électrique de l'école, les extincteurs, l'alarme incendie,
+> l'amiante tous les trois ans, l'ascenseur tous les cinq : rien dans
+> l'application ne savait quand ils revenaient. Le rapport arrivait par
+> courriel et l'échéance suivante vivait dans une mémoire. Le nouveau module
+> **Bâtiments** les suit, bâtiment par bâtiment.
+>
+> Un **catalogue de 27 contrôles et objets** est livré — électricité,
+> extincteurs, SSI, désenfumage, éclairage de sécurité, gaz, chaudière,
+> portes automatiques, ascenseur, amiante (DTA), légionellose, radon, aires
+> de jeux, commission de sécurité, exercice d'évacuation, PPMS, OPERAT…
+> Dans **Paramètres › Bâtiments**, la périodicité et le délai de rappel de
+> chacun se choisissent directement dans le tableau (« tous les ans »,
+> « prévenir 2 mois avant »), et un bouton l'applique à tous les bâtiments
+> d'un coup. Un bâtiment peut surcharger ces valeurs pour lui seul, suivre deux
+> fois le même contrôle (deux ascenseurs), et poser une échéance de départ.
+>
+> **L'échéance ne se saisit pas : elle se lit sur le dernier rapport validé**
+> — sa prochaine échéance s'il en donne une, sinon sa date plus la
+> périodicité. Un rapport en attente ou refusé ne repousse rien. Chaque
+> bâtiment dit d'un coup d'œil ce qui est en retard, à prévoir, ou porte des
+> réserves à lever.
+>
+> **Deux cercles.** Le gestionnaire d'un bâtiment dépose et valide d'un même
+> geste ; son **responsable** — la directrice d'école qui rédige le PPMS —
+> dépose, et son document attend dans la file **À valider**, où le
+> gestionnaire le relit à côté du formulaire, le reclasse (bâtiment, pièce,
+> objet, date, résultat) et le valide ou le refuse avec un motif renvoyé au
+> déposant. On ne reclasse jamais vers un bâtiment qu'on ne gère pas.
+>
+> Une **alerte** « Bâtiment » se lève quand l'échéance entre dans le délai de
+> rappel, devient critique une fois passée, et part par courriel aux
+> gestionnaires du bâtiment — à défaut à ceux de toute l'organisation. Elle
+> disparaît d'elle-même dès qu'un rapport validé repousse l'échéance, et ne
+> se montre qu'à ceux qui suivent le bâtiment.
+>
+> **Les fichiers ne sont jamais servis en statique.** Un PPMS dit où les
+> enfants se cachent : les documents vont sous `uploads/prive/`, fermé à
+> `/uploads` (y compris écrit `%70rive` ou `./prive`), et ne sortent que par
+> une route qui vérifie les droits, sans mise en cache ni par le navigateur
+> ni par le service worker. Le SVG est refusé, même annoncé comme PDF. Un
+> bâtiment qui a des documents ne se supprime plus (il se désactive), et un
+> nom de fichier accentué arrive enfin avec ses accents.
+>
+> Au passage : un rejet d'alerte comparait les dates en texte, et sur MySQL
+> — où `due_date` revient en objet `Date` — il était défait au passage suivant
+> du cron, pour les contrôles techniques comme pour le reste. Il se compare
+> désormais au jour. Le nginx fourni accepte des envois de 30 Mo, contre 1 Mo
+> par défaut.
+
 ### Organisation : bâtiments, salles et services au même endroit, et qui les gère
 
 > Les bâtiments se réglaient dans Tickets, leur arbre dans Clés, les services

@@ -2,6 +2,20 @@ import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor, getAccessibleCategoryIds } from '../middleware/auth.middleware';
 import { emitAlert } from '../services/websocket.service';
+import { filtreAlertesBatiments } from '../services/batiments.service';
+
+/**
+ * Le filtre des alertes de bâtiment, sans casser la liste si le module n'est
+ * pas encore migré : on retombe alors sur « aucune restriction », ce qui était
+ * le comportement d'avant le module.
+ */
+async function filtreBatiments(req: AuthRequest): Promise<{ sql: string; params: unknown[] }> {
+  try {
+    return await filtreAlertesBatiments(req.user!);
+  } catch {
+    return { sql: '', params: [] };
+  }
+}
 
 const router = Router();
 
@@ -57,6 +71,11 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       whereClause += ` AND (a.object_id IS NULL OR o.category_id IN (${accessibleCategoryIds.map(() => '?').join(',')}))`;
       params.push(...accessibleCategoryIds);
     }
+
+    // Les échéances d'un bâtiment ne concernent que ceux qui le suivent.
+    const batiments = await filtreBatiments(req);
+    whereClause += batiments.sql;
+    params.push(...batiments.params);
 
     const alerts = await db.query(
       `SELECT a.*, o.name as object_name, o.category_id, ar.id as lu_par_moi
@@ -121,35 +140,27 @@ router.get('/count', authenticateToken, async (req: AuthRequest, res: Response) 
       categoryParams.push(...accessibleCategoryIds);
     }
 
-    const result = accessibleCategoryIds !== null
-      ? await db.queryOne(
-          `SELECT COUNT(*) as count FROM alerts a
-           LEFT JOIN objects o ON o.id = a.object_id
-           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
-           WHERE a.is_dismissed = 0 AND ar.id IS NULL${categoryFilter}`,
-          [req.user!.userId, ...categoryParams]
-        )
-      : await db.queryOne(
-          `SELECT COUNT(*) as count FROM alerts a
-           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
-           WHERE a.is_dismissed = 0 AND ar.id IS NULL`,
-          [req.user!.userId]
-        );
+    // La pastille compte ce que la liste montre : mêmes filtres, bâtiments compris.
+    const batiments = await filtreBatiments(req);
+    const filtre = categoryFilter + batiments.sql;
+    const filtreParams = [...categoryParams, ...batiments.params];
+    const jointureObjets = accessibleCategoryIds !== null ? 'LEFT JOIN objects o ON o.id = a.object_id' : '';
 
-    const bySeverity = accessibleCategoryIds !== null
-      ? await db.query(
-          `SELECT a.severity, COUNT(*) as count FROM alerts a
-           LEFT JOIN objects o ON o.id = a.object_id
-           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
-           WHERE a.is_dismissed = 0 AND ar.id IS NULL${categoryFilter} GROUP BY a.severity`,
-          [req.user!.userId, ...categoryParams]
-        )
-      : await db.query(
-          `SELECT a.severity, COUNT(*) as count FROM alerts a
-           LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
-           WHERE a.is_dismissed = 0 AND ar.id IS NULL GROUP BY a.severity`,
-          [req.user!.userId]
-        );
+    const result = await db.queryOne(
+      `SELECT COUNT(*) as count FROM alerts a
+       ${jointureObjets}
+       LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
+       WHERE a.is_dismissed = 0 AND ar.id IS NULL${filtre}`,
+      [req.user!.userId, ...filtreParams]
+    );
+
+    const bySeverity = await db.query(
+      `SELECT a.severity, COUNT(*) as count FROM alerts a
+       ${jointureObjets}
+       LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
+       WHERE a.is_dismissed = 0 AND ar.id IS NULL${filtre} GROUP BY a.severity`,
+      [req.user!.userId, ...filtreParams]
+    );
 
     res.json({
       success: true,
@@ -357,6 +368,7 @@ router.post('/check', authenticateToken, requireSupervisor, async (req: AuthRequ
   try {
     const cronService = await import('../services/cron.service');
     await cronService.checkAlerts();
+    await cronService.verifierEcheancesBatiments();
     
     res.json({ success: true, message: 'Vérification des alertes effectuée' });
   } catch (error: any) {

@@ -240,6 +240,8 @@ export async function usagesSite(siteId: number | string): Promise<{
   ouvrants: number;
   rattachements: number;
   cles: number;
+  /** Rapports de contrôle, PPMS… : des pièces qu'on peut devoir produire des années après. */
+  documents: number;
 }> {
   const compter = async (sql: string): Promise<number> => {
     try {
@@ -256,5 +258,6 @@ export async function usagesSite(siteId: number | string): Promise<{
     ouvrants: await compter('SELECT COUNT(*) as cnt FROM cle_ouvrants WHERE site_id = ?'),
     rattachements: await compter('SELECT COUNT(*) as cnt FROM user_sites WHERE site_id = ?'),
     cles: await compter('SELECT COUNT(*) as cnt FROM cle_ouvre WHERE site_id = ?'),
+    documents: await compter('SELECT COUNT(*) as cnt FROM batiment_documents WHERE site_id = ?'),
   };
 }

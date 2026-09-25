@@ -39,6 +39,8 @@ import lieuxPiecesEtPret from './037_lieux_pieces_et_pret';
 import occupationDesLieux from './038_occupation_des_lieux';
 import agendasDeLieu from './039_agendas_de_lieu';
 import gestionOrganisation from './040_gestion_organisation';
+import batimentsControles from './041_batiments_controles';
+import entreprisesPortail from './042_entreprises_portail';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -90,6 +92,8 @@ export const MIGRATIONS: readonly Migration[] = [
   occupationDesLieux,
   agendasDeLieu,
   gestionOrganisation,
+  batimentsControles,
+  entreprisesPortail,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

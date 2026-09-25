@@ -165,6 +165,19 @@ Si vous utilisez Portainer avec un reverse proxy intégré :
 
 2. Modifiez `nginx/nginx.conf` pour activer HTTPS
 
+### Taille des envois derrière un reverse proxy
+
+Le nginx fourni accepte des envois de **30 Mo** (`client_max_body_size 30m;`).
+Si un autre proxy est placé devant l'application — celui de Portainer, un
+Traefik, un nginx maison —, réglez-y la même limite : nginx s'en tient sinon à
+**1 Mo** et répond `413 Request Entity Too Large` avant même que l'application
+voie la requête. Un rapport de vérification scanné, un PPMS ou une photo de
+chantier ne passeraient pas. L'application plafonne elle-même chaque fichier à
+25 Mo.
+
+Les documents des bâtiments sont rangés sous `uploads/prive/`, donc dans le
+volume `app-uploads` et dans les sauvegardes : rien à ajouter côté volumes.
+
 ---
 
 ## Volumes et Persistance

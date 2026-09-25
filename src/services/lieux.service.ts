@@ -329,6 +329,7 @@ export async function usagesPiece(pieceId: number | string): Promise<{
   cles: number;
   ouvrants: number;
   occupations: number;
+  documents: number;
 }> {
   const compter = async (sql: string): Promise<number> => {
     try {
@@ -345,6 +346,7 @@ export async function usagesPiece(pieceId: number | string): Promise<{
     cles: await compter('SELECT COUNT(*) as cnt FROM cle_ouvre WHERE piece_id = ?'),
     ouvrants: await compter('SELECT COUNT(*) as cnt FROM cle_ouvrants WHERE piece_id = ?'),
     occupations: await compter('SELECT COUNT(*) as cnt FROM lieu_occupations WHERE piece_id = ?'),
+    documents: await compter('SELECT COUNT(*) as cnt FROM batiment_documents WHERE piece_id = ?'),
   };
 }
 

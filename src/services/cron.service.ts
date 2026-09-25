@@ -6,6 +6,9 @@ import { destinatairesPour } from './manifestationNotify.service';
 import { notifierEcheance } from './ticketNotify.service';
 import { genererClasseur, TYPE_MIME_XLSX } from './manifestationExport.service';
 import { deposerFichier, lireConfiguration } from './webdav.service';
+import { etatDesSuivis, jourFrancais, REFERENCE_ALERTE as REFERENCE_BATIMENT } from './batiments.service';
+import { notifierEcheance as notifierEcheanceBatiment } from './batimentsNotify.service';
+import { versJour } from '../utils/periodes';
 
 // Récupérer les paramètres d'alertes
 async function getAlertSettings(): Promise<{
@@ -86,7 +89,10 @@ async function alertePosee(reference: string, referenceId: number): Promise<Aler
  */
 function rejetToujoursValable(alerte: AlerteExistante | null, echeance: unknown): boolean {
   if (!alerte || !alerte.is_dismissed) return false;
-  return String(alerte.due_date ?? '') === String(echeance ?? '');
+  // Comparées au jour, et non en texte : sur MySQL, `due_date` revient en objet
+  // `Date` et l'échéance en chaîne `AAAA-MM-JJ`. `String()` ne les faisait
+  // jamais tomber d'accord, et un rejet était défait au passage suivant.
+  return versJour(alerte.due_date) === versJour(echeance);
 }
 
 /**
@@ -658,13 +664,29 @@ export function initCronJobs(): void {
   // Ménage des alertes traitées, avant l'heure de pointe.
   cron.schedule('30 3 * * *', purgerAlertesTraitees);
 
+  // Sessions expirées du portail des entreprises : elles ne servent plus à
+  // rien, et seule leur empreinte est gardée — mais autant ne pas l'entasser.
+  cron.schedule('40 3 * * *', async () => {
+    try {
+      const { purgerSessionsExpirees } = await import('./portail.service');
+      await purgerSessionsExpirees();
+    } catch (erreur) {
+      console.error('Purge des sessions du portail interrompue :', (erreur as Error).message);
+    }
+  });
+
   // Délais de demande dépassés, tous les quarts d'heure. Le pas est court à
   // dessein : un délai de prise en charge se compte en heures, et un passage
   // quotidien signalerait le retard le lendemain — quand il ne sert plus à rien.
   cron.schedule('*/15 * * * *', verifierEcheancesTickets);
 
+  // Contrôles obligatoires des bâtiments, au même pas que les autres alertes :
+  // une échéance se compte en jours, l'heure suffit largement.
+  cron.schedule('5 * * * *', verifierEcheancesBatiments);
+
   // Exécuter une première vérification au démarrage
   setTimeout(checkAlerts, 10000);
+  setTimeout(verifierEcheancesBatiments, 15000);
 
   console.log('📅 Tâches cron initialisées');
 }
@@ -938,4 +960,68 @@ async function prochainRangFil(ticketId: number): Promise<number> {
   return Number(ligne?.rang ?? 0) + 1;
 }
 
-export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport, verifierManifestations, deposerExportsAutomatiques, verifierEcheancesTickets };
+/**
+ * Les contrôles obligatoires des bâtiments qui entrent dans leur délai de
+ * rappel, ou dont l'échéance est passée.
+ *
+ * À part de `checkAlerts`, avec son propre `try` : une base où le module n'est
+ * pas encore migré ne doit pas priver les véhicules de leurs alertes, et
+ * l'inverse non plus.
+ *
+ * L'échéance vient de `etatDesSuivis()`, seul endroit qui la calcule. Une
+ * alerte par suivi (`plugin_reference_id` = le suivi) : son échéance change
+ * quand un nouveau rapport est validé, et c'est la même alerte qui suit.
+ *
+ * **Le ménage vient en dernier.** Toute alerte de bâtiment dont le suivi n'est
+ * plus dans la fenêtre — suivi supprimé ou désactivé, rubrique désactivée,
+ * contrôle validé qui repousse l'échéance — est retirée. C'est ce qu'il
+ * manquait aux contrôles techniques avant la correction de `beb0a56` : une
+ * alerte posée ne redescendait jamais.
+ */
+export async function verifierEcheancesBatiments(): Promise<void> {
+  try {
+    const etats = await etatDesSuivis({ actifsSeulement: true });
+    const enFenetre = etats.filter((e) => e.echeance && e.dansFenetre);
+
+    for (const etat of enFenetre) {
+      const existante = await alertePosee(REFERENCE_BATIMENT, etat.suiviId);
+      const severite = etat.enRetard ? 'critical' : priorityToSeverity('medium', etat.joursRestants ?? 0);
+      const titre = `${etat.rubriqueLibelle}${etat.libelle ? ` (${etat.libelle})` : ''} — ${etat.siteNom}`;
+      const message = etat.enRetard
+        ? `Échéance dépassée depuis le ${jourFrancais(etat.echeance)}`
+        : `À réaliser avant le ${jourFrancais(etat.echeance)}`;
+
+      if (rejetToujoursValable(existante, etat.echeance)) {
+        // Écartée par quelqu'un, pour cette échéance-là : on n'y revient pas.
+        continue;
+      }
+
+      if (!existante) {
+        const resultat = await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, 'batiment', ?, ?, ?, ?)`,
+          [titre, message, severite, REFERENCE_BATIMENT, etat.suiviId, etat.echeance]
+        );
+        emitAlert({ id: resultat.lastInsertRowid, title: titre, message, alertType: 'batiment', severity: severite });
+        await notifierEcheanceBatiment(etat);
+      } else {
+        await db.execute(
+          'UPDATE alerts SET title = ?, severity = ?, message = ?, due_date = ?, is_dismissed = 0 WHERE id = ?',
+          [titre, severite, message, etat.echeance, existante.id]
+        );
+      }
+    }
+
+    const gardees = enFenetre.map((e) => e.suiviId);
+    await db.execute(
+      `DELETE FROM alerts WHERE plugin_reference = ?
+        ${gardees.length ? `AND plugin_reference_id NOT IN (${gardees.map(() => '?').join(', ')})` : ''}`,
+      [REFERENCE_BATIMENT, ...gardees]
+    );
+  } catch (error) {
+    // Tables absentes sur une base pas encore migrée : le cron n'a pas à mourir.
+    console.error('Erreur vérification des échéances de bâtiment :', (error as Error).message);
+  }
+}
+
+export default { initCronJobs, checkAlerts, autoBackup, checkOverdueReservations, generateWeeklyReport, verifierManifestations, deposerExportsAutomatiques, verifierEcheancesTickets, verifierEcheancesBatiments };

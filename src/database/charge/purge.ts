@@ -1,5 +1,6 @@
 import { db } from '../index';
 import { definirSuspension, etatSuspension } from '../../services/email.service';
+import { supprimerFichierPrive } from '../../services/batiments.service';
 import { ARTICLES_STOCK } from './manifestations';
 import { DOMAINE_COURRIEL, PREFIXE, PREFIXE_SLUG, tableExiste } from './outils';
 import { CENTRES, PRESTATAIRES, STATIONS } from './vehicules';
@@ -26,6 +27,9 @@ export async function purger(): Promise<Record<string, number>> {
     ['activity_logs', `user_id IN (${UTILISATEURS_GENERES})`],
     ['ticket_categories', `parent_id IS NOT NULL AND created_by IN (${UTILISATEURS_GENERES})`],
     ['objects', `reference LIKE '${PREFIXE}%'`],
+    // Avant les sites : un document tient son bâtiment (`RESTRICT`), et la
+    // suppression des sites échouerait tant qu'il en reste.
+    ['batiment_documents', `site_id IN (SELECT id FROM cle_sites WHERE code LIKE '${PREFIXE}%')`],
     ['cle_sites', `code LIKE '${PREFIXE}%'`],
     ['subcategories', `slug LIKE '${PREFIXE_SLUG}%'`],
     ['categories', `slug LIKE '${PREFIXE_SLUG}%'`],
@@ -36,6 +40,17 @@ export async function purger(): Promise<Record<string, number>> {
     ['control_centers', `name IN (${CENTRES.map(() => '?').join(', ')})`, CENTRES],
   ];
 
+  // Les fichiers des documents de bâtiment purgés : relevés avant, effacés
+  // après la transaction — un fichier effacé ne revient pas si elle échoue.
+  const fichiers: string[] = (await tableExiste('batiment_documents'))
+    ? (
+        await db.query(
+          `SELECT chemin FROM batiment_documents
+            WHERE site_id IN (SELECT id FROM cle_sites WHERE code LIKE '${PREFIXE}%')`
+        )
+      ).map((l: any) => String(l.chemin))
+    : [];
+
   const bilan: Record<string, number> = {};
   await db.transaction(async () => {
     for (const [table, where, params] of etapes) {
@@ -44,6 +59,7 @@ export async function purger(): Promise<Record<string, number>> {
       if (changes > 0) bilan[table] = changes;
     }
   });
+  for (const chemin of fichiers) supprimerFichierPrive(chemin);
 
   // Les envois suspendus par le chargement reprennent avec le départ du jeu ;
   // une suspension décidée par un administrateur, elle, reste.
