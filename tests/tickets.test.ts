@@ -436,6 +436,30 @@ describe('Le fil', () => {
     expect(message.pieces![0].nom).toBe('fuite.jpg');
   });
 
+  it('nomme ce qu’une modification a changé, au lieu d’en montrer l’identifiant', async () => {
+    const id = await creerTicket({ titre: 'Réaffectée', categorieId: CAT_INFO }, SECRETAIRE);
+    await modifierTicket(id, { technicienId: CHEF_TECH, serviceId: SERVICE_TECH, siteId: MAIRIE }, CHEF_INFO);
+
+    const fil = await filUnifie(id, true);
+    const trace = (champ: string) => fil.find((l) => l.action === 'modification' && l.champ === champ)!;
+    expect([trace('technicien').ancienne, trace('technicien').nouvelle]).toEqual(['Ines Info', 'Tom Tech']);
+    expect([trace('service').ancienne, trace('service').nouvelle]).toEqual(['Informatique', 'Technique']);
+    expect([trace('bâtiment').ancienne, trace('bâtiment').nouvelle]).toEqual([null, 'Mairie']);
+  });
+
+  it('garde le numéro d’une référence supprimée depuis, en le disant', async () => {
+    const id = await creerTicket({ titre: 'Technicien parti' }, SECRETAIRE);
+    base
+      .prepare(
+        `INSERT INTO ticket_history (ticket_id, user_id, action, sequence, champ, ancienne_valeur, nouvelle_valeur)
+         VALUES (?, ?, 'modification', 99, 'technicien', '', '999')`
+      )
+      .run(id, CHEF_INFO);
+
+    const fil = await filUnifie(id, true);
+    expect(fil.find((l) => l.champ === 'technicien')!.nouvelle).toBe('n° 999 (supprimé)');
+  });
+
   it('refuse un message vide', async () => {
     const id = await creerTicket({ titre: 'Rien à dire' }, SECRETAIRE);
     await expect(ajouterMessage(id, { body: '  ' }, SECRETAIRE)).rejects.toBeInstanceOf(SaisieInvalide);
