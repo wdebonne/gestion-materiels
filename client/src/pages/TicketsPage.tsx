@@ -13,6 +13,7 @@ import {
   EyeOff,
   ChevronRight,
   Inbox,
+  Hourglass,
 } from 'lucide-react'
 import { ticketApi, ticketReferentielApi, type CategorieDemande, type Ticket } from '@/lib/api'
 import { Badge, Button, Card, CardBody, LoadingInline, Select, Tab, Tabs } from '@/components/ui'
@@ -85,6 +86,8 @@ export default function TicketsPage() {
   const moi = useAuthStore((s) => s.user?.id)
   // « Mes tickets » : ceux qui me sont confiés, dans ce que je vois déjà.
   const technicienId = parametres.get('moi') === '1' && moi ? Number(moi) : null
+  // Les clôtures qui attendent ma validation : un filtre de plus, dans l'URL.
+  const aValider = parametres.get('avalider') === '1' ? true : null
 
   const { data: permissions } = useQuery({
     queryKey: ['tickets', 'permissions'],
@@ -108,8 +111,8 @@ export default function TicketsPage() {
    * (`ticketScope.ts`), pas par un filtre d'écran qu'on pourrait retirer.
    */
   const filtres = useMemo(
-    () => ({ statutId, categorieId, siteId, technicienId, recherche: recherche.trim() || null }),
-    [statutId, categorieId, siteId, technicienId, recherche]
+    () => ({ statutId, categorieId, siteId, technicienId, aValider, recherche: recherche.trim() || null }),
+    [statutId, categorieId, siteId, technicienId, aValider, recherche]
   )
 
   const { data: compteurs } = useQuery({
@@ -167,6 +170,23 @@ export default function TicketsPage() {
               <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 États
               </p>
+              {permissions?.estSuperviseur && (
+                <button
+                  onClick={() => poser('avalider', aValider ? null : '1')}
+                  className={`mb-2 w-full flex items-center justify-between px-2 py-2 rounded-lg text-sm transition ${
+                    aValider
+                      ? 'bg-teal-50 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 font-medium'
+                      : 'hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300'
+                  }`}
+                >
+                  <span className="flex items-center gap-2">
+                    <Hourglass className="w-4 h-4" /> À valider
+                  </span>
+                  <span className={`text-xs ${permissions.aValider > 0 ? 'font-semibold text-teal-700 dark:text-teal-300' : 'text-gray-500'}`}>
+                    {permissions.aValider}
+                  </span>
+                </button>
+              )}
               {permissions?.estIntervenant && (
                 <label className="flex items-center gap-2 px-2 pb-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
                   <input

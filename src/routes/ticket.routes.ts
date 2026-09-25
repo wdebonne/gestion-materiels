@@ -13,6 +13,7 @@ import {
   contexteTickets,
   droitsSurTicket,
   DroitsTicket,
+  type ContexteTickets,
   materielsVisibles,
   porteeTickets,
   MATERIEL_HORS_PORTEE,
@@ -41,6 +42,7 @@ import {
   categoriesProposeesA,
   estViolationCleEtrangere,
   filtreMaterielDe,
+  lireStatut,
   listerStatuts,
   materielAutorisePour,
   materielsDe,
@@ -49,10 +51,18 @@ import {
 import { sitesDe, sitesProposesA } from '../services/sites.service';
 import {
   notifierAffectation,
+  notifierAValider,
   notifierMessage,
   notifierOuverture,
   notifierStatut,
 } from '../services/ticketNotify.service';
+import {
+  lireCloture,
+  refusChangementStatut,
+  renvoyerTicket,
+  terminerTicket,
+  validerTicket,
+} from '../services/ticketsCloture.service';
 import { servicesDe } from '../middleware/ticketScope';
 
 /**
@@ -241,7 +251,22 @@ router.get('/formulaire/materiels', authenticateToken, async (req: AuthRequest, 
 router.get('/permissions', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const ctx = await contexteTickets(req);
-    const niveaux = [...ctx.niveaux].map(([categorieId, niveau]) => ({ categorieId, niveau }));
+    const niveaux = [...ctx.niveaux].map(([categorieId, niveau]) => ({
+      categorieId,
+      niveau,
+      peutCloturer: ctx.autonomie.get(categorieId) !== false,
+    }));
+    const estSuperviseur = ctx.role === 'admin' || ctx.categoriesSupervisees.length > 0;
+
+    // Le compteur de l'onglet « À valider » : ce que je supervise et vois.
+    let aValider = 0;
+    if (estSuperviseur) {
+      aValider = await compterTickets(await porteeTickets(req, 't'), {
+        aValider: true,
+        categoriesSupervisees: categoriesSuperviseesDe(ctx),
+      });
+    }
+
     res.json({
       success: true,
       voitTout: ctx.voitTout,
@@ -253,7 +278,8 @@ router.get('/permissions', authenticateToken, async (req: AuthRequest, res: Resp
         ctx.voitTout ||
         ctx.services.length > 0 ||
         niveaux.some((n) => n.niveau !== 'demandeur'),
-      estSuperviseur: ctx.role === 'admin' || ctx.categoriesSupervisees.length > 0,
+      estSuperviseur,
+      aValider,
     });
   } catch (erreur: any) {
     console.error('Erreur permissions tickets :', erreur);
@@ -317,12 +343,28 @@ router.get('/intervenants', authenticateToken, async (req: AuthRequest, res: Res
 
 // ------------------------------------------------------------------- la file
 
-function filtresDepuis(req: AuthRequest) {
+/** Les catégories, racines et filles, que le lecteur supervise ; `null` pour l'administrateur. */
+function categoriesSuperviseesDe(ctx: ContexteTickets): number[] | null {
+  if (ctx.role === 'admin') return null;
+  const supervisees = new Set(ctx.categoriesSupervisees);
+  return [...ctx.racines].filter(([, r]) => supervisees.has(r)).map(([id]) => id);
+}
+
+async function filtresDepuis(req: AuthRequest, ctx?: ContexteTickets) {
   const nombre = (v: any) => (v === undefined || v === '' ? null : Number(v));
   const ouverts =
     req.query.ouverts === 'true' ? true : req.query.ouverts === 'false' ? false : null;
+  const aValider = req.query.aValider === 'true';
+
+  // « À valider » ne montre que ce que le lecteur supervise : une clôture qu'on
+  // voit sans pouvoir la valider n'a rien à faire dans cette file.
+  const categoriesSupervisees = aValider
+    ? categoriesSuperviseesDe(ctx ?? (await contexteTickets(req)))
+    : null;
 
   return {
+    aValider,
+    categoriesSupervisees,
     statutId: nombre(req.query.statutId),
     categorieId: nombre(req.query.categorieId),
     sousCategorieId: nombre(req.query.sousCategorieId),
@@ -342,7 +384,7 @@ function filtresDepuis(req: AuthRequest) {
 router.get('/compteurs', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const portee = await porteeTickets(req, 't');
-    const filtres = filtresDepuis(req);
+    const filtres = await filtresDepuis(req);
     const [parStatut, total] = await Promise.all([
       compteursParStatut(portee, filtres),
       compterTickets(portee, { ...filtres, statutId: null }),
@@ -358,7 +400,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const ctx = await contexteTickets(req);
     const portee = await porteeTickets(req, 't');
-    const filtres = filtresDepuis(req);
+    const filtres = await filtresDepuis(req, ctx);
 
     const lignes = await listerTickets(portee, filtres);
     const total = await compterTickets(portee, filtres);
@@ -406,7 +448,14 @@ function presenterLigne(l: any, materielsOk: Set<number>, accesComplet: boolean)
     // Le voisinage donne de quoi reconnaître un doublon, pas de quoi lire.
     description: accesComplet ? l.description : null,
     accesComplet,
-    statut: { id: Number(l.statut_id), nom: l.statut_nom, couleur: l.statut_couleur, ouvert: Boolean(l.statut_ouvert) },
+    statut: {
+      id: Number(l.statut_id),
+      nom: l.statut_nom,
+      couleur: l.statut_couleur,
+      ouvert: Boolean(l.statut_ouvert),
+      // « À valider » : résolue par l'agent, en attente de son superviseur.
+      validation: Boolean(Number(l.statut_validation ?? 0)),
+    },
     categorie: l.categorie_id ? { id: Number(l.categorie_id), nom: l.categorie_nom, couleur: l.categorie_couleur } : null,
     sousCategorie: l.sous_categorie_id ? { id: Number(l.sous_categorie_id), nom: l.sous_categorie_nom } : null,
     site: l.site_id ? { id: Number(l.site_id), nom: l.site_nom } : null,
@@ -785,11 +834,15 @@ router.put('/:id/statut', authenticateToken, async (req: AuthRequest, res: Respo
     if (!Number.isFinite(statutId)) return refuser(res, 400, 'Statut manquant');
 
     const avant = await lireTicket(req.params.id);
+    const cible = await lireStatut(statutId);
+    if (!cible) return refuser(res, 400, 'Statut inconnu');
+
     // Le demandeur suit sa demande, il ne la déclare pas résolue : c'était
-    // possible tant que la seule garde était la lecture complète.
-    if (!(await droitsDe(req, avant)).peutChangerStatut) {
-      return refuser(res, 403, 'Seuls les intervenants changent le statut d’une demande');
-    }
+    // possible tant que la seule garde était la lecture complète. Le reste de
+    // la règle — la clôture passe par « Terminer » — est dans le service.
+    const refus = refusChangementStatut(await droitsDe(req, avant), await lireStatut(avant.statut_id), cible);
+    if (refus) return refuser(res, 403, refus);
+
     await changerStatut(Number(req.params.id), statutId, req.user!.userId);
     const apres = await lireTicket(req.params.id);
 
@@ -807,6 +860,168 @@ router.put('/:id/statut', authenticateToken, async (req: AuthRequest, res: Respo
   } catch (erreur: any) {
     if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
     console.error('Erreur changement de statut :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+// ------------------------------------------------------------- la clôture
+
+/** Les renforts d'une saisie, tels que le planning les attend. */
+function participantsDepuis(brut: any): Array<{ userId: number | null; libelle: string | null; minutes: number | null }> {
+  if (!Array.isArray(brut)) return [];
+  return brut.map((p: any) => ({
+    userId: p?.userId === undefined || p?.userId === null || p?.userId === '' ? null : Number(p.userId),
+    libelle: p?.libelle ?? null,
+    minutes: p?.minutes === undefined || p?.minutes === null || p?.minutes === '' ? null : Number(p.minutes),
+  }));
+}
+
+function dureeDepuis(corps: any) {
+  return {
+    jour: String(corps?.jour ?? ''),
+    heureDebut: corps?.heureDebut || null,
+    heureFin: corps?.heureFin || null,
+    minutes: corps?.minutes === undefined || corps?.minutes === null || corps?.minutes === '' ? null : Number(corps.minutes),
+    participants: participantsDepuis(corps?.participants),
+  };
+}
+
+/**
+ * L'intervenant a fini : il dit le temps passé et qui l'a aidé.
+ *
+ * La tâche part au planning ; la demande est résolue si l'agent est autonome
+ * sur la catégorie, sinon elle passe « À valider ». Voir `ticketsCloture`.
+ */
+router.post('/:id/terminer', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const avant = await lireTicket(req.params.id);
+    const droits = await droitsDe(req, avant);
+    if (!droits.peutTerminer) return refuser(res, 403, 'Seuls les intervenants terminent une demande');
+
+    const corps = req.body ?? {};
+    const { statut, tacheId } = await terminerTicket(
+      Number(req.params.id),
+      {
+        ...dureeDepuis(corps),
+        categorieId: corps.categorieId ? Number(corps.categorieId) : null,
+        titulaireId: corps.titulaireId ? Number(corps.titulaireId) : null,
+        commentaire: corps.commentaire ?? null,
+      },
+      { id: Number(req.user!.userId), superviseur: droits.superviseur, autonome: droits.autonome }
+    );
+
+    const apres = await lireTicket(req.params.id);
+    if (corps.commentaire) notifierMessage(Number(req.params.id), req.user!.userId, String(corps.commentaire), false);
+    notifierStatut(Number(req.params.id), req.user!.userId, avant?.statut_nom ?? null, statut.nom, Boolean(apres?.ferme_at));
+    if (statut.validation) notifierAValider(Number(req.params.id), req.user!.userId);
+
+    res.json({ success: true, statut, tacheId, ticket: apres });
+  } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
+    if (estViolationCleEtrangere(erreur)) return refuser(res, 400, REFUS_REFERENCE);
+    console.error('Erreur clôture de demande :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Le superviseur valide la clôture, après avoir corrigé le temps s'il le faut. */
+router.post('/:id/valider', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const avant = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, avant)).peutValider) {
+      return refuser(res, 403, 'Seul un superviseur de la catégorie valide une clôture');
+    }
+
+    const corps = req.body ?? {};
+    const corrections = corps.corrections
+      ? {
+          ...dureeDepuis(corps.corrections),
+          titulaireId: corps.corrections.titulaireId ? Number(corps.corrections.titulaireId) : null,
+        }
+      : null;
+    const statut = await validerTicket(Number(req.params.id), corrections, corps.commentaire ?? null, req.user!.userId);
+
+    if (corps.commentaire) notifierMessage(Number(req.params.id), req.user!.userId, String(corps.commentaire), false);
+    notifierStatut(Number(req.params.id), req.user!.userId, avant?.statut_nom ?? null, statut.nom, true);
+
+    res.json({ success: true, statut, ticket: await lireTicket(req.params.id) });
+  } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
+    console.error('Erreur validation de clôture :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Le superviseur renvoie la demande à l'agent, avec ce qui reste à faire. */
+router.post('/:id/renvoyer', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const avant = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, avant)).peutValider) {
+      return refuser(res, 403, 'Seul un superviseur de la catégorie renvoie une clôture');
+    }
+
+    const motif = String(req.body?.motif ?? '');
+    const statut = await renvoyerTicket(Number(req.params.id), motif, req.user!.userId);
+
+    notifierMessage(Number(req.params.id), req.user!.userId, motif, false);
+    notifierStatut(Number(req.params.id), req.user!.userId, avant?.statut_nom ?? null, statut.nom, false);
+
+    res.json({ success: true, statut, ticket: await lireTicket(req.params.id) });
+  } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
+    console.error('Erreur renvoi de clôture :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Le temps passé sur la demande, et la tâche de sa dernière clôture. */
+router.get('/:id/cloture', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const ligne = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, ligne)).intervenant) return refuser(res, 403, 'Réservé aux intervenants');
+    res.json({ success: true, ...(await lireCloture(Number(req.params.id))) });
+  } catch (erreur: any) {
+    console.error('Erreur lecture de clôture :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Qui peut figurer parmi les renforts d'une clôture.
+ *
+ * Les personnes qui interviennent quelque part — un niveau d'intervenant, un
+ * service, un rôle de terrain — et pas l'annuaire entier : `/users/annuaire`
+ * est réservé au terrain et refuserait un référent de rôle `user`. Un renfort
+ * extérieur se saisit en libellé, comme au planning.
+ */
+router.get('/:id/renforts-possibles', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const ligne = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, ligne)).intervenant) return refuser(res, 403, 'Réservé aux intervenants');
+
+    const personnes = await db.query(
+      `SELECT u.id, u.first_name, u.last_name, u.email
+         FROM users u
+        WHERE u.is_active = 1
+          AND (u.role IN ('admin', 'supervisor', 'agent')
+               OR u.id IN (SELECT user_id FROM service_members)
+               OR u.id IN (SELECT user_id FROM user_ticket_categories WHERE niveau <> 'demandeur'))
+        ORDER BY u.last_name ASC, u.first_name ASC`
+    );
+    res.json({
+      success: true,
+      personnes: personnes.map((p: any) => ({
+        id: Number(p.id),
+        nom: [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || p.email,
+      })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur renforts possibles :', erreur);
     refuser(res, 500, 'Erreur serveur');
   }
 });

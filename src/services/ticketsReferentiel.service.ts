@@ -42,6 +42,8 @@ export interface Statut {
   defaut: boolean;
   final: boolean;
   systeme: boolean;
+  /** « À valider » : résolue par un agent, en attente de son superviseur. */
+  validation: boolean;
   actif: boolean;
 }
 
@@ -57,6 +59,7 @@ function enStatut(l: any): Statut {
     defaut: Boolean(l.is_defaut),
     final: Boolean(l.is_final),
     systeme: Boolean(l.is_systeme),
+    validation: Boolean(l.is_validation),
     actif: Boolean(l.is_active),
   };
 }
@@ -89,6 +92,44 @@ export async function statutParDefaut(): Promise<Statut | null> {
     (await db.queryOne('SELECT * FROM ticket_statuts WHERE is_ouvert = 1 AND is_active = 1 ORDER BY ordre ASC')) ??
     (await db.queryOne('SELECT * FROM ticket_statuts ORDER BY ordre ASC'));
   return l ? enStatut(l) : null;
+}
+
+/**
+ * Les trois statuts dont la clôture a besoin, repérés par leurs drapeaux.
+ *
+ * Jamais par leur nom : la commune renomme « Résolu » en « Terminé » si elle
+ * veut. Chacun a un repli, pour qu'une base réglée à la main — un drapeau
+ * décoché par mégarde — ne bloque pas la clôture.
+ */
+export async function statutValidation(): Promise<Statut | null> {
+  const l = await db.queryOne(
+    'SELECT * FROM ticket_statuts WHERE is_validation = 1 AND is_active = 1 ORDER BY ordre ASC, id ASC'
+  );
+  return l ? enStatut(l) : null;
+}
+
+/** Le statut qui clôt une demande traitée : final, système, et pas « À valider ». */
+export async function statutResolution(): Promise<Statut | null> {
+  const l =
+    (await db.queryOne(
+      `SELECT * FROM ticket_statuts
+        WHERE is_final = 1 AND is_systeme = 1 AND is_validation = 0 AND is_active = 1
+        ORDER BY ordre ASC, id ASC`
+    )) ??
+    (await db.queryOne(
+      'SELECT * FROM ticket_statuts WHERE is_final = 1 AND is_validation = 0 ORDER BY ordre ASC, id ASC'
+    ));
+  return l ? enStatut(l) : null;
+}
+
+/** Où repart une demande renvoyée à l'agent : le premier état ouvert après l'ouverture. */
+export async function statutReprise(): Promise<Statut | null> {
+  const l = await db.queryOne(
+    `SELECT * FROM ticket_statuts
+      WHERE is_ouvert = 1 AND is_defaut = 0 AND is_validation = 0 AND is_active = 1
+      ORDER BY ordre ASC, id ASC`
+  );
+  return l ? enStatut(l) : statutParDefaut();
 }
 
 /** Combien de demandes portent ce statut — une suppression le regarde. */

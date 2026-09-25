@@ -2505,6 +2505,8 @@ export interface StatutTicket {
   defaut: boolean
   final: boolean
   systeme: boolean
+  /** « À valider » : on y arrive par *Terminer*, jamais par le sélecteur. */
+  validation?: boolean
   actif: boolean
 }
 
@@ -2561,7 +2563,8 @@ export interface Ticket {
   description: string | null
   /** Faux quand la demande n'est visible qu'au titre du bâtiment. */
   accesComplet: boolean
-  statut: { id: number; nom: string; couleur: string | null; ouvert: boolean }
+  /** `validation` : « À valider », résolue par un agent et en attente de son superviseur. */
+  statut: { id: number; nom: string; couleur: string | null; ouvert: boolean; validation?: boolean }
   categorie: { id: number; nom: string; couleur: string | null } | null
   sousCategorie: { id: number; nom: string } | null
   site: { id: number; nom: string } | null
@@ -2589,6 +2592,8 @@ export interface FiltresTickets {
   demandeurId?: number | null
   objectId?: number | null
   ouverts?: boolean | null
+  /** Les clôtures qui attendent ma validation. */
+  aValider?: boolean | null
   recherche?: string | null
   limite?: number
   depuis?: number
@@ -2622,7 +2627,28 @@ export interface DroitsTicket {
   niveau: NiveauTicket | null
   intervenant: boolean
   superviseur: boolean
+  /** Sa clôture est définitive ; sinon elle passe « À valider ». */
+  autonome: boolean
   peutChangerStatut: boolean
+  peutTerminer: boolean
+  peutValider: boolean
+}
+
+/** Une durée saisie : des horaires, ou des minutes, et les renforts. */
+export interface SaisieDureeTicket {
+  jour: string
+  heureDebut?: string | null
+  heureFin?: string | null
+  minutes?: number | null
+  participants?: { userId: number | null; libelle: string | null; minutes: number | null }[]
+  titulaireId?: number | null
+}
+
+/** Le temps passé sur une demande, lu au planning. */
+export interface ClotureTicket {
+  tacheCloture: TachePlanning | null
+  taches: TachePlanning[]
+  minutes: number
 }
 
 export const ticketApi = {
@@ -2632,9 +2658,11 @@ export const ticketApi = {
       voitTout: boolean
       services: number[]
       sitesPartages: number[]
-      niveaux: { categorieId: number; niveau: NiveauTicket }[]
+      niveaux: { categorieId: number; niveau: NiveauTicket; peutCloturer: boolean }[]
       estIntervenant: boolean
       estSuperviseur: boolean
+      /** Les clôtures qui attendent ma validation. */
+      aValider: number
     }>('/tickets/permissions'),
 
   /** À qui l'on peut confier une demande de cette catégorie. */
@@ -2705,6 +2733,19 @@ export const ticketApi = {
     api.put<{ success: boolean }>(`/tickets/${id}`, data),
   changerStatut: (id: number, statutId: number) =>
     api.put<{ success: boolean }>(`/tickets/${id}/statut`, { statutId }),
+
+  /** Clore en disant le temps passé et qui a aidé : la tâche part au planning. */
+  terminer: (id: number, data: SaisieDureeTicket & { categorieId?: number | null; commentaire?: string | null }) =>
+    api.post<{ success: boolean; statut: StatutTicket; tacheId: number }>(`/tickets/${id}/terminer`, data),
+  /** Le superviseur valide, après avoir corrigé le temps s'il le faut. */
+  valider: (id: number, data: { corrections?: SaisieDureeTicket | null; commentaire?: string | null }) =>
+    api.post<{ success: boolean; statut: StatutTicket }>(`/tickets/${id}/valider`, data),
+  renvoyer: (id: number, motif: string) =>
+    api.post<{ success: boolean; statut: StatutTicket }>(`/tickets/${id}/renvoyer`, { motif }),
+  cloture: (id: number | string) =>
+    api.get<{ success: boolean } & ClotureTicket>(`/tickets/${id}/cloture`),
+  renfortsPossibles: (id: number | string) =>
+    api.get<{ success: boolean; personnes: { id: number; nom: string }[] }>(`/tickets/${id}/renforts-possibles`),
   supprimer: (id: number) => api.delete<{ success: boolean }>(`/tickets/${id}`),
 
   fil: (id: number | string) => api.get<{ success: boolean; fil: LigneFilTicket[] }>(`/tickets/${id}/fil`),
@@ -2768,7 +2809,12 @@ export const ticketReferentielApi = {
     api.get<{
       success: boolean
       sites: RattachementSite[]
-      categories: { categorieId: number; niveau: NiveauTicket; materielAutorise: boolean | null }[]
+      categories: {
+        categorieId: number
+        niveau: NiveauTicket
+        peutCloturer: boolean
+        materielAutorise: boolean | null
+      }[]
       materiels: { objectId: number; nom: string; reference: string | null }[]
     }>(`/tickets/referentiel/utilisateurs/${userId}`),
   definirRattachements: (userId: number, data: Record<string, unknown>) =>

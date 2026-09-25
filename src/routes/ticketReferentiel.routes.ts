@@ -128,10 +128,17 @@ router.put('/statuts/:id', authenticateToken, requireSupervisor, async (req: Aut
     if (req.body?.couleur !== undefined) poser('couleur', req.body.couleur);
     if (req.body?.icone !== undefined) poser('icone', req.body.icone);
     if (req.body?.ordre !== undefined) poser('ordre', entierOuNull(req.body.ordre) ?? 0);
-    if (req.body?.actif !== undefined) poser('is_active', req.body.actif ? 1 : 0);
-    if (req.body?.ouvert !== undefined) poser('is_ouvert', req.body.ouvert ? 1 : 0);
-    if (req.body?.defaut !== undefined) poser('is_defaut', req.body.defaut ? 1 : 0);
-    if (req.body?.final !== undefined) poser('is_final', req.body.final ? 1 : 0);
+    // « À valider » se renomme et se recolore, mais son sens ne se règle pas :
+    // ouvert, il retournerait dans la file des techniciens ; final, il
+    // clôturerait sans validation ; désactivé, les agents non autonomes ne
+    // pourraient plus terminer. Voir la migration 046.
+    const validation = Boolean(Number(statut.is_validation ?? 0));
+    if (!validation) {
+      if (req.body?.actif !== undefined) poser('is_active', req.body.actif ? 1 : 0);
+      if (req.body?.ouvert !== undefined) poser('is_ouvert', req.body.ouvert ? 1 : 0);
+      if (req.body?.defaut !== undefined) poser('is_defaut', req.body.defaut ? 1 : 0);
+      if (req.body?.final !== undefined) poser('is_final', req.body.final ? 1 : 0);
+    }
 
     if (colonnes.length === 0) return res.json({ success: true });
 
@@ -434,6 +441,7 @@ router.get('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
       categories: categories.map((c: any) => ({
         categorieId: Number(c.ticket_categorie_id),
         niveau: estNiveauTicket(c.niveau) ? c.niveau : 'demandeur',
+        peutCloturer: c.peut_cloturer === undefined || c.peut_cloturer === null || Boolean(Number(c.peut_cloturer)),
         materielAutorise:
           c.materiel_autorise === null || c.materiel_autorise === undefined
             ? null
@@ -481,7 +489,10 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
           l.parent_id === null ? null : Number(l.parent_id),
         ])
       );
-      const parRacine = new Map<number, { niveau: NiveauTicket; materielAutorise: number | null }>();
+      const parRacine = new Map<
+        number,
+        { niveau: NiveauTicket; peutCloturer: number; materielAutorise: number | null }
+      >();
       for (const c of req.body.categories) {
         const categorieId = entierOuNull(c?.categorieId);
         if (categorieId === null || !parents.has(categorieId)) continue;
@@ -491,6 +502,8 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
         if (deja && NIVEAUX_TICKET.indexOf(deja.niveau) >= NIVEAUX_TICKET.indexOf(niveau)) continue;
         parRacine.set(racine, {
           niveau,
+          // Autonome par défaut : c'est ce que tout le monde était avant la 046.
+          peutCloturer: c?.peutCloturer === false ? 0 : 1,
           // `null` veut dire « ce que la catégorie a décidé ».
           materielAutorise:
             c?.materielAutorise === null || c?.materielAutorise === undefined
@@ -502,12 +515,12 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
       }
 
       await db.execute('DELETE FROM user_ticket_categories WHERE user_id = ?', [userId]);
-      for (const [racine, { niveau, materielAutorise }] of parRacine) {
+      for (const [racine, { niveau, peutCloturer, materielAutorise }] of parRacine) {
         await db.execute(
           `INSERT INTO user_ticket_categories
-             (user_id, ticket_categorie_id, niveau, materiel_autorise, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?)`,
-          [userId, racine, niveau, materielAutorise, req.user!.userId, versDateTime()]
+             (user_id, ticket_categorie_id, niveau, peut_cloturer, materiel_autorise, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          [userId, racine, niveau, peutCloturer, materielAutorise, req.user!.userId, versDateTime()]
         );
       }
     }

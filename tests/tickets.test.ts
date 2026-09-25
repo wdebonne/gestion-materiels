@@ -46,6 +46,8 @@ jest.mock('../src/database', () => {
 
 import migration032 from '../src/database/migrations/032_tickets';
 import migration035 from '../src/database/migrations/035_tickets_rattachements';
+import migration045 from '../src/database/migrations/045_tickets_niveaux';
+import migration046 from '../src/database/migrations/046_tickets_cloture';
 import type { ContexteMigration } from '../src/database/migrations/types';
 import {
   ajouterMessage,
@@ -121,6 +123,8 @@ beforeAll(async () => {
 
   await migration032.up(ctx);
   await migration035.up(ctx);
+  await migration045.up(ctx);
+  await migration046.up(ctx);
 
   base.exec(`
     INSERT INTO users (id, email, first_name, last_name, role) VALUES

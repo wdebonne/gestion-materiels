@@ -101,6 +101,8 @@ export interface ContexteTickets {
   niveaux: Map<number, NiveauTicket>;
   /** Racine de chaque catégorie — racines et filles — où j'ai un niveau. */
   racines: Map<number, number>;
+  /** Par racine : puis-je clore seul, ou ma clôture attend-elle un superviseur ? */
+  autonomie: Map<number, boolean>;
   /**
    * Catégories, racines et filles, dont je vois toutes les demandes :
    * `intervenant_categorie` ou `superviseur` sur la racine.
@@ -170,11 +172,15 @@ export async function sitesPartagesDe(userId: number): Promise<number[]> {
  * sous-catégorie — l'écran ne le fait pas, un import pourrait — compte pour sa
  * racine ; deux lignes sur la même racine, c'est la plus haute qui vaut.
  */
-export async function niveauxDe(
-  userId: number
-): Promise<{ niveaux: Map<number, NiveauTicket>; racines: Map<number, number> }> {
+export async function niveauxDe(userId: number): Promise<{
+  niveaux: Map<number, NiveauTicket>;
+  racines: Map<number, number>;
+  autonomie: Map<number, boolean>;
+}> {
+  // `utc.*` plutôt que la liste des colonnes : `peut_cloturer` n'existe
+  // qu'après la migration 046, et son absence vaut « autonome ».
   const lignes = await db.query(
-    `SELECT utc.niveau, tc.id, tc.parent_id
+    `SELECT utc.*, tc.id AS categorie_id, tc.parent_id AS categorie_parent_id
        FROM user_ticket_categories utc
        JOIN ticket_categories tc ON tc.id = utc.ticket_categorie_id
       WHERE utc.user_id = ?`,
@@ -182,10 +188,14 @@ export async function niveauxDe(
   );
 
   const niveaux = new Map<number, NiveauTicket>();
+  const autonomie = new Map<number, boolean>();
   for (const l of lignes) {
-    const racine = l.parent_id ? Number(l.parent_id) : Number(l.id);
+    const racine = l.categorie_parent_id ? Number(l.categorie_parent_id) : Number(l.categorie_id);
     const niveau: NiveauTicket = estNiveauTicket(l.niveau) ? l.niveau : 'demandeur';
-    if (rang(niveau) > rang(niveaux.get(racine))) niveaux.set(racine, niveau);
+    if (rang(niveau) > rang(niveaux.get(racine))) {
+      niveaux.set(racine, niveau);
+      autonomie.set(racine, l.peut_cloturer === undefined || l.peut_cloturer === null || Boolean(Number(l.peut_cloturer)));
+    }
   }
 
   const racines = new Map<number, number>();
@@ -200,7 +210,7 @@ export async function niveauxDe(
       racines.set(Number(c.id), c.parent_id ? Number(c.parent_id) : Number(c.id));
     }
   }
-  return { niveaux, racines };
+  return { niveaux, racines, autonomie };
 }
 
 /** Tout ce qu'il faut savoir du demandeur pour décider de ce qu'il voit. */
@@ -208,7 +218,7 @@ export async function contexteTickets(req: AuthRequest): Promise<ContexteTickets
   const moi = Number(req.user!.userId);
   const role = String(req.user!.role);
 
-  const [voitTout, encadres, services, sitesPartages, { niveaux, racines }] = await Promise.all([
+  const [voitTout, encadres, services, sitesPartages, { niveaux, racines, autonomie }] = await Promise.all([
     voitToutLesTickets(moi, role),
     agentsDe(moi),
     servicesDe(moi),
@@ -232,6 +242,7 @@ export async function contexteTickets(req: AuthRequest): Promise<ContexteTickets
     sitesPartages,
     niveaux,
     racines,
+    autonomie,
     categoriesCompletes: [...racines].filter(([, r]) => racinesCompletes.has(r)).map(([id]) => id),
     categoriesSupervisees: [...niveaux].filter(([, n]) => n === 'superviseur').map(([r]) => r),
     modeFin: [...niveaux.values()].some((n) => n !== 'demandeur'),
@@ -377,7 +388,13 @@ export interface DroitsTicket {
   intervenant: boolean;
   /** Elle encadre la catégorie : valide ce que les agents clôturent. */
   superviseur: boolean;
+  /** Sa clôture est définitive ; sinon, elle passe « À valider ». */
+  autonome: boolean;
   peutChangerStatut: boolean;
+  /** Clore en disant le temps passé et qui a aidé. */
+  peutTerminer: boolean;
+  /** Relire, corriger et valider — ou renvoyer — une clôture « À valider ». */
+  peutValider: boolean;
 }
 
 /**
@@ -398,6 +415,11 @@ export interface DroitsTicket {
  *   - sans niveau au-dessus de `demandeur`, l'ancienne règle : un membre du
  *     service de la demande intervient ;
  *   - le droit de tout voir, accordé par module, vaut intervenant, comme avant.
+ *
+ * L'autonomie se lit sur la racine (`peut_cloturer`, migration 046) et ne
+ * concerne que les intervenants : un superviseur valide son propre travail, et
+ * qui intervient sans niveau fin — par son service, par une affectation — clôt
+ * comme il l'a toujours fait.
  */
 export function droitsSurTicket(
   ctx: ContexteTickets,
@@ -407,7 +429,15 @@ export function droitsSurTicket(
   const niveau = racine !== null ? ctx.niveaux.get(racine) ?? null : null;
 
   if (ctx.role === 'admin') {
-    return { niveau, intervenant: true, superviseur: true, peutChangerStatut: true };
+    return {
+      niveau,
+      intervenant: true,
+      superviseur: true,
+      autonome: true,
+      peutChangerStatut: true,
+      peutTerminer: true,
+      peutValider: true,
+    };
   }
 
   const superviseur = niveau === 'superviseur';
@@ -424,7 +454,20 @@ export function droitsSurTicket(
   const intervenant =
     superviseur || niveau === 'intervenant_categorie' || confiee || parSonService || ctx.voitTout;
 
-  return { niveau, intervenant, superviseur, peutChangerStatut: intervenant };
+  const autonome =
+    superviseur ||
+    !(niveau === 'intervenant' || niveau === 'intervenant_categorie') ||
+    ctx.autonomie.get(racine!) !== false;
+
+  return {
+    niveau,
+    intervenant,
+    superviseur,
+    autonome,
+    peutChangerStatut: intervenant,
+    peutTerminer: intervenant,
+    peutValider: superviseur,
+  };
 }
 
 /**

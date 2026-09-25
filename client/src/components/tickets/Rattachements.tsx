@@ -309,7 +309,12 @@ function FicheRattachement({
     queryFn: async () => (await api.get('/objects?limit=500')).data,
   })
 
-  type LigneCategorie = { categorieId: number; niveau: NiveauTicket; materielAutorise: boolean | null }
+  type LigneCategorie = {
+    categorieId: number
+    niveau: NiveauTicket
+    peutCloturer: boolean
+    materielAutorise: boolean | null
+  }
   const [lignesCategories, setLignesCategories] = useState<LigneCategorie[] | null>(null)
   const [rattachements, setRattachements] = useState<RattachementSite[] | null>(null)
   const [materiels, setMateriels] = useState<Array<{ objectId: number; nom: string }> | null>(null)
@@ -390,7 +395,7 @@ function FicheRattachement({
                           setLignesCategories(
                             active
                               ? mesLignes.filter((l) => l.categorieId !== c.id)
-                              : [...mesLignes, { categorieId: c.id, niveau: 'demandeur', materielAutorise: null }]
+                              : [...mesLignes, { categorieId: c.id, niveau: 'demandeur', peutCloturer: true, materielAutorise: null }]
                           )
                         }
                         className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition ${
@@ -421,6 +426,28 @@ function FicheRattachement({
                             </option>
                           ))}
                         </select>
+                      )}
+                      {/* L'autonomie ne concerne que qui intervient : un
+                          superviseur valide son propre travail. */}
+                      {ligne && (ligne.niveau === 'intervenant' || ligne.niveau === 'intervenant_categorie') && (
+                        <label
+                          className="inline-flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300"
+                          title="Décoché : ses clôtures passent « À valider » chez un superviseur de la catégorie"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={ligne.peutCloturer}
+                            onChange={(e) =>
+                              setLignesCategories(
+                                mesLignes.map((l) =>
+                                  l.categorieId === c.id ? { ...l, peutCloturer: e.target.checked } : l
+                                )
+                              )
+                            }
+                            className="rounded border-gray-300"
+                          />
+                          Clôture seul
+                        </label>
                       )}
                     </div>
                   )

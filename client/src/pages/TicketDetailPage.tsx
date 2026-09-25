@@ -15,6 +15,9 @@ import {
   Clock,
   Trash2,
   Eye,
+  CheckCircle2,
+  Hourglass,
+  Timer,
 } from 'lucide-react'
 import {
   ticketApi,
@@ -31,6 +34,8 @@ import {
   TextArea,
 } from '@/components/ui'
 import FileUpload, { type UploadedFile } from '@/components/ui/FileUpload'
+import TerminerTicket from '@/components/tickets/TerminerTicket'
+import { formaterDuree, jourEnFrancais } from '@/lib/duree'
 
 /**
  * La fiche d'une demande.
@@ -97,6 +102,7 @@ export default function TicketDetailPage() {
   const [message, setMessage] = useState('')
   const [interne, setInterne] = useState(false)
   const [pieces, setPieces] = useState<UploadedFile[]>([])
+  const [cloture, setCloture] = useState<null | 'terminer' | 'valider'>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['tickets', 'fiche', id],
@@ -152,6 +158,13 @@ export default function TicketDetailPage() {
       toast.error(erreur?.response?.data?.message ?? 'La demande n’a pas pu être réaffectée'),
   })
 
+  // Le temps passé, lu au planning : c'est là qu'il vit, pas sur la demande.
+  const { data: temps } = useQuery({
+    queryKey: ['tickets', 'cloture', Number(id)],
+    queryFn: async () => (await ticketApi.cloture(id!)).data,
+    enabled: Boolean(data?.droits?.intervenant),
+  })
+
   const changementStatut = useMutation({
     mutationFn: (statutId: number) => ticketApi.changerStatut(Number(id), statutId),
     onSuccess: () => {
@@ -172,6 +185,23 @@ export default function TicketDetailPage() {
   }
 
   const t = data.ticket
+  const droits = data.droits
+  const statutActuel = referentiel?.statuts.find((s) => s.id === t.statut.id)
+  const enValidation = Boolean(t.statut.validation)
+  const close = Boolean(statutActuel?.final)
+
+  /*
+   * Les états que le sélecteur propose : ceux que le serveur accepterait.
+   * « À valider » n'y figure jamais — on y arrive par *Terminer* — et la
+   * résolution sans temps passé reste au superviseur.
+   */
+  const statutsProposes = (referentiel?.statuts ?? []).filter((s) => {
+    if (s.id === t.statut.id) return true
+    if (s.validation) return false
+    if (s.final && s.systeme && !droits?.superviseur) return false
+    if (s.final && !droits?.superviseur && !droits?.autonome) return false
+    return true
+  })
 
   return (
     <div className="space-y-6">
@@ -251,12 +281,12 @@ export default function TicketDetailPage() {
                 Le demandeur suit sa demande, il ne la déclare pas résolue :
                 le serveur refuse, l'écran ne propose donc pas.
               */}
-              {data.droits?.peutChangerStatut ? (
+              {droits?.peutChangerStatut && (!enValidation || droits.peutValider) ? (
                 <Select
                   label="Statut"
                   value={t.statut.id}
                   onChange={(e: any) => changementStatut.mutate(Number(e.target.value))}
-                  options={(referentiel?.statuts ?? []).map((s) => ({
+                  options={statutsProposes.map((s) => ({
                     value: String(s.id),
                     label: s.nom,
                   }))}
@@ -264,8 +294,20 @@ export default function TicketDetailPage() {
               ) : (
                 <div>
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Statut</p>
-                  <Badge variant="default">{t.statut.nom}</Badge>
+                  <Badge variant="default">
+                    {/* Pour le demandeur, c'est réglé : la relecture est interne. */}
+                    {enValidation && !droits?.intervenant ? 'Résolue — en cours de validation' : t.statut.nom}
+                  </Badge>
                 </div>
+              )}
+              {droits?.peutTerminer && !enValidation && !close && (
+                <Button
+                  className="w-full"
+                  icon={<CheckCircle2 className="w-4 h-4" />}
+                  onClick={() => setCloture('terminer')}
+                >
+                  Terminer
+                </Button>
               )}
               {peutReaffecter && (
                 <Select
@@ -298,6 +340,73 @@ export default function TicketDetailPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* ------------------------------------------------------ à valider */}
+      {enValidation && droits?.intervenant && (
+        <Card>
+          <CardBody className="flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
+            <Hourglass className="w-5 h-5 shrink-0 text-teal-600" />
+            <p className="flex-1 text-gray-700 dark:text-gray-300">
+              {droits.peutValider
+                ? 'Un agent a terminé cette demande : relisez le temps passé et les personnes qui ont travaillé, puis validez.'
+                : 'Terminée, cette demande attend la validation d’un superviseur de la catégorie.'}
+            </p>
+            {droits.peutValider && (
+              <Button icon={<CheckCircle2 className="w-4 h-4" />} onClick={() => setCloture('valider')}>
+                Contrôler et valider
+              </Button>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* ---------------------------------------------------- temps passé */}
+      {temps && temps.taches.length > 0 && (
+        <Card>
+          <CardBody className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+                <Timer className="w-4 h-4" /> Temps passé
+              </h2>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                {formaterDuree(temps.minutes)}
+              </span>
+            </div>
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700 text-sm">
+              {temps.taches.map((tache) => (
+                <li key={tache.id} className="py-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {jourEnFrancais(tache.jour, { day: 'numeric', month: 'long' })} — {tache.titulaire.nom}
+                    {tache.participants.length > 0 && (
+                      <span className="text-gray-500">
+                        {' '}avec{' '}
+                        {tache.participants
+                          .map((p) => `${p.personne?.nom ?? p.libelle} (${formaterDuree(p.minutes)})`)
+                          .join(', ')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-gray-500">
+                    {formaterDuree(tache.minutes)}
+                    {tache.minutesMobilisees !== tache.minutes &&
+                      ` · ${formaterDuree(tache.minutesMobilisees)} mobilisées`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {cloture && droits && (
+        <TerminerTicket
+          ticket={t}
+          droits={droits}
+          mode={cloture}
+          ouvert
+          onClose={() => setCloture(null)}
+        />
+      )}
 
       {/* Visible au titre du bâtiment : on explique pourquoi c'est amputé. */}
       {data.acces === 'voisinage' && (

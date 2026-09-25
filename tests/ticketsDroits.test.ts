@@ -64,6 +64,7 @@ jest.mock('../src/middleware/auth.middleware', () => ({
 import migration032 from '../src/database/migrations/032_tickets';
 import migration035 from '../src/database/migrations/035_tickets_rattachements';
 import migration045 from '../src/database/migrations/045_tickets_niveaux';
+import migration046 from '../src/database/migrations/046_tickets_cloture';
 import type { ContexteMigration } from '../src/database/migrations/types';
 import ticketRoutes from '../src/routes/ticket.routes';
 
@@ -205,6 +206,7 @@ beforeAll(async () => {
   `);
 
   await migration045.up(ctx);
+  await migration046.up(ctx);
 });
 
 describe('Le rattrapage de la migration 045', () => {
@@ -315,7 +317,7 @@ describe('Les gardes des routes', () => {
     const res = await request(app).get('/api/tickets/permissions');
     expect(res.body.estSuperviseur).toBe(true);
     expect(res.body.niveaux).toEqual(
-      expect.arrayContaining([{ categorieId: CAT_BATIMENT, niveau: 'superviseur' }])
+      expect.arrayContaining([expect.objectContaining({ categorieId: CAT_BATIMENT, niveau: 'superviseur' })])
     );
   });
 });

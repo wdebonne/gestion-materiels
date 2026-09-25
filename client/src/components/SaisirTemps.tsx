@@ -1,11 +1,19 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Clock, Plus, UserPlus, Users, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { Button, Input, Modal, ModalBody, ModalFooter, ReferenceSelect, Select, TextArea } from '@/components/ui'
+import { Button, Modal, ModalBody, ModalFooter, ReferenceSelect, Select, TextArea } from '@/components/ui'
 import api, { CategorieTemps, TachePlanning, planningApi } from '@/lib/api'
-import { ajouterMinutes, decalerJours, formaterDuree, jourCourant, jourEnFrancais, minutesEntre } from '@/lib/duree'
-import { cn } from '@/lib/utils'
+import { jourCourant } from '@/lib/duree'
+import {
+  ChampsQuand,
+  RenfortsEditor,
+  TotalTemps,
+  dureeEntre,
+  participantsDepuis,
+  renfortsComplets,
+  renfortsDepuis,
+  type RenfortSaisi,
+} from '@/components/temps/SaisieDuree'
 
 /**
  * Déclarer du temps passé.
@@ -19,23 +27,10 @@ import { cn } from '@/lib/utils'
  * Les deux endroits où une saisie se trompe sans bruit sont signalés en clair :
  * une fin antérieure au début annonce « se termine le lendemain », et le total
  * mobilisé se distingue du temps personnel dès qu'un renfort est ajouté.
+ *
+ * Le quand, les renforts et le total viennent de `temps/SaisieDuree` : la
+ * clôture d'une demande les emploie aussi.
  */
-
-interface RenfortSaisi {
-  /** Identifiant local, pour distinguer deux lignes encore vides. */
-  cle: number
-  /**
-   * Le renfort est-il quelqu'un de l'annuaire ?
-   *
-   * Porté explicitement plutôt que déduit de `userId === null`, qui
-   * confondrait « pas encore choisi » et « volontairement anonyme » : une
-   * ligne « collègue » fraîchement ajoutée a les deux champs vides.
-   */
-  nomme: boolean
-  userId: number | null
-  libelle: string
-  minutes: number | null
-}
 
 interface SaisirTempsProps {
   ouvert: boolean
@@ -49,8 +44,6 @@ interface SaisirTempsProps {
   /** Les personnes pour qui l'on a le droit de saisir. Une seule = pas de choix. */
   titulairesPossibles?: { id: number; nom: string }[]
 }
-
-const DUREES_RAPIDES = [30, 60, 120, 240]
 
 export default function SaisirTemps({
   ouvert,
@@ -120,15 +113,7 @@ export default function SaisirTemps({
       setManifestationId(tache.manifestation ? String(tache.manifestation.id) : '')
       setTicketId(tache.ticket ? String(tache.ticket.id) : '')
       setPour(tache.titulaire.id)
-      setRenforts(
-        tache.participants.map((p, index) => ({
-          cle: index,
-          nomme: Boolean(p.personne),
-          userId: p.personne?.id ?? null,
-          libelle: p.libelle ?? '',
-          minutes: p.minutes,
-        }))
-      )
+      setRenforts(renfortsDepuis(tache.participants))
     } else {
       setJour(jourInitial ?? jourCourant())
       setHeureDebut('')
@@ -136,27 +121,15 @@ export default function SaisirTemps({
       setCategorie('')
       setDescription('')
       setManifestationId('')
+      // Sans quoi la demande de la saisie précédente restait rattachée à la
+      // nouvelle, sans que rien à l'écran ne le laisse deviner.
+      setTicketId('')
       setPour(titulaireId)
       setRenforts([])
     }
   }, [ouvert, tache, jourInitial, titulaireId])
 
-  /** La durée du titulaire, ou `null` tant que la saisie ne permet pas de la dire. */
-  const minutes = useMemo(() => {
-    if (!heureDebut || !heureFin) return null
-    try {
-      return minutesEntre(heureDebut, heureFin)
-    } catch {
-      return null
-    }
-  }, [heureDebut, heureFin])
-
-  const franchitMinuit = Boolean(heureDebut && heureFin && heureFin < heureDebut)
-
-  const minutesMobilisees = useMemo(() => {
-    if (minutes == null) return null
-    return renforts.reduce((total, r) => total + (r.minutes ?? minutes), minutes)
-  }, [minutes, renforts])
+  const minutes = useMemo(() => dureeEntre(heureDebut, heureFin), [heureDebut, heureFin])
 
   const optionsAnnuaire = useMemo(
     () =>
@@ -181,11 +154,7 @@ export default function SaisirTemps({
         manifestationId: manifestationId ? Number(manifestationId) : null,
         ticketId: ticketId ? Number(ticketId) : null,
         description: description.trim() || null,
-        participants: renforts.map((r) => ({
-          userId: r.nomme ? r.userId : null,
-          libelle: r.nomme ? null : r.libelle.trim(),
-          minutes: r.minutes ?? minutes,
-        })),
+        participants: participantsDepuis(renforts, minutes),
       }
       return tache
         ? planningApi.modifierTache(tache.id, corps)
@@ -203,17 +172,7 @@ export default function SaisirTemps({
     },
   })
 
-  const ajouterRenfort = (nomme: boolean) =>
-    setRenforts((liste) => [
-      ...liste,
-      { cle: Date.now() + liste.length, nomme, userId: null, libelle: '', minutes: null },
-    ])
-
-  const majRenfort = (cle: number, champs: Partial<RenfortSaisi>) =>
-    setRenforts((liste) => liste.map((r) => (r.cle === cle ? { ...r, ...champs } : r)))
-
-  const renfortsComplets = renforts.every((r) => (r.nomme ? r.userId != null : r.libelle.trim().length > 0))
-  const valide = Boolean(jour && heureDebut && heureFin && minutes != null && renfortsComplets)
+  const valide = Boolean(jour && heureDebut && heureFin && minutes != null && renfortsComplets(renforts))
 
   return (
     <Modal
@@ -241,53 +200,14 @@ export default function SaisirTemps({
 
           {/* ---------------------------------------------------- quand */}
 
-          <div>
-            <div className="mb-1.5 flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Quand</label>
-              <div className="flex gap-1">
-                <PuceJour libelle="Hier" jour={decalerJours(jourCourant(), -1)} actif={jour} onChoisir={setJour} />
-                <PuceJour libelle="Aujourd'hui" jour={jourCourant()} actif={jour} onChoisir={setJour} />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Input type="date" value={jour} onChange={(e) => setJour(e.target.value)} />
-              <Input
-                type="time"
-                value={heureDebut}
-                onChange={(e) => setHeureDebut(e.target.value)}
-                aria-label="Heure de début"
-              />
-              <Input
-                type="time"
-                value={heureFin}
-                onChange={(e) => setHeureFin(e.target.value)}
-                aria-label="Heure de fin"
-              />
-            </div>
-
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              {DUREES_RAPIDES.map((duree) => (
-                <button
-                  key={duree}
-                  type="button"
-                  onClick={() => {
-                    const depart = heureDebut || '08:00'
-                    setHeureDebut(depart)
-                    setHeureFin(ajouterMinutes(depart, duree))
-                  }}
-                  className="min-h-[36px] rounded-full border border-gray-300 px-3 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
-                >
-                  {formaterDuree(duree)}
-                </button>
-              ))}
-            </div>
-
-            {franchitMinuit && (
-              <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
-                Cette tâche se termine le lendemain, le {jourEnFrancais(decalerJours(jour, 1), { day: 'numeric', month: 'long' })} à {heureFin}.
-              </p>
-            )}
-          </div>
+          <ChampsQuand
+            jour={jour}
+            heureDebut={heureDebut}
+            heureFin={heureFin}
+            onJour={setJour}
+            onHeureDebut={setHeureDebut}
+            onHeureFin={setHeureFin}
+          />
 
           {/* ------------------------------------------------- quoi */}
 
@@ -344,97 +264,11 @@ export default function SaisirTemps({
 
           {/* --------------------------------------------- avec qui */}
 
-          <div className="rounded-lg border border-gray-200 p-3 dark:border-gray-700">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                <Users className="h-4 w-4" />
-                J'étais accompagné
-              </span>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" size="sm" icon={<UserPlus className="h-4 w-4" />}
-                  onClick={() => ajouterRenfort(true)}>
-                  Un collègue
-                </Button>
-                <Button type="button" variant="ghost" size="sm" icon={<Plus className="h-4 w-4" />}
-                  onClick={() => ajouterRenfort(false)}>
-                  Renfort non nommé
-                </Button>
-              </div>
-            </div>
-
-            {renforts.length === 0 ? (
-              <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                Deux agents une heure sur la même tâche comptent pour deux heures de travail.
-              </p>
-            ) : (
-              <ul className="mt-3 space-y-3">
-                {renforts.map((renfort) => (
-                  <li key={renfort.cle} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-                    {renfort.nomme ? (
-                      <Select
-                        value={renfort.userId ?? ''}
-                        placeholder="Choisir dans l'annuaire…"
-                        onChange={(e) =>
-                          majRenfort(renfort.cle, { userId: e.target.value ? Number(e.target.value) : null })
-                        }
-                        options={optionsAnnuaire}
-                      />
-                    ) : (
-                      <Input
-                        value={renfort.libelle}
-                        placeholder="Ex. : un agent des espaces verts"
-                        onChange={(e) => majRenfort(renfort.cle, { libelle: e.target.value })}
-                      />
-                    )}
-
-                    <Input
-                      type="number"
-                      min={1}
-                      max={1440}
-                      className="sm:w-28"
-                      value={renfort.minutes ?? minutes ?? ''}
-                      onChange={(e) =>
-                        majRenfort(renfort.cle, { minutes: e.target.value ? Number(e.target.value) : null })
-                      }
-                      aria-label="Minutes de participation"
-                      rightIcon={<span className="text-xs text-gray-500">min</span>}
-                    />
-
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Retirer ce renfort"
-                      onClick={() => setRenforts((l) => l.filter((r) => r.cle !== renfort.cle))}
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
+          <RenfortsEditor renforts={renforts} onChange={setRenforts} options={optionsAnnuaire} minutes={minutes} />
 
           {/* ------------------------------------------------ le total */}
 
-          <div className={cn(
-            'flex items-center gap-2 rounded-lg px-3 py-2 text-sm',
-            minutes == null
-              ? 'bg-gray-100 text-gray-600 dark:bg-gray-700/50 dark:text-gray-400'
-              : 'bg-primary-50 text-primary-800 dark:bg-primary-900/30 dark:text-primary-200'
-          )}>
-            <Clock className="h-4 w-4 flex-shrink-0" />
-            {minutes == null ? (
-              <span>Indiquez une heure de début et une heure de fin.</span>
-            ) : renforts.length === 0 ? (
-              <span><strong>{formaterDuree(minutes)}</strong></span>
-            ) : (
-              <span>
-                <strong>{formaterDuree(minutes)}</strong> pour vous,{' '}
-                <strong>{formaterDuree(minutesMobilisees ?? minutes)}</strong> de travail mobilisé
-              </span>
-            )}
-          </div>
+          <TotalTemps minutes={minutes} renforts={renforts} />
         </div>
       </ModalBody>
 
@@ -449,27 +283,5 @@ export default function SaisirTemps({
         </Button>
       </ModalFooter>
     </Modal>
-  )
-}
-
-function PuceJour({
-  libelle,
-  jour,
-  actif,
-  onChoisir,
-}: { libelle: string; jour: string; actif: string; onChoisir: (j: string) => void }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onChoisir(jour)}
-      className={cn(
-        'min-h-[32px] rounded-full px-3 text-sm',
-        actif === jour
-          ? 'bg-primary-600 text-white'
-          : 'border border-gray-300 text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'
-      )}
-    >
-      {libelle}
-    </button>
   )
 }

@@ -297,14 +297,9 @@ async function donneesDuTicket(ticket: any): Promise<Record<string, any>> {
  * `donneesEnPlus` porte ce qui dépend de l'événement — le corps d'un message,
  * l'ancien statut. Le reste vient de la demande, une fois.
  */
-async function notifier(
-  ticketId: number,
-  evenement: string,
-  gabarit: string,
-  auteurId: number | null,
-  donneesEnPlus: Record<string, any> = {}
-): Promise<void> {
-  const ticket = await db.queryOne(
+/** La demande et ce que les gabarits en affichent, en une requête. */
+async function ticketPourAvis(ticketId: number): Promise<any | null> {
+  return db.queryOne(
     `SELECT t.*, st.nom AS statut_nom, c.nom AS categorie_nom, sc.nom AS sous_categorie_nom,
             s.name AS site_nom, srv.name AS service_nom,
             d.first_name AS demandeur_prenom, d.last_name AS demandeur_nom,
@@ -322,6 +317,16 @@ async function notifier(
       WHERE t.id = ?`,
     [ticketId]
   );
+}
+
+async function notifier(
+  ticketId: number,
+  evenement: string,
+  gabarit: string,
+  auteurId: number | null,
+  donneesEnPlus: Record<string, any> = {}
+): Promise<void> {
+  const ticket = await ticketPourAvis(ticketId);
   if (!ticket) return;
 
   const motives = await destinatairesMotives(ticket, evenement, auteurId);
@@ -381,6 +386,48 @@ export function notifierStatut(
     () => notifier(ticketId, evenement, evenement, auteurId, { ancien_statut: ancien ?? '' }),
     'changement d’état'
   );
+}
+
+/**
+ * Une clôture attend son superviseur.
+ *
+ * Ni le socle ni la grille ne savent qui supervise une catégorie : on écrit
+ * donc aux personnes qui ont le niveau `superviseur` sur sa racine, et, s'il
+ * n'y en a aucune, aux administrateurs — faute de quoi la demande attendrait
+ * indéfiniment une validation que personne ne sait devoir donner.
+ */
+export function notifierAValider(ticketId: number, auteurId: number | null): void {
+  sansAttendre(async () => {
+    const ticket = await ticketPourAvis(ticketId);
+    if (!ticket) return;
+
+    const categorieId = ticket.categorie_id ?? ticket.sous_categorie_id;
+    const racine = categorieId
+      ? await db.queryOne('SELECT COALESCE(parent_id, id) AS id FROM ticket_categories WHERE id = ?', [categorieId])
+      : null;
+
+    const superviseurs = racine
+      ? await db.query(
+          `SELECT u.id, u.email, u.role FROM users u
+             JOIN user_ticket_categories utc ON utc.user_id = u.id
+            WHERE utc.ticket_categorie_id = ? AND utc.niveau = 'superviseur'
+              AND u.is_active = 1 AND u.email IS NOT NULL`,
+          [racine.id]
+        )
+      : [];
+    const comptes =
+      superviseurs.length > 0
+        ? superviseurs
+        : await db.query(
+            `SELECT id, email, role FROM users WHERE role = 'admin' AND is_active = 1 AND email IS NOT NULL`
+          );
+
+    const destinataires = comptes
+      .filter((c: any) => Number(c.id) !== Number(auteurId))
+      .map((c: any) => ({ email: c.email, userId: Number(c.id), role: c.role }));
+    const adresses = await filtrerSelonPreferences(destinataires, 'ticket_a_valider');
+    await envoyer('ticket_a_valider', adresses, await donneesDuTicket(ticket));
+  }, 'clôture à valider');
 }
 
 export function notifierEcheance(ticketId: number, quoi: 'prise_en_charge' | 'resolution'): void {

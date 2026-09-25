@@ -316,7 +316,17 @@ export async function changerStatut(
     params.push(maintenant, auteurId);
   }
 
-  if (nouveau.final) {
+  if (nouveau.validation) {
+    // « À valider » : l'agent a fini, le superviseur relit. La résolution est
+    // datée de maintenant — c'est le travail que mesure le délai de résolution —
+    // mais la demande n'est pas close tant qu'elle n'est pas validée.
+    colonnes.push('ferme_at = ?');
+    params.push(null);
+    if (!avant.resolu_at) {
+      colonnes.push('resolu_at = ?', 'resolu_by = ?');
+      params.push(maintenant, auteurId);
+    }
+  } else if (nouveau.final) {
     colonnes.push('ferme_at = ?');
     params.push(maintenant);
     if (!avant.resolu_at) {
@@ -328,6 +338,13 @@ export async function changerStatut(
     // resterait compté comme résolu dans les statistiques.
     colonnes.push('ferme_at = ?', 'resolu_at = ?', 'resolu_by = ?');
     params.push(null, null, null);
+    // La tâche de la clôture reste au planning — ce temps a été passé — mais
+    // n'est plus celle qu'un superviseur relirait : la prochaine clôture en
+    // créera une autre. La colonne n'existe qu'après la migration 046.
+    if ('tache_cloture_id' in avant) {
+      colonnes.push('tache_cloture_id = ?');
+      params.push(null);
+    }
   }
 
   await db.transaction(async () => {
@@ -545,6 +562,13 @@ export interface FiltresTickets {
   objectId?: number | null;
   /** `true` ne garde que les statuts ouverts, `false` que les clos. */
   ouverts?: boolean | null;
+  /** Les clôtures qui attendent un superviseur. */
+  aValider?: boolean | null;
+  /**
+   * Restreint `aValider` aux catégories — racines et filles — que le lecteur
+   * supervise. `null` : aucune restriction, pour l'administrateur.
+   */
+  categoriesSupervisees?: number[] | null;
   recherche?: string | null;
   limite?: number;
   depuis?: number;
@@ -577,6 +601,23 @@ export function construireFiltres(filtres: FiltresTickets): { sql: string; param
     params.push(filtres.ouverts ? 1 : 0);
   }
 
+  // « À valider » pour moi : ce que je supervise, pas tout ce que je vois.
+  if (filtres.aValider) {
+    conditions.push(
+      `EXISTS (SELECT 1 FROM ticket_statuts sv WHERE sv.id = t.statut_id AND sv.is_validation = 1)`
+    );
+    const supervisees = filtres.categoriesSupervisees;
+    if (supervisees) {
+      if (supervisees.length === 0) {
+        conditions.push('1 = 0');
+      } else {
+        const m = supervisees.map(() => '?').join(',');
+        conditions.push(`(t.categorie_id IN (${m}) OR t.sous_categorie_id IN (${m}))`);
+        params.push(...supervisees, ...supervisees);
+      }
+    }
+  }
+
   const recherche = String(filtres.recherche ?? '').trim();
   if (recherche.length > 0) {
     // Le numéro affiché est aussi une entrée de recherche : c'est ce qu'on lit
@@ -593,6 +634,7 @@ export function construireFiltres(filtres: FiltresTickets): { sql: string; param
 const SELECT_LISTE = `
   SELECT t.*,
          st.nom AS statut_nom, st.couleur AS statut_couleur, st.is_ouvert AS statut_ouvert,
+         st.is_validation AS statut_validation,
          c.nom AS categorie_nom, c.couleur AS categorie_couleur,
          sc.nom AS sous_categorie_nom,
          s.name AS site_nom,

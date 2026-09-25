@@ -888,13 +888,16 @@ export async function verifierEcheancesTickets(): Promise<void> {
   try {
     const maintenant = new Date().toISOString().slice(0, 19).replace('T', ' ');
 
+    // `resolu_at` : une demande « À valider » est résolue par l'agent. Elle
+    // attend son superviseur, pas un technicien, et ne manque plus aucun délai
+    // de résolution — le délai mesure le travail, pas la relecture.
     const enRetard = await db.query(
       `SELECT t.id, t.reference, t.titre, t.echeance_prise_en_charge, t.echeance_resolution,
-              t.pris_en_charge_at
+              t.pris_en_charge_at, t.resolu_at
          FROM tickets t
         WHERE t.ferme_at IS NULL
           AND (
-            (t.echeance_resolution IS NOT NULL AND t.echeance_resolution < ?)
+            (t.echeance_resolution IS NOT NULL AND t.echeance_resolution < ? AND t.resolu_at IS NULL)
             OR (t.echeance_prise_en_charge IS NOT NULL AND t.echeance_prise_en_charge < ?
                 AND t.pris_en_charge_at IS NULL)
           )
@@ -907,7 +910,7 @@ export async function verifierEcheancesTickets(): Promise<void> {
 
     for (const ticket of enRetard) {
       const resolutionDepassee =
-        ticket.echeance_resolution && String(ticket.echeance_resolution) < maintenant;
+        !ticket.resolu_at && ticket.echeance_resolution && String(ticket.echeance_resolution) < maintenant;
       const quoi: 'prise_en_charge' | 'resolution' = resolutionDepassee ? 'resolution' : 'prise_en_charge';
 
       // La trace est inscrite **avant** l'envoi : si l'envoi échoue, on préfère
