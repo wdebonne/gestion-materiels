@@ -318,6 +318,7 @@ Seules les salles **ouvertes au prêt** y figurent, jamais un bâtiment entier ;
 - ✅ **Dépôt et validation** : le gestionnaire du bâtiment dépose et valide d'un geste ; le **responsable** (la directrice d'école pour le PPMS) dépose, et le document attend dans la file *À valider*, relu à côté de l'aperçu, reclassé puis validé ou refusé avec motif
 - 🔔 **Alertes « Bâtiment »** dans le délai de rappel, critiques une fois l'échéance passée, envoyées aux gestionnaires du bâtiment ; elles disparaissent quand un rapport validé repousse l'échéance, et ne se montrent qu'à qui suit le bâtiment
 - 🔒 **Fichiers privés** : rangés sous `uploads/prive/`, jamais servis en statique, lus par une route qui vérifie les droits et ne met rien en cache ; pas de SVG
+- 🗺️ **Étages et plans** : un plan par étage (PDF converti dans le navigateur, ou image ; DWG à exporter en PDF), pièces dessinées au clic, étalonnage pour les surfaces ; un clic sur une pièce montre son **matériel** (posé depuis le parc), les **clés qui l'ouvrent** et leurs détenteurs, ses portes et ses documents ; la recherche retrouve un matériel et surligne sa pièce
 
 | Qui | Ce qu'il peut faire |
 |---|---|
@@ -1298,6 +1299,13 @@ POST   /api/batiments/:id/documents          # Déposer (multipart, champ « fic
 POST   /api/batiments/documents/:id/valider  # Valider en reclassant ; le document fait foi pour l'échéance
 POST   /api/batiments/documents/:id/refuser  # Refuser, { motif } renvoyé au déposant
 GET    /api/batiments/documents/:id/fichier  # Le fichier — jamais mis en cache
+GET    /api/batiments/:id/etages             # Étages, plans et pièces (zones, surfaces, matériel)
+POST   /api/batiments/etages/:id/plan        # Poser le plan (image ; un PDF est converti côté navigateur)
+POST   /api/batiments/etages/:id/pieces      # Créer une pièce depuis un contour tracé
+PUT    /api/batiments/pieces/:id/zone        # Redessiner ou effacer le contour d'une pièce
+GET    /api/batiments/pieces/:id             # Fiche : matériel, clés qui l'ouvrent, portes, documents
+POST   /api/batiments/pieces/:id/materiels   # Poser un matériel (un unique se déplace, un lot se répartit)
+GET    /api/batiments/materiels/:objectId/pieces # Où se trouve ce matériel
 ```
 
 **Entreprises** (gestionnaire de tous les lieux) et **portail** (session `X-Session-Portail`, sans compte) :

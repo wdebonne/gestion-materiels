@@ -257,6 +257,21 @@ export async function siteDuDocument(req: AuthRequest): Promise<number | null> {
   return ligne ? Number(ligne.site_id) : null;
 }
 
+/** Le bâtiment d'un étage. */
+export async function siteDeLEtage(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne('SELECT site_id FROM site_etages WHERE id = ?', [req.params.id]);
+  return ligne ? Number(ligne.site_id) : null;
+}
+
+/** Le bâtiment d'un matériel posé dans une pièce. */
+export async function siteDuPlacement(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne(
+    'SELECT p.site_id FROM piece_materiels pm JOIN site_pieces p ON p.id = pm.piece_id WHERE pm.id = ?',
+    [req.params.id]
+  );
+  return ligne ? Number(ligne.site_id) : null;
+}
+
 /** Le bâtiment d'un suivi de contrôle. */
 export async function siteDuSuivi(req: AuthRequest): Promise<number | null> {
   const ligne = await db.queryOne('SELECT site_id FROM batiment_suivis WHERE id = ?', [req.params.id]);

@@ -242,6 +242,10 @@ export async function usagesSite(siteId: number | string): Promise<{
   cles: number;
   /** Rapports de contrôle, PPMS… : des pièces qu'on peut devoir produire des années après. */
   documents: number;
+  /** Des étages et leurs plans : la cascade les effacerait, fichiers laissés sur le disque. */
+  etages: number;
+  /** Du matériel posé dans ses pièces. */
+  materiels: number;
 }> {
   const compter = async (sql: string): Promise<number> => {
     try {
@@ -259,5 +263,9 @@ export async function usagesSite(siteId: number | string): Promise<{
     rattachements: await compter('SELECT COUNT(*) as cnt FROM user_sites WHERE site_id = ?'),
     cles: await compter('SELECT COUNT(*) as cnt FROM cle_ouvre WHERE site_id = ?'),
     documents: await compter('SELECT COUNT(*) as cnt FROM batiment_documents WHERE site_id = ?'),
+    etages: await compter('SELECT COUNT(*) as cnt FROM site_etages WHERE site_id = ?'),
+    materiels: await compter(
+      'SELECT COUNT(*) as cnt FROM piece_materiels pm JOIN site_pieces p ON p.id = pm.piece_id WHERE p.site_id = ?'
+    ),
   };
 }

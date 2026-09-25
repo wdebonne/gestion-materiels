@@ -452,7 +452,12 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Code permanent**, montré une fois, régénérable, suspendable, avec date de fin ; courriel `entreprise_acces` (essentiel : il part même quand les envois automatiques sont suspendus)
   - **Même réponse pour un lien inconnu et un code faux** (comparaison bcrypt factice au même coût) ; `connexionPortailLimiter` par adresse et par lien ; verrou souple après vingt échecs
   - **Dépôt** : bâtiment et objet déduits quand un seul est ouvert, champs masqués côté portail ; le document entre dans la file *À valider*, au nom de l'entreprise
+- **Livré — lot C, étages et plans (septembre 2026) :**
+  - **Migration `043_etages_et_plans`** : `site_etages` (plan privé, ratio, échelle), `site_pieces.etage_id / zone_points / surface_m2`, `piece_materiels` (matériel du parc dans une pièce, quantité)
+  - **Plan** : PDF rendu en image par pdf.js côté navigateur (chargé à la demande, `isEvalSupported: false`), image posée telle quelle ; dimensions lues par sharp ; servi sans cache sous `uploads/prive/plans/`
+  - **Éditeur dédié** (`PlanEtage`) sur `usePlanViewport` et `geometrie.ts` : tracé au clic, fermeture sur le premier point, double-clic ou Entrée ; étalonnage en deux clics ; surfaces recalculées à l'étalonnage
+  - **Fiche de pièce** : matériel (un unique se déplace, un lot se répartit sans dépasser sa quantité), clés sur les trois portées avec détenteurs (`clesDeLaPiece`), portes, documents — filtrés par la portée des catégories du lecteur
+  - **Recherche** d'une pièce ou d'un matériel sur le plan ; « Dans les bâtiments » sur la fiche d'un matériel ; composition des trousseaux corrigée pour la portée « pièce »
 - **À venir :**
-  - **Lot C — étages et plans** : étages, plan importé (PDF ou image), pièces dessinées en zones, matériel et clés de chaque pièce au clic
   - **Lot D — énergie et contrats** : compteurs, relevés, factures (électricité, gaz, eau), contrats de maintenance avec préavis, interventions
   - **Lot E — statistiques** : coûts par catégorie, période et bâtiment, comparatifs, graphiques et export PDF filtrable

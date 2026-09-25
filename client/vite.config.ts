@@ -35,7 +35,7 @@ export default defineConfig({
             // `/api/` 24 h : un PPMS ouvert sur le poste partagé de l'accueil
             // resterait lisible dans le stockage du navigateur, et le portail
             // des entreprises n'a pas de session à y laisser.
-            urlPattern: /^https?:\/\/[^/]+\/api\/(portail\/|batiments\/documents\/\d+\/fichier)/,
+            urlPattern: /^https?:\/\/[^/]+\/api\/(portail\/|batiments\/(documents\/\d+\/fichier|etages\/\d+\/plan))/,
             handler: 'NetworkOnly'
           },
           {

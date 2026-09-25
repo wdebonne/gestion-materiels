@@ -41,6 +41,7 @@ import agendasDeLieu from './039_agendas_de_lieu';
 import gestionOrganisation from './040_gestion_organisation';
 import batimentsControles from './041_batiments_controles';
 import entreprisesPortail from './042_entreprises_portail';
+import etagesEtPlans from './043_etages_et_plans';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -94,6 +95,7 @@ export const MIGRATIONS: readonly Migration[] = [
   gestionOrganisation,
   batimentsControles,
   entreprisesPortail,
+  etagesEtPlans,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

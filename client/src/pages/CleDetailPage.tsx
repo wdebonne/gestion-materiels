@@ -298,7 +298,9 @@ export default function CleDetailPage() {
                           .map((o: any) =>
                             o.est_passe
                               ? `${o.site_name} (passe)`
-                              : [o.ouvrant_site_name, o.ouvrant_name].filter(Boolean).join(' — ')
+                              : o.piece_name
+                                ? `${[o.piece_site_name, o.piece_name].filter(Boolean).join(' — ')} (pièce)`
+                                : [o.ouvrant_site_name, o.ouvrant_name].filter(Boolean).join(' — ')
                           )
                           .join(' · ')}
                       </div>

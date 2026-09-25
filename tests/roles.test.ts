@@ -426,6 +426,20 @@ describe('Bâtiments', () => {
     ['post', '/:id(\\d+)/suivis', 'site'],
     ['get', '/:id(\\d+)/documents', 'consultation'],
     ['post', '/:id(\\d+)/documents', 'consultation'],
+    // Étages et plans : lire pour qui consulte, modifier pour qui gère.
+    ['get', '/:id(\\d+)/etages', 'consultation'],
+    ['post', '/:id(\\d+)/etages', 'site'],
+    ['put', '/etages/:id(\\d+)', 'site'],
+    ['delete', '/etages/:id(\\d+)', 'site'],
+    ['post', '/etages/:id(\\d+)/plan', 'site'],
+    ['get', '/etages/:id(\\d+)/plan', 'consultation'],
+    ['post', '/etages/:id(\\d+)/pieces', 'site'],
+    ['get', '/pieces/:id(\\d+)', 'consultation'],
+    ['put', '/pieces/:id(\\d+)/zone', 'site'],
+    ['post', '/pieces/:id(\\d+)/materiels', 'site'],
+    ['put', '/placements/:id(\\d+)', 'site'],
+    ['delete', '/placements/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/materiels', 'consultation'],
   ] as Array<[string, string, string]>)('%s %s est gardé par « %s »', (method, path, gestion) => {
     expect(allowedRolesFor(batimentRoutes, method, path)).toBeNull();
     expect(gestionFor(batimentRoutes, method, path)).toBe(gestion);

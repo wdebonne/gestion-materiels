@@ -330,6 +330,8 @@ export async function usagesPiece(pieceId: number | string): Promise<{
   ouvrants: number;
   occupations: number;
   documents: number;
+  /** Du matériel posé dans la pièce : la supprimer le ferait disparaître du plan sans un mot. */
+  materiels: number;
 }> {
   const compter = async (sql: string): Promise<number> => {
     try {
@@ -347,6 +349,7 @@ export async function usagesPiece(pieceId: number | string): Promise<{
     ouvrants: await compter('SELECT COUNT(*) as cnt FROM cle_ouvrants WHERE piece_id = ?'),
     occupations: await compter('SELECT COUNT(*) as cnt FROM lieu_occupations WHERE piece_id = ?'),
     documents: await compter('SELECT COUNT(*) as cnt FROM batiment_documents WHERE piece_id = ?'),
+    materiels: await compter('SELECT COUNT(*) as cnt FROM piece_materiels WHERE piece_id = ?'),
   };
 }
 

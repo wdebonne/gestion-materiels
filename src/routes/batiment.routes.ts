@@ -1,7 +1,13 @@
 import { Router, Response, NextFunction } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest } from '../middleware/auth.middleware';
-import { messageErreurDepot, nomDOrigine, televersementPrive } from '../middleware/televersement';
+import {
+  messageErreurDepot,
+  nomDOrigine,
+  REFUS_TYPE_PLAN,
+  televersementPrive,
+  TYPES_PLANS,
+} from '../middleware/televersement';
 import { uploadLimiter } from '../middleware/rateLimiter.middleware';
 import {
   peutGererLieux,
@@ -9,8 +15,11 @@ import {
   requireConsultationSite,
   requireGestionLieux,
   requireGestionSite,
+  siteDeLaPiece,
+  siteDeLEtage,
   siteDuDocument,
   siteDuParametre,
+  siteDuPlacement,
   siteDuSuivi,
   sitesGeresPar,
 } from '../services/gestionOrganisation.service';
@@ -42,6 +51,29 @@ import {
   type StatutDocument,
 } from '../services/batiments.service';
 import { notifierDepot, notifierRefus } from '../services/batimentsNotify.service';
+import {
+  cheminDuPlan,
+  cheminPlanPrive,
+  creerEtage,
+  creerPieceSurPlan,
+  definirZone,
+  dimensionsImage,
+  ficheDePiece,
+  lireEtage,
+  listerEtages,
+  materielDuBatiment,
+  modifierEtage,
+  modifierPlacement,
+  piecesDuBatiment,
+  piecesDuMateriel,
+  placerMateriel,
+  poserPlan,
+  retirerPlacement,
+  SOUS_DOSSIER_PLANS,
+  supprimerEtage,
+  supprimerPlanPrive,
+} from '../services/plans.service';
+import { peutVoirObjet, REFUS_PORTEE } from '../middleware/objectScope';
 
 /**
  * Le module Bâtiments : contrôles obligatoires, documents, échéances.
@@ -338,6 +370,221 @@ router.delete(
     }
   }
 );
+
+// ============================================================= étages et plans
+
+/**
+ * Les étages et le plan de chacun.
+ *
+ * Le plan est une image du dossier privé : il se lit comme un document, par une
+ * route qui vérifie qu'on consulte le bâtiment, et ne se met pas en cache.
+ */
+router.get(
+  '/:id(\\d+)/etages',
+  authenticateToken,
+  requireConsultationSite(siteDuParametre),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const siteId = Number(req.params.id);
+      res.json({
+        success: true,
+        etages: await listerEtages(siteId),
+        pieces: await piecesDuBatiment(siteId),
+      });
+    } catch (erreur) {
+      echouer(res, erreur, 'lecture des étages');
+    }
+  }
+);
+
+router.post('/:id(\\d+)/etages', authenticateToken, requireGestionSite(siteDuParametre), async (req: AuthRequest, res: Response) => {
+  try {
+    res.status(201).json({ success: true, id: await creerEtage(Number(req.params.id), req.body ?? {}) });
+  } catch (erreur) {
+    echouer(res, erreur, "création d'étage");
+  }
+});
+
+router.put('/etages/:id(\\d+)', authenticateToken, requireGestionSite(siteDeLEtage), async (req: AuthRequest, res: Response) => {
+  try {
+    await modifierEtage(Number(req.params.id), req.body ?? {});
+    res.json({ success: true, etage: await lireEtage(req.params.id) });
+  } catch (erreur) {
+    echouer(res, erreur, "modification d'étage");
+  }
+});
+
+router.delete('/etages/:id(\\d+)', authenticateToken, requireGestionSite(siteDeLEtage), async (req: AuthRequest, res: Response) => {
+  try {
+    supprimerPlanPrive(await supprimerEtage(Number(req.params.id)));
+    res.json({ success: true });
+  } catch (erreur) {
+    echouer(res, erreur, "suppression d'étage");
+  }
+});
+
+const depotPlan = televersementPrive(SOUS_DOSSIER_PLANS, TYPES_PLANS, REFUS_TYPE_PLAN);
+
+/**
+ * Pose le plan d'un étage. Une image seulement : un PDF est rendu en image par
+ * le navigateur avant l'envoi. L'ancien plan est effacé une fois le nouveau en
+ * place — dans cet ordre, pour qu'un échec ne laisse pas l'étage sans plan.
+ */
+router.post(
+  '/etages/:id(\\d+)/plan',
+  authenticateToken,
+  requireGestionSite(siteDeLEtage),
+  uploadLimiter,
+  (req: AuthRequest, res: Response, next: NextFunction) => {
+    depotPlan.single('plan')(req, res, (erreur: any) => {
+      if (erreur) return refuser(res, 400, messageErreurDepot(erreur));
+      next();
+    });
+  },
+  async (req: AuthRequest, res: Response) => {
+    const fichier = req.file;
+    if (!fichier) return refuser(res, 400, 'Aucune image reçue');
+    try {
+      const { largeur, hauteur } = await dimensionsImage(fichier.path, {
+        largeur: Number(req.body?.largeur) || null,
+        hauteur: Number(req.body?.hauteur) || null,
+      });
+      const ancien = await poserPlan(Number(req.params.id), {
+        chemin: fichier.filename,
+        mime: fichier.mimetype,
+        largeur,
+        hauteur,
+      });
+      if (ancien && ancien !== fichier.filename) supprimerPlanPrive(ancien);
+      res.status(201).json({ success: true, etage: await lireEtage(req.params.id) });
+    } catch (erreur) {
+      supprimerPlanPrive(fichier.filename);
+      echouer(res, erreur, 'dépôt de plan');
+    }
+  }
+);
+
+router.get(
+  '/etages/:id(\\d+)/plan',
+  authenticateToken,
+  requireConsultationSite(siteDeLEtage),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const plan = await cheminDuPlan(req.params.id);
+      const chemin = plan ? cheminPlanPrive(plan.chemin) : null;
+      if (!plan || !chemin) return refuser(res, 404, 'Aucun plan pour cet étage');
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+      if (plan.mime) res.type(plan.mime);
+      res.sendFile(chemin, (erreur) => {
+        if (erreur && !res.headersSent) refuser(res, 500, 'Lecture du plan impossible');
+      });
+    } catch (erreur) {
+      echouer(res, erreur, 'envoi de plan');
+    }
+  }
+);
+
+/** Crée une pièce depuis le contour qu'on vient de tracer. */
+router.post(
+  '/etages/:id(\\d+)/pieces',
+  authenticateToken,
+  requireGestionSite(siteDeLEtage),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      res.status(201).json({ success: true, ...(await creerPieceSurPlan(Number(req.params.id), req.body ?? {})) });
+    } catch (erreur) {
+      echouer(res, erreur, 'création de pièce sur le plan');
+    }
+  }
+);
+
+// ============================================================= pièces et matériel
+
+router.get('/pieces/:id(\\d+)', authenticateToken, requireConsultationSite(siteDeLaPiece), async (req: AuthRequest, res: Response) => {
+  try {
+    const fiche = await ficheDePiece(Number(req.params.id), req);
+    if (!fiche) return refuser(res, 404, 'Pièce introuvable');
+    res.json({ success: true, ...fiche });
+  } catch (erreur) {
+    echouer(res, erreur, 'fiche de pièce');
+  }
+});
+
+/** Pose, redessine ou efface la zone d'une pièce sur un étage. */
+router.put('/pieces/:id(\\d+)/zone', authenticateToken, requireGestionSite(siteDeLaPiece), async (req: AuthRequest, res: Response) => {
+  try {
+    res.json({ success: true, ...(await definirZone(Number(req.params.id), req.body ?? {})) });
+  } catch (erreur) {
+    echouer(res, erreur, 'zone de pièce');
+  }
+});
+
+/**
+ * Pose un matériel du parc dans une pièce.
+ *
+ * Gérer le bâtiment ne suffit pas : il faut aussi voir le matériel. Le
+ * gestionnaire de l'école ne pose pas dans sa salle un véhicule d'une catégorie
+ * qui lui est fermée — il ne saurait même pas qu'il existe.
+ */
+router.post(
+  '/pieces/:id(\\d+)/materiels',
+  authenticateToken,
+  requireGestionSite(siteDeLaPiece),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      if (!(await peutVoirObjet(req, Number(req.body?.objectId)))) return refuser(res, 403, REFUS_PORTEE);
+      res.status(201).json({
+        success: true,
+        ...(await placerMateriel(Number(req.params.id), req.body ?? {}, req.user!.userId)),
+      });
+    } catch (erreur) {
+      echouer(res, erreur, 'pose de matériel');
+    }
+  }
+);
+
+router.put('/placements/:id(\\d+)', authenticateToken, requireGestionSite(siteDuPlacement), async (req: AuthRequest, res: Response) => {
+  try {
+    await modifierPlacement(Number(req.params.id), req.body ?? {});
+    res.json({ success: true });
+  } catch (erreur) {
+    echouer(res, erreur, 'modification de matériel posé');
+  }
+});
+
+router.delete('/placements/:id(\\d+)', authenticateToken, requireGestionSite(siteDuPlacement), async (req: AuthRequest, res: Response) => {
+  try {
+    await retirerPlacement(Number(req.params.id));
+    res.json({ success: true });
+  } catch (erreur) {
+    echouer(res, erreur, 'retrait de matériel posé');
+  }
+});
+
+/** Tout le matériel posé dans le bâtiment, pour le retrouver sur le plan. */
+router.get(
+  '/:id(\\d+)/materiels',
+  authenticateToken,
+  requireConsultationSite(siteDuParametre),
+  async (req: AuthRequest, res: Response) => {
+    try {
+      res.json({ success: true, materiels: await materielDuBatiment(Number(req.params.id), req) });
+    } catch (erreur) {
+      echouer(res, erreur, 'matériel du bâtiment');
+    }
+  }
+);
+
+/** Où se trouve ce matériel — la question posée depuis sa fiche. */
+router.get('/materiels/:objectId(\\d+)/pieces', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await peutVoirObjet(req, Number(req.params.objectId)))) return refuser(res, 403, REFUS_PORTEE);
+    res.json({ success: true, pieces: await piecesDuMateriel(Number(req.params.objectId)) });
+  } catch (erreur) {
+    echouer(res, erreur, 'pièces du matériel');
+  }
+});
 
 // ==================================================================== un bâtiment
 

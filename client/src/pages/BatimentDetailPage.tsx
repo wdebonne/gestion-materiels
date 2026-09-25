@@ -7,6 +7,7 @@ import {
   Building2,
   ClipboardCheck,
   Download,
+  Layers,
   Eye,
   FileText,
   Pencil,
@@ -45,6 +46,7 @@ import BadgeEcheance from '@/components/batiments/BadgeEcheance'
 import ClassementDocument from '@/components/batiments/ClassementDocument'
 import { invaliderBatiments } from '@/components/batiments/cache'
 import FormulaireDepot from '@/components/batiments/FormulaireDepot'
+import OngletPlans from '@/components/batiments/plans/OngletPlans'
 import { ouvrirFichier } from '@/components/batiments/ouvrirFichier'
 import {
   jourFr,
@@ -67,7 +69,7 @@ import {
  * le serveur refuserait.
  */
 
-const ONGLETS = ['controles', 'documents'] as const
+const ONGLETS = ['controles', 'plans', 'documents'] as const
 type Onglet = (typeof ONGLETS)[number]
 
 export default function BatimentDetailPage() {
@@ -152,6 +154,7 @@ export default function BatimentDetailPage() {
 
       <Tabs value={onglet} onChange={changerOnglet}>
         <Tab value="controles" label="Contrôles et échéances" icon={<ClipboardCheck className="w-4 h-4" />} count={suivis.filter((s) => s.actif).length} />
+        <Tab value="plans" label="Étages et plans" icon={<Layers className="w-4 h-4" />} />
         <Tab value="documents" label="Documents" icon={<FileText className="w-4 h-4" />} />
       </Tabs>
 
@@ -164,6 +167,8 @@ export default function BatimentDetailPage() {
           pieces={fiche.pieces}
           onDeposer={(rubriqueId, suiviId) => setDepot({ rubriqueId, suiviId })}
         />
+      ) : onglet === 'plans' ? (
+        <OngletPlans siteId={siteId} gere={gere} />
       ) : (
         <OngletDocuments siteId={siteId} gere={gere} rubriques={rubriques} batimentNom={fiche.batiment.nom} />
       )}

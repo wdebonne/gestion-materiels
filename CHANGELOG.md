@@ -7,6 +7,36 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Bâtiments : les étages, leurs plans, et ce que contient chaque pièce
+
+> « Où est le vidéoprojecteur ? », « quelle clé ouvre la salle 12 ? »,
+> « combien de chaises dans la salle polyvalente ? » : un nouvel onglet
+> **Étages et plans** sur la fiche d'un bâtiment y répond sur le plan.
+>
+> Chaque étage reçoit son **plan** — un PDF (converti en image dans le
+> navigateur, page au choix) ou une image ; un DWG s'exporte d'abord en PDF,
+> et l'écran le dit. On **dessine les pièces** au clic, angle par angle, et on
+> ferme en recliquant le premier point ; le contour se crée comme une pièce
+> nouvelle ou se rattache à une pièce existante. Une fois le plan **étalonné**
+> — une longueur connue tracée à la main —, chaque pièce a sa surface.
+>
+> Un clic sur une pièce ouvre sa fiche : le **matériel** qui s'y trouve, posé
+> depuis le parc par recherche (un matériel unique ne se double pas : on
+> propose de le déplacer ; un lot se répartit dans la limite de sa quantité),
+> les **clés qui l'ouvrent** — passe du bâtiment, passe de la pièce, clé d'une
+> de ses portes — avec leurs détenteurs, ses portes et ses documents. La
+> recherche « vidéoproj » surligne la pièce et bascule sur son étage ; la
+> fiche du matériel dit, elle aussi, dans quelle salle il est.
+>
+> Les plans sont privés, comme les documents : lus par une route qui vérifie
+> qu'on suit le bâtiment, jamais mis en cache. La fiche d'une pièce ne montre
+> que le matériel et les clés des catégories ouvertes au lecteur. Une pièce
+> qui contient du matériel, ou un bâtiment qui a des étages, ne se supprime
+> plus sans le dire.
+>
+> Au passage : dans la composition d'un trousseau, une clé qui ouvre une pièce
+> s'affichait sans rien ouvrir ; elle nomme désormais la pièce.
+
 ### Bâtiments : les entreprises extérieures déposent leurs rapports elles-mêmes
 
 > L'électricien qui vérifie les écoles, la société de l'ascenseur, le bureau de

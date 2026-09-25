@@ -226,11 +226,18 @@ router.delete('/sites/:id', authenticateToken, requireGestionLieux, async (req: 
     // Les documents du module Bâtiments tiennent le site (`RESTRICT`) : sans ce
     // contrôle, la suppression échouerait sur la clé étrangère avec une erreur
     // serveur, au lieu de dire quoi faire.
-    const { documents } = await usagesSite(req.params.id);
-    if (documents > 0) {
+    const { documents, etages, materiels } = await usagesSite(req.params.id);
+    if (documents + etages + materiels > 0) {
+      const detail = [
+        documents && `${documents} document(s) de contrôle`,
+        etages && `${etages} étage(s) avec leurs plans`,
+        materiels && `${materiels} matériel(s) posé(s) dans ses pièces`,
+      ]
+        .filter(Boolean)
+        .join(', ');
       res.status(409).json({
         success: false,
-        message: `${documents} document(s) de contrôle sont rangés dans ce bâtiment : désactivez-le plutôt.`,
+        message: `Ce bâtiment porte encore ${detail} : désactivez-le plutôt.`,
       });
       return;
     }

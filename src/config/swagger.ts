@@ -763,6 +763,40 @@ const options: swaggerJSDoc.Options = {
       '/batiments/documents/{id}/valider': {
         post: { tags: ['Bâtiments'], summary: 'Valider un document en le reclassant ; il fait alors foi pour l’échéance', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Validé, avec le suivi et la prochaine échéance' } } },
       },
+      '/batiments/{id}/etages': {
+        get: { tags: ['Bâtiments'], summary: 'Les étages, leurs plans, et les pièces avec leur zone et leur matériel', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Étages et pièces' } } },
+        post: { tags: ['Bâtiments'], summary: 'Ajouter un étage (gestionnaire du bâtiment)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', required: ['nom'], properties: { nom: { type: 'string' }, niveau: { type: 'integer', description: '0 = rez-de-chaussée, -1 = sous-sol' } } } } } }, responses: { '201': { description: 'Créé' } } },
+      },
+      '/batiments/etages/{id}': {
+        put: { tags: ['Bâtiments'], summary: 'Renommer, changer de niveau, ou étalonner (recalcule les surfaces)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Étage à jour' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer un étage et son plan ; ses pièces restent, sans zone', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimé' } } },
+      },
+      '/batiments/etages/{id}/plan': {
+        get: { tags: ['Bâtiments'], summary: 'Le plan de l’étage (image privée, jamais en cache)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Image' }, '404': { description: 'Pas de plan' } } },
+        post: { tags: ['Bâtiments'], summary: 'Poser le plan : une image PNG, JPEG ou WebP (un PDF est converti par le navigateur)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'multipart/form-data': { schema: { type: 'object', required: ['plan'], properties: { plan: { type: 'string', format: 'binary' }, largeur: { type: 'integer' }, hauteur: { type: 'integer' } } } } } }, responses: { '201': { description: 'Plan posé' }, '400': { description: 'Pas une image' } } },
+      },
+      '/batiments/etages/{id}/pieces': {
+        post: { tags: ['Bâtiments'], summary: 'Créer une pièce depuis un contour tracé sur le plan', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '201': { description: 'Pièce créée, avec sa surface si l’étage est étalonné' } } },
+      },
+      '/batiments/pieces/{id}': {
+        get: { tags: ['Bâtiments'], summary: 'La fiche d’une pièce : matériel, clés qui l’ouvrent (et détenteurs), portes, documents', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Fiche, filtrée par les catégories de l’appelant' } } },
+      },
+      '/batiments/pieces/{id}/zone': {
+        put: { tags: ['Bâtiments'], summary: 'Poser, redessiner ou effacer le contour d’une pièce (pourcentages du plan)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Surface recalculée' } } },
+      },
+      '/batiments/pieces/{id}/materiels': {
+        post: { tags: ['Bâtiments'], summary: 'Poser un matériel du parc dans la pièce — un unique se déplace ({ deplacer: true }), un lot se répartit', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '201': { description: 'Posé' }, '409': { description: 'Unique déjà ailleurs, ou lot épuisé' } } },
+      },
+      '/batiments/placements/{id}': {
+        put: { tags: ['Bâtiments'], summary: 'Changer la quantité ou la note d’un matériel posé', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Retirer un matériel de la pièce', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Retiré' } } },
+      },
+      '/batiments/{id}/materiels': {
+        get: { tags: ['Bâtiments'], summary: 'Tout le matériel posé dans le bâtiment (pour le retrouver sur le plan)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Matériel posé' } } },
+      },
+      '/batiments/materiels/{objectId}/pieces': {
+        get: { tags: ['Bâtiments'], summary: 'Les pièces où se trouve un matériel', parameters: [{ name: 'objectId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Pièces' } } },
+      },
       '/entreprises': {
         get: { tags: ['Entreprises'], summary: 'Les entreprises extérieures (gestionnaire de tous les lieux)', responses: { '200': { description: 'Entreprises, avec l’état de leur accès' } } },
         post: { tags: ['Entreprises'], summary: 'Créer une entreprise — nom et courriel obligatoires', responses: { '201': { description: 'Créée' }, '400': { description: 'Nom ou courriel manquant' } } },

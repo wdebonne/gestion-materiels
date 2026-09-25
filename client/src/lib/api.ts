@@ -3035,6 +3035,113 @@ export const batimentsApi = {
     api.post<{ success: boolean; crees: number }>(`/batiments/rubriques/${rubriqueId}/appliquer`, cible),
 }
 
+// ------------------------------------------------------ Étages, plans, pièces
+
+export interface PointPlanApi {
+  x: number
+  y: number
+}
+
+export interface Etage {
+  id: number
+  siteId: number
+  nom: string
+  /** 0 pour le rez-de-chaussée, -1 pour le sous-sol. */
+  niveau: number
+  ordre: number
+  plan: { mime: string | null; largeur: number | null; hauteur: number | null; ratio: number | null } | null
+  echelle: { metresParPourcent: number; points: { a: PointPlanApi; b: PointPlanApi; metres: number } | null } | null
+}
+
+export interface PieceSurPlan {
+  id: number
+  nom: string
+  code: string | null
+  typeLieu: string | null
+  capacite: number | null
+  actif: boolean
+  etageId: number | null
+  /** En pourcentages du plan ; vide tant que la pièce n'est pas dessinée. */
+  zone: PointPlanApi[]
+  surfaceM2: number | null
+  materiels: number
+}
+
+export interface MaterielDansPiece {
+  placementId: number
+  pieceId: number
+  objectId: number
+  nom: string
+  reference: string | null
+  image: string | null
+  unique: boolean
+  quantite: number
+  notes: string | null
+}
+
+export interface FichePiece {
+  piece: {
+    id: number
+    siteId: number
+    nom: string
+    code: string | null
+    typeLieu: string | null
+    capacite: number | null
+    etageId: number | null
+    etageNom: string | null
+    surfaceM2: number | null
+    aUneZone: boolean
+  }
+  materiels: MaterielDansPiece[]
+  cles: Array<{
+    id: number
+    nom: string
+    reference: string | null
+    portee: 'batiment' | 'piece' | 'porte'
+    porte: string | null
+    detenteurs: string[]
+  }>
+  portes: { id: number; nom: string; code: string | null }[]
+  documents: { id: number; titre: string; date: string | null; rubrique: string | null }[]
+}
+
+export const plansApi = {
+  etages: (siteId: number) =>
+    api.get<{ success: boolean; etages: Etage[]; pieces: PieceSurPlan[] }>(`/batiments/${siteId}/etages`),
+  creerEtage: (siteId: number, data: { nom: string; niveau: number }) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/etages`, data),
+  modifierEtage: (etageId: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean; etage: Etage }>(`/batiments/etages/${etageId}`, data),
+  supprimerEtage: (etageId: number) => api.delete<{ success: boolean }>(`/batiments/etages/${etageId}`),
+  /** Multipart : l'image sous `plan`, et les dimensions mesurées par le navigateur. */
+  deposerPlan: (etageId: number, donnees: FormData) =>
+    api.post<{ success: boolean; etage: Etage }>(`/batiments/etages/${etageId}/plan`, donnees, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  /** Le plan, en blob : il ne passe jamais par une URL partageable. */
+  plan: (etageId: number) => api.get<Blob>(`/batiments/etages/${etageId}/plan`, { responseType: 'blob' }),
+  creerPiece: (etageId: number, data: { nom: string; typeLieu?: string | null; points: PointPlanApi[] }) =>
+    api.post<{ success: boolean; id: number; surfaceM2: number | null }>(`/batiments/etages/${etageId}/pieces`, data),
+  zone: (pieceId: number, data: { etageId: number | null; points: PointPlanApi[] | null }) =>
+    api.put<{ success: boolean; surfaceM2: number | null }>(`/batiments/pieces/${pieceId}/zone`, data),
+  fiche: (pieceId: number) => api.get<{ success: boolean } & FichePiece>(`/batiments/pieces/${pieceId}`),
+  placer: (pieceId: number, data: { objectId: number; quantite?: number; deplacer?: boolean }) =>
+    api.post<{ success: boolean; placementId: number; deplaceDe: string | null }>(
+      `/batiments/pieces/${pieceId}/materiels`,
+      data
+    ),
+  modifierPlacement: (placementId: number, data: { quantite?: number; notes?: string | null }) =>
+    api.put<{ success: boolean }>(`/batiments/placements/${placementId}`, data),
+  retirerPlacement: (placementId: number) => api.delete<{ success: boolean }>(`/batiments/placements/${placementId}`),
+  materielsDuBatiment: (siteId: number) =>
+    api.get<{ success: boolean; materiels: MaterielDansPiece[] }>(`/batiments/${siteId}/materiels`),
+  piecesDuMateriel: (objectId: number) =>
+    api.get<{
+      success: boolean
+      pieces: Array<{ placementId: number; pieceId: number; pieceNom: string; siteId: number; siteNom: string; etage: string | null; quantite: number }>
+    }>(`/batiments/materiels/${objectId}/pieces`),
+}
+
 // ------------------------------------------------------ Entreprises extérieures
 
 export type EtatAccesEntreprise = 'aucun' | 'actif' | 'suspendu' | 'expire' | 'bloque' | 'inactive'

@@ -166,6 +166,20 @@ export const REFUS_TYPE_PRIVE =
   'Type de fichier non autorisé. Utilisez un PDF, une image JPEG ou PNG, un document Word, Excel ou OpenDocument';
 
 /**
+ * Les plans d'étage : des images seulement. Un plan reçu en PDF est converti en
+ * image par le navigateur avant l'envoi — le serveur n'a pas de moteur de rendu
+ * PDF —, et un plan DWG s'exporte d'abord en PDF.
+ */
+export const TYPES_PLANS: Record<string, string[]> = {
+  'image/png': ['.png'],
+  'image/jpeg': ['.jpg', '.jpeg'],
+  'image/jpg': ['.jpg', '.jpeg'],
+  'image/webp': ['.webp'],
+};
+
+export const REFUS_TYPE_PLAN = 'Le plan doit être une image PNG, JPEG ou WebP (un PDF est converti avant l’envoi)';
+
+/**
  * Le nom d'origine d'un fichier déposé, accents compris.
  *
  * busboy décode l'en-tête `filename` en latin-1 alors que les navigateurs
@@ -188,17 +202,21 @@ export function nomDOrigine(fichier: Express.Multer.File): string {
  * Le nom sur le disque est tiré au hasard et porte l'extension **vérifiée** :
  * jamais le nom d'origine, qui pourrait contenir un chemin.
  */
-export function televersementPrive(sousDossier: string) {
+export function televersementPrive(
+  sousDossier: string,
+  types: Record<string, string[]> = TYPES_DOCUMENTS_PRIVES,
+  refus: string = REFUS_TYPE_PRIVE
+) {
   return multer({
     storage: multer.diskStorage({
       destination: (_req, _file, cb) => cb(null, dossierPrive(sousDossier)),
       filename: (_req, file, cb) => cb(null, `${uuidv4()}${path.extname(file.originalname).toLowerCase()}`),
     }),
     fileFilter: (_req, file, cb) => {
-      const extensions = TYPES_DOCUMENTS_PRIVES[file.mimetype];
+      const extensions = types[file.mimetype];
       const extension = path.extname(file.originalname).toLowerCase();
       if (extensions && extensions.includes(extension)) cb(null, true);
-      else cb(new Error(REFUS_TYPE_PRIVE));
+      else cb(new Error(refus));
     },
     limits: { fileSize: TAILLE_MAX },
   });

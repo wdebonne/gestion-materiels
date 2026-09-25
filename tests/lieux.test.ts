@@ -458,6 +458,6 @@ describe('Le référentiel vu du service', () => {
     // `lieu_occupations` et `batiment_documents` n'existent pas encore : une base
     // à mi-chemin ne doit pas faire échouer la lecture, elle n'a simplement rien
     // à compter.
-    expect(await usagesPiece(1)).toEqual({ cles: 2, tickets: 1, ouvrants: 1, occupations: 0, documents: 0 });
+    expect(await usagesPiece(1)).toEqual({ cles: 2, tickets: 1, ouvrants: 1, occupations: 0, documents: 0, materiels: 0 });
   });
 });
