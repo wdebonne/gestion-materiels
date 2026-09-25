@@ -12,9 +12,10 @@ import {
   Code2,
   Key,
   ShieldCheck, CalendarDays, Bell, TreePine, MapPin, CalendarClock, KeyRound, Cloud, Clock,
-  LifeBuoy
+  LifeBuoy, Network, Building2
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
+import { useGestion } from '@/lib/gestion'
 
 interface EntreeParametres {
   to: string
@@ -27,9 +28,35 @@ interface EntreeParametres {
    * que l'écran lui-même se charge de tenir — et que le serveur impose.
    */
   manageOnly?: boolean
+  /**
+   * Ouvert à qui gère au moins un bâtiment ou un service, quel que soit son
+   * rôle : c'est le seul onglet qu'un agent gestionnaire de l'école y trouve.
+   */
+  gestionOnly?: boolean
+  /**
+   * Ouvert à qui gère **tous** les lieux — administrateur, superviseur,
+   * gestionnaire de l'organisation : le catalogue des contrôles des bâtiments
+   * vaut pour tous, le gestionnaire d'une seule école n'a pas à le changer.
+   */
+  lieuxOnly?: boolean
 }
 
 const settingsNavItems: EntreeParametres[] = [
+  {
+    to: '/settings/organisation',
+    icon: Network,
+    // Bâtiments, salles et services servent à tous les modules : ils se
+    // tiennent ici, et non plus dans celui qui les a vus naître.
+    label: 'Organisation',
+    gestionOnly: true
+  },
+  {
+    to: '/settings/batiments',
+    icon: Building2,
+    // La périodicité et le délai de rappel de chaque contrôle obligatoire.
+    label: 'Bâtiments',
+    lieuxOnly: true
+  },
   {
     to: '/settings/tickets',
     icon: LifeBuoy,
@@ -174,10 +201,17 @@ export default function SettingsPage() {
   const { user } = useAuthStore()
   const isAdmin = user?.role === 'admin'
   const canManage = isAdmin || user?.role === 'supervisor'
+  const { gereQuelqueChose, gereLieux } = useGestion()
 
   // Filtrer les éléments selon le rôle
   const visibleItems = settingsNavItems.filter(
-    (item) => (!item.adminOnly || isAdmin) && (!item.manageOnly || canManage)
+    (item) =>
+      (!item.adminOnly || isAdmin) &&
+      (!item.manageOnly || canManage) &&
+      (!item.gestionOnly || isAdmin || gereQuelqueChose) &&
+      (!item.lieuxOnly || gereLieux) &&
+      // Hors encadrement, seules l'organisation et les bâtiments sont ouverts.
+      (canManage || item.gestionOnly || item.lieuxOnly)
   )
 
   return (

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Building2, CalendarClock, Share2 } from 'lucide-react'
 import { Tab, Tabs } from '@/components/ui'
 import ReferentielLieux from '@/components/ReferentielLieux'
@@ -44,7 +45,18 @@ export default function GestionLieux() {
         <Tab value="partage" label="Partage" icon={<Share2 className="h-4 w-4" />} />
       </Tabs>
 
-      {onglet === 'referentiel' && <ReferentielLieux />}
+      {onglet === 'referentiel' && (
+        <>
+          <p className="text-sm text-gray-600 dark:text-gray-300">
+            Ce référentiel se tient aussi dans{' '}
+            <Link to="/settings/organisation" className="text-primary-600 hover:underline">
+              Paramètres › Organisation
+            </Link>
+            , avec les salles, les personnes rattachées et leurs gestionnaires.
+          </p>
+          <ReferentielLieux />
+        </>
+      )}
       {onglet === 'occupation' && <OccupationLieux />}
       {onglet === 'partage' && <PartageAgenda />}
     </div>

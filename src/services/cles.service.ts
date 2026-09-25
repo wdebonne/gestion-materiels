@@ -291,11 +291,17 @@ export async function compositionDuTrousseau(trousseauId: number): Promise<any[]
              s.name AS site_name,
              o.name AS ouvrant_name,
              so.name AS ouvrant_site_name,
+             p.name AS piece_name,
+             sp.name AS piece_site_name,
              CASE WHEN co.site_id IS NOT NULL THEN 1 ELSE 0 END AS est_passe
         FROM cle_ouvre co
         LEFT JOIN cle_sites s ON s.id = co.site_id
         LEFT JOIN cle_ouvrants o ON o.id = co.ouvrant_id
         LEFT JOIN cle_sites so ON so.id = o.site_id
+        -- La portée « pièce » (migration 037) : sans elle, une clé qui ouvre
+        -- la salle des mariages s'affichait dans le trousseau sans rien ouvrir.
+        LEFT JOIN site_pieces p ON p.id = co.piece_id
+        LEFT JOIN cle_sites sp ON sp.id = p.site_id
        WHERE co.object_id IN (${marqueurs})`,
     composants.map((c: any) => c.object_id),
     'object_id'

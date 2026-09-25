@@ -105,6 +105,25 @@ export function pretableEffectif(pretablePiece: Disponibilite, pretableSite: Dis
   return false;
 }
 
+/**
+ * Le type qui fait d'une pièce une **salle**.
+ *
+ * La commune raisonne en salles — la salle du conseil, la salle des mariages,
+ * la salle du CCAS — et c'est par elles que le formulaire externe propose un
+ * lieu. Pas de quatrième niveau pour autant : une salle est une pièce dont le
+ * type est « Salle ». Le type reste libre ; seule cette valeur-là est
+ * normalisée, parce qu'une « salle » saisie en minuscules disparaîtrait
+ * sinon de toutes les listes de salles.
+ */
+export const TYPE_SALLE = 'Salle';
+
+/** Ramène « salle », « SALLE » ou « Salle » à la forme de référence ; le reste passe tel quel. */
+export function normaliserTypeLieu(brut: unknown): string | null {
+  const valeur = String(brut ?? '').trim();
+  if (!valeur) return null;
+  return valeur.toLowerCase() === TYPE_SALLE.toLowerCase() ? TYPE_SALLE : valeur;
+}
+
 /** Les pièces d'un bâtiment, les inactives seulement si on les demande. */
 export async function listerPieces(
   siteId: number | string,
@@ -138,19 +157,26 @@ export async function lirePiece(id: number | string): Promise<Piece | null> {
  * et masquer la salle des fêtes parce que personne n'a saisi sa jauge serait le
  * plus sûr moyen de faire abandonner le filtre.
  */
-export async function lieuxPretables(options: { capaciteMinimale?: number } = {}): Promise<
+export async function lieuxPretables(
+  options: { capaciteMinimale?: number; typeLieu?: string | null } = {}
+): Promise<
   Array<{
     siteId: number;
     pieceId: number | null;
     nom: string;
     siteNom: string;
+    /** « Salle du conseil — Mairie » : ce que le formulaire affiche tel quel. */
+    libelle: string;
     typeLieu: string | null;
     capacite: number | null;
   }>
 > {
   const { capaciteMinimale } = options;
+  const typeLieu = normaliserTypeLieu(options.typeLieu);
 
-  const batiments = await db.query(
+  // Filtrer sur un type écarte les bâtiments entiers : la mairie n'est pas
+  // « une salle », même quand elle se prête d'un bloc.
+  const batiments = typeLieu ? [] : await db.query(
     `SELECT s.id, s.name
        FROM cle_sites s
       WHERE s.is_active = 1 AND ${expressionPretableSite('s')} = 1
@@ -161,7 +187,11 @@ export async function lieuxPretables(options: { capaciteMinimale?: number } = {}
     capaciteMinimale !== undefined && capaciteMinimale !== null
       ? 'AND (p.capacite IS NULL OR p.capacite >= ?)'
       : '';
-  const params = filtreCapacite ? [capaciteMinimale] : [];
+  const filtreType = typeLieu ? 'AND LOWER(TRIM(p.type_lieu)) = ?' : '';
+  const params: any[] = [
+    ...(filtreCapacite ? [capaciteMinimale] : []),
+    ...(typeLieu ? [typeLieu.toLowerCase()] : []),
+  ];
 
   const pieces = await db.query(
     `SELECT p.id, p.name, p.type_lieu, p.capacite, p.site_id, s.name AS site_name
@@ -170,6 +200,7 @@ export async function lieuxPretables(options: { capaciteMinimale?: number } = {}
       WHERE p.is_active = 1 AND s.is_active = 1
         AND ${expressionPretable('p', 's')} = 1
         ${filtreCapacite}
+        ${filtreType}
       ORDER BY s.sort_order ASC, s.name ASC, p.sort_order ASC, p.name ASC`,
     params
   );
@@ -180,6 +211,7 @@ export async function lieuxPretables(options: { capaciteMinimale?: number } = {}
       pieceId: null,
       nom: b.name,
       siteNom: b.name,
+      libelle: b.name,
       typeLieu: 'batiment' as string | null,
       capacite: null,
     })),
@@ -188,10 +220,41 @@ export async function lieuxPretables(options: { capaciteMinimale?: number } = {}
       pieceId: Number(p.id),
       nom: p.name,
       siteNom: p.site_name,
-      typeLieu: p.type_lieu ?? null,
+      libelle: `${p.name} — ${p.site_name}`,
+      typeLieu: normaliserTypeLieu(p.type_lieu),
       capacite: p.capacite === null || p.capacite === undefined ? null : Number(p.capacite),
     })),
   ];
+}
+
+/**
+ * Toutes les salles, tous bâtiments confondus — l'onglet « Salles ».
+ *
+ * `pretableEffectif` est calculé ici, pour que l'écran n'ait pas à refaire la
+ * règle d'héritage : une salle « comme le bâtiment » dans une salle des fêtes
+ * ouverte au prêt se prête, et le tableau doit le dire.
+ */
+export async function listerSalles(inclureInactives = false): Promise<
+  Array<PieceResolue & { libelle: string }>
+> {
+  const lignes = await db.query(
+    `SELECT p.*, s.name AS site_name, s.pretable AS site_pretable
+       FROM site_pieces p
+       ${jointurePretable('p', 's')}
+      WHERE LOWER(TRIM(p.type_lieu)) = ?
+        ${inclureInactives ? '' : 'AND p.is_active = 1 AND s.is_active = 1'}
+      ORDER BY s.sort_order ASC, s.name ASC, p.sort_order ASC, p.name ASC`,
+    [TYPE_SALLE.toLowerCase()]
+  );
+  return lignes.map((l: any) => {
+    const piece = enPiece(l);
+    return {
+      ...piece,
+      siteNom: l.site_name,
+      libelle: `${piece.nom} — ${l.site_name}`,
+      pretableEffectif: pretableEffectif(piece.pretable, lireDisponibilite(l.site_pretable)),
+    };
+  });
 }
 
 /**
@@ -266,6 +329,9 @@ export async function usagesPiece(pieceId: number | string): Promise<{
   cles: number;
   ouvrants: number;
   occupations: number;
+  documents: number;
+  /** Du matériel posé dans la pièce : la supprimer le ferait disparaître du plan sans un mot. */
+  materiels: number;
 }> {
   const compter = async (sql: string): Promise<number> => {
     try {
@@ -282,6 +348,8 @@ export async function usagesPiece(pieceId: number | string): Promise<{
     cles: await compter('SELECT COUNT(*) as cnt FROM cle_ouvre WHERE piece_id = ?'),
     ouvrants: await compter('SELECT COUNT(*) as cnt FROM cle_ouvrants WHERE piece_id = ?'),
     occupations: await compter('SELECT COUNT(*) as cnt FROM lieu_occupations WHERE piece_id = ?'),
+    documents: await compter('SELECT COUNT(*) as cnt FROM batiment_documents WHERE piece_id = ?'),
+    materiels: await compter('SELECT COUNT(*) as cnt FROM piece_materiels WHERE piece_id = ?'),
   };
 }
 
@@ -304,7 +372,7 @@ export async function creerPiece(valeurs: {
       valeurs.nom,
       valeurs.code || null,
       valeurs.description || null,
-      valeurs.typeLieu || null,
+      normaliserTypeLieu(valeurs.typeLieu),
       valeurs.capacite ?? null,
       versColonne(lireDisponibilite(valeurs.pretable)),
       valeurs.ordre ?? 0,
@@ -338,7 +406,7 @@ export async function modifierPiece(
   if (valeurs.nom !== undefined) poser('name', valeurs.nom);
   if (valeurs.code !== undefined) poser('code', valeurs.code || null);
   if (valeurs.description !== undefined) poser('description', valeurs.description || null);
-  if (valeurs.typeLieu !== undefined) poser('type_lieu', valeurs.typeLieu || null);
+  if (valeurs.typeLieu !== undefined) poser('type_lieu', normaliserTypeLieu(valeurs.typeLieu));
   if (valeurs.capacite !== undefined) poser('capacite', valeurs.capacite ?? null);
   // `pretable` traverse `lireDisponibilite` : une chaîne vide venue du
   // formulaire doit devenir `NULL` (« hérite ») et non `0` (« non »).

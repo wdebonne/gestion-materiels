@@ -2,6 +2,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePermissions } from '@/lib/permissions'
 import { useSettingsStore } from '@/stores/settings.store'
+import { useGestion } from '@/lib/gestion'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useEffect, useState } from 'react'
@@ -40,7 +41,8 @@ import {
   CalendarDays,
   TreePine,
   KeyRound,
-  LifeBuoy
+  LifeBuoy,
+  Building2
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -55,6 +57,8 @@ import PasswordExpiredBanner from '@/components/PasswordExpiredBanner'
 export default function Layout() {
   const { user, logout } = useAuthStore()
   const { isService, canManage } = usePermissions()
+  // Un agent qui gère l'école doit trouver l'entrée Organisation des paramètres.
+  const { gereQuelqueChose, consulteDesBatiments } = useGestion()
   const { settings, fetchSettings } = useSettingsStore()
   const navigate = useNavigate()
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -170,6 +174,9 @@ export default function Layout() {
     TreePine,
     treepine: TreePine,
     'tree-pine': TreePine,
+    Building2,
+    building2: Building2,
+    'building-2': Building2,
     KeyRound,
     keyround: KeyRound,
     'key-round': KeyRound,
@@ -191,11 +198,14 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings', 'tickets']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings', 'tickets', 'batiments']
   // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
   const baseNavSlugs = ['manifestations']
   const pluginNavigation = menuPlugins
     .filter((plugin: any) => !baseNavSlugs.includes(plugin.slug))
+    // Les bâtiments ne se montrent qu'à qui en suit un — gestionnaire ou
+    // responsable : les autres n'y trouveraient qu'un écran vide.
+    .filter((plugin: any) => plugin.slug !== 'batiments' || consulteDesBatiments)
     .map((plugin: any) => {
       const isBuiltIn = builtInPluginSlugs.includes(plugin.slug)
       return {
@@ -389,9 +399,10 @@ export default function Layout() {
                       </button>
                     </div>
                     {/* Ouvert au superviseur : il y tient l'annuaire des
-                        personnes sans compte. Chaque onglet se filtre
-                        ensuite selon le rôle, et le serveur tranche. */}
-                    {canManage && (
+                        personnes sans compte — et à qui gère un bâtiment ou
+                        un service, pour l'onglet Organisation. Chaque onglet
+                        se filtre ensuite, et le serveur tranche. */}
+                    {(canManage || gereQuelqueChose) && (
                       <NavLink
                         to="/settings"
                         onClick={() => setUserMenuOpen(false)}
@@ -445,6 +456,7 @@ interface SidebarContentProps {
 }
 
 function SidebarContent({ navigation, settings, user, onClose, collapsed = false, onToggleCollapse }: SidebarContentProps) {
+  const { gereQuelqueChose } = useGestion()
   const { t } = useTranslation()
   return (
     <div className="flex flex-col h-full">
@@ -513,8 +525,9 @@ function SidebarContent({ navigation, settings, user, onClose, collapsed = false
         ))}
       </nav>
 
-      {/* Paramètres : administrateur, et superviseur pour l'annuaire */}
-      {(user?.role === 'admin' || user?.role === 'supervisor') && (
+      {/* Paramètres : administrateur, superviseur pour l'annuaire, et
+          gestionnaire d'un bâtiment ou d'un service pour l'organisation */}
+      {(user?.role === 'admin' || user?.role === 'supervisor' || gereQuelqueChose) && (
         <div className="px-3 py-4 border-t border-gray-100 dark:border-gray-700">
           <NavLink
             to="/settings"

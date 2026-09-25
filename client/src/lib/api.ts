@@ -2750,6 +2750,8 @@ export interface RattachementSite {
   peutVoirTickets: boolean
   /** Reçoit un courriel à chaque demande du bâtiment. */
   notifie: boolean
+  /** Gère le bâtiment : ses salles, ses portes, ses rattachements. */
+  gereLieu?: boolean
 }
 
 export interface CompteRattache {
@@ -2784,11 +2786,662 @@ export const siteApi = {
   membres: (id: number) =>
     api.get<{
       success: boolean
-      membres: { id: number; userId: number; nom: string; email: string | null; peutVoirTickets: boolean }[]
+      /** Faux pour le gestionnaire d'un bâtiment : il ne fait pas d'autres gestionnaires. */
+      peutAccorderGestion: boolean
+      membres: MembreSite[]
     }>(`/sites/${id}/membres`),
+  /** Rattache la personne si elle ne l'est pas ; les droits absents ne sont pas touchés. */
+  reglerMembre: (
+    id: number,
+    userId: number,
+    droits: Partial<Pick<MembreSite, 'estResponsable' | 'peutVoirTickets' | 'notifie' | 'gereLieu'>>
+  ) => api.put<{ success: boolean }>(`/sites/${id}/membres/${userId}`, droits),
+  retirerMembre: (id: number, userId: number) =>
+    api.delete<{ success: boolean }>(`/sites/${id}/membres/${userId}`),
   creer: (data: Record<string, unknown>) => api.post<{ success: boolean; id: number }>('/sites', data),
   modifier: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/sites/${id}`, data),
   supprimer: (id: number) => api.delete<{ success: boolean }>(`/sites/${id}`),
+}
+
+/** Une personne rattachée à un bâtiment, et ses quatre droits indépendants. */
+export interface MembreSite {
+  id: number
+  userId: number
+  nom: string
+  email: string | null
+  /** Signale pour le bâtiment, pas seulement pour son matériel. */
+  estResponsable: boolean
+  /** Lit les demandes du bâtiment. */
+  peutVoirTickets: boolean
+  /** Reçoit un courriel à chaque demande. */
+  notifie: boolean
+  /** Gère le bâtiment : ses salles, ses portes, ses rattachements. */
+  gereLieu: boolean
+}
+
+// ------------------------------------------------------------- Organisation
+
+/** Ce que le compte courant gère. Voir `gestionOrganisation.service.ts`. */
+export interface PerimetreGestion {
+  /** Case « gère toute l'organisation » cochée par l'administrateur. */
+  gereOrganisation: boolean
+  /** Tous les bâtiments et salles : administrateur, superviseur ou gestionnaire global. */
+  gereLieux: boolean
+  /** Tous les services : administrateur ou gestionnaire global. */
+  gereServices: boolean
+  sitesGeres: number[]
+  /** Gérés ou dont le compte est responsable : ce que le module Bâtiments lui montre. */
+  sitesConsultes: number[]
+  servicesGeres: number[]
+}
+
+export interface Salle {
+  id: number
+  siteId: number
+  siteNom: string
+  nom: string
+  /** « Salle du conseil — Mairie ». */
+  libelle: string
+  code: string | null
+  description: string | null
+  typeLieu: string | null
+  capacite: number | null
+  /** `null` = suit le bâtiment. */
+  pretable: boolean | null
+  pretableEffectif: boolean
+  actif: boolean
+  modifiable: boolean
+}
+
+export interface PersonneGestion {
+  userId: number
+  nom: string
+  email: string | null
+}
+
+export const organisationApi = {
+  moi: () => api.get<{ success: boolean } & PerimetreGestion>('/organisation/moi'),
+  salles: (tous = false) =>
+    api.get<{ success: boolean; salles: Salle[] }>(`/organisation/salles${tous ? '?tous=true' : ''}`),
+  gestionnaires: () =>
+    api.get<{
+      success: boolean
+      globaux: Array<PersonneGestion & { role: string }>
+      batiments: Array<{ siteId: number; nom: string; actif: boolean; gestionnaires: PersonneGestion[] }>
+      services: Array<{ serviceId: number; nom: string; actif: boolean; responsables: PersonneGestion[] }>
+    }>('/organisation/gestionnaires'),
+  /** Comptes actifs qui se connectent — ce qu'un gestionnaire peut rattacher ou ajouter. */
+  personnes: () =>
+    api.get<{ success: boolean; personnes: PersonneGestion[] }>('/organisation/personnes'),
+  definirGestionnaire: (userId: number, gereOrganisation: boolean) =>
+    api.put<{ success: boolean }>(`/organisation/gestionnaires/${userId}`, { gereOrganisation }),
+}
+
+// ------------------------------------------------------------------ Bâtiments
+
+/** Ce qu'on range : l'« objet » d'un document. Voir `batiments.service.ts`. */
+export type NatureRubrique = 'controle' | 'rapport' | 'facture' | 'contrat' | 'autre'
+export type ResultatControle = 'conforme' | 'reserves' | 'non_conforme'
+export type StatutDocumentBatiment = 'a_valider' | 'valide' | 'refuse'
+/** Du plus urgent au plus calme. */
+export type StatutSuivi = 'en_retard' | 'non_conforme' | 'bientot' | 'a_jour' | 'jamais'
+
+export interface RubriqueBatiment {
+  id: number
+  code: string
+  libelle: string
+  nature: NatureRubrique
+  /** `null` : pas d'échéance, le document se range seulement. */
+  periodiciteMois: number | null
+  rappelJours: number
+  referenceReglementaire: string | null
+  description: string | null
+  actif: boolean
+  /** Livrée avec l'application : se désactive, ne se supprime pas. */
+  systeme: boolean
+  ordre: number
+  suivis: number
+  documents: number
+}
+
+export interface EtatSuivi {
+  suiviId: number
+  siteId: number
+  siteNom: string
+  rubriqueId: number
+  rubriqueLibelle: string
+  nature: NatureRubrique
+  libelle: string | null
+  pieceId: number | null
+  pieceNom: string | null
+  periodiciteMois: number | null
+  rappelJours: number
+  surcharge: { periodiciteMois: number | null; rappelJours: number | null }
+  echeanceInitiale: string | null
+  actif: boolean
+  notes: string | null
+  dernierDocument: { id: number; titre: string; date: string | null; resultat: ResultatControle | null } | null
+  echeance: string | null
+  joursRestants: number | null
+  enRetard: boolean
+  dansFenetre: boolean
+  statut: StatutSuivi
+}
+
+export interface DocumentBatiment {
+  id: number
+  siteId: number
+  siteNom: string
+  pieceId: number | null
+  pieceNom: string | null
+  rubriqueId: number | null
+  rubriqueLibelle: string | null
+  nature: NatureRubrique | null
+  suiviId: number | null
+  suiviLibelle: string | null
+  titre: string
+  description: string | null
+  commentaireDepot: string | null
+  nomOrigine: string
+  mime: string | null
+  taille: number | null
+  dateDocument: string | null
+  prochaineEcheance: string | null
+  resultat: ResultatControle | null
+  statut: StatutDocumentBatiment
+  motifRefus: string | null
+  source: 'interne' | 'entreprise'
+  deposePar: { id: number; nom: string } | null
+  /** L'entreprise extérieure qui l'a déposé par son portail. */
+  entreprise: { id: number; nom: string } | null
+  validePar: { id: number; nom: string } | null
+  valideLe: string | null
+  creeLe: string | null
+}
+
+export interface ResumeBatiment {
+  id: number
+  nom: string
+  code: string | null
+  adresse: string | null
+  /** Le compte gère ce bâtiment ; sinon il en est responsable, et dépose sans valider. */
+  gere: boolean
+  compteurs: Record<StatutSuivi | 'suivis' | 'aValider' | 'documents', number>
+}
+
+/** Ce qui classe un document : envoyé au dépôt, à la validation, au reclassement. */
+export interface ClassementDocument {
+  siteId?: number
+  pieceId?: number | null
+  rubriqueId?: number | null
+  suiviId?: number | null
+  titre?: string
+  description?: string | null
+  dateDocument?: string | null
+  prochaineEcheance?: string | null
+  resultat?: ResultatControle | null
+  creerSuivi?: boolean
+}
+
+export const batimentsApi = {
+  liste: () =>
+    api.get<{ success: boolean; gereTout: boolean; batiments: ResumeBatiment[] }>('/batiments'),
+  lire: (id: number) =>
+    api.get<{
+      success: boolean
+      batiment: { id: number; nom: string; code: string | null; adresse: string | null; actif: boolean; surfaceM2: number | null }
+      gere: boolean
+      pieces: { id: number; nom: string }[]
+    }>(`/batiments/${id}`),
+  suivis: (id: number) => api.get<{ success: boolean; suivis: EtatSuivi[] }>(`/batiments/${id}/suivis`),
+  suivi: (suiviId: number) => api.get<{ success: boolean; suivi: EtatSuivi }>(`/batiments/suivis/${suiviId}`),
+  creerSuivi: (id: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${id}/suivis`, data),
+  modifierSuivi: (suiviId: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/batiments/suivis/${suiviId}`, data),
+  supprimerSuivi: (suiviId: number) => api.delete<{ success: boolean }>(`/batiments/suivis/${suiviId}`),
+
+  documents: (id: number, filtre: { statut?: StatutDocumentBatiment; rubrique?: number; suivi?: number; q?: string } = {}) =>
+    api.get<{ success: boolean; documents: DocumentBatiment[] }>(`/batiments/${id}/documents`, { params: filtre }),
+  aValider: () => api.get<{ success: boolean; documents: DocumentBatiment[] }>('/batiments/a-valider'),
+  /** Multipart : le fichier sous `fichier`, la classification en champs. */
+  deposer: (id: number, donnees: FormData) =>
+    api.post<{ success: boolean; id: number; statut: StatutDocumentBatiment; suiviId: number | null; suiviCree: boolean }>(
+      `/batiments/${id}/documents`,
+      donnees,
+      { headers: { 'Content-Type': 'multipart/form-data' } }
+    ),
+  modifierDocument: (docId: number, data: ClassementDocument) =>
+    api.put<{ success: boolean; suiviId: number | null; suiviCree: boolean }>(`/batiments/documents/${docId}`, data),
+  /** `coutTtc` : le coût du contrôle, qui crée l'intervention correspondante. */
+  valider: (docId: number, data: ClassementDocument & { coutTtc?: number | string | null }) =>
+    api.post<{ success: boolean; suiviId: number | null; suiviCree: boolean; prochaineEcheance: string | null; interventionId: number | null }>(
+      `/batiments/documents/${docId}/valider`,
+      data
+    ),
+  refuser: (docId: number, motif: string) =>
+    api.post<{ success: boolean }>(`/batiments/documents/${docId}/refuser`, { motif }),
+  supprimerDocument: (docId: number) => api.delete<{ success: boolean }>(`/batiments/documents/${docId}`),
+  /** Le fichier, en blob : il ne passe jamais par une URL que l'on pourrait partager. */
+  fichier: (docId: number) => api.get<Blob>(`/batiments/documents/${docId}/fichier`, { responseType: 'blob' }),
+
+  rubriques: (toutes = false) =>
+    api.get<{ success: boolean; rubriques: RubriqueBatiment[] }>(`/batiments/rubriques${toutes ? '?toutes=true' : ''}`),
+  creerRubrique: (data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>('/batiments/rubriques', data),
+  modifierRubrique: (rubriqueId: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/batiments/rubriques/${rubriqueId}`, data),
+  supprimerRubrique: (rubriqueId: number) => api.delete<{ success: boolean }>(`/batiments/rubriques/${rubriqueId}`),
+  appliquerRubrique: (rubriqueId: number, cible: { tous: true } | { siteIds: number[] }) =>
+    api.post<{ success: boolean; crees: number }>(`/batiments/rubriques/${rubriqueId}/appliquer`, cible),
+}
+
+// ------------------------------------------------------ Étages, plans, pièces
+
+export interface PointPlanApi {
+  x: number
+  y: number
+}
+
+export interface Etage {
+  id: number
+  siteId: number
+  nom: string
+  /** 0 pour le rez-de-chaussée, -1 pour le sous-sol. */
+  niveau: number
+  ordre: number
+  plan: { mime: string | null; largeur: number | null; hauteur: number | null; ratio: number | null } | null
+  echelle: { metresParPourcent: number; points: { a: PointPlanApi; b: PointPlanApi; metres: number } | null } | null
+}
+
+export interface PieceSurPlan {
+  id: number
+  nom: string
+  code: string | null
+  typeLieu: string | null
+  capacite: number | null
+  actif: boolean
+  etageId: number | null
+  /** En pourcentages du plan ; vide tant que la pièce n'est pas dessinée. */
+  zone: PointPlanApi[]
+  surfaceM2: number | null
+  materiels: number
+}
+
+export interface MaterielDansPiece {
+  placementId: number
+  pieceId: number
+  objectId: number
+  nom: string
+  reference: string | null
+  image: string | null
+  unique: boolean
+  quantite: number
+  notes: string | null
+}
+
+export interface FichePiece {
+  piece: {
+    id: number
+    siteId: number
+    nom: string
+    code: string | null
+    typeLieu: string | null
+    capacite: number | null
+    etageId: number | null
+    etageNom: string | null
+    surfaceM2: number | null
+    aUneZone: boolean
+  }
+  materiels: MaterielDansPiece[]
+  cles: Array<{
+    id: number
+    nom: string
+    reference: string | null
+    portee: 'batiment' | 'piece' | 'porte'
+    porte: string | null
+    detenteurs: string[]
+  }>
+  portes: { id: number; nom: string; code: string | null }[]
+  documents: { id: number; titre: string; date: string | null; rubrique: string | null }[]
+}
+
+export const plansApi = {
+  etages: (siteId: number) =>
+    api.get<{ success: boolean; etages: Etage[]; pieces: PieceSurPlan[] }>(`/batiments/${siteId}/etages`),
+  creerEtage: (siteId: number, data: { nom: string; niveau: number }) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/etages`, data),
+  modifierEtage: (etageId: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean; etage: Etage }>(`/batiments/etages/${etageId}`, data),
+  supprimerEtage: (etageId: number) => api.delete<{ success: boolean }>(`/batiments/etages/${etageId}`),
+  /** Multipart : l'image sous `plan`, et les dimensions mesurées par le navigateur. */
+  deposerPlan: (etageId: number, donnees: FormData) =>
+    api.post<{ success: boolean; etage: Etage }>(`/batiments/etages/${etageId}/plan`, donnees, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }),
+  /** Le plan, en blob : il ne passe jamais par une URL partageable. */
+  plan: (etageId: number) => api.get<Blob>(`/batiments/etages/${etageId}/plan`, { responseType: 'blob' }),
+  creerPiece: (etageId: number, data: { nom: string; typeLieu?: string | null; points: PointPlanApi[] }) =>
+    api.post<{ success: boolean; id: number; surfaceM2: number | null }>(`/batiments/etages/${etageId}/pieces`, data),
+  zone: (pieceId: number, data: { etageId: number | null; points: PointPlanApi[] | null }) =>
+    api.put<{ success: boolean; surfaceM2: number | null }>(`/batiments/pieces/${pieceId}/zone`, data),
+  fiche: (pieceId: number) => api.get<{ success: boolean } & FichePiece>(`/batiments/pieces/${pieceId}`),
+  placer: (pieceId: number, data: { objectId: number; quantite?: number; deplacer?: boolean }) =>
+    api.post<{ success: boolean; placementId: number; deplaceDe: string | null }>(
+      `/batiments/pieces/${pieceId}/materiels`,
+      data
+    ),
+  modifierPlacement: (placementId: number, data: { quantite?: number; notes?: string | null }) =>
+    api.put<{ success: boolean }>(`/batiments/placements/${placementId}`, data),
+  retirerPlacement: (placementId: number) => api.delete<{ success: boolean }>(`/batiments/placements/${placementId}`),
+  materielsDuBatiment: (siteId: number) =>
+    api.get<{ success: boolean; materiels: MaterielDansPiece[] }>(`/batiments/${siteId}/materiels`),
+  piecesDuMateriel: (objectId: number) =>
+    api.get<{
+      success: boolean
+      pieces: Array<{ placementId: number; pieceId: number; pieceNom: string; siteId: number; siteNom: string; etage: string | null; quantite: number }>
+    }>(`/batiments/materiels/${objectId}/pieces`),
+}
+
+// ------------------------------------ Énergie, contrats, interventions (lot D)
+
+export type Energie = 'electricite' | 'gaz' | 'eau' | 'fioul' | 'chaleur' | 'autre'
+export type NatureIntervention = 'entretien' | 'depannage' | 'travaux' | 'controle' | 'nettoyage' | 'autre'
+export type StatutContrat = 'actif' | 'a_resilier' | 'se_termine' | 'echu' | 'sans_fin' | 'inactif'
+
+interface Nomme {
+  id: number
+  nom: string
+}
+
+export interface Compteur {
+  id: number
+  siteId: number
+  energie: Energie
+  libelle: string | null
+  numero: string | null
+  unite: string
+  fournisseur: Nomme | null
+  actif: boolean
+  notes: string | null
+  dernierReleve: { date: string; index: number } | null
+}
+
+export interface Releve {
+  id: number
+  date: string
+  index: number
+  /** Depuis le relevé précédent ; `null` pour le premier. */
+  consommation: number | null
+  notes: string | null
+}
+
+export interface Facture {
+  id: number
+  siteId: number
+  compteurId: number | null
+  compteurLibelle: string | null
+  energie: Energie
+  fournisseur: Nomme | null
+  numero: string | null
+  dateFacture: string
+  periodeDebut: string | null
+  periodeFin: string | null
+  consommation: number | null
+  unite: string | null
+  montantHt: number | null
+  /** Négatif pour un avoir. */
+  montantTtc: number
+  estimee: boolean
+  document: { id: number; titre: string } | null
+  notes: string | null
+}
+
+export interface SyntheseEnergie {
+  energie: Energie
+  unite: string | null
+  montant: number
+  consommation: number
+  montantPrecedent: number
+  consommationPrecedente: number
+  /** Jours de l'année couverts par au moins une facture. */
+  joursCouverts: number
+}
+
+export interface Contrat {
+  id: number
+  objet: string
+  entreprise: Nomme | null
+  reference: string | null
+  dateDebut: string
+  dateFin: string | null
+  reconductionTacite: boolean
+  preavisJours: number
+  montantAnnuelHt: number | null
+  montantAnnuelTtc: number | null
+  document: { id: number; titre: string } | null
+  notes: string | null
+  actif: boolean
+  sites: Nomme[]
+  etat: {
+    finEnCours: string | null
+    /** Veille du préavis d'un contrat tacite ; fin d'un contrat ferme. */
+    dateCle: string | null
+    joursAvantDateCle: number | null
+    statut: StatutContrat
+  }
+}
+
+export interface Intervention {
+  id: number
+  siteId: number
+  siteNom: string
+  pieceId: number | null
+  pieceNom: string | null
+  date: string
+  nature: NatureIntervention
+  titre: string
+  description: string | null
+  entreprise: Nomme | null
+  contrat: { id: number; objet: string } | null
+  ticketId: number | null
+  document: { id: number; titre: string } | null
+  montantHt: number | null
+  montantTtc: number | null
+  dureeMinutes: number | null
+}
+
+export type CategorieStat = 'energie' | 'contrats' | 'interventions' | 'controles' | 'achats'
+export type ComparaisonStat = 'aucune' | 'precedente' | 'n-1'
+export type GranulariteStat = 'semaine' | 'mois' | 'annee'
+type ParCategorieStat = Record<CategorieStat, number>
+
+export interface SerieStat {
+  cle: string
+  libelle: string
+  libelleLong: string
+  debut: string
+  fin: string
+  parCategorie: ParCategorieStat
+  total: number
+  consommations: Partial<Record<Energie, number>>
+}
+
+export interface StatistiquesBatiments {
+  filtre: {
+    debut: string
+    fin: string
+    granularite: GranulariteStat
+    siteIds: number[]
+    categories: CategorieStat[]
+    energies: Energie[]
+    comparaison: ComparaisonStat
+  }
+  fenetre: { debut: string; fin: string }
+  fenetreComparaison: { debut: string; fin: string } | null
+  totaux: { montant: number; comparaison: number | null; parCategorie: ParCategorieStat; parCategorieComparaison: ParCategorieStat | null }
+  series: SerieStat[]
+  seriesComparaison: SerieStat[] | null
+  details: Array<{ categorie: CategorieStat; sous: string; montant: number; comparaison: number | null }>
+  parEnergie: Array<{
+    energie: Energie
+    montant: number
+    consommation: number
+    unite: string | null
+    comparaison: number | null
+    consommationComparaison: number | null
+  }>
+  parBatiment: Array<{
+    siteId: number
+    nom: string
+    surfaceM2: number | null
+    parCategorie: ParCategorieStat
+    total: number
+    comparaison: number | null
+    consommations: Partial<Record<Energie, number>>
+    /** Par énergie facturée : la part des jours couverts par une facture, de 0 à 1. */
+    couverture: Partial<Record<Energie, number>>
+  }>
+  achatsSansPrix: number
+}
+
+export interface FiltreStatistiquesApi {
+  debut?: string
+  fin?: string
+  granularite?: GranulariteStat
+  sites?: number[]
+  categories?: CategorieStat[]
+  energies?: Energie[]
+  comparaison?: ComparaisonStat
+}
+
+export const exploitationApi = {
+  statistiques: (f: FiltreStatistiquesApi) =>
+    api.get<{ success: boolean; statistiques: StatistiquesBatiments }>('/batiments/statistiques', {
+      params: {
+        debut: f.debut,
+        fin: f.fin,
+        granularite: f.granularite,
+        comparaison: f.comparaison,
+        sites: f.sites?.length ? f.sites.join(',') : undefined,
+        categories: f.categories?.length ? f.categories.join(',') : undefined,
+        energies: f.energies?.length ? f.energies.join(',') : undefined,
+      },
+    }),
+  fournisseurs: () => api.get<{ success: boolean; fournisseurs: Nomme[] }>('/batiments/fournisseurs'),
+  surface: (siteId: number, surfaceM2: number | string | null) =>
+    api.put<{ success: boolean; surfaceM2: number | null }>(`/batiments/${siteId}/surface`, { surfaceM2 }),
+
+  compteurs: (siteId: number) => api.get<{ success: boolean; compteurs: Compteur[] }>(`/batiments/${siteId}/compteurs`),
+  creerCompteur: (siteId: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/compteurs`, data),
+  modifierCompteur: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/batiments/compteurs/${id}`, data),
+  supprimerCompteur: (id: number) => api.delete<{ success: boolean }>(`/batiments/compteurs/${id}`),
+  releves: (compteurId: number) => api.get<{ success: boolean; releves: Releve[] }>(`/batiments/compteurs/${compteurId}/releves`),
+  ajouterReleve: (compteurId: number, data: { date: string; index: number | string; notes?: string | null }) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/compteurs/${compteurId}/releves`, data),
+  supprimerReleve: (id: number) => api.delete<{ success: boolean }>(`/batiments/releves/${id}`),
+
+  factures: (siteId: number, filtre: { annee?: number; energie?: Energie } = {}) =>
+    api.get<{ success: boolean; factures: Facture[] }>(`/batiments/${siteId}/factures`, { params: filtre }),
+  creerFacture: (siteId: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/factures`, data),
+  modifierFacture: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/batiments/factures/${id}`, data),
+  supprimerFacture: (id: number) => api.delete<{ success: boolean }>(`/batiments/factures/${id}`),
+  synthese: (siteId: number, annee: number) =>
+    api.get<{ success: boolean; annee: number; surfaceM2: number | null; energies: SyntheseEnergie[] }>(
+      `/batiments/${siteId}/energie/synthese`,
+      { params: { annee } }
+    ),
+
+  contrats: (siteId?: number) =>
+    api.get<{ success: boolean; contrats: Contrat[] }>('/batiments/contrats', { params: siteId ? { site: siteId } : {} }),
+  contrat: (id: number) => api.get<{ success: boolean; contrat: Contrat }>(`/batiments/contrats/${id}`),
+  creerContrat: (data: Record<string, unknown>) => api.post<{ success: boolean; id: number }>('/batiments/contrats', data),
+  modifierContrat: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/batiments/contrats/${id}`, data),
+  supprimerContrat: (id: number) => api.delete<{ success: boolean }>(`/batiments/contrats/${id}`),
+
+  interventions: (siteId: number, filtre: { piece?: number; annee?: number; nature?: NatureIntervention } = {}) =>
+    api.get<{ success: boolean; interventions: Intervention[] }>(`/batiments/${siteId}/interventions`, { params: filtre }),
+  creerIntervention: (siteId: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/interventions`, data),
+  modifierIntervention: (id: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/batiments/interventions/${id}`, data),
+  supprimerIntervention: (id: number) => api.delete<{ success: boolean }>(`/batiments/interventions/${id}`),
+}
+
+// ------------------------------------------------------ Entreprises extérieures
+
+export type EtatAccesEntreprise = 'aucun' | 'actif' | 'suspendu' | 'expire' | 'bloque' | 'inactive'
+
+export interface ContactEntreprise {
+  id?: number
+  nom: string
+  fonction: string | null
+  telephone: string | null
+  email: string | null
+  /** Reçoit le lien et le code avec l'entreprise. */
+  recoitAcces: boolean
+}
+
+export interface DroitObjet {
+  rubriqueId: number
+  lecture: boolean
+  depot: boolean
+}
+
+export interface Entreprise {
+  id: number
+  nom: string
+  email: string
+  telephone: string | null
+  adresse: string | null
+  codePostal: string | null
+  ville: string | null
+  siret: string | null
+  notes: string | null
+  actif: boolean
+  acces: {
+    etat: EtatAccesEntreprise
+    genereLe: string | null
+    fin: string | null
+    suspendu: boolean
+    bloqueJusqua: string | null
+    derniereConnexion: string | null
+  }
+  contacts: ContactEntreprise[]
+  sites: number[]
+  rubriques: DroitObjet[]
+  documents: number
+}
+
+export interface ResultatAcces {
+  success: boolean
+  /** En clair, une seule fois : il n'est jamais relu. */
+  code: string
+  lien: string
+  envoi: { resultat: 'envoye' | 'retenu' | 'echec' | 'non_demande'; destinataires: string[]; message?: string }
+}
+
+export const entreprisesApi = {
+  liste: () =>
+    api.get<{
+      success: boolean
+      entreprises: Array<Entreprise & { nbSites: number; nbRubriques: number; nbContacts: number }>
+    }>('/entreprises'),
+  lire: (id: number) => api.get<{ success: boolean; entreprise: Entreprise; lien: string }>(`/entreprises/${id}`),
+  creer: (data: Record<string, unknown>) => api.post<{ success: boolean; id: number }>('/entreprises', data),
+  modifier: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/entreprises/${id}`, data),
+  supprimer: (id: number) => api.delete<{ success: boolean }>(`/entreprises/${id}`),
+  contacts: (id: number, contacts: ContactEntreprise[]) =>
+    api.put<{ success: boolean }>(`/entreprises/${id}/contacts`, { contacts }),
+  droits: (id: number, droits: { sites: number[]; rubriques: DroitObjet[] }) =>
+    api.put<{ success: boolean }>(`/entreprises/${id}/droits`, droits),
+  genererAcces: (id: number, options: { envoyer: boolean; inclureCode: boolean }) =>
+    api.post<ResultatAcces>(`/entreprises/${id}/acces`, options),
+  reglerAcces: (id: number, reglage: { fin?: string | null; suspendu?: boolean }) =>
+    api.put<{ success: boolean }>(`/entreprises/${id}/acces`, reglage),
+  deverrouiller: (id: number) => api.post<{ success: boolean }>(`/entreprises/${id}/deverrouiller`),
 }
 
 // --------------------------------------------- Tickets : règles de diffusion

@@ -7,6 +7,205 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Bâtiments : les coûts en graphiques, comparés, et en PDF
+
+> Une page **Coûts et statistiques**, depuis la liste des bâtiments, répond à
+> « combien coûtent nos bâtiments, et pourquoi ». Cinq catégories — énergie,
+> contrats de maintenance, interventions, contrôles, achats du matériel posé
+> dans les pièces — se lisent en cartes, en **camemberts** (par catégorie, et
+> l'énergie par fluide), en barres empilées **par semaine, mois ou année**, et
+> en barres **par bâtiment**, au besoin rapportées au m².
+>
+> Les filtres se combinent : période (raccourcis ou dates libres), découpage,
+> un, plusieurs ou tous les bâtiments, catégories, fluides. La **comparaison**
+> se fait avec la période précédente ou la même un an plus tôt, sur le total,
+> chaque catégorie, chaque bâtiment et la courbe de consommation.
+>
+> Tout est **réparti au jour** : une facture de décembre-janvier compte pour
+> moitié dans chaque mois, un contrat annuel au prorata des jours regardés, et
+> un contrat qui couvre trois bâtiments pour un tiers dans chacun. Quand les
+> factures d'énergie ne couvrent pas toute la période, l'écran le dit, bâtiment
+> par bâtiment : dix mois de factures contre douze ne sont pas une baisse.
+>
+> **Exporter en PDF** reprend les filtres dans son bandeau et laisse choisir
+> les sections : synthèse, camemberts, évolution, comparaison des bâtiments,
+> énergie, détail des dépenses. Les graphiques sont photographiés, les
+> chiffres écrits en texte.
+>
+> Au passage, les briques des PDF (page, bandeau, tableaux, captures en thème
+> clair) quittent le module Plannings pour `lib/pdf/`, où les deux modules
+> les partagent ; les PDF des plannings n'en changent pas.
+
+### Bâtiments : ce que coûtent l'énergie, les contrats et les interventions
+
+> Trois nouveaux onglets sur la fiche d'un bâtiment. **Énergie** : les
+> compteurs (électricité, gaz, eau, fioul, réseau de chaleur), leurs relevés —
+> un index qui recule est refusé, c'est presque toujours une faute de frappe —
+> et les factures, avec la période qu'elles couvrent. L'année s'y lit par
+> énergie, comparée à la précédente, en euros, en consommation et, une fois la
+> surface du bâtiment renseignée, au m². Une facture de décembre-janvier est
+> **répartie au jour** sur les deux années, et l'écran dit combien de jours
+> sont couverts : dix mois de factures contre douze ne sont pas une baisse.
+> Les avoirs se saisissent en négatif.
+>
+> **Contrats** : ascenseur, chaudière, portes automatiques. Un contrat peut
+> couvrir plusieurs bâtiments. Ce qui compte n'est pas sa fin mais sa **date
+> clé** — pour un contrat à reconduction tacite, le dernier jour pour le
+> dénoncer. Une alerte se lève un mois avant, et un courriel part aux
+> gestionnaires des bâtiments couverts ; l'année suivante, la date clé
+> suivante prend le relais.
+>
+> **Interventions** : dépannages, entretiens, travaux, nettoyage, datés,
+> rattachés à la pièce, à l'entreprise, au contrat, à la demande d'où ils
+> viennent. La fiche d'une pièce sur le plan montre désormais les siennes.
+> Valider un rapport de contrôle en saisissant son coût crée l'intervention
+> correspondante ; valider une facture propose de la saisir aussitôt.
+>
+> On voit un contrat si l'on suit un de ses bâtiments ; on ne le modifie que
+> si on les gère tous, et on ne l'étend qu'à des bâtiments qu'on gère. Un
+> bâtiment qui porte des factures, des interventions ou des compteurs ne se
+> supprime plus sans le dire.
+
+### Bâtiments : les étages, leurs plans, et ce que contient chaque pièce
+
+> « Où est le vidéoprojecteur ? », « quelle clé ouvre la salle 12 ? »,
+> « combien de chaises dans la salle polyvalente ? » : un nouvel onglet
+> **Étages et plans** sur la fiche d'un bâtiment y répond sur le plan.
+>
+> Chaque étage reçoit son **plan** — un PDF (converti en image dans le
+> navigateur, page au choix) ou une image ; un DWG s'exporte d'abord en PDF,
+> et l'écran le dit. On **dessine les pièces** au clic, angle par angle, et on
+> ferme en recliquant le premier point ; le contour se crée comme une pièce
+> nouvelle ou se rattache à une pièce existante. Une fois le plan **étalonné**
+> — une longueur connue tracée à la main —, chaque pièce a sa surface.
+>
+> Un clic sur une pièce ouvre sa fiche : le **matériel** qui s'y trouve, posé
+> depuis le parc par recherche (un matériel unique ne se double pas : on
+> propose de le déplacer ; un lot se répartit dans la limite de sa quantité),
+> les **clés qui l'ouvrent** — passe du bâtiment, passe de la pièce, clé d'une
+> de ses portes — avec leurs détenteurs, ses portes et ses documents. La
+> recherche « vidéoproj » surligne la pièce et bascule sur son étage ; la
+> fiche du matériel dit, elle aussi, dans quelle salle il est.
+>
+> Les plans sont privés, comme les documents : lus par une route qui vérifie
+> qu'on suit le bâtiment, jamais mis en cache. La fiche d'une pièce ne montre
+> que le matériel et les clés des catégories ouvertes au lecteur. Une pièce
+> qui contient du matériel, ou un bâtiment qui a des étages, ne se supprime
+> plus sans le dire.
+>
+> Au passage : dans la composition d'un trousseau, une clé qui ouvre une pièce
+> s'affichait sans rien ouvrir ; elle nomme désormais la pièce.
+
+### Bâtiments : les entreprises extérieures déposent leurs rapports elles-mêmes
+
+> L'électricien qui vérifie les écoles, la société de l'ascenseur, le bureau de
+> contrôle envoyaient leurs rapports par courriel ; un agent les enregistrait.
+> Ils ont désormais un **portail**, sans compte dans l'application : un lien
+> et un code.
+>
+> Dans **Bâtiments › Entreprises**, une entreprise se crée avec son nom et son
+> courriel ; ses contacts (nom, fonction, téléphone, courriel) s'y ajoutent,
+> et l'on coche ceux qui reçoivent l'accès. Ses **droits** se règlent en deux
+> listes : les bâtiments qui lui sont ouverts, puis les objets — chacun en
+> **Lecture** (voir les documents validés) et/ou en **Dépôt**.
+>
+> « Générer et envoyer l'accès » tire un code `ABCD-EFGH` et l'envoie avec le
+> lien. Le code est **montré une seule fois**, à copier si le courriel ne part
+> pas ; on peut aussi le taire dans le courriel pour le donner de vive voix.
+> Il est **permanent** — l'entreprise qui revient chaque année le garde —,
+> sauf date de fin (la fin du marché), suspension, ou régénération, qui rend
+> l'ancien caduc et ferme les sessions ouvertes.
+>
+> Sur son portail, l'entreprise voit les contrôles à venir de ses objets, les
+> documents validés qu'on lui ouvre, et ses propres dépôts avec leur sort —
+> et le motif d'un refus. Elle dépose un document avec un titre, une date et un
+> objet : **quand un seul bâtiment ou un seul objet lui est ouvert, le champ
+> ne s'affiche pas** ; sinon c'est une saisie à complétion. Le dépôt arrive
+> dans la file **À valider**, au nom de l'entreprise, et les gestionnaires du
+> bâtiment en sont avertis.
+>
+> Rien ne distingue un lien inconnu d'un code faux : même réponse, même temps.
+> « Suspendu » ou « expiré » ne se dit qu'au bon code. Dix essais manqués par
+> quart d'heure depuis un poste sont refusés ; vingt d'affilée verrouillent
+> l'accès une demi-heure, et un gestionnaire peut lever le verrou. La session
+> dure huit heures sur l'appareil ; seule l'empreinte du code est gardée.
+
+### Bâtiments : les contrôles obligatoires, leurs rapports et leurs échéances
+
+> La vérification électrique de l'école, les extincteurs, l'alarme incendie,
+> l'amiante tous les trois ans, l'ascenseur tous les cinq : rien dans
+> l'application ne savait quand ils revenaient. Le rapport arrivait par
+> courriel et l'échéance suivante vivait dans une mémoire. Le nouveau module
+> **Bâtiments** les suit, bâtiment par bâtiment.
+>
+> Un **catalogue de 27 contrôles et objets** est livré — électricité,
+> extincteurs, SSI, désenfumage, éclairage de sécurité, gaz, chaudière,
+> portes automatiques, ascenseur, amiante (DTA), légionellose, radon, aires
+> de jeux, commission de sécurité, exercice d'évacuation, PPMS, OPERAT…
+> Dans **Paramètres › Bâtiments**, la périodicité et le délai de rappel de
+> chacun se choisissent directement dans le tableau (« tous les ans »,
+> « prévenir 2 mois avant »), et un bouton l'applique à tous les bâtiments
+> d'un coup. Un bâtiment peut surcharger ces valeurs pour lui seul, suivre deux
+> fois le même contrôle (deux ascenseurs), et poser une échéance de départ.
+>
+> **L'échéance ne se saisit pas : elle se lit sur le dernier rapport validé**
+> — sa prochaine échéance s'il en donne une, sinon sa date plus la
+> périodicité. Un rapport en attente ou refusé ne repousse rien. Chaque
+> bâtiment dit d'un coup d'œil ce qui est en retard, à prévoir, ou porte des
+> réserves à lever.
+>
+> **Deux cercles.** Le gestionnaire d'un bâtiment dépose et valide d'un même
+> geste ; son **responsable** — la directrice d'école qui rédige le PPMS —
+> dépose, et son document attend dans la file **À valider**, où le
+> gestionnaire le relit à côté du formulaire, le reclasse (bâtiment, pièce,
+> objet, date, résultat) et le valide ou le refuse avec un motif renvoyé au
+> déposant. On ne reclasse jamais vers un bâtiment qu'on ne gère pas.
+>
+> Une **alerte** « Bâtiment » se lève quand l'échéance entre dans le délai de
+> rappel, devient critique une fois passée, et part par courriel aux
+> gestionnaires du bâtiment — à défaut à ceux de toute l'organisation. Elle
+> disparaît d'elle-même dès qu'un rapport validé repousse l'échéance, et ne
+> se montre qu'à ceux qui suivent le bâtiment.
+>
+> **Les fichiers ne sont jamais servis en statique.** Un PPMS dit où les
+> enfants se cachent : les documents vont sous `uploads/prive/`, fermé à
+> `/uploads` (y compris écrit `%70rive` ou `./prive`), et ne sortent que par
+> une route qui vérifie les droits, sans mise en cache ni par le navigateur
+> ni par le service worker. Le SVG est refusé, même annoncé comme PDF. Un
+> bâtiment qui a des documents ne se supprime plus (il se désactive), et un
+> nom de fichier accentué arrive enfin avec ses accents.
+>
+> Au passage : un rejet d'alerte comparait les dates en texte, et sur MySQL
+> — où `due_date` revient en objet `Date` — il était défait au passage suivant
+> du cron, pour les contrôles techniques comme pour le reste. Il se compare
+> désormais au jour. Le nginx fourni accepte des envois de 30 Mo, contre 1 Mo
+> par défaut.
+
+### Organisation : bâtiments, salles et services au même endroit, et qui les gère
+
+> Les bâtiments se réglaient dans Tickets, leur arbre dans Clés, les services
+> dans Manifestations — alors qu'ils servent à tous les modules. Ils se tiennent
+> désormais dans **Paramètres › Organisation**, en quatre onglets : Bâtiments
+> (arbre et personnes rattachées), Salles, Services et Gestionnaires. Les
+> anciens onglets renvoient vers la nouvelle page.
+>
+> La gestion se confie **sans changer le rôle** : un gestionnaire de toute
+> l'organisation (désigné par l'administrateur), le gestionnaire d'un bâtiment
+> (case « Gère » sur le bâtiment) et le responsable d'un service, qui tient
+> désormais la liste de ses membres. Un gestionnaire local ne peut ni se donner
+> de pairs, ni toucher à un bâtiment ou un service voisin. Le superviseur garde
+> la gestion des bâtiments, qu'il avait déjà.
+>
+> Les **salles** — salle du conseil, des mariages, du CCAS — ont leur tableau,
+> et le formulaire de réservation les obtient par `GET /api/lieux/public/salles`,
+> avec un libellé lisible (« Salle du conseil — Mairie »). `/disponibilite`
+> accepte aussi `?type=Salle`. La migration 040 réécrit en « Salle » les
+> variantes de casse déjà saisies.
+>
+> Au passage : une porte ne peut plus être rangée sous la salle d'un autre
+> bâtiment, et enregistrer la fiche d'un compte dans « Qui a droit à quoi »
+> ne retire plus la gestion de son bâtiment.
+
 ### Une échéance remplacée ne reste plus en alerte
 
 > Chaque contrôle technique expiré levait sa propre alerte critique, fût-il

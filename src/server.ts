@@ -64,6 +64,13 @@ import ticketRoutes from './routes/ticket.routes';
 import ticketReferentielRoutes from './routes/ticketReferentiel.routes';
 import siteRoutes from './routes/site.routes';
 import lieuPublicRoutes from './routes/lieuPublic.routes';
+import organisationRoutes from './routes/organisation.routes';
+import batimentRoutes from './routes/batiment.routes';
+import exploitationRoutes from './routes/exploitation.routes';
+import entrepriseRoutes from './routes/entreprise.routes';
+import portailRoutes from './routes/portail.routes';
+import { portailLimiter } from './middleware/rateLimiter.middleware';
+import { fermerDossierPrive } from './middleware/televersement';
 
 // Import des services
 import { initDatabase, db } from './database';
@@ -189,8 +196,9 @@ const verifyUploadAccess = (req: Request, res: Response, next: NextFunction): vo
   }
 };
 
-// Servir les fichiers statiques (uploads) avec protection
-app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../uploads')));
+// Servir les fichiers statiques (uploads) avec protection. Le dossier privé en
+// est exclu, avant même la vérification du jeton : voir `fermerDossierPrive`.
+app.use('/uploads', fermerDossierPrive, verifyUploadAccess, express.static(path.join(__dirname, '../uploads')));
 // Les fichiers de plugins portent leur configuration (dont des requêtes SQL) :
 // ils ne doivent pas être servis publiquement.
 app.use('/plugins', verifyUploadAccess, express.static(path.join(__dirname, '../plugins')));
@@ -321,6 +329,19 @@ app.use('/api/lieux/public', intakeLimiter, lieuPublicRoutes);
 // Les sites sont le référentiel des lieux du module Clés, ouvert aux demandes
 // qui ont besoin de désigner un bâtiment. Voir `sites.service.ts`.
 app.use('/api/sites', siteRoutes);
+// Qui gère les bâtiments, les salles et les services. Les référentiels restent
+// servis par leurs routes ; celle-ci porte la délégation et la vue des salles.
+app.use('/api/organisation', organisationRoutes);
+// Les contrôles obligatoires des bâtiments et leurs documents. Les fichiers
+// sortent par ce routeur, jamais par `/uploads` : voir `fermerDossierPrive`.
+app.use('/api/batiments', batimentRoutes);
+// Leur énergie, leurs contrats de maintenance, leurs interventions.
+app.use('/api/batiments', exploitationRoutes);
+// Les entreprises extérieures, côté collectivité, et leur portail. Le portail
+// n'a ni compte ni jeton de l'application : sa session passe par l'en-tête
+// `X-Session-Portail` et n'ouvre que ses propres routes.
+app.use('/api/entreprises', entrepriseRoutes);
+app.use('/api/portail', portailLimiter, portailRoutes);
 // Monté avant `/api/cles` : la page d'un trousseau trouvé est la seule route du
 // module ouverte sans compte, et « public » ne doit pas être pris pour un
 // identifiant de matériel par le routeur principal. Le limiteur la protège de

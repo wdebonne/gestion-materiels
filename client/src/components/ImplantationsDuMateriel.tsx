@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, MapPin, Search, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, Building2, MapPin, Search, SlidersHorizontal } from 'lucide-react'
 import { Card, CardBody, LoadingInline } from '@/components/ui'
-import { mobilierUrbainApi, type Implantation } from '@/lib/api'
+import { mobilierUrbainApi, plansApi, type Implantation } from '@/lib/api'
 import {
   alerteDe,
   etat,
@@ -57,7 +57,69 @@ interface Props {
   objectName?: string
 }
 
+/**
+ * Les pièces des bâtiments où ce matériel est posé (module Bâtiments).
+ *
+ * Même question que les implantations — « où est-il ? » —, posée à l'intérieur :
+ * le vidéoprojecteur est dans la salle 12 de l'école, les cinquante chaises
+ * sont réparties entre trois salles. Exporté pour que la fiche décide de montrer
+ * l'onglet même quand rien n'est dehors.
+ */
+export function usePiecesDuMateriel(objectId: number | undefined) {
+  return useQuery({
+    queryKey: ['batiments', 'pieces-du-materiel', objectId],
+    queryFn: async () => (await plansApi.piecesDuMateriel(Number(objectId))).data.pieces,
+    enabled: Boolean(objectId),
+    retry: false,
+  })
+}
+
 export default function ImplantationsDuMateriel({ objectId, objectName }: Props) {
+  const { data: pieces = [] } = usePiecesDuMateriel(objectId)
+  const { data: items = [], isLoading } = useImplantationsDuMateriel(objectId)
+  const dehors = items.length > 0 || isLoading || pieces.length === 0
+
+  return (
+    <div className="space-y-4">
+      {pieces.length > 0 && <DansLesBatiments pieces={pieces} />}
+      {dehors && <ImplantationsExterieures objectId={objectId} objectName={objectName} />}
+    </div>
+  )
+}
+
+function DansLesBatiments({
+  pieces,
+}: {
+  pieces: Array<{ placementId: number; pieceId: number; pieceNom: string; siteId: number; siteNom: string; etage: string | null; quantite: number }>
+}) {
+  const total = pieces.reduce((s, p) => s + p.quantite, 0)
+  return (
+    <Card>
+      <CardBody>
+        <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-gray-700 dark:text-gray-200">
+          <Building2 className="h-4 w-4" /> Dans les bâtiments
+          <span className="font-normal text-gray-500">
+            — {total} {total > 1 ? 'unités' : 'unité'}, {pieces.length} pièce{pieces.length > 1 ? 's' : ''}
+          </span>
+        </h3>
+        <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+          {pieces.map((p) => (
+            <li key={p.placementId} className="flex items-center justify-between gap-2 py-2 text-sm">
+              <Link to={`/batiments/${p.siteId}?onglet=plans`} className="min-w-0 truncate text-primary-600 hover:underline">
+                {p.pieceNom}
+                <span className="text-gray-500"> — {[p.siteNom, p.etage].filter(Boolean).join(', ')}</span>
+              </Link>
+              {p.quantite > 1 && <span className="flex-shrink-0 text-gray-600 dark:text-gray-300">× {p.quantite}</span>}
+            </li>
+          ))}
+        </ul>
+      </CardBody>
+    </Card>
+  )
+}
+
+/** Les exemplaires posés dehors : voirie et espaces verts. */
+function ImplantationsExterieures({ objectId, objectName }: Props) {
   const { data: items = [], isLoading } = useImplantationsDuMateriel(objectId)
   const [recherche, setRecherche] = useState('')
   const [lieu, setLieu] = useState('')

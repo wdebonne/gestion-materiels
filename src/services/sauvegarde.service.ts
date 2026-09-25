@@ -48,7 +48,8 @@ const FORMAT = 2;
  * déjà à jour. `jwt_secrets` porte les clés qui signent les sessions : les
  * glisser dans chaque archive ferait voyager des secrets, et les restaurer
  * déconnecterait tout le monde, à commencer par l'administrateur qui restaure.
- * Les deux autres sont des jetons éphémères.
+ * Les autres sont des jetons éphémères — dont les sessions du portail des
+ * entreprises, qu'une restauration rouvrirait.
  */
 const TABLES_EXCLUES = new Set([
   'schema_migrations',
@@ -56,6 +57,7 @@ const TABLES_EXCLUES = new Set([
   'backup_download_tokens',
   'passkey_challenges',
   'jwt_secrets',
+  'entreprise_sessions',
 ]);
 
 /** Lignes lues à la fois en MySQL : assez pour aller vite, assez peu pour la mémoire. */

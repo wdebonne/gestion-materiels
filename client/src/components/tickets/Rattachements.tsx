@@ -345,6 +345,7 @@ function FicheRattachement({
         estResponsable: champ === 'estResponsable',
         peutVoirTickets: champ === 'peutVoirTickets',
         notifie: champ === 'notifie',
+        gereLieu: champ === 'gereLieu',
       })
     } else {
       const ligne = { ...courant[index], [champ]: !courant[index][champ] } as RattachementSite
@@ -419,6 +420,12 @@ function FicheRattachement({
                     <th className="pb-1 text-center font-medium" title="Reçoit un courriel à chaque demande">
                       Reçoit
                     </th>
+                    <th
+                      className="pb-1 text-center font-medium"
+                      title="Gère le bâtiment dans Paramètres › Organisation : ses salles, ses portes, ses rattachements"
+                    >
+                      Gère
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
@@ -453,7 +460,7 @@ function FicheRattachement({
                             {site.nom}
                           </label>
                         </td>
-                        {(['estResponsable', 'peutVoirTickets', 'notifie'] as const).map((champ) => (
+                        {(['estResponsable', 'peutVoirTickets', 'notifie', 'gereLieu'] as const).map((champ) => (
                           <td key={champ} className="py-1.5 text-center">
                             <input
                               type="checkbox"

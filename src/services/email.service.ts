@@ -39,8 +39,13 @@ interface EmailOptions {
 export const CLE_SUSPENSION = 'emails_suspendus';
 export type EtatSuspension = 'manuel' | 'donnees_test';
 
-/** Gabarits qui partent toujours : la personne les attend, elle vient de les demander. */
-const GABARITS_ESSENTIELS = new Set(['password_reset', 'welcome']);
+/**
+ * Gabarits qui partent toujours : la personne les attend, elle vient de les
+ * demander. L'accès d'une entreprise au portail est de ceux-là — un
+ * gestionnaire vient de cliquer « Envoyer l'accès » ; les adresses d'essai, elles,
+ * restent écartées par `adresseReservee`.
+ */
+const GABARITS_ESSENTIELS = new Set(['password_reset', 'welcome', 'entreprise_acces']);
 
 /**
  * Domaines réservés aux essais (RFC 2606 et 6761) : aucun courrier n'y est

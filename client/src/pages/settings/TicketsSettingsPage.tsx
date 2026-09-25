@@ -1,9 +1,8 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { LifeBuoy, Plus, Trash2, Info, Building2, Users } from 'lucide-react'
+import { LifeBuoy, Plus, Trash2, Info } from 'lucide-react'
 import {
-  siteApi,
   ticketReferentielApi,
   type CategorieDemande,
   type StatutTicket,
@@ -22,6 +21,7 @@ import {
 } from '@/components/ui'
 import ReglesNotification from '@/components/tickets/ReglesNotification'
 import Rattachements from '@/components/tickets/Rattachements'
+import RenvoiOrganisation from '@/components/RenvoiOrganisation'
 
 /**
  * Réglages du module Tickets.
@@ -67,7 +67,7 @@ export default function TicketsSettingsPage() {
       {onglet === 'statuts' && <ReglagesStatuts />}
       {onglet === 'categories' && <ReglagesCategories />}
       {onglet === 'rattachements' && <Rattachements />}
-      {onglet === 'batiments' && <ReglagesBatiments />}
+      {onglet === 'batiments' && <RenvoiOrganisation onglet="batiments" quoi="Les bâtiments" />}
       {onglet === 'notifications' && <ReglesNotification />}
     </div>
   )
@@ -442,109 +442,5 @@ function FicheCategorie({
         Appliquer la visibilité aux demandes existantes
       </Button>
     </div>
-  )
-}
-
-// ------------------------------------------------------------- les bâtiments
-
-function ReglagesBatiments() {
-  const queryClient = useQueryClient()
-  const [nouveau, setNouveau] = useState('')
-
-  const { data, isLoading } = useQuery({
-    queryKey: ['sites', 'tous'],
-    queryFn: async () => (await siteApi.liste(true)).data,
-  })
-
-  const rafraichir = () => queryClient.invalidateQueries({ queryKey: ['sites'] })
-
-  const creer = useMutation({
-    mutationFn: () => siteApi.creer({ nom: nouveau }),
-    onSuccess: () => {
-      setNouveau('')
-      rafraichir()
-    },
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Création impossible'),
-  })
-
-  const modifier = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) =>
-      siteApi.modifier(id, data),
-    onSuccess: rafraichir,
-  })
-
-  const supprimer = useMutation({
-    mutationFn: (id: number) => siteApi.supprimer(id),
-    onSuccess: rafraichir,
-    onError: (e: any) => toast.error(e?.response?.data?.message ?? 'Suppression impossible'),
-  })
-
-  if (isLoading) return <LoadingInline />
-
-  return (
-    <Card>
-      <CardBody className="space-y-4">
-        <p className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
-          <Info className="w-4 h-4 mt-0.5 shrink-0 text-primary-600" />
-          <span>
-            Ces bâtiments sont ceux du module Clés : ils servent aux deux, et se tiennent à jour au
-            même endroit. Un bâtiment cité par une demande ne peut plus être supprimé — l'historique
-            perdrait son lieu — mais il se <strong>désactive</strong>, ce qui le retire des
-            formulaires sans toucher au passé.
-          </span>
-        </p>
-
-        <ul className="divide-y divide-gray-100 dark:divide-gray-700">
-          {(data?.sites ?? []).map((s) => (
-            <li key={s.id} className="py-2 flex items-center gap-3">
-              <Building2 className="w-4 h-4 text-gray-400 shrink-0" />
-              <input
-                defaultValue={s.nom}
-                onBlur={(e) => e.target.value !== s.nom && modifier.mutate({ id: s.id, data: { nom: e.target.value } })}
-                className="flex-1 bg-transparent border-b border-transparent hover:border-gray-300 focus:border-primary-500 outline-none text-gray-900 dark:text-white"
-              />
-              <label className="inline-flex items-center gap-2 text-xs text-gray-500">
-                <input
-                  type="checkbox"
-                  checked={s.actif}
-                  onChange={(e) => modifier.mutate({ id: s.id, data: { actif: e.target.checked } })}
-                  className="rounded border-gray-300"
-                />
-                actif
-              </label>
-              <button
-                onClick={() => supprimer.mutate(s.id)}
-                className="text-gray-400 hover:text-red-600"
-                title="Supprimer"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-
-        <div className="flex gap-2">
-          <Input
-            value={nouveau}
-            onChange={(e: any) => setNouveau(e.target.value)}
-            placeholder="Nouveau bâtiment…"
-            className="flex-1"
-          />
-          <Button
-            icon={<Plus className="w-4 h-4" />}
-            disabled={nouveau.trim().length === 0}
-            onClick={() => creer.mutate()}
-          >
-            Ajouter
-          </Button>
-        </div>
-
-        <p className="flex items-start gap-2 text-xs text-gray-500">
-          <Users className="w-4 h-4 mt-0.5 shrink-0" />
-          Le rattachement des personnes à leurs bâtiments, et le droit de lire les demandes d'un
-          bâtiment, se règlent sur la fiche de chaque compte dans Paramètres › Utilisateurs.
-        </p>
-      </CardBody>
-    </Card>
   )
 }

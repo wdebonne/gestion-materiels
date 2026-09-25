@@ -56,6 +56,15 @@ function allowedRolesFor(router: any, method: string, path: string): readonly st
   return guard ? guard.allowedRoles : null;
 }
 
+/** La garde de gestion d'organisation posée sur une route, s'il y en a une. */
+function gestionFor(router: any, method: string, path: string): string | null {
+  const layer = router.stack.find(
+    (l: any) => l.route?.path === path && l.route?.methods?.[method.toLowerCase()]
+  );
+  const garde = layer?.route.stack.map((s: any) => s.handle).find((h: any) => typeof h?.gestion === 'string');
+  return garde ? garde.gestion : null;
+}
+
 // ---------------------------------------------------------------- le référentiel
 
 describe('Référentiel des rôles', () => {
@@ -364,18 +373,134 @@ describe('Tickets', () => {
       expect(allowedRolesFor(siteRoutes, 'get', '/mes-sites')).toBeNull();
     });
 
+    /*
+     * Depuis la migration 040, ces routes ne sont plus gardées par un rôle mais
+     * par la gestion de l'organisation : un agent peut gérer « son » bâtiment
+     * sans devenir superviseur. `gestionOrganisation.test.ts` éprouve les
+     * refus ; on fige ici quelle garde tient quelle route.
+     */
     it.each([
-      ['post', '/'],
-      ['put', '/:id'],
-    ] as Array<[string, string]>)('%s %s est réservé à l’encadrement', (method, path) => {
-      expect(allowedRolesFor(siteRoutes, method, path)).toEqual(GESTION);
+      ['post', '/', 'lieux'],
+      ['delete', '/:id', 'lieux'],
+      ['put', '/:id', 'site'],
+      ['get', '/:id/membres', 'site'],
+      ['put', '/:id/membres/:userId', 'site'],
+      ['delete', '/:id/membres/:userId', 'site'],
+      ['post', '/pieces', 'site'],
+      ['put', '/pieces/:id', 'site'],
+      ['delete', '/pieces/:id', 'site'],
+    ] as Array<[string, string, string]>)('%s %s est gardé par la gestion « %s »', (method, path, gestion) => {
+      expect(allowedRolesFor(siteRoutes, method, path)).toBeNull();
+      expect(gestionFor(siteRoutes, method, path)).toBe(gestion);
     });
+  });
+});
 
-    it.each([
-      ['delete', '/:id'],
-      ['get', '/:id/membres'],
-    ] as Array<[string, string]>)('%s %s reste à l’administrateur', (method, path) => {
-      expect(allowedRolesFor(siteRoutes, method, path)).toEqual(ADMIN);
-    });
+describe('Bâtiments', () => {
+  const batimentRoutes = require('../src/routes/batiment.routes').default;
+
+  /*
+   * Aucune garde de rôle dans ce module : la directrice d'école est un compte
+   * `user`, et c'est elle qui dépose le PPMS. Ce qui ouvre ou ferme une route,
+   * c'est le lien au bâtiment — le consulter (gestionnaire ou responsable), le
+   * gérer, ou gérer tous les lieux pour le catalogue commun des contrôles.
+   * `batiments.test.ts` éprouve les refus ; on fige ici quelle garde tient
+   * quelle route.
+   */
+  it.each([
+    ['post', '/rubriques', 'lieux'],
+    ['put', '/rubriques/:id(\\d+)', 'lieux'],
+    ['delete', '/rubriques/:id(\\d+)', 'lieux'],
+    ['post', '/rubriques/:id(\\d+)/appliquer', 'lieux'],
+    ['get', '/suivis/:id(\\d+)', 'consultation'],
+    ['put', '/suivis/:id(\\d+)', 'site'],
+    ['delete', '/suivis/:id(\\d+)', 'site'],
+    ['get', '/documents/:id(\\d+)', 'consultation'],
+    ['get', '/documents/:id(\\d+)/fichier', 'consultation'],
+    ['put', '/documents/:id(\\d+)', 'site'],
+    ['post', '/documents/:id(\\d+)/valider', 'site'],
+    ['post', '/documents/:id(\\d+)/refuser', 'site'],
+    ['delete', '/documents/:id(\\d+)', 'consultation'],
+    ['get', '/:id(\\d+)', 'consultation'],
+    ['get', '/:id(\\d+)/suivis', 'consultation'],
+    ['post', '/:id(\\d+)/suivis', 'site'],
+    ['get', '/:id(\\d+)/documents', 'consultation'],
+    ['post', '/:id(\\d+)/documents', 'consultation'],
+    // Étages et plans : lire pour qui consulte, modifier pour qui gère.
+    ['get', '/:id(\\d+)/etages', 'consultation'],
+    ['post', '/:id(\\d+)/etages', 'site'],
+    ['put', '/etages/:id(\\d+)', 'site'],
+    ['delete', '/etages/:id(\\d+)', 'site'],
+    ['post', '/etages/:id(\\d+)/plan', 'site'],
+    ['get', '/etages/:id(\\d+)/plan', 'consultation'],
+    ['post', '/etages/:id(\\d+)/pieces', 'site'],
+    ['get', '/pieces/:id(\\d+)', 'consultation'],
+    ['put', '/pieces/:id(\\d+)/zone', 'site'],
+    ['post', '/pieces/:id(\\d+)/materiels', 'site'],
+    ['put', '/placements/:id(\\d+)', 'site'],
+    ['delete', '/placements/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/materiels', 'consultation'],
+  ] as Array<[string, string, string]>)('%s %s est gardé par « %s »', (method, path, gestion) => {
+    expect(allowedRolesFor(batimentRoutes, method, path)).toBeNull();
+    expect(gestionFor(batimentRoutes, method, path)).toBe(gestion);
+  });
+
+  it('filtre lui-même ses vues d’ensemble, sans garde à la porte', () => {
+    for (const path of ['/', '/a-valider', '/rubriques']) {
+      expect(allowedRolesFor(batimentRoutes, 'get', path)).toBeNull();
+      expect(gestionFor(batimentRoutes, 'get', path)).toBeNull();
+    }
+  });
+
+  /*
+   * L'énergie, les contrats, les interventions : consulter pour qui suit le
+   * bâtiment, saisir pour qui le gère. Un contrat couvre plusieurs bâtiments —
+   * « site » y veut dire tous, « consultation » au moins un
+   * (`exploitation.test.ts` l'éprouve).
+   */
+  const exploitationRoutes = require('../src/routes/exploitation.routes').default;
+  it.each([
+    ['put', '/:id(\\d+)/surface', 'site'],
+    ['get', '/:id(\\d+)/compteurs', 'consultation'],
+    ['post', '/:id(\\d+)/compteurs', 'site'],
+    ['put', '/compteurs/:id(\\d+)', 'site'],
+    ['delete', '/compteurs/:id(\\d+)', 'site'],
+    ['get', '/compteurs/:id(\\d+)/releves', 'consultation'],
+    ['post', '/compteurs/:id(\\d+)/releves', 'site'],
+    ['delete', '/releves/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/factures', 'consultation'],
+    ['post', '/:id(\\d+)/factures', 'site'],
+    ['put', '/factures/:id(\\d+)', 'site'],
+    ['delete', '/factures/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/energie/synthese', 'consultation'],
+    ['get', '/contrats/:id(\\d+)', 'consultation'],
+    ['post', '/contrats', 'site'],
+    ['put', '/contrats/:id(\\d+)', 'site'],
+    ['delete', '/contrats/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/interventions', 'consultation'],
+    ['post', '/:id(\\d+)/interventions', 'site'],
+    ['put', '/interventions/:id(\\d+)', 'site'],
+    ['delete', '/interventions/:id(\\d+)', 'site'],
+  ] as Array<[string, string, string]>)('exploitation : %s %s est gardé par « %s »', (method, path, gestion) => {
+    expect(allowedRolesFor(exploitationRoutes, method, path)).toBeNull();
+    expect(gestionFor(exploitationRoutes, method, path)).toBe(gestion);
+  });
+
+  it('filtre lui-même la liste des contrats, des fournisseurs et les statistiques', () => {
+    for (const path of ['/contrats', '/fournisseurs', '/statistiques']) {
+      expect(gestionFor(exploitationRoutes, 'get', path)).toBeNull();
+    }
+  });
+
+  /*
+   * Une entreprise intervient dans plusieurs bâtiments : lui ouvrir l'école
+   * n'appartient pas au seul gestionnaire de la mairie. La garde est posée sur
+   * le routeur entier, avant toute route — une route ajoutée plus tard en hérite.
+   */
+  it('confie les entreprises à qui gère tous les lieux, pour toutes leurs routes', () => {
+    const entrepriseRoutes = require('../src/routes/entreprise.routes').default;
+    const premieres = entrepriseRoutes.stack.slice(0, 2).map((l: any) => l.handle);
+    expect(premieres.some((h: any) => h?.gestion === 'lieux')).toBe(true);
+    expect(entrepriseRoutes.stack.findIndex((l: any) => l.route)).toBeGreaterThanOrEqual(2);
   });
 });

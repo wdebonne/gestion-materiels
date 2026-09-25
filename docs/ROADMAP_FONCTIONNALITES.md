@@ -424,3 +424,48 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Migration `014_compteurs_et_energie`** avec reprise des champs existants : tout champ Nombre dont le nom ou le libellé évoque un kilométrage devient un compteur en km. Sans elle, les catégories qui suivaient déjà leur kilométrage auraient perdu le report le jour de la mise à jour, sans que personne ne le remarque avant de lire une fiche restée à la valeur de la veille
 - **Impact :** l'entretien d'une tondeuse ne demande plus de kilomètres, et une voiture électrique se saisit enfin dans ses propres unités.
 - **Reste à faire :** le module Suivi et les exports lisent encore la colonne `mileage`, alimentée avec le compteur principal. Les compteurs secondaires d'une branche qui en déclare plusieurs n'y apparaissent donc pas.
+
+### 19. Organisation : bâtiments, salles, services — et qui les gère
+
+- **Contexte :** bâtiments et services servent à tous les modules, mais se réglaient là où ils étaient nés — les bâtiments dans Tickets, leur arbre dans Clés, les services dans Manifestations. Et leur gestion tenait au rôle : confier les salles au régisseur obligeait à le faire superviseur, donc à lui donner la suppression du matériel et les seuils d'alerte.
+- **Livré (septembre 2026) :**
+  - **Paramètres › Organisation**, quatre onglets : Bâtiments (arbre et personnes rattachées), Salles, Services, Gestionnaires. Les anciens onglets renvoient vers la nouvelle page
+  - **Deux niveaux de délégation, indépendants du rôle** (migration `040_gestion_organisation`) : `users.gere_organisation` pour le gestionnaire global, `user_sites.gere_lieu` pour le gestionnaire d'un bâtiment ; le responsable d'un service (`service_members.is_manager`, déjà là) tient désormais ses membres
+  - **Un gestionnaire local ne s'étend pas lui-même** : pas d'autre gestionnaire, pas de bâtiment ni de service voisin. Gardes `requireGestionLieux`, `requireGestionSite`, `requireGestionServices`, `requireGestionService` dans `gestionOrganisation.service.ts`, figées par les tests de contrat
+  - **Les salles** : une pièce de nature « Salle », normalisée ; un tableau transversal ; `GET /api/lieux/public/salles` pour le formulaire, avec un `libelle` lisible, et `?type=` sur `/disponibilite`
+  - **Au passage** : une porte ne peut plus être rangée sous la salle d'un autre bâtiment ; enregistrer la fiche d'un compte dans « Qui a droit à quoi » ne retire plus la gestion de son bâtiment
+- **Reste à faire :** le rôle « Service partenaire » reste cloisonné aux manifestations, et ne peut donc pas tenir les membres de son service même s'il en est responsable.
+
+### 20. Bâtiments : contrôles obligatoires, entreprises, plans, énergie, statistiques
+
+- **Contexte :** une collectivité doit faire vérifier ses bâtiments à intervalles fixés — électricité, extincteurs, alarme, amiante, ascenseur… — et garder les rapports. Rien ne le suivait : le rapport arrivait par courriel, l'échéance vivait dans une mémoire. S'y ajoutent l'énergie, les contrats de maintenance, les plans des étages et les entreprises extérieures qui déposent leurs rapports.
+- **Livré — lot A, contrôles et documents (septembre 2026) :**
+  - **Migration `041_batiments_controles`** : `batiment_rubriques` (l'« objet » à l'écran : périodicité, délai de rappel), `batiment_suivis` (une obligation dans un bâtiment, surchargeable, plusieurs par objet), `batiment_documents` (fichier, classement, circuit `a_valider` → `valide` | `refuse`). Jours métier en `VARCHAR(10)` ; `RESTRICT` du document vers son bâtiment
+  - **Catalogue de 27 objets** semé code par code (`CATALOGUE_RUBRIQUES`), réglable dans *Paramètres › Bâtiments* : périodicité et rappel choisis dans le tableau, application à tous les bâtiments d'un geste
+  - **L'échéance se lit sur le dernier document validé** (`etatDesSuivis`, seule source) ; statuts en retard, réserves à lever, à prévoir, à jour, à planifier
+  - **Deux cercles** : consulter (gestionnaire ou responsable du bâtiment, garde `requireConsultationSite`) et gérer (`requireGestionSite`) ; le dépôt d'un responsable attend la file *À valider*, reclassement impossible vers un bâtiment non géré
+  - **Alertes `batiment-suivi`** (`verifierEcheancesBatiments`, à part de `checkAlerts`), retirées dès qu'un rapport validé repousse l'échéance, visibles des seuls suiveurs du bâtiment ; courriels `batiment_echeance`, `batiment_document_depose`, `batiment_document_refuse`
+  - **Fichiers privés** sous `uploads/prive/`, fermés au statique (`fermerDossierPrive`), servis sans cache, SVG refusé ; nginx à 30 Mo
+- **Livré — lot B, portail des entreprises (septembre 2026) :**
+  - **Migration `042_entreprises_portail`** : `entreprises` (identité, lien, empreinte bcrypt du code, fin, suspension, verrou), `entreprise_contacts`, `entreprise_sites`, `entreprise_rubriques` (lecture, dépôt), `entreprise_sessions` (empreinte SHA-256, 8 h) ; `batiment_documents.entreprise_id`
+  - **Pas un compte utilisateur** : le portail a ses routes (`/api/portail`), sa session (`X-Session-Portail`) et son client HTTP, et ne touche jamais l'API interne
+  - **Code permanent**, montré une fois, régénérable, suspendable, avec date de fin ; courriel `entreprise_acces` (essentiel : il part même quand les envois automatiques sont suspendus)
+  - **Même réponse pour un lien inconnu et un code faux** (comparaison bcrypt factice au même coût) ; `connexionPortailLimiter` par adresse et par lien ; verrou souple après vingt échecs
+  - **Dépôt** : bâtiment et objet déduits quand un seul est ouvert, champs masqués côté portail ; le document entre dans la file *À valider*, au nom de l'entreprise
+- **Livré — lot C, étages et plans (septembre 2026) :**
+  - **Migration `043_etages_et_plans`** : `site_etages` (plan privé, ratio, échelle), `site_pieces.etage_id / zone_points / surface_m2`, `piece_materiels` (matériel du parc dans une pièce, quantité)
+  - **Plan** : PDF rendu en image par pdf.js côté navigateur (chargé à la demande, `isEvalSupported: false`), image posée telle quelle ; dimensions lues par sharp ; servi sans cache sous `uploads/prive/plans/`
+  - **Éditeur dédié** (`PlanEtage`) sur `usePlanViewport` et `geometrie.ts` : tracé au clic, fermeture sur le premier point, double-clic ou Entrée ; étalonnage en deux clics ; surfaces recalculées à l'étalonnage
+  - **Fiche de pièce** : matériel (un unique se déplace, un lot se répartit sans dépasser sa quantité), clés sur les trois portées avec détenteurs (`clesDeLaPiece`), portes, documents — filtrés par la portée des catégories du lecteur
+  - **Recherche** d'une pièce ou d'un matériel sur le plan ; « Dans les bâtiments » sur la fiche d'un matériel ; composition des trousseaux corrigée pour la portée « pièce »
+- **Livré — lot D, énergie, contrats et interventions (septembre 2026) :**
+  - **Migration `044_energie_contrats_interventions`** : `cle_sites.surface_m2`, `batiment_compteurs`, `batiment_releves`, `batiment_factures` (période, consommation, montants négatifs admis, `estimee`), `batiment_contrats` + `batiment_contrat_sites`, `batiment_interventions` (pièce, entreprise, contrat, ticket, document). Factures et interventions en `RESTRICT` vers le bâtiment ; clé du ticket posée à part, sur MySQL seulement
+  - **Énergie** (`energieBatiments.service.ts`) : un relevé ne recule pas ; une facture se répartit au jour (`partDansFenetre`) ; synthèse annuelle comparée à N-1 avec les jours couverts ; ratios au m²
+  - **Contrats** (`contratsBatiments.service.ts`) : `etatContrat` reconduit d'année en année et donne la date clé (veille du préavis, ou fin) ; alertes `batiment-contrat` (`verifierEcheancesContrats`) et courriel `batiment_contrat` ; gardes `requireGestionSites` (tous les bâtiments) et `requireConsultationUnSite` (au moins un)
+  - **Interventions** : saisies, filtrées par pièce, année, nature ; créées aussi par la validation d'un contrôle avec son coût (`coutTtc`)
+- **Livré — lot E, statistiques et export PDF (septembre 2026) :**
+  - **`statistiquesBatiments.service.ts`** : chaque dépense devient un mouvement étalé sur sa période (facture sur sa période, contrat au prorata journalier de son montant annuel et partagé entre ses bâtiments, intervention et achat en un jour), réparti par `partDansFenetre` sur les périodes de `periodesEntre` ; catégories énergie, contrats, interventions, contrôles, achats (matériel posé, portée des catégories appliquée) ; comparaison période précédente ou N-1 ; couverture des factures par bâtiment et par énergie
+  - **`GET /api/batiments/statistiques`** : sans `sites`, les bâtiments suivis ; un bâtiment non suivi demandé est refusé (403), pas ignoré
+  - **Page `/batiments/statistiques`** : filtres combinables, cartes avec évolution, camemberts, barres empilées par période avec la ligne de la période comparée, barres par bâtiment (option au m²), courbe de consommation, tableaux
+  - **Export PDF filtrable** (`exportStatistiquesPdf.ts`) sur les briques communes déplacées dans `client/src/lib/pdf/document.ts`
+- **Reste à faire :** les coûts de personnel (heures des plannings passées dans un bâtiment) ne sont pas encore rapprochés des bâtiments

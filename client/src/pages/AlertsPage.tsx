@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import { 
   Bell, Check, AlertTriangle, Fuel, Wrench, ClipboardCheck,
-  Filter, CheckCheck, Trash2, Settings, Save
+  Filter, CheckCheck, Trash2, Settings, Save, Building2
 } from 'lucide-react'
 import { 
   Button, Card, CardBody, Badge, 
@@ -19,7 +19,7 @@ interface Alert {
   id: number
   title: string
   message: string
-  type: 'technical_control' | 'maintenance' | 'fuel' | 'custom'
+  type: 'technical_control' | 'maintenance' | 'fuel' | 'custom' | 'batiment'
   priority: 'low' | 'medium' | 'high'
   status: 'active' | 'acknowledged' | 'resolved'
   dueDate?: string
@@ -154,6 +154,8 @@ export default function AlertsPage() {
         return <Wrench className="w-5 h-5" />
       case 'fuel':
         return <Fuel className="w-5 h-5" />
+      case 'batiment':
+        return <Building2 className="w-5 h-5" />
       default:
         return <AlertTriangle className="w-5 h-5" />
     }
@@ -167,6 +169,8 @@ export default function AlertsPage() {
         return 'bg-orange-100 text-orange-600'
       case 'fuel':
         return 'bg-green-100 text-green-600'
+      case 'batiment':
+        return 'bg-purple-100 text-purple-600'
       default:
         return 'bg-gray-100 text-gray-600'
     }
@@ -180,6 +184,8 @@ export default function AlertsPage() {
         return 'Entretien'
       case 'fuel':
         return 'Carburant'
+      case 'batiment':
+        return 'Bâtiment'
       default:
         return 'Autre'
     }
@@ -296,6 +302,7 @@ export default function AlertsPage() {
                 { value: 'technical_control', label: 'Contrôle technique' },
                 { value: 'maintenance', label: 'Entretien' },
                 { value: 'fuel', label: 'Carburant' },
+                { value: 'batiment', label: 'Bâtiment' },
                 { value: 'custom', label: 'Autre' }
               ]}
             />
@@ -367,6 +374,20 @@ export default function AlertsPage() {
                             className="text-sm text-green-600 hover:text-green-700 mt-2"
                           >
                             🌿 Voir l'espace vert →
+                          </button>
+                        ) : alert.pluginReference === 'batiment-suivi' ? (
+                          <button
+                            onClick={() => navigate(`/batiments?suivi=${alert.pluginReferenceId}`)}
+                            className="text-sm text-purple-600 hover:text-purple-700 mt-2"
+                          >
+                            Voir les contrôles du bâtiment →
+                          </button>
+                        ) : alert.pluginReference === 'batiment-contrat' ? (
+                          <button
+                            onClick={() => navigate(`/batiments?contrat=${alert.pluginReferenceId}`)}
+                            className="text-sm text-purple-600 hover:text-purple-700 mt-2"
+                          >
+                            Voir le contrat →
                           </button>
                         ) : alert.objectId ? (
                           <button

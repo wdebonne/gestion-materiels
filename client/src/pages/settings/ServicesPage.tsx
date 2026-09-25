@@ -5,7 +5,9 @@ import {
   Card, CardBody, CardHeader, CardTitle, Input, Select, Button, Alert, Badge,
   Modal, ModalBody, ModalFooter, Spinner, TextArea
 } from '@/components/ui'
-import api, { serviceApi, delegationApi, type Service } from '@/lib/api'
+import api, { serviceApi, delegationApi, organisationApi, type Service } from '@/lib/api'
+import { useGestion } from '@/lib/gestion'
+import { usePermissions } from '@/lib/permissions'
 import ModeleDocumentService from '@/components/ModeleDocumentService'
 import toast from 'react-hot-toast'
 
@@ -19,10 +21,16 @@ import toast from 'react-hot-toast'
  *
  * Un service *observateur* — direction générale, élus — n'a pas de périmètre :
  * il suit tout, sans rien approuver.
+ *
+ * Le **responsable** d'un service y a accès pour le sien seulement, et n'y
+ * tient que ses membres et ses délégations : créer un service, en changer le
+ * périmètre ou désigner un autre responsable revient au gestionnaire de toute
+ * l'organisation. Voir `gestionOrganisation.service.ts`.
  */
 
 export default function ServicesPage() {
   const queryClient = useQueryClient()
+  const gestion = useGestion()
   const [creationOuverte, setCreationOuverte] = useState(false)
   const [serviceOuvert, setServiceOuvert] = useState<number | null>(null)
 
@@ -67,9 +75,11 @@ export default function ServicesPage() {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Un service n'est sollicité que si une manifestation demande du matériel de son périmètre.
         </p>
-        <Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreationOuverte(true)}>
-          Nouveau service
-        </Button>
+        {gestion.gereServices && (
+          <Button icon={<Plus className="w-4 h-4" />} onClick={() => setCreationOuverte(true)}>
+            Nouveau service
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
@@ -83,7 +93,7 @@ export default function ServicesPage() {
         </Alert>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {services.map((service) => (
+          {services.filter((s) => gestion.peutGererService(s.id)).map((service) => (
             <Card key={service.id}>
               <CardBody>
                 <div className="flex items-start justify-between gap-3">
@@ -115,9 +125,11 @@ export default function ServicesPage() {
                     <Button size="sm" variant="outline" onClick={() => setServiceOuvert(service.id)}>
                       Configurer
                     </Button>
-                    <Button size="sm" variant="outline" aria-label={`Supprimer ${service.name}`}
-                      icon={<Trash2 className="w-4 h-4 text-red-500" />}
-                      onClick={() => suppression.mutate(service.id)} />
+                    {gestion.gereServices && (
+                      <Button size="sm" variant="outline" aria-label={`Supprimer ${service.name}`}
+                        icon={<Trash2 className="w-4 h-4 text-red-500" />}
+                        onClick={() => suppression.mutate(service.id)} />
+                    )}
                   </div>
                 </div>
               </CardBody>
@@ -220,6 +232,10 @@ function ModaleCreation({ onClose, onSave, loading }: {
 function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClose: () => void }) {
   const queryClient = useQueryClient()
   const [membreId, setMembreId] = useState('')
+  // Le responsable du service n'en tient que les membres : le reste de la
+  // modale revient au gestionnaire global, et le modèle de document à l'administrateur.
+  const { gereServices: global } = useGestion()
+  const { canAdmin } = usePermissions()
 
   const { data: service, isLoading } = useQuery({
     queryKey: ['service', serviceId],
@@ -237,19 +253,14 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
     },
   })
 
-  // `canLogin=1` : un membre de service reçoit des demandes à traiter dans
-  // l'application. Proposer ici quelqu'un qui ne s'y connecte pas donnerait un
-  // approbateur qui ne verra jamais ce qu'on attend de lui.
+  // Seuls les comptes qui se connectent : un membre de service reçoit des
+  // demandes à traiter dans l'application. Proposer quelqu'un qui ne s'y
+  // connecte pas donnerait un approbateur qui ne verra jamais ce qu'on attend
+  // de lui. Lu par `/organisation/personnes`, que le responsable du service
+  // peut lire — `/users` lui est fermé.
   const { data: utilisateurs = [] } = useQuery({
-    queryKey: ['users-simple'],
-    queryFn: async () => {
-      const res = await api.get('/users?canLogin=1')
-      // La route répond en camelCase : lire `first_name` ici affichait
-      // « undefined undefined » dans la liste des membres à ajouter.
-      return (res.data.users || res.data.data || []) as Array<{
-        id: number; email: string | null; firstName: string; lastName: string
-      }>
-    },
+    queryKey: ['organisation', 'personnes'],
+    queryFn: async () => (await organisationApi.personnes()).data.personnes,
   })
 
   const rafraichir = () => {
@@ -327,6 +338,8 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
           <div className="flex justify-center py-10"><Spinner /></div>
         ) : (
           <div className="space-y-4">
+            {global && (
+            <>
             <IdentiteService
               service={service}
               loading={identite.isPending}
@@ -398,13 +411,16 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
                 )}
               </CardBody>
             </Card>
+            </>
+            )}
 
             <Card>
               <CardHeader><CardTitle className="text-sm">Membres</CardTitle></CardHeader>
               <CardBody className="space-y-3">
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   Tous les membres reçoivent les avis du service. Seul le <strong>responsable</strong>
-                  approuve en son nom — et lui seul peut déléguer.
+                  approuve en son nom — et lui seul peut déléguer. Il tient aussi la liste des
+                  membres, sans pouvoir désigner d'autre responsable.
                 </p>
 
                 {(service.members ?? []).length > 0 && (
@@ -418,22 +434,29 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
                         </span>
                         <button
                           type="button"
+                          disabled={!global}
                           onClick={() => responsable.mutate({ userId: membre.id, is_manager: !membre.is_manager })}
                           className={`inline-flex items-center gap-1 px-2 py-1 rounded text-xs ${
                             membre.is_manager
                               ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
                               : 'text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                          }`}
-                          title={membre.is_manager ? 'Retirer le rôle de responsable' : 'Désigner responsable'}
+                          } ${global ? '' : 'cursor-default'}`}
+                          title={
+                            !global
+                              ? membre.is_manager ? 'Responsable — gère les membres et approuve' : 'Membre'
+                              : membre.is_manager ? 'Retirer le rôle de responsable' : 'Désigner responsable (gère les membres et approuve)'
+                          }
                         >
                           <Star className={`w-3 h-3 ${membre.is_manager ? 'fill-current' : ''}`} />
-                          {membre.is_manager ? 'Responsable' : 'Désigner'}
+                          {membre.is_manager ? 'Responsable' : global ? 'Désigner' : 'Membre'}
                         </button>
-                        <button type="button" onClick={() => retraitMembre.mutate(membre.id)}
-                          aria-label={`Retirer ${membre.first_name} ${membre.last_name}`}
-                          className="p-1 hover:text-red-600">
-                          <X className="w-4 h-4" />
-                        </button>
+                        {(global || !membre.is_manager) && (
+                          <button type="button" onClick={() => retraitMembre.mutate(membre.id)}
+                            aria-label={`Retirer ${membre.first_name} ${membre.last_name}`}
+                            className="p-1 hover:text-red-600">
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -454,8 +477,8 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
                     options={[
                       { value: '', label: '— Ajouter une personne —' },
                       ...utilisateurs
-                        .filter((u) => !(service.members ?? []).some((m) => m.id === u.id))
-                        .map((u) => ({ value: u.id, label: `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() + (u.email ? ` (${u.email})` : '') })),
+                        .filter((u) => !(service.members ?? []).some((m) => m.id === u.userId))
+                        .map((u) => ({ value: u.userId, label: u.nom + (u.email ? ` (${u.email})` : '') })),
                     ]}
                   />
                   <Button size="sm" variant="outline" icon={<UserPlus className="w-4 h-4" />}
@@ -469,8 +492,9 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
 
             <Delegations serviceId={serviceId} membres={service.members ?? []} />
 
-            <ModeleDocumentService serviceId={serviceId} serviceName={service.name} />
+            {canAdmin && <ModeleDocumentService serviceId={serviceId} serviceName={service.name} />}
 
+            {global && (
             <Card>
               <CardHeader><CardTitle className="text-sm">Ce que ce service reçoit</CardTitle></CardHeader>
               <CardBody className="space-y-2">
@@ -490,6 +514,7 @@ function ModaleConfiguration({ serviceId, onClose }: { serviceId: number; onClos
                 ))}
               </CardBody>
             </Card>
+            )}
           </div>
         )}
       </ModalBody>

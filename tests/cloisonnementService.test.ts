@@ -61,6 +61,10 @@ describe('Ce qui est refusé', () => {
     ['/api/webhooks', 'GET'],
     ['/api/import-export/export', 'GET'],
     ['/api/reservations', 'GET'],
+    // Les contrôles des bâtiments et leurs documents (PPMS compris) : rien à
+    // voir avec les manifestations d'un service partenaire.
+    ['/api/batiments', 'GET'],
+    ['/api/batiments/documents/3/fichier', 'GET'],
   ])('%s %s', (chemin, methode) => {
     expect(cheminAutorise(chemin, methode)).toBe(false);
   });

@@ -122,6 +122,40 @@ export function decalerJours(jour: string, nombre: number): string {
   return enJour(date);
 }
 
+/**
+ * Le même quantième, `nombre` mois plus loin — borné à la fin du mois.
+ *
+ * `setUTCMonth` seul ferait déborder : un contrôle du 31 janvier, reporté d'un
+ * mois, tomberait le 3 mars. Une échéance réglementaire ne recule pas d'elle-même
+ * au mois suivant ; on la ramène donc au dernier jour du mois visé.
+ */
+export function decalerMois(jour: string, nombre: number): string {
+  const [annee, mois, quantieme] = jour.split('-').map(Number);
+  const cible = new Date(Date.UTC(annee, mois - 1 + nombre, 1));
+  const dernierJour = new Date(Date.UTC(cible.getUTCFullYear(), cible.getUTCMonth() + 1, 0)).getUTCDate();
+  cible.setUTCDate(Math.min(quantieme, dernierJour));
+  return enJour(cible);
+}
+
+/**
+ * La part d'une période qui tombe dans une fenêtre, au jour près — entre 0 et 1.
+ *
+ * C'est ce qui permet de ranger une facture de gaz de décembre-janvier pour
+ * moitié dans chaque mois, ou un contrat annuel au prorata du trimestre qu'on
+ * regarde. Sans elle, un montant tombe tout entier à la date de la facture, et
+ * comparer janvier d'une année à l'autre ne veut rien dire.
+ *
+ * Une période inversée ou vide rend 0 ; une période d'un seul jour vaut 1 si ce
+ * jour est dans la fenêtre.
+ */
+export function partDansFenetre(periode: Bornes, fenetre: Bornes): number {
+  if (periode.fin < periode.debut) return 0;
+  const debut = periode.debut > fenetre.debut ? periode.debut : fenetre.debut;
+  const fin = periode.fin < fenetre.fin ? periode.fin : fenetre.fin;
+  if (fin < debut) return 0;
+  return nombreDeJours({ debut, fin }) / nombreDeJours(periode);
+}
+
 /** Combien de jours séparent deux jours, bornes comprises. */
 export function nombreDeJours({ debut, fin }: Bornes): number {
   return Math.round((depuisJour(fin).getTime() - depuisJour(debut).getTime()) / MS_PAR_JOUR) + 1;

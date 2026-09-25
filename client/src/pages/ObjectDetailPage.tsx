@@ -13,6 +13,7 @@ import DemandesDuMateriel from '@/components/tickets/DemandesDuMateriel'
 import ObjectTimeline from '@/components/ObjectTimeline'
 import ImplantationsDuMateriel, {
   useImplantationsDuMateriel,
+  usePiecesDuMateriel,
 } from '@/components/ImplantationsDuMateriel'
 import PanneauCle from '@/components/PanneauCle'
 import Can from '@/components/Can'
@@ -64,6 +65,8 @@ export default function ObjectDetailPage() {
     bruit sur toutes les autres fiches du parc.
   */
   const { data: implantations = [] } = useImplantationsDuMateriel(Number(id) || undefined)
+  // Posé dans une pièce d'un bâtiment : l'onglet « Implantations » le dit aussi.
+  const { data: piecesDuMateriel = [] } = usePiecesDuMateriel(Number(id) || undefined)
   const [editFormData, setEditFormData] = useState<any>(null)
   
   // Filtres pour les tableaux
@@ -856,11 +859,11 @@ export default function ObjectDetailPage() {
       baseTabs.push({ id: 'cles', label: 'Clé' } as any)
     }
 
-    if (implantations.length > 0) {
+    if (implantations.length > 0 || piecesDuMateriel.length > 0) {
       baseTabs.push({
         id: 'implantations',
         label: 'Implantations',
-        count: implantations.length,
+        count: implantations.length + piecesDuMateriel.length,
       } as any)
     }
 

@@ -3,6 +3,7 @@ import {
   cleDePeriode,
   cleSemaineISO,
   decalerJours,
+  decalerMois,
   enHeuresDecimales,
   estDureeValide,
   estHeureValide,
@@ -146,6 +147,27 @@ describe('decalerJours', () => {
     expect(decalerJours('2026-03-29', 1)).toBe('2026-03-30');
     expect(decalerJours('2026-10-24', 1)).toBe('2026-10-25');
     expect(decalerJours('2026-10-25', 1)).toBe('2026-10-26');
+  });
+});
+
+describe('decalerMois', () => {
+  it("garde le quantième quand le mois visé l'a", () => {
+    expect(decalerMois('2026-03-15', 12)).toBe('2027-03-15');
+    expect(decalerMois('2026-11-30', 3)).toBe('2027-02-28');
+    expect(decalerMois('2026-06-10', -6)).toBe('2025-12-10');
+  });
+
+  it('ramène au dernier jour du mois au lieu de déborder sur le suivant', () => {
+    // Un contrôle du 31 janvier reporté d'un mois ne tombe pas le 3 mars.
+    expect(decalerMois('2026-01-31', 1)).toBe('2026-02-28');
+    expect(decalerMois('2028-01-31', 1)).toBe('2028-02-29');
+    expect(decalerMois('2026-08-31', 1)).toBe('2026-09-30');
+  });
+
+  it('traverse les années sur les longues périodicités', () => {
+    expect(decalerMois('2024-02-29', 12)).toBe('2025-02-28');
+    expect(decalerMois('2026-05-02', 60)).toBe('2031-05-02');
+    expect(decalerMois('2026-05-02', 120)).toBe('2036-05-02');
   });
 });
 
