@@ -108,6 +108,12 @@ export default function DroitsUtilisateur({
   const effectif = (m: ModuleVisible) =>
     data?.personne.role === 'admin' ? true : m.individuel ?? m.parRole
   const ticketsVisibles = modules.some((m) => m.slug === 'tickets' && effectif(m))
+  // Le même calcul que le menu (`Layout`) : seuls les tickets, et l'application
+  // se réduit à ses demandes.
+  const demandeurSeul =
+    data?.personne.role !== 'admin' &&
+    data?.personne.role !== 'service' &&
+    modules.filter(effectif).map((m) => m.slug).join() === 'tickets'
   const attribuees = categories.filter((c) => c.niveau)
   const peutDemander = attribuees.length > 0
   const intervientQuelquePart = attribuees.some((c) => c.niveau !== 'demandeur')
@@ -186,6 +192,12 @@ export default function DroitsUtilisateur({
                   </Button>
                 ))}
               </div>
+              {demandeurSeul && (
+                <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-800 dark:bg-primary-900/30 dark:text-primary-200">
+                  Seuls les tickets lui restent : l’application se réduit à « Mes demandes » et à sa fiche — ni
+                  tableau de bord, ni catégories, ni alertes, ni scanner.
+                </p>
+              )}
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {modules.map((m) => (
                   <label

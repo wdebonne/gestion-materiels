@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePermissions } from '@/lib/permissions'
 import { useSettingsStore } from '@/stores/settings.store'
@@ -117,6 +117,38 @@ export default function Layout() {
     }
   })
 
+  /*
+   * Le demandeur, et rien d'autre.
+   *
+   * « Si je coche Demandeur pour quelqu'un, qu'il n'ait accès qu'aux tickets,
+   * pour ne pas le perdre dans des onglets qui lui sont inutiles. » Le bouton
+   * « Demandeur » de ses droits ne lui laisse que le module Tickets : quand
+   * c'est tout ce que le menu lui rend, l'application se réduit à ses
+   * demandes — ni tableau de bord, ni catégories, ni alertes, ni scanner — et
+   * l'accueil l'y emmène directement.
+   *
+   * Déduit du menu plutôt que d'un réglage de plus : c'est la même décision,
+   * prise au même endroit, et un rôle réglé pour ne voir que les tickets en
+   * profite aussi. Tant que le menu n'est pas chargé, rien ne change, pour ne
+   * pas faire clignoter l'interface.
+   */
+  const demandeurSeul =
+    menuCharge &&
+    user?.role !== 'admin' &&
+    !isService &&
+    menuPlugins.length === 1 &&
+    menuPlugins[0]?.slug === 'tickets'
+
+  const location = useLocation()
+  useEffect(() => {
+    if (!demandeurSeul) return
+    // Ses demandes, sa fiche, et le matériel qu'une demande lui fait ouvrir.
+    const permis = ['/tickets', '/profile', '/objects/']
+    if (!permis.some((debut) => location.pathname.startsWith(debut))) {
+      navigate('/tickets', { replace: true })
+    }
+  }, [demandeurSeul, location.pathname, navigate])
+
   // Récupérer les permissions pour le module Suivi
   const { data: trackingPermissions } = useQuery({
     queryKey: ['tracking-permissions'],
@@ -231,7 +263,9 @@ export default function Layout() {
   // dans le cloisonnement ne suffit donc pas, il faut aussi l'ajouter là. Un
   // service partenaire qui traite des demandes sans voir l'entrée « Tickets »
   // aurait une API accessible et aucun bouton pour y aller.
-  const navigation = isService
+  const navigation = demandeurSeul
+    ? [{ name: 'Mes demandes', href: '/tickets', icon: LifeBuoy }]
+    : isService
     ? [
         { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
         { name: 'Tickets', href: '/tickets', icon: LifeBuoy },
@@ -295,6 +329,7 @@ export default function Layout() {
               C'est le geste le plus direct sur le terrain — viser l'étiquette
               du matériel plutôt que le chercher dans l'arborescence.
             */}
+            {!demandeurSeul && (
             <NavLink
               to="/scan"
               aria-label="Scanner une étiquette"
@@ -308,6 +343,7 @@ export default function Layout() {
             >
               <QrCode className="w-6 h-6" />
             </NavLink>
+            )}
 
             {/* User menu */}
             <div className="relative">
@@ -446,6 +482,7 @@ export default function Layout() {
       <MobileBottomBar
         onOuvrirRecherche={() => setRechercheOuverte(true)}
         nombreAlertes={alertsCount}
+        demandeurSeul={demandeurSeul}
       />
 
       <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />
