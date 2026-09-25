@@ -50,6 +50,21 @@ function handleExpiredSession() {
 }
 
 /**
+ * Le message d'un 429, avec l'attente que le serveur annonce.
+ *
+ * `RateLimit-Reset` donne le nombre de secondes avant que le compteur ne
+ * reparte ; sans lui, on ne promet pas de durée.
+ */
+export function messageTropDeRequetes(entetes: Record<string, unknown> | undefined): string {
+  const secondes = Number(entetes?.['ratelimit-reset'])
+  if (!Number.isFinite(secondes) || secondes <= 0) {
+    return 'Trop de requêtes en peu de temps. Patientez quelques minutes, votre session reste ouverte.'
+  }
+  const minutes = Math.max(1, Math.ceil(secondes / 60))
+  return `Trop de requêtes en peu de temps. Réessayez dans ${minutes} minute${minutes > 1 ? 's' : ''} — votre session reste ouverte.`
+}
+
+/**
  * Routes dont un 401 ne décrit pas une session à récupérer.
  *
  * Sans cette exclusion, un 401 sur `/auth/logout` appelait `handleExpiredSession`,
@@ -111,6 +126,13 @@ api.interceptors.response.use(
     // un formulaire, appuie sur « Ajouter », et rien ne se passe.
     if (error.response?.status === 403) {
       toast.error(getErrorMessage(error))
+    }
+
+    // 429 : le limiteur de débit. Sans message, l'écran restait vide ou à
+    // moitié chargé, et rien ne disait qu'il suffisait d'attendre.
+    // L'écran de connexion affiche lui-même le refus du limiteur d'authentification.
+    if (error.response?.status === 429 && !estUneRouteDAuthentification(originalRequest?.url ?? '')) {
+      toast.error(messageTropDeRequetes(error.response.headers), { id: 'trop-de-requetes' })
     }
 
     // Aucune réponse : le réseau est coupé. C'est le cas le plus fréquent

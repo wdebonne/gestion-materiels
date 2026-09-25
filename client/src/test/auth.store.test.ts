@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { useAuthStore, seSouvenirDeMoi, definirSouvenir } from '@/stores/auth.store'
+import api, { messageTropDeRequetes } from '@/lib/api'
 
 /**
  * Contrat du magasin d'authentification.
@@ -129,5 +130,55 @@ describe('« Rester connecté »', () => {
     expect(localStorage.getItem('auth-storage') ?? '').not.toContain('jeton-acces')
     expect(sessionStorage.getItem('auth-storage') ?? '').not.toContain('jeton-acces')
     expect(useAuthStore.getState().isAuthenticated).toBe(false)
+  })
+})
+
+/**
+ * La vérification de session au chargement effaçait les jetons sur **toute**
+ * erreur de `/auth/me`. Un 429 du limiteur — une trentaine de pages parcourues
+ * d'affilée suffisaient — renvoyait l'agent à l'écran de connexion sans un mot.
+ */
+describe('Vérification de la session au chargement', () => {
+  const echec = (status?: number) =>
+    Object.assign(new Error('échec'), status ? { response: { status } } : { isAxiosError: true })
+
+  beforeEach(() => {
+    useAuthStore.setState({ user: utilisateur, token: 'jeton-acces', refreshToken: 'r', isAuthenticated: false })
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  it('garde la session quand le limiteur refuse', async () => {
+    vi.spyOn(api, 'get').mockRejectedValueOnce(echec(429))
+    await useAuthStore.getState().checkAuth()
+
+    const etat = useAuthStore.getState()
+    expect(etat.isAuthenticated).toBe(true)
+    expect(etat.token).toBe('jeton-acces')
+  })
+
+  it('garde la session quand le réseau est coupé', async () => {
+    vi.spyOn(api, 'get').mockRejectedValueOnce(echec())
+    await useAuthStore.getState().checkAuth()
+    expect(useAuthStore.getState().isAuthenticated).toBe(true)
+  })
+
+  it('ferme la session sur un 401', async () => {
+    vi.spyOn(api, 'get').mockRejectedValueOnce(echec(401))
+    await useAuthStore.getState().checkAuth()
+
+    const etat = useAuthStore.getState()
+    expect(etat.isAuthenticated).toBe(false)
+    expect(etat.token).toBeNull()
+  })
+})
+
+describe('Message du limiteur', () => {
+  it('annonce l’attente arrondie à la minute supérieure', () => {
+    expect(messageTropDeRequetes({ 'ratelimit-reset': '61' })).toContain('dans 2 minutes')
+    expect(messageTropDeRequetes({ 'ratelimit-reset': '20' })).toContain('dans 1 minute —')
+  })
+
+  it('ne promet pas de durée sans en-tête', () => {
+    expect(messageTropDeRequetes(undefined)).toContain('quelques minutes')
   })
 })

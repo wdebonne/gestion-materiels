@@ -186,6 +186,16 @@ export const useAuthStore = create<AuthState>()(
             isLoading: false
           })
         } catch (error) {
+          // Seul un 401 dit que la session est finie — et l'intercepteur a déjà
+          // tenté le rafraîchissement avant de le laisser passer. Un 429 du
+          // limiteur, un serveur qui redémarre ou une zone blanche au moment
+          // d'un rechargement ne disent rien de la session : les traiter comme
+          // une déconnexion renvoyait l'agent à l'écran de connexion sans un mot.
+          const status = (error as { response?: { status?: number } })?.response?.status
+          if (status !== 401 && get().user) {
+            set({ isAuthenticated: true, isLoading: false })
+            return
+          }
           set({
             user: null,
             token: null,

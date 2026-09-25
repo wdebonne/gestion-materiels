@@ -553,7 +553,7 @@ La documentation est aussi accessible depuis **Paramètres › API**. La liste d
 - Authentification JWT, jetons d'accès et de rafraîchissement (signés avec le même secret)
 - Mots de passe hashés avec bcrypt (12 tours)
 - `JWT_SECRET` obligatoire : plus de secret de repli, démarrage refusé en production s'il est absent, trop court ou laissé à sa valeur d'exemple
-- Rate limiting : 10 tentatives / 15 min sur `/api/auth`, 1000 req / 15 min globalement, quotas dédiés pour les uploads et les exports
+- Rate limiting : 10 tentatives / 15 min sur `/api/auth`, 3000 req / 15 min par personne connectée (1000 par adresse pour le trafic anonyme) — un 429 affiche un message et ne ferme pas la session, quotas dédiés pour les uploads et les exports
 - **Portée des tokens API appliquée** : un token « lecture seule » ne peut plus écrire ni supprimer, quel que soit le rôle de son créateur
 - **Portée par catégorie appliquée partout** : liste et fiche d'un matériel, recherche, réservations, événements de calendrier, export et étiquettes QR. Un compte ne voit jamais un matériel d'une catégorie qui ne lui est pas ouverte
 - Un test de contrat échoue dès qu'un fichier lit la table des matériels sans appliquer cette portée
