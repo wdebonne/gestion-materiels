@@ -74,8 +74,10 @@ function phraseEvenement(ligne: LigneFilTicket): string {
     case 'piece_jointe':
       return `${qui} a joint ${ligne.nouvelle}`
     case 'modification':
+      // Une valeur retirée (un technicien désaffecté) se lit « Tom Tech → — » :
+      // n'afficher que le nom du champ laisserait deviner ce qui a changé.
       return `${qui} a modifié ${ligne.champ}${
-        ligne.nouvelle ? ` : ${ligne.ancienne || '—'} → ${ligne.nouvelle}` : ''
+        ligne.ancienne || ligne.nouvelle ? ` : ${ligne.ancienne || '—'} → ${ligne.nouvelle || '—'}` : ''
       }`
     case 'import':
       // La demande vient d'un autre outil : le dire, pour qu'on ne cherche pas

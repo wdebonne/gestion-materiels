@@ -31,8 +31,8 @@ const TITRES = [
 export async function genererTickets(ctx: Contexte): Promise<void> {
   const { alea } = ctx;
 
-  const statuts = await db.query<{ id: number; slug: string; is_ouvert: number; is_final: number; is_defaut: number }>(
-    'SELECT id, slug, is_ouvert, is_final, is_defaut FROM ticket_statuts WHERE is_active = 1'
+  const statuts = await db.query<{ id: number; slug: string; nom: string; is_ouvert: number; is_final: number; is_defaut: number }>(
+    'SELECT id, slug, nom, is_ouvert, is_final, is_defaut FROM ticket_statuts WHERE is_active = 1'
   );
   if (statuts.length === 0) {
     console.warn('⚠️  Aucun statut de ticket : tickets ignorés (le seed a-t-il tourné ?)');
@@ -158,7 +158,7 @@ export async function genererTickets(ctx: Contexte): Promise<void> {
     }
     if (statut.id !== defaut.id) {
       quand = plusMinutes(quand, alea.entier(5, 5_000));
-      historique.push({ ticket_id: ticketId, user_id: technicien ?? ctx.adminId, action: 'statut', sequence: seqHistorique++, champ: 'statut', ancienne_valeur: defaut.slug, nouvelle_valeur: statut.slug, created_at: instant(quand) });
+      historique.push({ ticket_id: ticketId, user_id: technicien ?? ctx.adminId, action: 'statut', sequence: seqHistorique++, champ: 'statut', ancienne_valeur: defaut.nom, nouvelle_valeur: statut.nom, created_at: instant(quand) });
     }
 
     const nMessages = alea.pondere([[0, 15], [2, 35], [5, 35], [15, 12], [60, 3]] as const);

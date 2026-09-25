@@ -188,7 +188,7 @@ app.use('/uploads', verifyUploadAccess, express.static(path.join(__dirname, '../
 ### ✅ Recommandations implémentées (06/02/2026)
 
 1. ✅ **Rate Limiting** : Implémenté via `express-rate-limit`
-   - Global : 1000 req/15min pour l'API
+   - Global : 3000 req/15min par personne connectée, 1000 par adresse pour le trafic anonyme
    - Auth : 10 tentatives/15min pour login/register
    - Uploads : 100/heure
    - Exports/Backups : 10/heure

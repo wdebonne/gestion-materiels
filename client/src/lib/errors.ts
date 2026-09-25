@@ -89,11 +89,12 @@ export function isNetworkError(error: unknown): boolean {
 
 /**
  * `true` si l'intercepteur axios a déjà affiché un message pour cette erreur
- * (403 et coupure réseau). Évite un second toast identique depuis le
+ * (403, 429 et coupure réseau). Évite un second toast identique depuis le
  * gestionnaire global des mutations.
  */
 export function isReportedByInterceptor(error: unknown): boolean {
-  return isNetworkError(error) || getErrorStatus(error) === 403
+  const status = getErrorStatus(error)
+  return isNetworkError(error) || status === 403 || status === 429
 }
 
 /** Code HTTP de l'erreur, ou `undefined` si la requête n'a pas abouti. */

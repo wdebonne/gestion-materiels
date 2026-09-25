@@ -284,6 +284,14 @@ describe('5 — la limite de débit compte par personne', () => {
   it('retombe sur l’adresse pour le trafic anonyme', () => {
     expect(rl).toMatch(/return `ip:\$\{ipKeyGenerator/);
   });
+
+  it('laisse plus de marge à une personne connectée qu’à une adresse', () => {
+    // À mille, une trentaine de pages parcourues d'affilée suffisaient à
+    // renvoyer un agent à l'écran de connexion.
+    expect(rl).toMatch(/limit: \(req: Request\) => \(cleParPersonne\(req\)\.startsWith\('u:'\) \? PLAFOND_PERSONNE : PLAFOND_ADRESSE\)/);
+    expect(rl).toMatch(/export const PLAFOND_PERSONNE = 3000;/);
+    expect(rl).toMatch(/export const PLAFOND_ADRESSE = 1000;/);
+  });
 });
 
 /**

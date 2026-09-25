@@ -392,6 +392,61 @@ export interface LigneFil {
   nouvelle?: string | null;
 }
 
+/** Les champs tracés par identifiant, et où lire le nom qui leur correspond. */
+const REFERENCES_TRACEES: Record<string, { table: string; colonnes: string[] }> = {
+  technicien: { table: 'users', colonnes: ['first_name', 'last_name'] },
+  service: { table: 'services', colonnes: ['name'] },
+  'bâtiment': { table: 'cle_sites', colonnes: ['name'] },
+  local: { table: 'cle_ouvrants', colonnes: ['name'] },
+  'matériel': { table: 'objects', colonnes: ['name'] },
+  'catégorie': { table: 'ticket_categories', colonnes: ['nom'] },
+};
+
+/**
+ * Traduit les identifiants d'une trace en noms, au moment de la lecture.
+ *
+ * La trace garde l'identifiant, qui ne change pas quand on renomme un service
+ * ou qu'une personne se marie ; c'est l'affichage qui doit dire « Tom Tech » et
+ * non « 17 ». Une référence supprimée depuis garde son numéro, signalé comme
+ * tel, plutôt que de disparaître du fil.
+ */
+async function libellesDesTraces(
+  evenements: any[]
+): Promise<(champ: string | null, valeur: string | null) => string | null> {
+  const noms = new Map<string, Map<string, string>>();
+  for (const [champ, ref] of Object.entries(REFERENCES_TRACEES)) {
+    const ids = new Set<number>();
+    for (const e of evenements) {
+      if (e.champ !== champ) continue;
+      for (const v of [e.ancienne_valeur, e.nouvelle_valeur]) {
+        if (v !== null && v !== undefined && /^\d+$/.test(String(v))) ids.add(Number(v));
+      }
+    }
+    if (ids.size === 0) continue;
+    const liste = [...ids];
+    const lignes = await db.query(
+      `SELECT id, ${ref.colonnes.join(', ')} FROM ${ref.table} WHERE id IN (${liste.map(() => '?').join(', ')})`,
+      liste
+    );
+    noms.set(
+      champ,
+      new Map(
+        lignes.map((l: any) => [
+          String(l.id),
+          ref.colonnes.map((c) => l[c]).filter(Boolean).join(' ').trim(),
+        ])
+      )
+    );
+  }
+
+  return (champ, valeur) => {
+    if (valeur === null || valeur === undefined || valeur === '') return null;
+    const table = champ ? noms.get(champ) : undefined;
+    if (!table || !/^\d+$/.test(String(valeur))) return valeur;
+    return table.get(String(valeur)) || `n° ${valeur} (supprimé)`;
+  };
+}
+
 /**
  * Le fil complet, messages et événements mêlés, du plus ancien au plus récent.
  *
@@ -440,6 +495,7 @@ export async function filUnifie(ticketId: number, inclureInternes: boolean): Pro
     const complet = [l.first_name, l.last_name].filter(Boolean).join(' ').trim();
     return complet.length > 0 ? complet : null;
   };
+  const libelle = await libellesDesTraces(evenements);
 
   const lignes: LigneFil[] = [
     ...messages.map((m: any) => ({
@@ -461,8 +517,8 @@ export async function filUnifie(ticketId: number, inclureInternes: boolean): Pro
       auteur: { id: e.user_id === null ? null : Number(e.user_id), nom: nom(e) },
       action: e.action,
       champ: e.champ ?? null,
-      ancienne: e.ancienne_valeur ?? null,
-      nouvelle: e.nouvelle_valeur ?? null,
+      ancienne: libelle(e.champ, e.ancienne_valeur),
+      nouvelle: libelle(e.champ, e.nouvelle_valeur),
     })),
   ];
 

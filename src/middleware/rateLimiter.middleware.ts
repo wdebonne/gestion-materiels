@@ -25,7 +25,17 @@ import { logService } from '../services/log.service';
  * la limite. Une signature invalide retombe sur l'adresse, qui reste la
  * bonne unité pour le trafic anonyme — celui dont viennent les abus.
  */
+const clesCalculees = new WeakMap<Request, string>();
+
 function cleParPersonne(req: Request): string {
+  const connue = clesCalculees.get(req);
+  if (connue) return connue;
+  const cle = calculerCle(req);
+  clesCalculees.set(req, cle);
+  return cle;
+}
+
+function calculerCle(req: Request): string {
   const entete = req.headers.authorization;
   const jeton = entete?.startsWith('Bearer ') ? entete.slice(7) : null;
 
@@ -41,10 +51,23 @@ function cleParPersonne(req: Request): string {
   return `ip:${ipKeyGenerator(req.ip || '')}`;
 }
 
+/**
+ * Le plafond d'une personne connectée est plus haut que celui d'une adresse.
+ *
+ * À mille, une trentaine de pages parcourues d'affilée suffisaient : chaque
+ * écran charge une dizaine de listes, plus les compteurs d'alertes qui se
+ * rafraîchissent seuls. Un agent qui fait le tour du parc un lundi matin
+ * tombait dessus. Le compteur d'une personne n'est ouvert qu'à un jeton dont
+ * la signature a été vérifiée : le relever ne desserre rien pour un inconnu,
+ * qui reste à mille par adresse.
+ */
+export const PLAFOND_PERSONNE = 3000;
+export const PLAFOND_ADRESSE = 1000;
+
 // Rate limiter global pour toutes les routes API
 export const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // par personne connectée, ou par adresse pour le trafic anonyme
+  limit: (req: Request) => (cleParPersonne(req).startsWith('u:') ? PLAFOND_PERSONNE : PLAFOND_ADRESSE),
   keyGenerator: cleParPersonne,
   message: {
     success: false,
