@@ -21,6 +21,7 @@ import {
 } from '../services/ticketsReferentiel.service';
 import { versDateTime } from '../services/tickets.service';
 import { definirSitesDe, sitesDe } from '../services/sites.service';
+import { estNiveauTicket, NiveauTicket, NIVEAUX_TICKET } from '../middleware/ticketScope';
 
 /**
  * Le référentiel des demandes, et les rattachements des personnes.
@@ -432,6 +433,7 @@ router.get('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
       })),
       categories: categories.map((c: any) => ({
         categorieId: Number(c.ticket_categorie_id),
+        niveau: estNiveauTicket(c.niveau) ? c.niveau : 'demandeur',
         materielAutorise:
           c.materiel_autorise === null || c.materiel_autorise === undefined
             ? null
@@ -469,25 +471,43 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
     }
 
     if (Array.isArray(req.body?.categories)) {
-      await db.execute('DELETE FROM user_ticket_categories WHERE user_id = ?', [userId]);
+      // Le niveau porte sur la racine : une sous-catégorie transmise y est
+      // ramenée, et deux lignes sur la même racine n'en font qu'une — la plus
+      // haute. Sans cela, la contrainte `UNIQUE` refuserait l'enregistrement
+      // entier pour un doublon que l'écran n'a pas vu.
+      const parents = new Map<number, number | null>(
+        (await db.query('SELECT id, parent_id FROM ticket_categories')).map((l: any) => [
+          Number(l.id),
+          l.parent_id === null ? null : Number(l.parent_id),
+        ])
+      );
+      const parRacine = new Map<number, { niveau: NiveauTicket; materielAutorise: number | null }>();
       for (const c of req.body.categories) {
         const categorieId = entierOuNull(c?.categorieId);
-        if (categorieId === null) continue;
-        await db.execute(
-          `INSERT INTO user_ticket_categories (user_id, ticket_categorie_id, materiel_autorise, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            userId,
-            categorieId,
-            // `null` veut dire « ce que la catégorie a décidé ».
+        if (categorieId === null || !parents.has(categorieId)) continue;
+        const racine = parents.get(categorieId) ?? categorieId;
+        const niveau: NiveauTicket = estNiveauTicket(c?.niveau) ? c.niveau : 'demandeur';
+        const deja = parRacine.get(racine);
+        if (deja && NIVEAUX_TICKET.indexOf(deja.niveau) >= NIVEAUX_TICKET.indexOf(niveau)) continue;
+        parRacine.set(racine, {
+          niveau,
+          // `null` veut dire « ce que la catégorie a décidé ».
+          materielAutorise:
             c?.materielAutorise === null || c?.materielAutorise === undefined
               ? null
               : c.materielAutorise
                 ? 1
                 : 0,
-            req.user!.userId,
-            versDateTime(),
-          ]
+        });
+      }
+
+      await db.execute('DELETE FROM user_ticket_categories WHERE user_id = ?', [userId]);
+      for (const [racine, { niveau, materielAutorise }] of parRacine) {
+        await db.execute(
+          `INSERT INTO user_ticket_categories
+             (user_id, ticket_categorie_id, niveau, materiel_autorise, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [userId, racine, niveau, materielAutorise, req.user!.userId, versDateTime()]
         );
       }
     }

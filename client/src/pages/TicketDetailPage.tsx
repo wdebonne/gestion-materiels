@@ -132,6 +132,26 @@ export default function TicketDetailPage() {
       toast.error(erreur?.response?.data?.message ?? "Le message n'a pas pu être envoyé"),
   })
 
+  // Seuls les intervenants réaffectent ; la liste vient du serveur, qui ne
+  // propose que les personnes à qui il accepterait de confier la demande.
+  const categorieId = data?.ticket.categorie?.id ?? null
+  const peutReaffecter = Boolean(data?.droits?.intervenant && categorieId)
+  const { data: intervenants } = useQuery({
+    queryKey: ['tickets', 'intervenants', categorieId],
+    queryFn: async () => (await ticketApi.intervenants(categorieId!)).data.intervenants,
+    enabled: peutReaffecter,
+  })
+
+  const reaffectation = useMutation({
+    mutationFn: (technicienId: number | null) => ticketApi.modifier(Number(id), { technicienId }),
+    onSuccess: () => {
+      toast.success('Demande réaffectée')
+      queryClient.invalidateQueries({ queryKey: ['tickets'] })
+    },
+    onError: (erreur: any) =>
+      toast.error(erreur?.response?.data?.message ?? 'La demande n’a pas pu être réaffectée'),
+  })
+
   const changementStatut = useMutation({
     mutationFn: (statutId: number) => ticketApi.changerStatut(Number(id), statutId),
     onSuccess: () => {
@@ -227,17 +247,44 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="sm:w-56 shrink-0 space-y-3">
-              <Select
-                label="Statut"
-                value={t.statut.id}
-                onChange={(e: any) => changementStatut.mutate(Number(e.target.value))}
-                options={(referentiel?.statuts ?? []).map((s) => ({
-                  value: String(s.id),
-                  label: s.nom,
-                }))}
-              />
+              {/*
+                Le demandeur suit sa demande, il ne la déclare pas résolue :
+                le serveur refuse, l'écran ne propose donc pas.
+              */}
+              {data.droits?.peutChangerStatut ? (
+                <Select
+                  label="Statut"
+                  value={t.statut.id}
+                  onChange={(e: any) => changementStatut.mutate(Number(e.target.value))}
+                  options={(referentiel?.statuts ?? []).map((s) => ({
+                    value: String(s.id),
+                    label: s.nom,
+                  }))}
+                />
+              ) : (
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Statut</p>
+                  <Badge variant="default">{t.statut.nom}</Badge>
+                </div>
+              )}
+              {peutReaffecter && (
+                <Select
+                  label="Confiée à"
+                  value={t.technicien?.id ?? ''}
+                  onChange={(e: any) => reaffectation.mutate(e.target.value ? Number(e.target.value) : null)}
+                  options={[
+                    { value: '', label: 'Non affectée' },
+                    // L'actuel reste dans la liste même s'il n'y figurerait plus :
+                    // sans lui, le Select afficherait un autre nom que le vrai.
+                    ...(t.technicien && !(intervenants ?? []).some((i) => i.id === t.technicien!.id)
+                      ? [{ value: String(t.technicien.id), label: t.technicien.nom }]
+                      : []),
+                    ...(intervenants ?? []).map((i) => ({ value: String(i.id), label: i.nom })),
+                  ]}
+                />
+              )}
               <div className="text-xs text-gray-500 space-y-1">
-                {t.technicien ? (
+                {peutReaffecter ? null : t.technicien ? (
                   <p>Confiée à {t.technicien.nom}</p>
                 ) : (
                   <p className="italic">Non affectée</p>

@@ -2603,6 +2603,28 @@ function parametresTickets(filtres: Record<string, unknown>): string {
   return p.toString()
 }
 
+/** Ce qu'une personne fait d'une catégorie de demandes, du moins au plus. */
+export type NiveauTicket = 'demandeur' | 'intervenant' | 'intervenant_categorie' | 'superviseur'
+
+export const NIVEAUX_TICKET: { valeur: NiveauTicket; libelle: string; aide: string }[] = [
+  { valeur: 'demandeur', libelle: 'Demandeur', aide: 'Demande dans cette catégorie, suit ses demandes' },
+  { valeur: 'intervenant', libelle: 'Intervenant (ses tickets)', aide: 'Référent : ne voit que ce qu’on lui confie' },
+  {
+    valeur: 'intervenant_categorie',
+    libelle: 'Intervenant (toute la catégorie)',
+    aide: 'Voit et traite toutes les demandes de la catégorie',
+  },
+  { valeur: 'superviseur', libelle: 'Superviseur', aide: 'Tout cela, et valide ce que les agents clôturent' },
+]
+
+/** Ce que le lecteur peut faire d'une demande, calculé par le serveur. */
+export interface DroitsTicket {
+  niveau: NiveauTicket | null
+  intervenant: boolean
+  superviseur: boolean
+  peutChangerStatut: boolean
+}
+
 export const ticketApi = {
   permissions: () =>
     api.get<{
@@ -2610,8 +2632,16 @@ export const ticketApi = {
       voitTout: boolean
       services: number[]
       sitesPartages: number[]
+      niveaux: { categorieId: number; niveau: NiveauTicket }[]
       estIntervenant: boolean
+      estSuperviseur: boolean
     }>('/tickets/permissions'),
+
+  /** À qui l'on peut confier une demande de cette catégorie. */
+  intervenants: (categorieId: number) =>
+    api.get<{ success: boolean; intervenants: { id: number; nom: string }[] }>(
+      `/tickets/intervenants?categorieId=${categorieId}`
+    ),
 
   /** Tout ce dont le formulaire a besoin, en un seul appel. */
   formulaire: () =>
@@ -2662,6 +2692,7 @@ export const ticketApi = {
       ticket: Ticket
       acces: 'complet' | 'voisinage'
       intervenant?: boolean
+      droits?: DroitsTicket
       fil: LigneFilTicket[]
       pieces: any[]
       observateurs: any[]
@@ -2737,7 +2768,7 @@ export const ticketReferentielApi = {
     api.get<{
       success: boolean
       sites: RattachementSite[]
-      categories: { categorieId: number; materielAutorise: boolean | null }[]
+      categories: { categorieId: number; niveau: NiveauTicket; materielAutorise: boolean | null }[]
       materiels: { objectId: number; nom: string; reference: string | null }[]
     }>(`/tickets/referentiel/utilisateurs/${userId}`),
   definirRattachements: (userId: number, data: Record<string, unknown>) =>

@@ -44,6 +44,7 @@ jest.mock('../src/database', () => {
 import {
   accesTicket,
   contexteTickets,
+  droitsSurTicket,
   fragmentPortee,
   materielsVisibles,
   porteeTickets,
@@ -112,7 +113,14 @@ beforeAll(() => {
       id INTEGER PRIMARY KEY, titre VARCHAR(255),
       demandeur_id INTEGER, created_by INTEGER, technicien_id INTEGER, service_id INTEGER,
       site_id INTEGER, visibilite_site INTEGER NOT NULL DEFAULT 0, object_id INTEGER,
-      statut_id INTEGER DEFAULT 1
+      statut_id INTEGER DEFAULT 1, categorie_id INTEGER, sous_categorie_id INTEGER
+    );
+    CREATE TABLE ticket_categories (
+      id INTEGER PRIMARY KEY, nom VARCHAR(160), parent_id INTEGER, service_id INTEGER
+    );
+    CREATE TABLE user_ticket_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, ticket_categorie_id INTEGER,
+      materiel_autorise INTEGER, niveau VARCHAR(30) NOT NULL DEFAULT 'demandeur'
     );
   `);
 
@@ -313,5 +321,117 @@ describe('Le matériel nommé dans un ticket', () => {
   it('ne demande rien à la base quand aucun matériel n’est cité', async () => {
     const visibles = await materielsVisibles(commeSi(GARDIEN, 'user'), [null, undefined]);
     expect(visibles.size).toBe(0);
+  });
+});
+
+/**
+ * « Le grand responsable du service technique voit tout le technique ; celui
+ * qui gère les interventions dans les bâtiments ne voit pas les espaces verts ;
+ * un référent ne voit que ce qui lui est attribué. »
+ *
+ * Posé après les autres suites, dans son propre `beforeAll` : ses tickets
+ * n'existent pas quand les attentes précédentes énumèrent la table.
+ */
+describe('Le niveau par catégorie', () => {
+  const GRAND_CHEF = 20; // responsable de tout le technique, hors service
+  const RESP_BAT = 21; // membre du service technique, bâtiments seulement
+  const REFERENT = 22; // n'intervient que sur ce qu'on lui confie
+  const INFORMATICIEN = 23;
+
+  const INFORMATIQUE = 100;
+  const BATIMENT = 101;
+  const ESPACES_VERTS = 102;
+  const VOIRIE = 103;
+  const PLOMBERIE = 104; // fille de Bâtiment
+
+  const tickets: Record<number, any> = {};
+  const idsDe = (vus: number[]) => vus.filter((id) => id >= 20);
+
+  beforeAll(() => {
+    base.exec(`
+      INSERT INTO users (id, email, first_name, last_name, role) VALUES
+        (${GRAND_CHEF}, 'dst@ville.fr', 'Dora', 'Directrice', 'supervisor'),
+        (${RESP_BAT}, 'bat@ville.fr', 'Bob', 'Bâtiment', 'agent'),
+        (${REFERENT}, 'ref@ville.fr', 'Rémi', 'Référent', 'user'),
+        (${INFORMATICIEN}, 'it@ville.fr', 'Iris', 'Info', 'agent');
+
+      INSERT INTO service_members (service_id, user_id, is_manager) VALUES
+        (${SERVICE_TECH}, ${RESP_BAT}, 0),
+        (${SERVICE_INFO}, ${INFORMATICIEN}, 0);
+
+      INSERT INTO ticket_categories (id, nom, parent_id, service_id) VALUES
+        (${INFORMATIQUE}, 'Informatique', NULL, ${SERVICE_INFO}),
+        (${BATIMENT}, 'Bâtiment', NULL, ${SERVICE_TECH}),
+        (${ESPACES_VERTS}, 'Espaces verts', NULL, ${SERVICE_TECH}),
+        (${VOIRIE}, 'Voirie', NULL, ${SERVICE_TECH}),
+        (${PLOMBERIE}, 'Plomberie', ${BATIMENT}, NULL);
+
+      INSERT INTO user_ticket_categories (user_id, ticket_categorie_id, niveau) VALUES
+        (${GRAND_CHEF}, ${BATIMENT}, 'superviseur'),
+        (${GRAND_CHEF}, ${ESPACES_VERTS}, 'superviseur'),
+        (${GRAND_CHEF}, ${VOIRIE}, 'superviseur'),
+        (${RESP_BAT}, ${BATIMENT}, 'intervenant_categorie'),
+        (${RESP_BAT}, ${ESPACES_VERTS}, 'demandeur'),
+        (${REFERENT}, ${BATIMENT}, 'intervenant'),
+        (${INFORMATICIEN}, ${INFORMATIQUE}, 'intervenant_categorie'),
+        (${GARDIEN}, ${BATIMENT}, 'demandeur');
+
+      INSERT INTO tickets (id, titre, demandeur_id, created_by, technicien_id, service_id, categorie_id, sous_categorie_id) VALUES
+        (20, 'Fenêtre bloquée',        ${GARDIEN}, ${GARDIEN}, NULL,        ${SERVICE_TECH}, ${BATIMENT},      NULL),
+        (21, 'Haie à tailler',         ${GARDIEN}, ${GARDIEN}, NULL,        ${SERVICE_TECH}, ${ESPACES_VERTS}, NULL),
+        (22, 'Fuite sous l’évier',     ${GARDIEN}, ${GARDIEN}, NULL,        ${SERVICE_TECH}, ${BATIMENT},      ${PLOMBERIE}),
+        (23, 'Poste très lent',        ${GARDIEN}, ${GARDIEN}, NULL,        ${SERVICE_INFO}, ${INFORMATIQUE},  NULL),
+        (24, 'Serrure du local',       ${GARDIEN}, ${GARDIEN}, ${REFERENT}, ${SERVICE_TECH}, ${BATIMENT},      NULL),
+        (25, 'Importé sans catégorie', ${GARDIEN}, ${GARDIEN}, NULL,        ${SERVICE_TECH}, NULL,             NULL);
+    `);
+    for (const t of base.prepare('SELECT * FROM tickets WHERE id >= 20').all() as any[]) tickets[t.id] = t;
+  });
+
+  it('montre au grand responsable tout le technique, et pas l’informatique', async () => {
+    expect(idsDe(await visiblesPour(GRAND_CHEF, 'supervisor'))).toEqual([20, 21, 22, 24]);
+  });
+
+  it('cache les espaces verts au responsable des bâtiments, pourtant membre du service', async () => {
+    const vus = idsDe(await visiblesPour(RESP_BAT, 'agent'));
+    // La sous-catégorie Plomberie suit Bâtiment ; la demande sans catégorie
+    // reste à son service, que rien d'autre ne couvrirait.
+    expect(vus).toEqual([20, 22, 24, 25]);
+    expect(vus).not.toContain(21);
+  });
+
+  it('ne montre au référent que ce qui lui est confié', async () => {
+    expect(idsDe(await visiblesPour(REFERENT, 'user'))).toEqual([24]);
+  });
+
+  it('ne montre pas la maintenance à l’informatique', async () => {
+    expect(idsDe(await visiblesPour(INFORMATICIEN, 'agent'))).toEqual([23]);
+  });
+
+  it('laisse l’ancienne règle à qui n’a pas encore de niveau', async () => {
+    // Le responsable technique d'origine n'a aucune ligne : son service décide.
+    const vus = idsDe(await visiblesPour(CHEF_TECH, 'supervisor'));
+    expect(vus).toEqual([20, 21, 22, 24, 25]);
+  });
+
+  it('dit qui intervient, qui supervise, et qui ne fait qu’attendre', async () => {
+    const droits = async (userId: number, role: string, ticketId: number) =>
+      droitsSurTicket(await contexteTickets(commeSi(userId, role)), tickets[ticketId]);
+
+    expect(await droits(GRAND_CHEF, 'supervisor', 22)).toMatchObject({
+      niveau: 'superviseur',
+      intervenant: true,
+      superviseur: true,
+    });
+    expect(await droits(RESP_BAT, 'agent', 20)).toMatchObject({
+      niveau: 'intervenant_categorie',
+      intervenant: true,
+      superviseur: false,
+    });
+    expect(await droits(RESP_BAT, 'agent', 21)).toMatchObject({ niveau: 'demandeur', intervenant: false });
+    expect(await droits(REFERENT, 'user', 24)).toMatchObject({ intervenant: true, peutChangerStatut: true });
+    expect(await droits(REFERENT, 'user', 20)).toMatchObject({ niveau: 'intervenant', intervenant: false });
+    expect(await droits(GARDIEN, 'user', 20)).toMatchObject({ intervenant: false, peutChangerStatut: false });
+    expect(await droits(CHEF_TECH, 'supervisor', 21)).toMatchObject({ intervenant: true, superviseur: false });
+    expect(await droits(ADMIN, 'admin', 23)).toMatchObject({ intervenant: true, superviseur: true });
   });
 });

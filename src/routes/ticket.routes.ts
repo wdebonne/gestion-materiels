@@ -11,6 +11,8 @@ import {
 import {
   accesTicket,
   contexteTickets,
+  droitsSurTicket,
+  DroitsTicket,
   materielsVisibles,
   porteeTickets,
   MATERIEL_HORS_PORTEE,
@@ -96,13 +98,14 @@ function refuser(res: Response, code: number, message: string) {
   return res.status(code).json({ success: false, message });
 }
 
+/** Ce que le lecteur peut faire de cette demande : voir `droitsSurTicket()`. */
+async function droitsDe(req: AuthRequest, ticket: any): Promise<DroitsTicket> {
+  return droitsSurTicket(await contexteTickets(req), ticket);
+}
+
 /** Le lecteur est-il un intervenant sur cette demande, ou seulement le demandeur ? */
 async function estIntervenant(req: AuthRequest, ticket: any): Promise<boolean> {
-  const ctx = await contexteTickets(req);
-  if (ctx.voitTout) return true;
-  if (ticket.technicien_id && ctx.personnes.includes(Number(ticket.technicien_id))) return true;
-  if (ticket.service_id && ctx.services.includes(Number(ticket.service_id))) return true;
-  return false;
+  return (await droitsDe(req, ticket)).intervenant;
 }
 
 // ------------------------------------------------------------ ce que je peux
@@ -238,15 +241,76 @@ router.get('/formulaire/materiels', authenticateToken, async (req: AuthRequest, 
 router.get('/permissions', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const ctx = await contexteTickets(req);
+    const niveaux = [...ctx.niveaux].map(([categorieId, niveau]) => ({ categorieId, niveau }));
     res.json({
       success: true,
       voitTout: ctx.voitTout,
       services: ctx.services,
       sitesPartages: ctx.sitesPartages,
-      estIntervenant: ctx.services.length > 0 || ctx.voitTout,
+      niveaux,
+      estIntervenant:
+        ctx.role === 'admin' ||
+        ctx.voitTout ||
+        ctx.services.length > 0 ||
+        niveaux.some((n) => n.niveau !== 'demandeur'),
+      estSuperviseur: ctx.role === 'admin' || ctx.categoriesSupervisees.length > 0,
     });
   } catch (erreur: any) {
     console.error('Erreur permissions tickets :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * À qui l'on peut confier une demande de cette catégorie.
+ *
+ * Les personnes qui ont un niveau d'intervenant sur la racine, plus les membres
+ * du service qu'elle route — chacun repassé par `peutEtreConfieeA`, la même
+ * règle que celle qui refusera l'affectation : la liste ne propose jamais un nom
+ * que l'enregistrement rejetterait.
+ */
+router.get('/intervenants', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const ctx = await contexteTickets(req);
+    const intervientQuelquePart =
+      ctx.role === 'admin' || ctx.voitTout || ctx.services.length > 0 || ctx.modeFin;
+    if (!intervientQuelquePart) return refuser(res, 403, 'Réservé aux intervenants');
+
+    const categorieId = Number(req.query.categorieId);
+    if (!Number.isFinite(categorieId)) return refuser(res, 400, 'Catégorie manquante');
+
+    const categorie = await db.queryOne('SELECT id, parent_id FROM ticket_categories WHERE id = ?', [categorieId]);
+    if (!categorie) return refuser(res, 404, 'Catégorie introuvable');
+    const racine = categorie.parent_id ? Number(categorie.parent_id) : Number(categorie.id);
+    const routage = await resoudreRoutage(racine, categorie.parent_id ? categorieId : null);
+
+    const candidats = await db.query(
+      `SELECT DISTINCT u.id, u.first_name, u.last_name, u.email
+         FROM users u
+        WHERE u.is_active = 1
+          AND (u.id IN (SELECT user_id FROM user_ticket_categories
+                         WHERE ticket_categorie_id = ? AND niveau <> 'demandeur')
+               OR u.id IN (SELECT user_id FROM service_members WHERE service_id = ?))
+        ORDER BY u.last_name ASC, u.first_name ASC`,
+      [racine, routage.serviceId ?? -1]
+    );
+
+    const ticket = {
+      categorie_id: racine,
+      sous_categorie_id: categorie.parent_id ? categorieId : null,
+      service_id: routage.serviceId,
+    };
+    const intervenants = [];
+    for (const c of candidats) {
+      if (!(await peutEtreConfieeA(Number(c.id), ticket))) continue;
+      intervenants.push({
+        id: Number(c.id),
+        nom: [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.email,
+      });
+    }
+    res.json({ success: true, intervenants });
+  } catch (erreur: any) {
+    console.error('Erreur intervenants possibles :', erreur);
     refuser(res, 500, 'Erreur serveur');
   }
 });
@@ -541,9 +605,50 @@ router.delete(
 
 // ----------------------------------------------------------------- la demande
 
+/**
+ * Ce qu'on garde d'une saisie de demande.
+ *
+ * Le corps était passé tel quel à `creerTicket` : n'importe quel demandeur
+ * pouvait choisir une catégorie qu'on ne lui propose pas, se désigner un
+ * technicien ou ouvrir au nom d'un autre. La catégorie est donc vérifiée contre
+ * celles qui lui sont proposées, et le routage explicite — service, technicien,
+ * demandeur — n'est retenu que d'un intervenant de la catégorie ; pour les
+ * autres, la catégorie décide, comme le formulaire le promet.
+ */
+async function saisieAutorisee(req: AuthRequest): Promise<{ saisie: any } | { refus: string }> {
+  const saisie = { ...(req.body ?? {}) };
+  const ctx = await contexteTickets(req);
+  if (ctx.role === 'admin' || ctx.voitTout) return { saisie };
+
+  const proposees = new Set((await categoriesProposeesA(ctx.moi)).map((c) => c.id));
+  for (const id of [saisie.categorieId, saisie.sousCategorieId]) {
+    if (id === null || id === undefined || id === '') continue;
+    if (!proposees.has(Number(id))) {
+      return { refus: 'Cette catégorie ne fait pas partie de celles qui vous sont proposées' };
+    }
+  }
+
+  const routage = await resoudreRoutage(saisie.categorieId, saisie.sousCategorieId);
+  const droits = droitsSurTicket(ctx, {
+    categorie_id: saisie.categorieId ?? null,
+    sous_categorie_id: saisie.sousCategorieId ?? null,
+    service_id: routage.serviceId,
+    technicien_id: null,
+  });
+  if (!droits.intervenant) {
+    delete saisie.serviceId;
+    delete saisie.technicienId;
+    delete saisie.demandeurId;
+  }
+  return { saisie };
+}
+
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const id = await creerTicket(req.body ?? {}, req.user!.userId);
+    const autorisee = await saisieAutorisee(req);
+    if ('refus' in autorisee) return refuser(res, 403, autorisee.refus);
+
+    const id = await creerTicket(autorisee.saisie, req.user!.userId);
     const ticket = await lireTicket(id);
 
     // Après la réponse, jamais avant : un SMTP injoignable ne doit pas empêcher
@@ -585,14 +690,15 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       });
     }
 
-    const intervenant = await estIntervenant(req, ligne);
+    const droits = await droitsDe(req, ligne);
+    const intervenant = droits.intervenant;
     const [fil, pieces, observateurs] = await Promise.all([
       filUnifie(Number(req.params.id), intervenant),
       piecesDuTicket(req.params.id),
       observateursDe(req.params.id),
     ]);
 
-    res.json({ success: true, ticket, acces, intervenant, fil, pieces, observateurs });
+    res.json({ success: true, ticket, acces, intervenant, droits, fil, pieces, observateurs });
   } catch (erreur: any) {
     console.error('Erreur lecture ticket :', erreur);
     refuser(res, 500, 'Erreur serveur');
@@ -611,12 +717,49 @@ async function exigerAccesComplet(req: AuthRequest, res: Response): Promise<bool
   return false;
 }
 
+/** Les champs qui décident de qui traite la demande, et quand. */
+const CHAMPS_ROUTAGE = ['serviceId', 'technicienId', 'categorieId', 'sousCategorieId', 'priorite'];
+
+/**
+ * Cette personne peut-elle se voir confier cette demande ?
+ *
+ * Un niveau au moins `intervenant` sur la catégorie, ou — sans niveau fin —
+ * l'appartenance au service de la demande. Confier une demande de voirie à
+ * l'informaticien la ferait sortir de la vue de ceux qui la traitent.
+ */
+async function peutEtreConfieeA(userId: number, ticket: any): Promise<boolean> {
+  const personne = await db.queryOne('SELECT role FROM users WHERE id = ? AND is_active = 1', [userId]);
+  if (!personne) return false;
+  const ctx = await contexteTickets({ user: { userId, role: personne.role } } as AuthRequest);
+  const droits = droitsSurTicket(ctx, { ...ticket, technicien_id: null });
+  return droits.intervenant || droits.niveau === 'intervenant';
+}
+
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     if (!(await exigerAccesComplet(req, res))) return;
 
     const avant = await lireTicket(req.params.id);
-    await modifierTicket(Number(req.params.id), req.body ?? {}, req.user!.userId);
+    const corps = req.body ?? {};
+    const routageTouche = CHAMPS_ROUTAGE.some((c) => corps[c] !== undefined);
+    if (routageTouche) {
+      if (!(await droitsDe(req, avant)).intervenant) {
+        return refuser(res, 403, 'Seuls les intervenants reclassent ou réaffectent une demande');
+      }
+      if (corps.technicienId !== undefined && corps.technicienId !== null && corps.technicienId !== '') {
+        const apresReclassement = {
+          ...avant,
+          categorie_id: corps.categorieId !== undefined ? corps.categorieId : avant?.categorie_id,
+          sous_categorie_id: corps.sousCategorieId !== undefined ? corps.sousCategorieId : avant?.sous_categorie_id,
+          service_id: corps.serviceId !== undefined ? corps.serviceId : avant?.service_id,
+        };
+        if (!(await peutEtreConfieeA(Number(corps.technicienId), apresReclassement))) {
+          return refuser(res, 400, 'Cette personne n’intervient pas sur cette catégorie de demandes');
+        }
+      }
+    }
+
+    await modifierTicket(Number(req.params.id), corps, req.user!.userId);
     const apres = await lireTicket(req.params.id);
 
     // Confier une demande à quelqu'un est le seul changement qui vaut un avis :
@@ -642,6 +785,11 @@ router.put('/:id/statut', authenticateToken, async (req: AuthRequest, res: Respo
     if (!Number.isFinite(statutId)) return refuser(res, 400, 'Statut manquant');
 
     const avant = await lireTicket(req.params.id);
+    // Le demandeur suit sa demande, il ne la déclare pas résolue : c'était
+    // possible tant que la seule garde était la lecture complète.
+    if (!(await droitsDe(req, avant)).peutChangerStatut) {
+      return refuser(res, 403, 'Seuls les intervenants changent le statut d’une demande');
+    }
     await changerStatut(Number(req.params.id), statutId, req.user!.userId);
     const apres = await lireTicket(req.params.id);
 

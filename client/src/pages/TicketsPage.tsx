@@ -17,6 +17,7 @@ import {
 import { ticketApi, ticketReferentielApi, type CategorieDemande, type Ticket } from '@/lib/api'
 import { Badge, Button, Card, CardBody, LoadingInline, Select, Tab, Tabs } from '@/components/ui'
 import NouveauTicket from '@/components/tickets/NouveauTicket'
+import { useAuthStore } from '@/stores/auth.store'
 import RapportTickets from '@/components/tickets/RapportTickets'
 
 /**
@@ -81,6 +82,14 @@ export default function TicketsPage() {
   const statutId = parametres.get('statut') ? Number(parametres.get('statut')) : null
   const categorieId = parametres.get('categorie') ? Number(parametres.get('categorie')) : null
   const siteId = parametres.get('batiment') ? Number(parametres.get('batiment')) : null
+  const moi = useAuthStore((s) => s.user?.id)
+  // « Mes tickets » : ceux qui me sont confiés, dans ce que je vois déjà.
+  const technicienId = parametres.get('moi') === '1' && moi ? Number(moi) : null
+
+  const { data: permissions } = useQuery({
+    queryKey: ['tickets', 'permissions'],
+    queryFn: async () => (await ticketApi.permissions()).data,
+  })
 
   const { data: formulaire } = useQuery({
     queryKey: ['tickets', 'formulaire'],
@@ -99,14 +108,15 @@ export default function TicketsPage() {
    * (`ticketScope.ts`), pas par un filtre d'écran qu'on pourrait retirer.
    */
   const filtres = useMemo(
-    () => ({ statutId, categorieId, siteId, recherche: recherche.trim() || null }),
-    [statutId, categorieId, siteId, recherche]
+    () => ({ statutId, categorieId, siteId, technicienId, recherche: recherche.trim() || null }),
+    [statutId, categorieId, siteId, technicienId, recherche]
   )
 
   const { data: compteurs } = useQuery({
-    queryKey: ['tickets', 'compteurs', categorieId, siteId, recherche],
+    queryKey: ['tickets', 'compteurs', categorieId, siteId, technicienId, recherche],
     queryFn: async () =>
-      (await ticketApi.compteurs({ categorieId, siteId, recherche: recherche.trim() || null })).data,
+      (await ticketApi.compteurs({ categorieId, siteId, technicienId, recherche: recherche.trim() || null }))
+        .data,
   })
 
   const { data, isLoading } = useQuery({
@@ -157,6 +167,17 @@ export default function TicketsPage() {
               <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                 États
               </p>
+              {permissions?.estIntervenant && (
+                <label className="flex items-center gap-2 px-2 pb-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={technicienId !== null}
+                    onChange={(e) => poser('moi', e.target.checked ? '1' : null)}
+                    className="rounded border-gray-300"
+                  />
+                  <User className="w-4 h-4 text-gray-400" /> Mes tickets seulement
+                </label>
+              )}
               <button
                 onClick={() => poser('statut', null)}
                 className={`w-full flex items-center justify-between px-2 py-2 rounded-lg text-sm transition ${
