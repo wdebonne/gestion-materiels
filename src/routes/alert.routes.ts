@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireSupervisor, getAccessibleCategoryIds } from '../middleware/auth.middleware';
 import { emitAlert } from '../services/websocket.service';
-import { filtreAlertesBatiments } from '../services/batiments.service';
+import { batimentsDesAlertes, filtreAlertesBatiments } from '../services/batiments.service';
 
 /**
  * Le filtre des alertes de bâtiment, sans casser la liste si le module n'est
@@ -77,8 +77,12 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     whereClause += batiments.sql;
     params.push(...batiments.params);
 
+    // Les colonnes lues, pas `a.*` : la page reçoit toutes les alertes d'un
+    // coup, et chaque octet de trop se paie plusieurs milliers de fois.
     const alerts = await db.query(
-      `SELECT a.*, o.name as object_name, o.category_id, ar.id as lu_par_moi
+      `SELECT a.id, a.title, a.message, a.alert_type, a.severity, a.object_id,
+              a.plugin_reference, a.plugin_reference_id, a.is_dismissed, a.due_date, a.created_at,
+              o.name as object_name, ar.id as lu_par_moi
        FROM alerts a
        LEFT JOIN alert_reads ar ON ar.alert_id = a.id AND ar.user_id = ?
        LEFT JOIN objects o ON o.id = a.object_id
@@ -96,6 +100,15 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
       // L'utilisateur alimente la jointure de lecture, placée avant le WHERE.
       [req.user!.userId, ...params, ...(limite ? [limite] : [])]
     );
+
+    // Le bâtiment concerné, pour que la page puisse ranger par bâtiment. Sans
+    // module migré, on s'en passe : la liste reste lisible sans.
+    let batimentsParAlerte = new Map<string, Array<{ id: number; nom: string }>>();
+    try {
+      batimentsParAlerte = await batimentsDesAlertes(alerts);
+    } catch {
+      /* module bâtiments absent */
+    }
 
     res.json({
       success: true,
@@ -117,6 +130,9 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
         type: a.alert_type,
         status: a.is_dismissed ? 'resolved' : a.lu_par_moi ? 'acknowledged' : 'active',
         priority: a.severity === 'critical' ? 'high' : a.severity === 'warning' ? 'medium' : 'low',
+        ...(a.plugin_reference && batimentsParAlerte.has(`${a.plugin_reference}:${a.plugin_reference_id}`)
+          ? { batiments: batimentsParAlerte.get(`${a.plugin_reference}:${a.plugin_reference_id}`) }
+          : {}),
       }))
     });
   } catch (error: any) {
@@ -307,6 +323,20 @@ router.put('/:id/dismiss', authenticateToken, async (req: AuthRequest, res: Resp
 router.put('/read-all', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     // Marquage personnel : la pastille des autres agents n'est pas touchée.
+    // Avec `ids`, seulement ces alertes-là : c'est « marquer le groupe comme lu ».
+    if (Array.isArray(req.body?.ids)) {
+      const ids = [...new Set(req.body.ids.map(Number).filter((id: number) => Number.isInteger(id) && id > 0))] as number[];
+      for (let i = 0; i < ids.length; i += 500) {
+        const paquet = ids.slice(i, i + 500);
+        await db.execute(
+          `INSERT OR IGNORE INTO alert_reads (alert_id, user_id)
+           SELECT id, ? FROM alerts WHERE is_dismissed = 0 AND id IN (${paquet.map(() => '?').join(',')})`,
+          [req.user!.userId, ...paquet]
+        );
+      }
+      return res.json({ success: true, message: 'Alertes marquées comme lues' });
+    }
+
     await db.execute(
       `INSERT OR IGNORE INTO alert_reads (alert_id, user_id)
        SELECT id, ? FROM alerts WHERE is_dismissed = 0`,

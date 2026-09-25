@@ -47,6 +47,7 @@ import migration042 from '../src/database/migrations/042_entreprises_portail';
 import migration044 from '../src/database/migrations/044_energie_contrats_interventions';
 import { verifierEcheancesBatiments } from '../src/services/cron.service';
 import {
+  batimentsDesAlertes,
   destinatairesBatiment,
   filtreAlertesBatiments,
   semerRubriques,
@@ -262,5 +263,36 @@ describe('Les destinataires', () => {
     base.prepare('UPDATE users SET gere_organisation = 0').run();
     expect(await destinatairesBatiment(2)).toEqual(['admin@ville.fr']);
     expect(await destinatairesBatiment(1)).toEqual(['ecole@ville.fr']);
+  });
+});
+
+describe('Le bâtiment de chaque alerte', () => {
+  it("se lit du suivi pour un contrôle, et des sites couverts pour un contrat", async () => {
+    const contrat = Number(
+      base.prepare("INSERT INTO batiment_contrats (objet, date_debut) VALUES ('Chauffage', '2026-01-01')").run().lastInsertRowid
+    );
+    base.prepare('INSERT INTO batiment_contrat_sites (contrat_id, site_id) VALUES (?, 1), (?, 2)').run(contrat, contrat);
+    const rubrique = (base.prepare("SELECT id FROM batiment_rubriques WHERE code = 'ria'").get() as any).id;
+    const aLaMairie = Number(
+      base.prepare('INSERT INTO batiment_suivis (site_id, rubrique_id, echeance_initiale) VALUES (2, ?, ?)').run(rubrique, jour(5)).lastInsertRowid
+    );
+
+    const rattaches = await batimentsDesAlertes([
+      { plugin_reference: 'batiment-suivi', plugin_reference_id: bientot },
+      { plugin_reference: 'batiment-suivi', plugin_reference_id: aLaMairie },
+      { plugin_reference: 'batiment-contrat', plugin_reference_id: contrat },
+      { plugin_reference: 'maintenance', plugin_reference_id: bientot },
+      { plugin_reference: null, plugin_reference_id: null },
+    ]);
+
+    expect(rattaches.get(`batiment-suivi:${bientot}`)).toEqual([{ id: 1, nom: 'École' }]);
+    expect(rattaches.get(`batiment-suivi:${aLaMairie}`)).toEqual([{ id: 2, nom: 'Mairie' }]);
+    // L'ordre des noms accentués dépend de la base : seul le contenu compte.
+    expect(rattaches.get(`batiment-contrat:${contrat}`)).toHaveLength(2);
+    expect(rattaches.get(`batiment-contrat:${contrat}`)).toEqual(
+      expect.arrayContaining([{ id: 1, nom: 'École' }, { id: 2, nom: 'Mairie' }])
+    );
+    // Les alertes des autres modules n'y gagnent rien.
+    expect(rattaches.size).toBe(3);
   });
 });

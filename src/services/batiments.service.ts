@@ -1233,6 +1233,58 @@ export async function filtreAlertesBatiments(appelant: Appelant): Promise<{ sql:
   };
 }
 
+/**
+ * Les bâtiments auxquels se rattachent des alertes, pour les ranger par
+ * bâtiment : un contrôle n'en a qu'un, un contrat peut en couvrir plusieurs.
+ * Les clés sont `référence:id`, comme les alertes les portent.
+ */
+export async function batimentsDesAlertes(
+  alertes: Array<{ plugin_reference?: string | null; plugin_reference_id?: number | null }>
+): Promise<Map<string, Array<{ id: number; nom: string }>>> {
+  const ids = (reference: string) => [
+    ...new Set(
+      alertes
+        .filter((a) => a.plugin_reference === reference && a.plugin_reference_id != null)
+        .map((a) => Number(a.plugin_reference_id))
+    ),
+  ];
+  const suivis = ids(REFERENCE_ALERTE);
+  const contrats = ids(REFERENCE_ALERTE_CONTRAT);
+  const resultat = new Map<string, Array<{ id: number; nom: string }>>();
+  const ranger = (lignes: any[], reference: string) => {
+    for (const l of lignes) {
+      const cle = `${reference}:${l.ref}`;
+      if (!resultat.has(cle)) resultat.set(cle, []);
+      resultat.get(cle)!.push({ id: Number(l.site_id), nom: l.nom });
+    }
+  };
+
+  if (suivis.length > 0) {
+    ranger(
+      await db.query(
+        `SELECT bs.id AS ref, s.id AS site_id, s.name AS nom
+           FROM batiment_suivis bs JOIN cle_sites s ON s.id = bs.site_id
+          WHERE bs.id IN (${suivis.map(() => '?').join(', ')})`,
+        suivis
+      ),
+      REFERENCE_ALERTE
+    );
+  }
+  if (contrats.length > 0) {
+    ranger(
+      await db.query(
+        `SELECT cs.contrat_id AS ref, s.id AS site_id, s.name AS nom
+           FROM batiment_contrat_sites cs JOIN cle_sites s ON s.id = cs.site_id
+          WHERE cs.contrat_id IN (${contrats.map(() => '?').join(', ')})
+          ORDER BY s.sort_order, s.name`,
+        contrats
+      ),
+      REFERENCE_ALERTE_CONTRAT
+    );
+  }
+  return resultat;
+}
+
 /** Les bâtiments, avec de quoi dire d'un coup d'œil où en sont leurs contrôles. */
 export async function resumeDesBatiments(siteIds: number[] | null): Promise<
   Array<{

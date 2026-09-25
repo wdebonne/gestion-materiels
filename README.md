@@ -271,6 +271,7 @@ Où est implanté le matériel — voirie et espaces verts sur la même carte, e
 - 🔗 **Autant d'agendas externes que nécessaire** — CalDAV (Nextcloud, Synology, iCloud, Google) et Outlook — chacun ne recevant que les natures d'échéance et les catégories qu'on lui désigne, avec un **aperçu avant l'envoi**
 - ↔️ Envoi, réception, ou les deux
 - ⚠️ **Alertes automatiques** (échéances, retards, contrôles, espaces verts), compteur en temps réel, notifications par e-mail et **rapport hebdomadaire** aux administrateurs et superviseurs
+- 🗂️ **Page Alertes regroupée** par type, par matériel ou par bâtiment : des groupes repliés qui se déplient d'un clic et se marquent comme lus d'un coup, affichés par tranches — la page reste rapide avec des milliers d'alertes
 
 ### 🔄 Réservations, amortissement, import/export
 

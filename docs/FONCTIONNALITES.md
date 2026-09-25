@@ -426,6 +426,8 @@ a réellement consommé, chaque écriture portant sa propre nature.
 - 👁️ **Un aperçu avant d'envoyer** : combien d'événements partiraient, de quelles natures, et les premiers titres — un aiguillage se règle autrement à l'aveugle
 - 🔒 **La vue du calendrier ne change pas** : elle affiche toutes les échéances que vos droits vous permettent de voir. L'aiguillage décide de ce qui *sort*, jamais de ce qui s'affiche
 - ⚠️ Système d'alertes automatiques
+- 🗂️ **Alertes regroupées** par type, par matériel ou par bâtiment (le choix est retenu) : chaque groupe annonce son nombre d'alertes, d'urgentes et de non lues, se déplie d'un clic et se **marque comme lu d'un coup**. Les plus urgents viennent en tête ; peu d'alertes ou un seul groupe, et tout s'affiche déplié
+- ⚡ **Affichage par tranches** : 30 alertes par groupe et 50 groupes à la fois, « Afficher plus » pour la suite. Monter des milliers de cartes d'un coup figeait la page quatre secondes sur un parc chargé ; elle s'affiche désormais en quelques centaines de millisecondes
 - 📧 Notifications par email
 - 🔔 Compteur d'alertes en temps réel
 

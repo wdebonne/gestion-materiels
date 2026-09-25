@@ -7,6 +7,28 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Alertes : une page rapide, rangée en groupes dépliables
+
+> Sur un parc chargé, la page **Alertes** restait plusieurs secondes sur
+> « Chargement des alertes… » : non pas à cause du serveur (la requête prend
+> une vingtaine de millisecondes pour 6 000 alertes), mais parce qu'elle
+> montait toutes les cartes d'un coup — 215 000 éléments dans la page. Mesuré
+> sur le jeu de charge : **4 s avant, 0,3 s après**, 510 éléments.
+>
+> Un nouveau filtre **Regrouper par** range les alertes par **type**, par
+> **matériel** ou par **bâtiment** (ou pas du tout), et s'en souvient. Chaque
+> groupe, replié, dit combien il compte d'alertes, d'urgentes et de non lues ;
+> il se déplie d'un clic et se **marque comme lu d'un coup**. Les cartes
+> arrivent par tranches de 30, les groupes par 50.
+>
+> Changer de filtre garde la liste affichée pendant la mise à jour, et
+> l'en-tête ne dit plus « Aucune alerte active » pendant le chargement.
+>
+> Côté API : `GET /api/alerts` ne lit plus que les colonnes utiles et donne,
+> pour une alerte de contrôle ou de contrat, le ou les **bâtiments**
+> concernés (`batiments`) ; `PUT /api/alerts/read-all` accepte une liste
+> `ids` pour ne marquer que celles-là.
+
 ### Bâtiments : les coûts en graphiques, comparés, et en PDF
 
 > Une page **Coûts et statistiques**, depuis la liste des bâtiments, répond à
