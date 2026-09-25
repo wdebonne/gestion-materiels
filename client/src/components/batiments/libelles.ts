@@ -1,4 +1,12 @@
-import type { NatureRubrique, ResultatControle, StatutDocumentBatiment, StatutSuivi } from '@/lib/api'
+import type {
+  Energie,
+  NatureIntervention,
+  NatureRubrique,
+  ResultatControle,
+  StatutContrat,
+  StatutDocumentBatiment,
+  StatutSuivi,
+} from '@/lib/api'
 
 /**
  * Les mots du module Bâtiments, écrits une fois.
@@ -107,6 +115,64 @@ export function tailleLisible(octets: number | null): string {
   if (octets < 1024) return `${octets} o`
   if (octets < 1024 * 1024) return `${Math.round(octets / 1024)} Ko`
   return `${(octets / 1024 / 1024).toFixed(1).replace('.', ',')} Mo`
+}
+
+// ------------------------------------------------ énergie, contrats, interventions
+
+/** Le libellé, l'unité proposée, et une couleur tenue d'un graphique à l'autre. */
+export const ENERGIES: Record<Energie, { libelle: string; unite: string; couleur: string }> = {
+  electricite: { libelle: 'Électricité', unite: 'kWh', couleur: '#f59e0b' },
+  gaz: { libelle: 'Gaz', unite: 'kWh', couleur: '#3b82f6' },
+  eau: { libelle: 'Eau', unite: 'm3', couleur: '#06b6d4' },
+  fioul: { libelle: 'Fioul', unite: 'L', couleur: '#78716c' },
+  chaleur: { libelle: 'Réseau de chaleur', unite: 'kWh', couleur: '#ef4444' },
+  autre: { libelle: 'Autre', unite: '', couleur: '#8b5cf6' },
+}
+
+export const NATURES_INTERVENTION: Record<NatureIntervention, string> = {
+  entretien: 'Entretien',
+  depannage: 'Dépannage',
+  travaux: 'Travaux',
+  controle: 'Contrôle',
+  nettoyage: 'Nettoyage',
+  autre: 'Autre',
+}
+
+export const STATUTS_CONTRAT: Record<StatutContrat, { libelle: string; variante: 'danger' | 'warning' | 'success' | 'default' }> = {
+  a_resilier: { libelle: 'Préavis proche', variante: 'warning' },
+  se_termine: { libelle: 'Se termine bientôt', variante: 'warning' },
+  echu: { libelle: 'Échu', variante: 'danger' },
+  actif: { libelle: 'En cours', variante: 'success' },
+  sans_fin: { libelle: 'Sans date de fin', variante: 'default' },
+  inactif: { libelle: 'Désactivé', variante: 'default' },
+}
+
+const FORMAT_EUROS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' })
+const FORMAT_NOMBRE = new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 2 })
+
+/** « 1 234,50 € » ; un tiret pour un montant inconnu. */
+export function euros(montant: number | null | undefined): string {
+  return montant === null || montant === undefined ? '—' : FORMAT_EUROS.format(montant)
+}
+
+/** « 12 345,6 kWh ». */
+export function quantite(valeur: number | null | undefined, unite?: string | null): string {
+  if (valeur === null || valeur === undefined) return '—'
+  return `${FORMAT_NOMBRE.format(valeur)}${unite ? ` ${unite === 'm3' ? 'm³' : unite}` : ''}`
+}
+
+/** L'évolution d'une année sur l'autre, en pourcentage ; `null` sans point de comparaison. */
+export function evolution(actuel: number, precedent: number): number | null {
+  if (!precedent) return null
+  return Math.round(((actuel - precedent) / Math.abs(precedent)) * 1000) / 10
+}
+
+/** Un nombre saisi à la française (« 1 234,5 ») ; vide = `null`. */
+export function lireNombre(saisie: string): number | null {
+  const propre = saisie.replace(/\s/g, '').replace(',', '.')
+  if (!propre) return null
+  const n = Number(propre)
+  return Number.isFinite(n) ? n : null
 }
 
 /** Les formats acceptés au dépôt — les mêmes que le serveur, sans SVG. */

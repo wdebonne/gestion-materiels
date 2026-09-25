@@ -42,6 +42,7 @@ import gestionOrganisation from './040_gestion_organisation';
 import batimentsControles from './041_batiments_controles';
 import entreprisesPortail from './042_entreprises_portail';
 import etagesEtPlans from './043_etages_et_plans';
+import energieContratsInterventions from './044_energie_contrats_interventions';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -96,6 +97,7 @@ export const MIGRATIONS: readonly Migration[] = [
   batimentsControles,
   entreprisesPortail,
   etagesEtPlans,
+  energieContratsInterventions,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

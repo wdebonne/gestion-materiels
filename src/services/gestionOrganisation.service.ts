@@ -229,6 +229,36 @@ export function requireConsultationSite(
   return garde('consultation', async (req) => peutConsulterSite(req.user, await lireSiteId(req)));
 }
 
+/**
+ * Gérer **tous** ces bâtiments — un contrat d'entretien des ascenseurs en couvre
+ * plusieurs : le modifier touche chacun d'eux. Aucun bâtiment = refus, sauf
+ * pour qui gère tous les lieux.
+ */
+export function requireGestionSites(
+  lireSiteIds: (req: AuthRequest) => Promise<number[] | null> | number[] | null
+): GardeGestion {
+  return garde('site', async (req) => {
+    if (await peutGererLieux(req.user)) return true;
+    const ids = await lireSiteIds(req);
+    if (!ids || ids.length === 0) return false;
+    const geres = await sitesGeresPar(req.user!.userId);
+    return ids.every((id) => geres.includes(Number(id)));
+  });
+}
+
+/** Consulter **au moins un** de ces bâtiments : c'est assez pour voir le contrat qui le couvre. */
+export function requireConsultationUnSite(
+  lireSiteIds: (req: AuthRequest) => Promise<number[] | null> | number[] | null
+): GardeGestion {
+  return garde('consultation', async (req) => {
+    if (await peutGererLieux(req.user)) return true;
+    const ids = await lireSiteIds(req);
+    if (!ids || ids.length === 0) return false;
+    const consultes = await sitesConsultesPar(req.user!.userId);
+    return ids.some((id) => consultes.includes(Number(id)));
+  });
+}
+
 export function requireGestionService(
   lireServiceId: (req: AuthRequest) => number | null = (req) => Number(req.params.id) || null
 ): GardeGestion {
@@ -277,3 +307,40 @@ export async function siteDuSuivi(req: AuthRequest): Promise<number | null> {
   const ligne = await db.queryOne('SELECT site_id FROM batiment_suivis WHERE id = ?', [req.params.id]);
   return ligne ? Number(ligne.site_id) : null;
 }
+
+/** Le bâtiment d'un compteur d'énergie. */
+export async function siteDuCompteur(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne('SELECT site_id FROM batiment_compteurs WHERE id = ?', [req.params.id]);
+  return ligne ? Number(ligne.site_id) : null;
+}
+
+/** Le bâtiment d'un relevé, par son compteur. */
+export async function siteDuReleve(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne(
+    'SELECT c.site_id FROM batiment_releves r JOIN batiment_compteurs c ON c.id = r.compteur_id WHERE r.id = ?',
+    [req.params.id]
+  );
+  return ligne ? Number(ligne.site_id) : null;
+}
+
+/** Le bâtiment d'une facture d'énergie. */
+export async function siteDeLaFacture(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne('SELECT site_id FROM batiment_factures WHERE id = ?', [req.params.id]);
+  return ligne ? Number(ligne.site_id) : null;
+}
+
+/** Le bâtiment d'une intervention. */
+export async function siteDeLIntervention(req: AuthRequest): Promise<number | null> {
+  const ligne = await db.queryOne('SELECT site_id FROM batiment_interventions WHERE id = ?', [req.params.id]);
+  return ligne ? Number(ligne.site_id) : null;
+}
+
+/** Les bâtiments d'un contrat de maintenance. */
+export async function sitesDuContratParametre(req: AuthRequest): Promise<number[]> {
+  const lignes = await db.query('SELECT site_id FROM batiment_contrat_sites WHERE contrat_id = ?', [req.params.id]);
+  return lignes.map((l: any) => Number(l.site_id));
+}
+
+/** Les bâtiments nommés dans le corps (`siteIds`) : ceux d'un contrat qu'on crée ou qu'on redéfinit. */
+export const sitesDuCorps = (req: AuthRequest): number[] =>
+  (Array.isArray(req.body?.siteIds) ? req.body.siteIds : []).map(Number).filter((n: number) => Number.isInteger(n) && n > 0);

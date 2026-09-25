@@ -43,6 +43,8 @@ jest.mock('../src/services/email.service', () => ({
 
 import type BetterSqlite3 from 'better-sqlite3';
 import migration041 from '../src/database/migrations/041_batiments_controles';
+import migration042 from '../src/database/migrations/042_entreprises_portail';
+import migration044 from '../src/database/migrations/044_energie_contrats_interventions';
 import { verifierEcheancesBatiments } from '../src/services/cron.service';
 import {
   destinatairesBatiment,
@@ -99,8 +101,8 @@ beforeAll(async () => {
     INSERT INTO user_sites (user_id, site_id, gere_lieu) VALUES (3, 1, 1);
   `);
 
-  await migration041.up({
-    dialecte: 'sqlite',
+  const contexte = {
+    dialecte: 'sqlite' as const,
     autoIncrement: 'AUTOINCREMENT',
     texteLong: 'TEXT',
     booleen: 'INTEGER',
@@ -115,7 +117,11 @@ beforeAll(async () => {
     async creerIndex(nom: string, table: string, colonnes: string) {
       base.prepare(`CREATE INDEX IF NOT EXISTS ${nom} ON ${table} (${colonnes})`).run();
     },
-  });
+  };
+  // Les trois se suivent toujours : le filtre des alertes lit aussi les contrats.
+  await migration041.up(contexte);
+  await migration042.up(contexte);
+  await migration044.up(contexte);
   await semerRubriques();
 
   const rubrique = (code: string) => (base.prepare('SELECT id FROM batiment_rubriques WHERE code = ?').get(code) as any).id;

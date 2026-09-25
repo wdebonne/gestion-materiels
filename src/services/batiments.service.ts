@@ -39,6 +39,9 @@ export const SOUS_DOSSIER = 'batiments';
 /** `plugin_reference` des alertes d'échéance ; `plugin_reference_id` est le suivi. */
 export const REFERENCE_ALERTE = 'batiment-suivi';
 
+/** Celle des contrats de maintenance ; `plugin_reference_id` est le contrat. */
+export const REFERENCE_ALERTE_CONTRAT = 'batiment-contrat';
+
 export const NATURES = ['controle', 'rapport', 'facture', 'contrat', 'autre'] as const;
 export type Nature = (typeof NATURES)[number];
 
@@ -168,18 +171,18 @@ function entierBorne(valeur: unknown, max: number, champ: string): number | null
   return n;
 }
 
-function identifiant(valeur: unknown): number | null {
+export function identifiant(valeur: unknown): number | null {
   const n = Number(valeur);
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-function texte(valeur: unknown, max = 255): string | null {
+export function texte(valeur: unknown, max = 255): string | null {
   if (valeur === undefined || valeur === null) return null;
   const t = String(valeur).trim();
   return t ? t.slice(0, max) : null;
 }
 
-function jourOuNull(valeur: unknown, champ: string): string | null {
+export function jourOuNull(valeur: unknown, champ: string): string | null {
   if (valeur === undefined || valeur === null || valeur === '') return null;
   if (!estJourValide(valeur)) throw new ErreurBatiment(400, `${champ} : date invalide (AAAA-MM-JJ attendu)`);
   return valeur;
@@ -1211,14 +1214,22 @@ export async function filtreAlertesBatiments(appelant: Appelant): Promise<{ sql:
   const sites = await perimetreBatiments(appelant);
   if (sites === null) return { sql: '', params: [] };
   if (sites.length === 0) {
-    return { sql: ' AND (a.plugin_reference IS NULL OR a.plugin_reference <> ?)', params: [REFERENCE_ALERTE] };
+    return {
+      sql: ' AND (a.plugin_reference IS NULL OR a.plugin_reference NOT IN (?, ?))',
+      params: [REFERENCE_ALERTE, REFERENCE_ALERTE_CONTRAT],
+    };
   }
+  // Un contrat se montre à qui suit au moins un des bâtiments qu'il couvre.
+  const liste = sites.map(() => '?').join(', ');
   return {
-    sql: ` AND (a.plugin_reference IS NULL OR a.plugin_reference <> ?
-                OR a.plugin_reference_id IN (
-                  SELECT id FROM batiment_suivis WHERE site_id IN (${sites.map(() => '?').join(', ')})
-                ))`,
-    params: [REFERENCE_ALERTE, ...sites],
+    sql: ` AND (a.plugin_reference IS NULL OR a.plugin_reference NOT IN (?, ?)
+                OR (a.plugin_reference = ? AND a.plugin_reference_id IN (
+                  SELECT id FROM batiment_suivis WHERE site_id IN (${liste})
+                ))
+                OR (a.plugin_reference = ? AND a.plugin_reference_id IN (
+                  SELECT contrat_id FROM batiment_contrat_sites WHERE site_id IN (${liste})
+                )))`,
+    params: [REFERENCE_ALERTE, REFERENCE_ALERTE_CONTRAT, REFERENCE_ALERTE, ...sites, REFERENCE_ALERTE_CONTRAT, ...sites],
   };
 }
 

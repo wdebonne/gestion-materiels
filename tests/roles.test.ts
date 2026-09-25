@@ -453,6 +453,46 @@ describe('Bâtiments', () => {
   });
 
   /*
+   * L'énergie, les contrats, les interventions : consulter pour qui suit le
+   * bâtiment, saisir pour qui le gère. Un contrat couvre plusieurs bâtiments —
+   * « site » y veut dire tous, « consultation » au moins un
+   * (`exploitation.test.ts` l'éprouve).
+   */
+  const exploitationRoutes = require('../src/routes/exploitation.routes').default;
+  it.each([
+    ['put', '/:id(\\d+)/surface', 'site'],
+    ['get', '/:id(\\d+)/compteurs', 'consultation'],
+    ['post', '/:id(\\d+)/compteurs', 'site'],
+    ['put', '/compteurs/:id(\\d+)', 'site'],
+    ['delete', '/compteurs/:id(\\d+)', 'site'],
+    ['get', '/compteurs/:id(\\d+)/releves', 'consultation'],
+    ['post', '/compteurs/:id(\\d+)/releves', 'site'],
+    ['delete', '/releves/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/factures', 'consultation'],
+    ['post', '/:id(\\d+)/factures', 'site'],
+    ['put', '/factures/:id(\\d+)', 'site'],
+    ['delete', '/factures/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/energie/synthese', 'consultation'],
+    ['get', '/contrats/:id(\\d+)', 'consultation'],
+    ['post', '/contrats', 'site'],
+    ['put', '/contrats/:id(\\d+)', 'site'],
+    ['delete', '/contrats/:id(\\d+)', 'site'],
+    ['get', '/:id(\\d+)/interventions', 'consultation'],
+    ['post', '/:id(\\d+)/interventions', 'site'],
+    ['put', '/interventions/:id(\\d+)', 'site'],
+    ['delete', '/interventions/:id(\\d+)', 'site'],
+  ] as Array<[string, string, string]>)('exploitation : %s %s est gardé par « %s »', (method, path, gestion) => {
+    expect(allowedRolesFor(exploitationRoutes, method, path)).toBeNull();
+    expect(gestionFor(exploitationRoutes, method, path)).toBe(gestion);
+  });
+
+  it('filtre lui-même la liste des contrats et des fournisseurs', () => {
+    for (const path of ['/contrats', '/fournisseurs']) {
+      expect(gestionFor(exploitationRoutes, 'get', path)).toBeNull();
+    }
+  });
+
+  /*
    * Une entreprise intervient dans plusieurs bâtiments : lui ouvrir l'école
    * n'appartient pas au seul gestionnaire de la mairie. La garde est posée sur
    * le routeur entier, avant toute route — une route ajoutée plus tard en hérite.

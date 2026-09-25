@@ -382,6 +382,13 @@ export default function AlertsPage() {
                           >
                             Voir les contrôles du bâtiment →
                           </button>
+                        ) : alert.pluginReference === 'batiment-contrat' ? (
+                          <button
+                            onClick={() => navigate(`/batiments?contrat=${alert.pluginReferenceId}`)}
+                            className="text-sm text-purple-600 hover:text-purple-700 mt-2"
+                          >
+                            Voir le contrat →
+                          </button>
                         ) : alert.objectId ? (
                           <button
                             onClick={() => navigate(`/objects/${alert.objectId}`)}

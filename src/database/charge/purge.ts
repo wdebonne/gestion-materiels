@@ -29,6 +29,9 @@ export async function purger(): Promise<Record<string, number>> {
     ['objects', `reference LIKE '${PREFIXE}%'`],
     // Avant les sites : un document tient son bâtiment (`RESTRICT`), et la
     // suppression des sites échouerait tant qu'il en reste.
+    // Les factures et les interventions aussi (migration 044).
+    ['batiment_factures', `site_id IN (SELECT id FROM cle_sites WHERE code LIKE '${PREFIXE}%')`],
+    ['batiment_interventions', `site_id IN (SELECT id FROM cle_sites WHERE code LIKE '${PREFIXE}%')`],
     ['batiment_documents', `site_id IN (SELECT id FROM cle_sites WHERE code LIKE '${PREFIXE}%')`],
     ['cle_sites', `code LIKE '${PREFIXE}%'`],
     ['subcategories', `slug LIKE '${PREFIXE_SLUG}%'`],

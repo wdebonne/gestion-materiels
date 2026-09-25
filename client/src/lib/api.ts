@@ -2989,7 +2989,7 @@ export const batimentsApi = {
   lire: (id: number) =>
     api.get<{
       success: boolean
-      batiment: { id: number; nom: string; code: string | null; adresse: string | null; actif: boolean }
+      batiment: { id: number; nom: string; code: string | null; adresse: string | null; actif: boolean; surfaceM2: number | null }
       gere: boolean
       pieces: { id: number; nom: string }[]
     }>(`/batiments/${id}`),
@@ -3013,8 +3013,9 @@ export const batimentsApi = {
     ),
   modifierDocument: (docId: number, data: ClassementDocument) =>
     api.put<{ success: boolean; suiviId: number | null; suiviCree: boolean }>(`/batiments/documents/${docId}`, data),
-  valider: (docId: number, data: ClassementDocument) =>
-    api.post<{ success: boolean; suiviId: number | null; suiviCree: boolean; prochaineEcheance: string | null }>(
+  /** `coutTtc` : le coût du contrôle, qui crée l'intervention correspondante. */
+  valider: (docId: number, data: ClassementDocument & { coutTtc?: number | string | null }) =>
+    api.post<{ success: boolean; suiviId: number | null; suiviCree: boolean; prochaineEcheance: string | null; interventionId: number | null }>(
       `/batiments/documents/${docId}/valider`,
       data
     ),
@@ -3140,6 +3141,157 @@ export const plansApi = {
       success: boolean
       pieces: Array<{ placementId: number; pieceId: number; pieceNom: string; siteId: number; siteNom: string; etage: string | null; quantite: number }>
     }>(`/batiments/materiels/${objectId}/pieces`),
+}
+
+// ------------------------------------ Énergie, contrats, interventions (lot D)
+
+export type Energie = 'electricite' | 'gaz' | 'eau' | 'fioul' | 'chaleur' | 'autre'
+export type NatureIntervention = 'entretien' | 'depannage' | 'travaux' | 'controle' | 'nettoyage' | 'autre'
+export type StatutContrat = 'actif' | 'a_resilier' | 'se_termine' | 'echu' | 'sans_fin' | 'inactif'
+
+interface Nomme {
+  id: number
+  nom: string
+}
+
+export interface Compteur {
+  id: number
+  siteId: number
+  energie: Energie
+  libelle: string | null
+  numero: string | null
+  unite: string
+  fournisseur: Nomme | null
+  actif: boolean
+  notes: string | null
+  dernierReleve: { date: string; index: number } | null
+}
+
+export interface Releve {
+  id: number
+  date: string
+  index: number
+  /** Depuis le relevé précédent ; `null` pour le premier. */
+  consommation: number | null
+  notes: string | null
+}
+
+export interface Facture {
+  id: number
+  siteId: number
+  compteurId: number | null
+  compteurLibelle: string | null
+  energie: Energie
+  fournisseur: Nomme | null
+  numero: string | null
+  dateFacture: string
+  periodeDebut: string | null
+  periodeFin: string | null
+  consommation: number | null
+  unite: string | null
+  montantHt: number | null
+  /** Négatif pour un avoir. */
+  montantTtc: number
+  estimee: boolean
+  document: { id: number; titre: string } | null
+  notes: string | null
+}
+
+export interface SyntheseEnergie {
+  energie: Energie
+  unite: string | null
+  montant: number
+  consommation: number
+  montantPrecedent: number
+  consommationPrecedente: number
+  /** Jours de l'année couverts par au moins une facture. */
+  joursCouverts: number
+}
+
+export interface Contrat {
+  id: number
+  objet: string
+  entreprise: Nomme | null
+  reference: string | null
+  dateDebut: string
+  dateFin: string | null
+  reconductionTacite: boolean
+  preavisJours: number
+  montantAnnuelHt: number | null
+  montantAnnuelTtc: number | null
+  document: { id: number; titre: string } | null
+  notes: string | null
+  actif: boolean
+  sites: Nomme[]
+  etat: {
+    finEnCours: string | null
+    /** Veille du préavis d'un contrat tacite ; fin d'un contrat ferme. */
+    dateCle: string | null
+    joursAvantDateCle: number | null
+    statut: StatutContrat
+  }
+}
+
+export interface Intervention {
+  id: number
+  siteId: number
+  siteNom: string
+  pieceId: number | null
+  pieceNom: string | null
+  date: string
+  nature: NatureIntervention
+  titre: string
+  description: string | null
+  entreprise: Nomme | null
+  contrat: { id: number; objet: string } | null
+  ticketId: number | null
+  document: { id: number; titre: string } | null
+  montantHt: number | null
+  montantTtc: number | null
+  dureeMinutes: number | null
+}
+
+export const exploitationApi = {
+  fournisseurs: () => api.get<{ success: boolean; fournisseurs: Nomme[] }>('/batiments/fournisseurs'),
+  surface: (siteId: number, surfaceM2: number | string | null) =>
+    api.put<{ success: boolean; surfaceM2: number | null }>(`/batiments/${siteId}/surface`, { surfaceM2 }),
+
+  compteurs: (siteId: number) => api.get<{ success: boolean; compteurs: Compteur[] }>(`/batiments/${siteId}/compteurs`),
+  creerCompteur: (siteId: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/compteurs`, data),
+  modifierCompteur: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/batiments/compteurs/${id}`, data),
+  supprimerCompteur: (id: number) => api.delete<{ success: boolean }>(`/batiments/compteurs/${id}`),
+  releves: (compteurId: number) => api.get<{ success: boolean; releves: Releve[] }>(`/batiments/compteurs/${compteurId}/releves`),
+  ajouterReleve: (compteurId: number, data: { date: string; index: number | string; notes?: string | null }) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/compteurs/${compteurId}/releves`, data),
+  supprimerReleve: (id: number) => api.delete<{ success: boolean }>(`/batiments/releves/${id}`),
+
+  factures: (siteId: number, filtre: { annee?: number; energie?: Energie } = {}) =>
+    api.get<{ success: boolean; factures: Facture[] }>(`/batiments/${siteId}/factures`, { params: filtre }),
+  creerFacture: (siteId: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/factures`, data),
+  modifierFacture: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/batiments/factures/${id}`, data),
+  supprimerFacture: (id: number) => api.delete<{ success: boolean }>(`/batiments/factures/${id}`),
+  synthese: (siteId: number, annee: number) =>
+    api.get<{ success: boolean; annee: number; surfaceM2: number | null; energies: SyntheseEnergie[] }>(
+      `/batiments/${siteId}/energie/synthese`,
+      { params: { annee } }
+    ),
+
+  contrats: (siteId?: number) =>
+    api.get<{ success: boolean; contrats: Contrat[] }>('/batiments/contrats', { params: siteId ? { site: siteId } : {} }),
+  contrat: (id: number) => api.get<{ success: boolean; contrat: Contrat }>(`/batiments/contrats/${id}`),
+  creerContrat: (data: Record<string, unknown>) => api.post<{ success: boolean; id: number }>('/batiments/contrats', data),
+  modifierContrat: (id: number, data: Record<string, unknown>) => api.put<{ success: boolean }>(`/batiments/contrats/${id}`, data),
+  supprimerContrat: (id: number) => api.delete<{ success: boolean }>(`/batiments/contrats/${id}`),
+
+  interventions: (siteId: number, filtre: { piece?: number; annee?: number; nature?: NatureIntervention } = {}) =>
+    api.get<{ success: boolean; interventions: Intervention[] }>(`/batiments/${siteId}/interventions`, { params: filtre }),
+  creerIntervention: (siteId: number, data: Record<string, unknown>) =>
+    api.post<{ success: boolean; id: number }>(`/batiments/${siteId}/interventions`, data),
+  modifierIntervention: (id: number, data: Record<string, unknown>) =>
+    api.put<{ success: boolean }>(`/batiments/interventions/${id}`, data),
+  supprimerIntervention: (id: number) => api.delete<{ success: boolean }>(`/batiments/interventions/${id}`),
 }
 
 // ------------------------------------------------------ Entreprises extérieures

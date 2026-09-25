@@ -3,7 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { AlertTriangle, Briefcase, Building2, CheckCircle2, ClipboardCheck, FileClock, Search, Settings2 } from 'lucide-react'
-import { batimentsApi, type ResumeBatiment } from '@/lib/api'
+import { batimentsApi, exploitationApi, type ResumeBatiment } from '@/lib/api'
 import { useGestion } from '@/lib/gestion'
 import { Alert, Badge, Button, Card, CardBody, Input, LoadingInline, StatCard } from '@/components/ui'
 
@@ -15,8 +15,8 @@ import { Alert, Badge, Button, Card, CardBody, Input, LoadingInline, StatCard } 
  * à prévoir, ou portent des réserves. Le détail est une page plus loin.
  *
  * Il sert aussi de point d'arrivée aux alertes : une alerte d'échéance ne
- * connaît que son suivi (`?suivi=12`) ; on retrouve ici le bâtiment et l'on y
- * renvoie.
+ * connaît que son suivi (`?suivi=12`), une alerte de contrat que son contrat
+ * (`?contrat=4`) ; on retrouve ici le bâtiment et l'on y renvoie.
  */
 export default function BatimentsPage() {
   const navigate = useNavigate()
@@ -35,6 +35,23 @@ export default function BatimentsPage() {
         navigate('/batiments', { replace: true })
       })
   }, [suiviDemande, navigate])
+
+  // Un contrat couvre parfois plusieurs bâtiments : on ouvre le premier qu'on suit.
+  const contratDemande = Number(parametres.get('contrat')) || null
+  useEffect(() => {
+    if (!contratDemande) return
+    Promise.all([exploitationApi.contrat(contratDemande), batimentsApi.liste()])
+      .then(([{ data: c }, { data: l }]) => {
+        const suivis = new Set(l.batiments.map((b) => b.id))
+        const site = c.contrat.sites.find((s) => suivis.has(s.id)) ?? c.contrat.sites[0]
+        if (!site) throw new Error('sans bâtiment')
+        navigate(`/batiments/${site.id}?onglet=contrats&contrat=${contratDemande}`, { replace: true })
+      })
+      .catch(() => {
+        toast.error("Ce contrat n'existe plus, ou vous ne suivez aucun de ses bâtiments")
+        navigate('/batiments', { replace: true })
+      })
+  }, [contratDemande, navigate])
 
   const { data, isLoading } = useQuery({
     queryKey: ['batiments', 'liste'],
@@ -66,7 +83,7 @@ export default function BatimentsPage() {
 
   const gereUnBatiment = data?.batiments.some((b) => b.gere) ?? false
 
-  if (suiviDemande || isLoading) return <LoadingInline />
+  if (suiviDemande || contratDemande || isLoading) return <LoadingInline />
 
   return (
     <div className="space-y-6">

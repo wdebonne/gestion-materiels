@@ -7,7 +7,8 @@ import { notifierEcheance } from './ticketNotify.service';
 import { genererClasseur, TYPE_MIME_XLSX } from './manifestationExport.service';
 import { deposerFichier, lireConfiguration } from './webdav.service';
 import { etatDesSuivis, jourFrancais, REFERENCE_ALERTE as REFERENCE_BATIMENT } from './batiments.service';
-import { notifierEcheance as notifierEcheanceBatiment } from './batimentsNotify.service';
+import { notifierContrat, notifierEcheance as notifierEcheanceBatiment } from './batimentsNotify.service';
+import { listerContrats, REFERENCE_ALERTE_CONTRAT as REFERENCE_CONTRAT } from './contratsBatiments.service';
 import { versJour } from '../utils/periodes';
 
 // Récupérer les paramètres d'alertes
@@ -1021,6 +1022,69 @@ export async function verifierEcheancesBatiments(): Promise<void> {
   } catch (error) {
     // Tables absentes sur une base pas encore migrée : le cron n'a pas à mourir.
     console.error('Erreur vérification des échéances de bâtiment :', (error as Error).message);
+  }
+  await verifierEcheancesContrats();
+}
+
+/**
+ * Les contrats de maintenance qu'il faut dénoncer bientôt — ou qui se
+ * terminent, ou sont échus sans avoir été désactivés.
+ *
+ * Même mécanique que les contrôles : une alerte par contrat, suivie d'une
+ * échéance à l'autre ; un rejet tient pour cette date clé-là ; ce qui sort de
+ * la fenêtre est retiré. La date clé d'un contrat tacite passe d'elle-même à
+ * l'année suivante : l'alerte se lève de nouveau, un an plus tard.
+ */
+export async function verifierEcheancesContrats(): Promise<void> {
+  try {
+    const contrats = (await listerContrats(null)).filter(
+      (c) => c.etat.dateCle && (c.etat.statut === 'a_resilier' || c.etat.statut === 'se_termine' || c.etat.statut === 'echu')
+    );
+
+    for (const contrat of contrats) {
+      const { statut, dateCle, joursAvantDateCle } = contrat.etat;
+      const existante = await alertePosee(REFERENCE_CONTRAT, contrat.id);
+      if (rejetToujoursValable(existante, dateCle)) continue;
+
+      const severite = statut === 'echu' ? 'critical' : priorityToSeverity('medium', joursAvantDateCle ?? 0);
+      const titre =
+        statut === 'a_resilier'
+          ? `Contrat à dénoncer — ${contrat.objet}`
+          : statut === 'se_termine'
+            ? `Contrat qui se termine — ${contrat.objet}`
+            : `Contrat échu — ${contrat.objet}`;
+      const message =
+        statut === 'a_resilier'
+          ? `Reconduit seul le ${jourFrancais(contrat.etat.finEnCours)} : préavis à donner avant le ${jourFrancais(dateCle)}`
+          : statut === 'se_termine'
+            ? `Prend fin le ${jourFrancais(dateCle)}`
+            : `Terminé depuis le ${jourFrancais(dateCle)} : renouvelez-le ou désactivez-le`;
+
+      if (!existante) {
+        const resultat = await db.execute(
+          `INSERT INTO alerts (title, message, alert_type, severity, plugin_reference, plugin_reference_id, due_date)
+           VALUES (?, ?, 'batiment', ?, ?, ?, ?)`,
+          [titre, message, severite, REFERENCE_CONTRAT, contrat.id, dateCle]
+        );
+        emitAlert({ id: resultat.lastInsertRowid, title: titre, message, alertType: 'batiment', severity: severite });
+        // Un contrat échu depuis longtemps ne mérite pas un courriel : l'alerte suffit.
+        if (statut !== 'echu') await notifierContrat(contrat);
+      } else {
+        await db.execute(
+          'UPDATE alerts SET title = ?, severity = ?, message = ?, due_date = ?, is_dismissed = 0 WHERE id = ?',
+          [titre, severite, message, dateCle, existante.id]
+        );
+      }
+    }
+
+    const gardes = contrats.map((c) => c.id);
+    await db.execute(
+      `DELETE FROM alerts WHERE plugin_reference = ?
+        ${gardes.length ? `AND plugin_reference_id NOT IN (${gardes.map(() => '?').join(', ')})` : ''}`,
+      [REFERENCE_CONTRAT, ...gardes]
+    );
+  } catch (error) {
+    console.error('Erreur vérification des contrats de bâtiment :', (error as Error).message);
   }
 }
 

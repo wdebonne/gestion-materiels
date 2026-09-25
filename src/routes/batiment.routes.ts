@@ -74,6 +74,7 @@ import {
   supprimerPlanPrive,
 } from '../services/plans.service';
 import { peutVoirObjet, REFUS_PORTEE } from '../middleware/objectScope';
+import { enregistrerCoutDuControle, lireCoutDuControle } from '../services/interventionsBatiments.service';
 
 /**
  * Le module Bâtiments : contrôles obligatoires, documents, échéances.
@@ -323,8 +324,12 @@ router.post(
   async (req: AuthRequest, res: Response) => {
     try {
       if (!(await cibleGeree(req))) return refuser(res, 403, 'Vous ne gérez pas le bâtiment visé');
+      // Lu avant de valider : un coût mal saisi ne laisse pas un document à moitié traité.
+      const cout = lireCoutDuControle(req.body?.coutTtc);
       const resultat = await validerDocument(Number(req.params.id), req.body ?? {}, req.user!.userId);
-      res.json({ success: true, ...resultat });
+      const interventionId =
+        cout === null ? null : await enregistrerCoutDuControle(Number(req.params.id), cout, req.user!.userId);
+      res.json({ success: true, ...resultat, interventionId });
     } catch (erreur) {
       echouer(res, erreur, 'validation de document');
     }
@@ -590,9 +595,7 @@ router.get('/materiels/:objectId(\\d+)/pieces', authenticateToken, async (req: A
 
 router.get('/:id(\\d+)', authenticateToken, requireConsultationSite(siteDuParametre), async (req: AuthRequest, res: Response) => {
   try {
-    const site = await db.queryOne('SELECT id, name, code, address, is_active FROM cle_sites WHERE id = ?', [
-      req.params.id,
-    ]);
+    const site = await db.queryOne('SELECT * FROM cle_sites WHERE id = ?', [req.params.id]);
     if (!site) return refuser(res, 404, 'Bâtiment introuvable');
     const pieces = await db.query(
       'SELECT id, name FROM site_pieces WHERE site_id = ? ORDER BY sort_order, name',
@@ -606,6 +609,8 @@ router.get('/:id(\\d+)', authenticateToken, requireConsultationSite(siteDuParame
         code: site.code ?? null,
         adresse: site.address ?? null,
         actif: Boolean(Number(site.is_active ?? 1)),
+        // `SELECT *` : la colonne n'existe qu'après la migration 044.
+        surfaceM2: site.surface_m2 === null || site.surface_m2 === undefined ? null : Number(site.surface_m2),
       },
       gere: await peutGererSite(req.user, Number(req.params.id)),
       pieces: pieces.map((p: any) => ({ id: Number(p.id), nom: p.name })),

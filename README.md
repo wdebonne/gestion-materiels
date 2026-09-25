@@ -319,6 +319,9 @@ Seules les salles **ouvertes au prêt** y figurent, jamais un bâtiment entier ;
 - 🔔 **Alertes « Bâtiment »** dans le délai de rappel, critiques une fois l'échéance passée, envoyées aux gestionnaires du bâtiment ; elles disparaissent quand un rapport validé repousse l'échéance, et ne se montrent qu'à qui suit le bâtiment
 - 🔒 **Fichiers privés** : rangés sous `uploads/prive/`, jamais servis en statique, lus par une route qui vérifie les droits et ne met rien en cache ; pas de SVG
 - 🗺️ **Étages et plans** : un plan par étage (PDF converti dans le navigateur, ou image ; DWG à exporter en PDF), pièces dessinées au clic, étalonnage pour les surfaces ; un clic sur une pièce montre son **matériel** (posé depuis le parc), les **clés qui l'ouvrent** et leurs détenteurs, ses portes et ses documents ; la recherche retrouve un matériel et surligne sa pièce
+- ⚡ **Énergie** : compteurs et relevés, factures d'électricité, de gaz, d'eau, de fioul ou de chaleur avec la période couverte (répartie au jour), coût et consommation de l'année comparés à la précédente, ratios au m², jours couverts par des factures
+- 📑 **Contrats de maintenance** : sur un ou plusieurs bâtiments, avec la **date clé** — veille du préavis d'un contrat tacite, ou fin — rappelée un mois avant par une alerte et un courriel
+- 🔧 **Interventions** : dépannages, entretiens, travaux, par pièce, entreprise, contrat et demande ; un contrôle validé avec son coût s'y inscrit de lui-même
 
 | Qui | Ce qu'il peut faire |
 |---|---|
@@ -1306,6 +1309,16 @@ PUT    /api/batiments/pieces/:id/zone        # Redessiner ou effacer le contour 
 GET    /api/batiments/pieces/:id             # Fiche : matériel, clés qui l'ouvrent, portes, documents
 POST   /api/batiments/pieces/:id/materiels   # Poser un matériel (un unique se déplace, un lot se répartit)
 GET    /api/batiments/materiels/:objectId/pieces # Où se trouve ce matériel
+PUT    /api/batiments/:id/surface            # Surface du bâtiment, pour les ratios au m²
+GET    /api/batiments/:id/compteurs          # Compteurs d'énergie et leur dernier relevé
+POST   /api/batiments/compteurs/:id/releves  # Noter un relevé (refusé s'il recule)
+GET    /api/batiments/:id/factures           # Factures (?annee=&energie=)
+POST   /api/batiments/:id/factures           # Saisir une facture (période, consommation, montants ; négatif = avoir)
+GET    /api/batiments/:id/energie/synthese   # Coût et consommation par énergie, comparés à N-1 (?annee=)
+GET    /api/batiments/contrats               # Contrats des bâtiments suivis, avec leur date clé (?site=)
+POST   /api/batiments/contrats               # Ajouter un contrat sur { siteIds } — tous gérés
+GET    /api/batiments/:id/interventions      # Interventions (?piece=&annee=&nature=)
+POST   /api/batiments/:id/interventions      # Noter une intervention
 ```
 
 **Entreprises** (gestionnaire de tous les lieux) et **portail** (session `X-Session-Portail`, sans compte) :

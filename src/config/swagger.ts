@@ -761,7 +761,7 @@ const options: swaggerJSDoc.Options = {
         get: { tags: ['Bâtiments'], summary: 'Le fichier — jamais mis en cache', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Contenu du fichier' }, '404': { description: 'Fichier introuvable' } } },
       },
       '/batiments/documents/{id}/valider': {
-        post: { tags: ['Bâtiments'], summary: 'Valider un document en le reclassant ; il fait alors foi pour l’échéance', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Validé, avec le suivi et la prochaine échéance' } } },
+        post: { tags: ['Bâtiments'], summary: 'Valider un document en le reclassant ; il fait alors foi pour l’échéance. `coutTtc` note son coût dans les interventions', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Validé, avec le suivi, la prochaine échéance et l’intervention créée' } } },
       },
       '/batiments/{id}/etages': {
         get: { tags: ['Bâtiments'], summary: 'Les étages, leurs plans, et les pièces avec leur zone et leur matériel', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Étages et pièces' } } },
@@ -796,6 +796,55 @@ const options: swaggerJSDoc.Options = {
       },
       '/batiments/materiels/{objectId}/pieces': {
         get: { tags: ['Bâtiments'], summary: 'Les pièces où se trouve un matériel', parameters: [{ name: 'objectId', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Pièces' } } },
+      },
+      '/batiments/fournisseurs': {
+        get: { tags: ['Bâtiments'], summary: 'Les entreprises actives, nommées seulement : de quoi choisir un fournisseur (qui suit au moins un bâtiment)', responses: { '200': { description: 'Fournisseurs' } } },
+      },
+      '/batiments/{id}/surface': {
+        put: { tags: ['Bâtiments'], summary: 'La surface du bâtiment, pour les ratios au m² (gestionnaire du bâtiment)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { surfaceM2: { type: 'number', nullable: true } } } } } }, responses: { '200': { description: 'Surface enregistrée' } } },
+      },
+      '/batiments/{id}/compteurs': {
+        get: { tags: ['Bâtiments'], summary: 'Les compteurs d’énergie du bâtiment, avec leur dernier relevé', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Compteurs' } } },
+        post: { tags: ['Bâtiments'], summary: 'Ajouter un compteur : énergie, n° PDL/PCE, unité, fournisseur', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '201': { description: 'Créé' } } },
+      },
+      '/batiments/compteurs/{id}': {
+        put: { tags: ['Bâtiments'], summary: 'Modifier ou désactiver un compteur (un compteur remplacé se désactive)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer un compteur et ses relevés ; ses factures restent, sans compteur', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimé' } } },
+      },
+      '/batiments/compteurs/{id}/releves': {
+        get: { tags: ['Bâtiments'], summary: 'Les relevés, du plus récent, avec la consommation depuis le précédent', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Relevés' } } },
+        post: { tags: ['Bâtiments'], summary: 'Noter un relevé — refusé s’il recule, ou dépasse un relevé plus récent', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '201': { description: 'Créé' }, '400': { description: 'Index incohérent' } } },
+      },
+      '/batiments/releves/{id}': {
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer un relevé', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimé' } } },
+      },
+      '/batiments/{id}/factures': {
+        get: { tags: ['Bâtiments'], summary: 'Les factures d’énergie ; avec `annee`, celles dont la période touche cette année', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }, { name: 'annee', in: 'query', schema: { type: 'integer' } }, { name: 'energie', in: 'query', schema: { type: 'string', enum: ['electricite', 'gaz', 'eau', 'fioul', 'chaleur', 'autre'] } }], responses: { '200': { description: 'Factures' } } },
+        post: { tags: ['Bâtiments'], summary: 'Saisir une facture : période couverte, consommation, montants (négatif pour un avoir)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '201': { description: 'Créée' } } },
+      },
+      '/batiments/factures/{id}': {
+        put: { tags: ['Bâtiments'], summary: 'Corriger une facture', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistrée' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer une facture', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimée' } } },
+      },
+      '/batiments/{id}/energie/synthese': {
+        get: { tags: ['Bâtiments'], summary: 'Coût et consommation par énergie sur une année, comparés à la précédente — factures réparties au jour, jours couverts', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }, { name: 'annee', in: 'query', schema: { type: 'integer' } }], responses: { '200': { description: 'Synthèse' } } },
+      },
+      '/batiments/contrats': {
+        get: { tags: ['Bâtiments'], summary: 'Les contrats de maintenance des bâtiments suivis, avec leur date clé (préavis ou fin)', parameters: [{ name: 'site', in: 'query', schema: { type: 'integer' }, description: 'Un seul bâtiment' }], responses: { '200': { description: 'Contrats' } } },
+        post: { tags: ['Bâtiments'], summary: 'Ajouter un contrat sur un ou plusieurs bâtiments (`siteIds`), à condition de tous les gérer', responses: { '201': { description: 'Créé' }, '403': { description: 'Un des bâtiments n’est pas géré' } } },
+      },
+      '/batiments/contrats/{id}': {
+        get: { tags: ['Bâtiments'], summary: 'Un contrat (qui suit au moins un de ses bâtiments)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Contrat' } } },
+        put: { tags: ['Bâtiments'], summary: 'Modifier un contrat (qui gère tous ses bâtiments, et ceux qu’on lui ajoute)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistré' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer un contrat (qui gère tous ses bâtiments)', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimé' } } },
+      },
+      '/batiments/{id}/interventions': {
+        get: { tags: ['Bâtiments'], summary: 'Les interventions dans le bâtiment', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }, { name: 'piece', in: 'query', schema: { type: 'integer' } }, { name: 'annee', in: 'query', schema: { type: 'integer' } }, { name: 'nature', in: 'query', schema: { type: 'string', enum: ['entretien', 'depannage', 'travaux', 'controle', 'nettoyage', 'autre'] } }], responses: { '200': { description: 'Interventions' } } },
+        post: { tags: ['Bâtiments'], summary: 'Noter une intervention : date, nature, pièce, entreprise, contrat, ticket, coût', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '201': { description: 'Créée' } } },
+      },
+      '/batiments/interventions/{id}': {
+        put: { tags: ['Bâtiments'], summary: 'Corriger une intervention', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Enregistrée' } } },
+        delete: { tags: ['Bâtiments'], summary: 'Supprimer une intervention', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }], responses: { '200': { description: 'Supprimée' } } },
       },
       '/entreprises': {
         get: { tags: ['Entreprises'], summary: 'Les entreprises extérieures (gestionnaire de tous les lieux)', responses: { '200': { description: 'Entreprises, avec l’état de leur accès' } } },

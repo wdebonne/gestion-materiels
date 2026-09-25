@@ -6,6 +6,7 @@ import { batimentsApi, type DocumentBatiment } from '@/lib/api'
 import { Alert, Card, CardBody, LoadingInline } from '@/components/ui'
 import ApercuDocument from '@/components/batiments/ApercuDocument'
 import ClassementDocument from '@/components/batiments/ClassementDocument'
+import FormulaireFacture from '@/components/batiments/exploitation/FormulaireFacture'
 import { jourFr } from '@/components/batiments/libelles'
 import { cn } from '@/lib/utils'
 
@@ -22,6 +23,7 @@ import { cn } from '@/lib/utils'
  */
 export default function BatimentsAValiderPage() {
   const [choisi, setChoisi] = useState<number | null>(null)
+  const [facture, setFacture] = useState<{ documentId: number; siteId: number; date: string | null; entrepriseId: number | null } | null>(null)
 
   const { data: documents = [], isLoading } = useQuery({
     queryKey: ['batiments', 'a-valider'],
@@ -98,12 +100,22 @@ export default function BatimentsAValiderPage() {
                     batiments={geres.length > 0 ? geres : [{ id: document.siteId, nom: document.siteNom }]}
                     rubriques={rubriques}
                     onTermine={() => undefined}
+                    onFactureValidee={setFacture}
                   />
                 </CardBody>
               </Card>
             </div>
           )}
         </div>
+      )}
+
+      {/* Une facture validée se saisit dans la foulée : sinon elle ne compte pas dans l'énergie. */}
+      {facture && (
+        <FormulaireFacture
+          siteId={facture.siteId}
+          initial={{ documentId: facture.documentId, dateFacture: facture.date, fournisseurId: facture.entrepriseId }}
+          onFermer={() => setFacture(null)}
+        />
       )}
     </div>
   )

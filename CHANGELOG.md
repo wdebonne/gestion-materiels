@@ -7,6 +7,36 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Bâtiments : ce que coûtent l'énergie, les contrats et les interventions
+
+> Trois nouveaux onglets sur la fiche d'un bâtiment. **Énergie** : les
+> compteurs (électricité, gaz, eau, fioul, réseau de chaleur), leurs relevés —
+> un index qui recule est refusé, c'est presque toujours une faute de frappe —
+> et les factures, avec la période qu'elles couvrent. L'année s'y lit par
+> énergie, comparée à la précédente, en euros, en consommation et, une fois la
+> surface du bâtiment renseignée, au m². Une facture de décembre-janvier est
+> **répartie au jour** sur les deux années, et l'écran dit combien de jours
+> sont couverts : dix mois de factures contre douze ne sont pas une baisse.
+> Les avoirs se saisissent en négatif.
+>
+> **Contrats** : ascenseur, chaudière, portes automatiques. Un contrat peut
+> couvrir plusieurs bâtiments. Ce qui compte n'est pas sa fin mais sa **date
+> clé** — pour un contrat à reconduction tacite, le dernier jour pour le
+> dénoncer. Une alerte se lève un mois avant, et un courriel part aux
+> gestionnaires des bâtiments couverts ; l'année suivante, la date clé
+> suivante prend le relais.
+>
+> **Interventions** : dépannages, entretiens, travaux, nettoyage, datés,
+> rattachés à la pièce, à l'entreprise, au contrat, à la demande d'où ils
+> viennent. La fiche d'une pièce sur le plan montre désormais les siennes.
+> Valider un rapport de contrôle en saisissant son coût crée l'intervention
+> correspondante ; valider une facture propose de la saisir aussitôt.
+>
+> On voit un contrat si l'on suit un de ses bâtiments ; on ne le modifie que
+> si on les gère tous, et on ne l'étend qu'à des bâtiments qu'on gère. Un
+> bâtiment qui porte des factures, des interventions ou des compteurs ne se
+> supprime plus sans le dire.
+
 ### Bâtiments : les étages, leurs plans, et ce que contient chaque pièce
 
 > « Où est le vidéoprojecteur ? », « quelle clé ouvre la salle 12 ? »,

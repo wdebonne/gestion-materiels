@@ -458,6 +458,10 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Éditeur dédié** (`PlanEtage`) sur `usePlanViewport` et `geometrie.ts` : tracé au clic, fermeture sur le premier point, double-clic ou Entrée ; étalonnage en deux clics ; surfaces recalculées à l'étalonnage
   - **Fiche de pièce** : matériel (un unique se déplace, un lot se répartit sans dépasser sa quantité), clés sur les trois portées avec détenteurs (`clesDeLaPiece`), portes, documents — filtrés par la portée des catégories du lecteur
   - **Recherche** d'une pièce ou d'un matériel sur le plan ; « Dans les bâtiments » sur la fiche d'un matériel ; composition des trousseaux corrigée pour la portée « pièce »
+- **Livré — lot D, énergie, contrats et interventions (septembre 2026) :**
+  - **Migration `044_energie_contrats_interventions`** : `cle_sites.surface_m2`, `batiment_compteurs`, `batiment_releves`, `batiment_factures` (période, consommation, montants négatifs admis, `estimee`), `batiment_contrats` + `batiment_contrat_sites`, `batiment_interventions` (pièce, entreprise, contrat, ticket, document). Factures et interventions en `RESTRICT` vers le bâtiment ; clé du ticket posée à part, sur MySQL seulement
+  - **Énergie** (`energieBatiments.service.ts`) : un relevé ne recule pas ; une facture se répartit au jour (`partDansFenetre`) ; synthèse annuelle comparée à N-1 avec les jours couverts ; ratios au m²
+  - **Contrats** (`contratsBatiments.service.ts`) : `etatContrat` reconduit d'année en année et donne la date clé (veille du préavis, ou fin) ; alertes `batiment-contrat` (`verifierEcheancesContrats`) et courriel `batiment_contrat` ; gardes `requireGestionSites` (tous les bâtiments) et `requireConsultationUnSite` (au moins un)
+  - **Interventions** : saisies, filtrées par pièce, année, nature ; créées aussi par la validation d'un contrôle avec son coût (`coutTtc`)
 - **À venir :**
-  - **Lot D — énergie et contrats** : compteurs, relevés, factures (électricité, gaz, eau), contrats de maintenance avec préavis, interventions
   - **Lot E — statistiques** : coûts par catégorie, période et bâtiment, comparatifs, graphiques et export PDF filtrable

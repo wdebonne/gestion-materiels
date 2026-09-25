@@ -246,6 +246,11 @@ export async function usagesSite(siteId: number | string): Promise<{
   etages: number;
   /** Du matériel posé dans ses pièces. */
   materiels: number;
+  /** Des factures d'énergie et des interventions : des dépenses, à justifier des années après. */
+  factures: number;
+  interventions: number;
+  /** Des compteurs : la cascade emporterait leurs relevés. */
+  compteurs: number;
 }> {
   const compter = async (sql: string): Promise<number> => {
     try {
@@ -267,5 +272,8 @@ export async function usagesSite(siteId: number | string): Promise<{
     materiels: await compter(
       'SELECT COUNT(*) as cnt FROM piece_materiels pm JOIN site_pieces p ON p.id = pm.piece_id WHERE p.site_id = ?'
     ),
+    factures: await compter('SELECT COUNT(*) as cnt FROM batiment_factures WHERE site_id = ?'),
+    interventions: await compter('SELECT COUNT(*) as cnt FROM batiment_interventions WHERE site_id = ?'),
+    compteurs: await compter('SELECT COUNT(*) as cnt FROM batiment_compteurs WHERE site_id = ?'),
   };
 }

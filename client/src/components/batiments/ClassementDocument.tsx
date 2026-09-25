@@ -32,6 +32,7 @@ export default function ClassementDocument({
   batiments,
   rubriques,
   onTermine,
+  onFactureValidee,
 }: {
   document: DocumentBatiment
   mode: 'valider' | 'modifier'
@@ -39,6 +40,8 @@ export default function ClassementDocument({
   batiments: { id: number; nom: string }[]
   rubriques: RubriqueBatiment[]
   onTermine: () => void
+  /** Une facture vient d'être validée : on propose de la saisir, pour qu'elle compte dans l'énergie. */
+  onFactureValidee?: (facture: { documentId: number; siteId: number; date: string | null; entrepriseId: number | null }) => void
 }) {
   const queryClient = useQueryClient()
   const [siteId, setSiteId] = useState(document.siteId)
@@ -52,9 +55,11 @@ export default function ClassementDocument({
   const [creerSuivi, setCreerSuivi] = useState(true)
   const [refusEnCours, setRefusEnCours] = useState(false)
   const [motif, setMotif] = useState('')
+  const [cout, setCout] = useState('')
 
   // Un autre document : on repart de ce qu'il porte.
   useEffect(() => {
+    setCout('')
     setSiteId(document.siteId)
     setPieceId(document.pieceId)
     setRubriqueId(document.rubriqueId)
@@ -109,17 +114,22 @@ export default function ClassementDocument({
   const enregistrer = useMutation({
     mutationFn: async () =>
       mode === 'valider'
-        ? (await batimentsApi.valider(document.id, classement())).data
+        ? (await batimentsApi.valider(document.id, { ...classement(), coutTtc: cout.trim() || null })).data
         : (await batimentsApi.modifierDocument(document.id, classement())).data,
     onSuccess: (resultat) => {
-      toast.success(
-        mode === 'valider'
-          ? resultat.suiviCree
-            ? 'Document validé — le contrôle est désormais suivi dans ce bâtiment'
-            : 'Document validé'
-          : 'Classement enregistré'
-      )
+      if (mode === 'valider') {
+        const suites = [
+          resultat.suiviCree && 'le contrôle est désormais suivi dans ce bâtiment',
+          'interventionId' in resultat && resultat.interventionId && 'son coût est noté dans les interventions',
+        ].filter(Boolean)
+        toast.success(['Document validé', ...suites].join(' — '))
+      } else {
+        toast.success('Classement enregistré')
+      }
       invaliderBatiments(queryClient)
+      if (mode === 'valider' && rubrique?.nature === 'facture') {
+        onFactureValidee?.({ documentId: document.id, siteId, date: dateDocument || null, entrepriseId: document.entreprise?.id ?? null })
+      }
       onTermine()
     },
     onError: (erreur: any) => toast.error(erreur?.response?.data?.message ?? "L'enregistrement n'a pas abouti"),
@@ -227,6 +237,17 @@ export default function ClassementDocument({
           }
         />
       </div>
+
+      {mode === 'valider' && rubrique?.nature === 'controle' && (
+        <Input
+          label="Coût du contrôle TTC (facultatif)"
+          inputMode="decimal"
+          placeholder="Ex. 245,50"
+          value={cout}
+          onChange={(e) => setCout(e.target.value)}
+          hint="Saisi, il est noté dans les interventions du bâtiment et compte dans ses dépenses."
+        />
+      )}
 
       {suiviACreer && (
         <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">

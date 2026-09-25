@@ -66,6 +66,7 @@ import siteRoutes from './routes/site.routes';
 import lieuPublicRoutes from './routes/lieuPublic.routes';
 import organisationRoutes from './routes/organisation.routes';
 import batimentRoutes from './routes/batiment.routes';
+import exploitationRoutes from './routes/exploitation.routes';
 import entrepriseRoutes from './routes/entreprise.routes';
 import portailRoutes from './routes/portail.routes';
 import { portailLimiter } from './middleware/rateLimiter.middleware';
@@ -334,6 +335,8 @@ app.use('/api/organisation', organisationRoutes);
 // Les contrôles obligatoires des bâtiments et leurs documents. Les fichiers
 // sortent par ce routeur, jamais par `/uploads` : voir `fermerDossierPrive`.
 app.use('/api/batiments', batimentRoutes);
+// Leur énergie, leurs contrats de maintenance, leurs interventions.
+app.use('/api/batiments', exploitationRoutes);
 // Les entreprises extérieures, côté collectivité, et leur portail. Le portail
 // n'a ni compte ni jeton de l'application : sa session passe par l'en-tête
 // `X-Session-Portail` et n'ouvre que ses propres routes.

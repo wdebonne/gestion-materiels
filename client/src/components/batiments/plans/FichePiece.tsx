@@ -2,13 +2,14 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { DoorOpen, FileText, KeyRound, Package, PenLine, Plus, Search, Trash2, X } from 'lucide-react'
+import { DoorOpen, FileText, KeyRound, Package, PenLine, Plus, Search, Trash2, Wrench, X } from 'lucide-react'
 import api, { batimentsApi, plansApi, type FichePiece as Fiche } from '@/lib/api'
 import { Badge, Button, Input, LoadingInline, useConfirm } from '@/components/ui'
 import { formaterSurface } from '@/components/plan/geometrie'
 import { ouvrirFichier } from '../ouvrirFichier'
 import { invaliderBatiments } from '../cache'
 import { jourFr } from '../libelles'
+import { FormulaireIntervention, InterventionsDeLaPiece } from '../exploitation/OngletInterventions'
 
 /**
  * Ce qu'on apprend en cliquant une pièce : ce qu'elle contient, et qui peut y
@@ -54,6 +55,7 @@ export default function FichePiece({
   const queryClient = useQueryClient()
   const confirmer = useConfirm()
   const [ajout, setAjout] = useState(false)
+  const [intervention, setIntervention] = useState(false)
 
   const { data: fiche, isLoading } = useQuery({
     queryKey: ['batiments', 'piece', pieceId],
@@ -211,6 +213,30 @@ export default function FichePiece({
             ))}
           </ul>
         </section>
+      )}
+
+      {/* ------------------------------------------------------- interventions */}
+      <section>
+        <div className="mb-2 flex items-center justify-between">
+          <h4 className="flex items-center gap-1.5 text-sm font-semibold text-gray-700 dark:text-gray-200">
+            <Wrench className="h-4 w-4" /> Interventions
+          </h4>
+          {gere && !intervention && (
+            <Button size="sm" variant="ghost" icon={<Plus className="h-4 w-4" />} onClick={() => setIntervention(true)}>
+              Noter
+            </Button>
+          )}
+        </div>
+        <InterventionsDeLaPiece siteId={p.siteId} pieceId={pieceId} />
+      </section>
+      {intervention && (
+        <FormulaireIntervention
+          siteId={p.siteId}
+          pieces={[{ id: p.id, nom: p.nom }]}
+          intervention={null}
+          pieceParDefaut={p.id}
+          onFermer={() => setIntervention(false)}
+        />
       )}
     </div>
   )

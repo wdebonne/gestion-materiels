@@ -16,6 +16,9 @@ import {
   Settings2,
   Trash2,
   Upload,
+  FileSignature,
+  Wrench,
+  Zap,
 } from 'lucide-react'
 import {
   batimentsApi,
@@ -47,6 +50,9 @@ import ClassementDocument from '@/components/batiments/ClassementDocument'
 import { invaliderBatiments } from '@/components/batiments/cache'
 import FormulaireDepot from '@/components/batiments/FormulaireDepot'
 import OngletPlans from '@/components/batiments/plans/OngletPlans'
+import OngletEnergie from '@/components/batiments/exploitation/OngletEnergie'
+import OngletContrats from '@/components/batiments/exploitation/OngletContrats'
+import OngletInterventions from '@/components/batiments/exploitation/OngletInterventions'
 import { ouvrirFichier } from '@/components/batiments/ouvrirFichier'
 import {
   jourFr,
@@ -60,7 +66,8 @@ import {
 } from '@/components/batiments/libelles'
 
 /**
- * Un bâtiment : ses contrôles obligatoires et ses documents.
+ * Un bâtiment : ses contrôles obligatoires, ses plans, ce qu'il coûte —
+ * énergie, contrats, interventions — et ses documents.
  *
  * Deux publics sur le même écran. Le **gestionnaire** règle les suivis, valide
  * et reclasse. Le **responsable** — la directrice d'école — voit tout, dépose
@@ -69,7 +76,7 @@ import {
  * le serveur refuserait.
  */
 
-const ONGLETS = ['controles', 'plans', 'documents'] as const
+const ONGLETS = ['controles', 'plans', 'energie', 'contrats', 'interventions', 'documents'] as const
 type Onglet = (typeof ONGLETS)[number]
 
 export default function BatimentDetailPage() {
@@ -155,10 +162,19 @@ export default function BatimentDetailPage() {
       <Tabs value={onglet} onChange={changerOnglet}>
         <Tab value="controles" label="Contrôles et échéances" icon={<ClipboardCheck className="w-4 h-4" />} count={suivis.filter((s) => s.actif).length} />
         <Tab value="plans" label="Étages et plans" icon={<Layers className="w-4 h-4" />} />
+        <Tab value="energie" label="Énergie" icon={<Zap className="w-4 h-4" />} />
+        <Tab value="contrats" label="Contrats" icon={<FileSignature className="w-4 h-4" />} />
+        <Tab value="interventions" label="Interventions" icon={<Wrench className="w-4 h-4" />} />
         <Tab value="documents" label="Documents" icon={<FileText className="w-4 h-4" />} />
       </Tabs>
 
-      {onglet === 'controles' ? (
+      {onglet === 'energie' ? (
+        <OngletEnergie siteId={siteId} gere={gere} surfaceM2={fiche.batiment.surfaceM2} />
+      ) : onglet === 'contrats' ? (
+        <OngletContrats siteId={siteId} gere={gere} contratInitial={Number(parametres.get('contrat')) || undefined} />
+      ) : onglet === 'interventions' ? (
+        <OngletInterventions siteId={siteId} gere={gere} pieces={fiche.pieces} />
+      ) : onglet === 'controles' ? (
         <OngletControles
           siteId={siteId}
           gere={gere}

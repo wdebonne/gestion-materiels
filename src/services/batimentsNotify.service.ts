@@ -6,6 +6,7 @@ import {
   lireDocument,
   type EtatSuivi,
 } from './batiments.service';
+import type { Contrat } from './contratsBatiments.service';
 
 /**
  * Les courriels du module Bâtiments.
@@ -94,6 +95,36 @@ export async function adressesEntreprise(entrepriseId: number): Promise<string[]
     if (propre && !vues.has(propre.toLowerCase())) vues.set(propre.toLowerCase(), propre);
   }
   return [...vues.values()];
+}
+
+/**
+ * Un contrat approche de sa date de préavis, ou de sa fin. Tous les bâtiments
+ * qu'il couvre sont prévenus, sans doublon : le gestionnaire de trois écoles
+ * reçoit un seul courriel.
+ */
+export async function notifierContrat(contrat: Contrat): Promise<void> {
+  try {
+    const vues = new Map<string, string>();
+    for (const site of contrat.sites) {
+      for (const adresse of await destinatairesBatiment(site.id)) {
+        if (!vues.has(adresse.toLowerCase())) vues.set(adresse.toLowerCase(), adresse);
+      }
+    }
+    if (vues.size === 0) return;
+
+    await sendEmail('batiment_contrat', [...vues.values()].join(', '), {
+      objet: contrat.objet,
+      reference: contrat.reference ?? '',
+      entreprise: contrat.entreprise?.nom ?? '',
+      sites: contrat.sites.map((s) => s.nom).join(', '),
+      tacite: contrat.reconductionTacite,
+      fin: jourFrancais(contrat.etat.finEnCours),
+      date_cle: jourFrancais(contrat.etat.dateCle),
+      chemin: `batiments/${contrat.sites[0]?.id ?? ''}?onglet=contrats&contrat=${contrat.id}`,
+    });
+  } catch (erreur) {
+    console.error('Avis de contrat non envoyé :', (erreur as Error).message);
+  }
 }
 
 /** Une échéance entre dans son délai de rappel, ou vient de passer. */

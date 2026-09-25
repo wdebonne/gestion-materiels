@@ -744,6 +744,37 @@ const DEFAULT_EMAIL_TEMPLATES = [
     description: "Envoyé aux gestionnaires d'un bâtiment quand un contrôle entre dans son délai de rappel ou passe son échéance"
   },
   {
+    name: 'batiment_contrat',
+    subject: '{{#if tacite}}📑 Contrat à dénoncer avant le {{date_cle}}{{else}}📑 Contrat qui se termine le {{date_cle}}{{/if}} — {{objet}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #d97706; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">{{#if tacite}}Un contrat va se reconduire{{else}}Un contrat se termine{{/if}}</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>{{#if tacite}}Ce contrat se reconduit seul le <strong>{{fin}}</strong>. Pour le dénoncer, le préavis impose d'agir avant le <strong>{{date_cle}}</strong>.{{else}}Ce contrat prend fin le <strong>{{date_cle}}</strong> : c'est le moment de le renouveler ou de relancer une consultation.{{/if}}</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Contrat</td><td style="padding: 4px 8px;"><strong>{{objet}}</strong>{{#if reference}} ({{reference}}){{/if}}</td></tr>
+        {{#if entreprise}}<tr><td style="padding: 4px 8px; color: #6b7280;">Entreprise</td><td style="padding: 4px 8px;">{{entreprise}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiments</td><td style="padding: 4px 8px;">{{sites}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{site_url}}/{{chemin}}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: white; text-decoration: none; border-radius: 4px;">Voir le contrat</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['objet', 'reference', 'entreprise', 'sites', 'tacite', 'fin', 'date_cle', 'chemin']),
+    description: "Envoyé aux gestionnaires des bâtiments d'un contrat de maintenance un mois avant sa date de préavis, ou sa fin"
+  },
+  {
     name: 'batiment_document_depose',
     subject: '📄 Document à valider — {{titre}} ({{site_nom}})',
     body: `<!DOCTYPE html>
