@@ -486,8 +486,8 @@ describe('Bâtiments', () => {
     expect(gestionFor(exploitationRoutes, method, path)).toBe(gestion);
   });
 
-  it('filtre lui-même la liste des contrats et des fournisseurs', () => {
-    for (const path of ['/contrats', '/fournisseurs']) {
+  it('filtre lui-même la liste des contrats, des fournisseurs et les statistiques', () => {
+    for (const path of ['/contrats', '/fournisseurs', '/statistiques']) {
       expect(gestionFor(exploitationRoutes, 'get', path)).toBeNull();
     }
   });

@@ -322,6 +322,7 @@ Seules les salles **ouvertes au prêt** y figurent, jamais un bâtiment entier ;
 - ⚡ **Énergie** : compteurs et relevés, factures d'électricité, de gaz, d'eau, de fioul ou de chaleur avec la période couverte (répartie au jour), coût et consommation de l'année comparés à la précédente, ratios au m², jours couverts par des factures
 - 📑 **Contrats de maintenance** : sur un ou plusieurs bâtiments, avec la **date clé** — veille du préavis d'un contrat tacite, ou fin — rappelée un mois avant par une alerte et un courriel
 - 🔧 **Interventions** : dépannages, entretiens, travaux, par pièce, entreprise, contrat et demande ; un contrôle validé avec son coût s'y inscrit de lui-même
+- 📊 **Coûts et statistiques** : énergie, contrats, interventions, contrôles et achats en camemberts, barres par semaine, mois ou année et par bâtiment (au m² si l'on veut), comparés à la période précédente ou à l'an passé ; tout est réparti au jour, la couverture des factures est signalée, et l'**export PDF** reprend les filtres avec les sections choisies
 
 | Qui | Ce qu'il peut faire |
 |---|---|
@@ -1315,6 +1316,7 @@ POST   /api/batiments/compteurs/:id/releves  # Noter un relevé (refusé s'il re
 GET    /api/batiments/:id/factures           # Factures (?annee=&energie=)
 POST   /api/batiments/:id/factures           # Saisir une facture (période, consommation, montants ; négatif = avoir)
 GET    /api/batiments/:id/energie/synthese   # Coût et consommation par énergie, comparés à N-1 (?annee=)
+GET    /api/batiments/statistiques           # Coûts par catégorie, période, bâtiment (?debut=&fin=&granularite=&comparaison=&sites=&categories=&energies=)
 GET    /api/batiments/contrats               # Contrats des bâtiments suivis, avec leur date clé (?site=)
 POST   /api/batiments/contrats               # Ajouter un contrat sur { siteIds } — tous gérés
 GET    /api/batiments/:id/interventions      # Interventions (?piece=&annee=&nature=)

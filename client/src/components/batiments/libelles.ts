@@ -1,4 +1,5 @@
 import type {
+  CategorieStat,
   Energie,
   NatureIntervention,
   NatureRubrique,
@@ -145,6 +146,15 @@ export const STATUTS_CONTRAT: Record<StatutContrat, { libelle: string; variante:
   actif: { libelle: 'En cours', variante: 'success' },
   sans_fin: { libelle: 'Sans date de fin', variante: 'default' },
   inactif: { libelle: 'Désactivé', variante: 'default' },
+}
+
+/** Les catégories de dépenses des statistiques, avec leur couleur. */
+export const CATEGORIES_STAT: Record<CategorieStat, { libelle: string; couleur: string }> = {
+  energie: { libelle: 'Énergie', couleur: '#f59e0b' },
+  contrats: { libelle: 'Contrats', couleur: '#6366f1' },
+  interventions: { libelle: 'Interventions', couleur: '#10b981' },
+  controles: { libelle: 'Contrôles', couleur: '#ef4444' },
+  achats: { libelle: 'Achats', couleur: '#0ea5e9' },
 }
 
 const FORMAT_EUROS = new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' })

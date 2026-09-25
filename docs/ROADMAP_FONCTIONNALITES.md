@@ -463,5 +463,9 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Énergie** (`energieBatiments.service.ts`) : un relevé ne recule pas ; une facture se répartit au jour (`partDansFenetre`) ; synthèse annuelle comparée à N-1 avec les jours couverts ; ratios au m²
   - **Contrats** (`contratsBatiments.service.ts`) : `etatContrat` reconduit d'année en année et donne la date clé (veille du préavis, ou fin) ; alertes `batiment-contrat` (`verifierEcheancesContrats`) et courriel `batiment_contrat` ; gardes `requireGestionSites` (tous les bâtiments) et `requireConsultationUnSite` (au moins un)
   - **Interventions** : saisies, filtrées par pièce, année, nature ; créées aussi par la validation d'un contrôle avec son coût (`coutTtc`)
-- **À venir :**
-  - **Lot E — statistiques** : coûts par catégorie, période et bâtiment, comparatifs, graphiques et export PDF filtrable
+- **Livré — lot E, statistiques et export PDF (septembre 2026) :**
+  - **`statistiquesBatiments.service.ts`** : chaque dépense devient un mouvement étalé sur sa période (facture sur sa période, contrat au prorata journalier de son montant annuel et partagé entre ses bâtiments, intervention et achat en un jour), réparti par `partDansFenetre` sur les périodes de `periodesEntre` ; catégories énergie, contrats, interventions, contrôles, achats (matériel posé, portée des catégories appliquée) ; comparaison période précédente ou N-1 ; couverture des factures par bâtiment et par énergie
+  - **`GET /api/batiments/statistiques`** : sans `sites`, les bâtiments suivis ; un bâtiment non suivi demandé est refusé (403), pas ignoré
+  - **Page `/batiments/statistiques`** : filtres combinables, cartes avec évolution, camemberts, barres empilées par période avec la ligne de la période comparée, barres par bâtiment (option au m²), courbe de consommation, tableaux
+  - **Export PDF filtrable** (`exportStatistiquesPdf.ts`) sur les briques communes déplacées dans `client/src/lib/pdf/document.ts`
+- **Reste à faire :** les coûts de personnel (heures des plannings passées dans un bâtiment) ne sont pas encore rapprochés des bâtiments

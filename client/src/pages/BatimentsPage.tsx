@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { AlertTriangle, Briefcase, Building2, CheckCircle2, ClipboardCheck, FileClock, Search, Settings2 } from 'lucide-react'
+import { AlertTriangle, BarChart3, Briefcase, Building2, CheckCircle2, ClipboardCheck, FileClock, Search, Settings2 } from 'lucide-react'
 import { batimentsApi, exploitationApi, type ResumeBatiment } from '@/lib/api'
 import { useGestion } from '@/lib/gestion'
 import { Alert, Badge, Button, Card, CardBody, Input, LoadingInline, StatCard } from '@/components/ui'
@@ -98,6 +98,13 @@ export default function BatimentsPage() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          {(data?.batiments.length ?? 0) > 0 && (
+            <Link to="/batiments/statistiques">
+              <Button variant="secondary" icon={<BarChart3 className="w-4 h-4" />}>
+                Coûts et statistiques
+              </Button>
+            </Link>
+          )}
           {gereUnBatiment && (
             <Link to="/batiments/a-valider">
               <Button variant={totaux.aValider > 0 ? 'primary' : 'secondary'} icon={<FileClock className="w-4 h-4" />}>

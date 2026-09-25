@@ -829,6 +829,22 @@ const options: swaggerJSDoc.Options = {
       '/batiments/{id}/energie/synthese': {
         get: { tags: ['Bâtiments'], summary: 'Coût et consommation par énergie sur une année, comparés à la précédente — factures réparties au jour, jours couverts', parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }, { name: 'annee', in: 'query', schema: { type: 'integer' } }], responses: { '200': { description: 'Synthèse' } } },
       },
+      '/batiments/statistiques': {
+        get: {
+          tags: ['Bâtiments'],
+          summary: 'Coûts par catégorie (énergie, contrats, interventions, contrôles, achats), période et bâtiment — répartis au jour, avec comparaison',
+          parameters: [
+            { name: 'debut', in: 'query', schema: { type: 'string', format: 'date' }, description: 'Par défaut : les douze derniers mois pleins' },
+            { name: 'fin', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'granularite', in: 'query', schema: { type: 'string', enum: ['semaine', 'mois', 'annee'] } },
+            { name: 'comparaison', in: 'query', schema: { type: 'string', enum: ['aucune', 'precedente', 'n-1'] } },
+            { name: 'sites', in: 'query', schema: { type: 'string' }, description: 'Identifiants séparés par des virgules ; vide = tous les bâtiments suivis' },
+            { name: 'categories', in: 'query', schema: { type: 'string' }, description: 'energie,contrats,interventions,controles,achats' },
+            { name: 'energies', in: 'query', schema: { type: 'string' }, description: 'electricite,gaz,eau,fioul,chaleur,autre' },
+          ],
+          responses: { '200': { description: 'Totaux, séries par période, détail, par énergie, par bâtiment (avec couverture des factures)' }, '403': { description: 'Un bâtiment demandé n’est pas suivi' } },
+        },
+      },
       '/batiments/contrats': {
         get: { tags: ['Bâtiments'], summary: 'Les contrats de maintenance des bâtiments suivis, avec leur date clé (préavis ou fin)', parameters: [{ name: 'site', in: 'query', schema: { type: 'integer' }, description: 'Un seul bâtiment' }], responses: { '200': { description: 'Contrats' } } },
         post: { tags: ['Bâtiments'], summary: 'Ajouter un contrat sur un ou plusieurs bâtiments (`siteIds`), à condition de tous les gérer', responses: { '201': { description: 'Créé' }, '403': { description: 'Un des bâtiments n’est pas géré' } } },

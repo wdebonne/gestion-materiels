@@ -3251,7 +3251,83 @@ export interface Intervention {
   dureeMinutes: number | null
 }
 
+export type CategorieStat = 'energie' | 'contrats' | 'interventions' | 'controles' | 'achats'
+export type ComparaisonStat = 'aucune' | 'precedente' | 'n-1'
+export type GranulariteStat = 'semaine' | 'mois' | 'annee'
+type ParCategorieStat = Record<CategorieStat, number>
+
+export interface SerieStat {
+  cle: string
+  libelle: string
+  libelleLong: string
+  debut: string
+  fin: string
+  parCategorie: ParCategorieStat
+  total: number
+  consommations: Partial<Record<Energie, number>>
+}
+
+export interface StatistiquesBatiments {
+  filtre: {
+    debut: string
+    fin: string
+    granularite: GranulariteStat
+    siteIds: number[]
+    categories: CategorieStat[]
+    energies: Energie[]
+    comparaison: ComparaisonStat
+  }
+  fenetre: { debut: string; fin: string }
+  fenetreComparaison: { debut: string; fin: string } | null
+  totaux: { montant: number; comparaison: number | null; parCategorie: ParCategorieStat; parCategorieComparaison: ParCategorieStat | null }
+  series: SerieStat[]
+  seriesComparaison: SerieStat[] | null
+  details: Array<{ categorie: CategorieStat; sous: string; montant: number; comparaison: number | null }>
+  parEnergie: Array<{
+    energie: Energie
+    montant: number
+    consommation: number
+    unite: string | null
+    comparaison: number | null
+    consommationComparaison: number | null
+  }>
+  parBatiment: Array<{
+    siteId: number
+    nom: string
+    surfaceM2: number | null
+    parCategorie: ParCategorieStat
+    total: number
+    comparaison: number | null
+    consommations: Partial<Record<Energie, number>>
+    /** Par énergie facturée : la part des jours couverts par une facture, de 0 à 1. */
+    couverture: Partial<Record<Energie, number>>
+  }>
+  achatsSansPrix: number
+}
+
+export interface FiltreStatistiquesApi {
+  debut?: string
+  fin?: string
+  granularite?: GranulariteStat
+  sites?: number[]
+  categories?: CategorieStat[]
+  energies?: Energie[]
+  comparaison?: ComparaisonStat
+}
+
 export const exploitationApi = {
+  statistiques: (f: FiltreStatistiquesApi) =>
+    api.get<{ success: boolean; statistiques: StatistiquesBatiments }>('/batiments/statistiques', {
+      params: {
+        debut: f.debut,
+        fin: f.fin,
+        granularite: f.granularite,
+        comparaison: f.comparaison,
+        sites: f.sites?.length ? f.sites.join(',') : undefined,
+        categories: f.categories?.length ? f.categories.join(',') : undefined,
+        energies: f.energies?.length ? f.energies.join(',') : undefined,
+      },
+    }),
   fournisseurs: () => api.get<{ success: boolean; fournisseurs: Nomme[] }>('/batiments/fournisseurs'),
   surface: (siteId: number, surfaceM2: number | string | null) =>
     api.put<{ success: boolean; surfaceM2: number | null }>(`/batiments/${siteId}/surface`, { surfaceM2 }),

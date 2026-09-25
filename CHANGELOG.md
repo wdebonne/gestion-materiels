@@ -7,6 +7,35 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Bâtiments : les coûts en graphiques, comparés, et en PDF
+
+> Une page **Coûts et statistiques**, depuis la liste des bâtiments, répond à
+> « combien coûtent nos bâtiments, et pourquoi ». Cinq catégories — énergie,
+> contrats de maintenance, interventions, contrôles, achats du matériel posé
+> dans les pièces — se lisent en cartes, en **camemberts** (par catégorie, et
+> l'énergie par fluide), en barres empilées **par semaine, mois ou année**, et
+> en barres **par bâtiment**, au besoin rapportées au m².
+>
+> Les filtres se combinent : période (raccourcis ou dates libres), découpage,
+> un, plusieurs ou tous les bâtiments, catégories, fluides. La **comparaison**
+> se fait avec la période précédente ou la même un an plus tôt, sur le total,
+> chaque catégorie, chaque bâtiment et la courbe de consommation.
+>
+> Tout est **réparti au jour** : une facture de décembre-janvier compte pour
+> moitié dans chaque mois, un contrat annuel au prorata des jours regardés, et
+> un contrat qui couvre trois bâtiments pour un tiers dans chacun. Quand les
+> factures d'énergie ne couvrent pas toute la période, l'écran le dit, bâtiment
+> par bâtiment : dix mois de factures contre douze ne sont pas une baisse.
+>
+> **Exporter en PDF** reprend les filtres dans son bandeau et laisse choisir
+> les sections : synthèse, camemberts, évolution, comparaison des bâtiments,
+> énergie, détail des dépenses. Les graphiques sont photographiés, les
+> chiffres écrits en texte.
+>
+> Au passage, les briques des PDF (page, bandeau, tableaux, captures en thème
+> clair) quittent le module Plannings pour `lib/pdf/`, où les deux modules
+> les partagent ; les PDF des plannings n'en changent pas.
+
 ### Bâtiments : ce que coûtent l'énergie, les contrats et les interventions
 
 > Trois nouveaux onglets sur la fiche d'un bâtiment. **Énergie** : les

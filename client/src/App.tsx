@@ -22,6 +22,7 @@ const ClesPage = lazy(() => import('@/pages/ClesPage'))
 const BatimentsPage = lazy(() => import('@/pages/BatimentsPage'))
 const BatimentDetailPage = lazy(() => import('@/pages/BatimentDetailPage'))
 const BatimentsAValiderPage = lazy(() => import('@/pages/BatimentsAValiderPage'))
+const BatimentsStatistiquesPage = lazy(() => import('@/pages/BatimentsStatistiquesPage'))
 const BatimentsSettingsPage = lazy(() => import('@/pages/settings/BatimentsSettingsPage'))
 const EntreprisesPage = lazy(() => import('@/pages/EntreprisesPage'))
 const PortailPrestatairePage = lazy(() => import('@/pages/PortailPrestatairePage'))
@@ -178,6 +179,7 @@ function App() {
           <Route path="cles/:objectId" element={<CleDetailPage />} />
           <Route path="batiments" element={<BatimentsPage />} />
           <Route path="batiments/a-valider" element={<BatimentsAValiderPage />} />
+          <Route path="batiments/statistiques" element={<BatimentsStatistiquesPage />} />
           <Route path="batiments/entreprises" element={<EntreprisesPage />} />
           <Route path="batiments/:id" element={<BatimentDetailPage />} />
           <Route path="calendar" element={<CalendarPage />} />
