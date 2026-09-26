@@ -271,6 +271,11 @@ export async function lireDroits(userId: number) {
       );
     }
   }
+  if (sites.length > 1 && !sites.some((s) => s.parDefaut) && categories.some((c) => c.niveau)) {
+    avertissements.push(
+      'Plusieurs bâtiments et aucun désigné comme son bureau : ses demandes qui ne demandent pas de lieu, comme l’informatique, n’en porteront aucun.'
+    );
+  }
 
   return {
     personne: {
@@ -288,6 +293,7 @@ export async function lireDroits(userId: number) {
         peutVoirTickets: s.peutVoirTickets,
         notifie: s.notifie,
         gereLieu: s.gereLieu,
+        parDefaut: s.parDefaut,
       })),
       materiels: materiels.map((m: any) => ({ objectId: Number(m.object_id), nom: m.name, reference: m.reference ?? null })),
       formulaire,
@@ -301,7 +307,15 @@ export async function lireDroits(userId: number) {
 export interface DroitsSaisis {
   modules?: Array<{ pluginId: number; acces: boolean | null }>;
   categories?: LigneCategorieSaisie[];
-  sites?: Array<{ siteId: number; estResponsable?: boolean; peutVoirTickets?: boolean; notifie?: boolean; gereLieu?: boolean }>;
+  sites?: Array<{
+    siteId: number;
+    estResponsable?: boolean;
+    peutVoirTickets?: boolean;
+    notifie?: boolean;
+    gereLieu?: boolean;
+    /** Le bâtiment où la personne a son bureau ; un seul, le premier désigné. */
+    parDefaut?: boolean;
+  }>;
   materiels?: number[];
   formulaire?: { siteMode?: string | null; materielMode?: string | null };
 }
@@ -323,6 +337,7 @@ export async function definirDroits(userId: number, saisie: DroitsSaisis, auteur
           peutVoirTickets: Boolean(s.peutVoirTickets),
           notifie: Boolean(s.notifie),
           gereLieu: s.gereLieu === undefined ? undefined : Boolean(s.gereLieu),
+          parDefaut: s.parDefaut === undefined ? undefined : Boolean(s.parDefaut),
         })),
         auteurId
       );

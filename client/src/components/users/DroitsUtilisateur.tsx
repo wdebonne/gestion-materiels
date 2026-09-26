@@ -61,7 +61,7 @@ const MODES_SITE = [
   { value: '', label: 'Selon la catégorie' },
   { value: 'requis', label: 'Toujours demandé' },
   { value: 'auto', label: 'Seulement s’il a plusieurs bâtiments' },
-  { value: 'masque', label: 'Jamais demandé' },
+  { value: 'masque', label: 'Non demandé — son bâtiment par défaut' },
 ]
 
 const MODES_MATERIEL = [
@@ -128,7 +128,9 @@ export default function DroitsUtilisateur({
           peutCloturer: c.peutCloturer,
           materielAutorise: c.materielAutorise,
         })),
-        sites,
+        // Chaque ligne dit si elle est son bureau : le serveur sait alors qu'on
+        // règle le drapeau, et ne garde pas l'ancien.
+        sites: sites.map((s) => ({ ...s, parDefaut: Boolean(s.parDefaut) })),
         formulaire: { siteMode: siteMode || null, materielMode: materielMode || null },
       }),
     onSuccess: ({ data: retour }) => {
@@ -327,8 +329,8 @@ export default function DroitsUtilisateur({
               <Titre icone={<Building2 className="h-4 w-4" />}>Ses bâtiments</Titre>
               <p className="mt-1 text-xs text-gray-500">
                 « Voit les demandes » lui montre toutes celles de ce bâtiment, dans les catégories partagées.
-                Décoché, il ne voit que les siennes. Un bâtiment rattaché sans rien cocher pré-remplit
-                simplement son formulaire.
+                Décoché, il ne voit que les siennes. « Son bureau » est son bâtiment par défaut : il pré-remplit
+                ses demandes, et une demande qui ne demande pas de lieu — l’informatique — le porte d’office.
               </p>
               {sites.length > 0 && (
                 <ul className="mt-3 space-y-2">
@@ -341,6 +343,25 @@ export default function DroitsUtilisateur({
                       <Case libelle="Responsable" coche={s.estResponsable} onChange={(v) => majSite(s.siteId, { estResponsable: v })} />
                       <Case libelle="Voit les demandes" coche={s.peutVoirTickets} onChange={(v) => majSite(s.siteId, { peutVoirTickets: v })} />
                       <Case libelle="Prévenu" coche={s.notifie} onChange={(v) => majSite(s.siteId, { notifie: v })} />
+                      {/* Un seul bâtiment : c'est forcément son bureau. */}
+                      {sites.length === 1 ? (
+                        <span className="text-xs text-primary-700 dark:text-primary-300">Son bureau</span>
+                      ) : (
+                        <label
+                          className="inline-flex items-center gap-1.5 text-gray-700 dark:text-gray-300"
+                          title="Le bâtiment où il a son bureau : il pré-remplit ses demandes, et une demande informatique le porte d'office"
+                        >
+                          <input
+                            type="radio"
+                            name={`bureau-${userId}`}
+                            checked={Boolean(s.parDefaut)}
+                            onChange={() =>
+                              setSites((liste) => liste.map((x) => ({ ...x, parDefaut: x.siteId === s.siteId })))
+                            }
+                          />
+                          Son bureau
+                        </label>
+                      )}
                       <button
                         type="button"
                         aria-label={`Retirer ${s.nom}`}
@@ -363,7 +384,14 @@ export default function DroitsUtilisateur({
                       if (!site) return
                       setSites((liste) => [
                         ...liste,
-                        { siteId: site.id, nom: site.nom, estResponsable: false, peutVoirTickets: false, notifie: false },
+                        {
+                          siteId: site.id,
+                          nom: site.nom,
+                          estResponsable: false,
+                          peutVoirTickets: false,
+                          notifie: false,
+                          parDefaut: false,
+                        },
                       ])
                     }}
                     options={sitesProposes.map((x: any) => ({ value: String(x.id), label: x.nom }))}

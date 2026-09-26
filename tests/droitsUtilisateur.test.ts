@@ -60,10 +60,12 @@ import migration035 from '../src/database/migrations/035_tickets_rattachements';
 import migration045 from '../src/database/migrations/045_tickets_niveaux';
 import migration046 from '../src/database/migrations/046_tickets_cloture';
 import migration047 from '../src/database/migrations/047_formulaire_par_personne';
+import migration049 from '../src/database/migrations/049_batiment_par_defaut';
 import type { ContexteMigration } from '../src/database/migrations/types';
 import { definirDroits, lireDroits } from '../src/services/droitsUtilisateur.service';
 import { modesFormulairePour } from '../src/services/ticketsReferentiel.service';
 import { SaisieInvalide } from '../src/services/tickets.service';
+import { definirSitesDe, siteParDefautDe } from '../src/services/sites.service';
 
 const base: BetterSqlite3.Database = (global as any).__baseDroitsUtilisateur;
 
@@ -134,6 +136,7 @@ beforeAll(async () => {
   await migration045.up(ctx);
   await migration046.up(ctx);
   await migration047.up(ctx);
+  await migration049.up(ctx);
 
   base.exec(`
     INSERT INTO users (id, email, first_name, last_name, role) VALUES
@@ -276,5 +279,46 @@ describe('Le formulaire de demande', () => {
   it('n’exige pas un matériel quand aucun n’est attribué', async () => {
     // Voirie exige un matériel ; la personne n'en a aucun : elle doit pouvoir envoyer.
     expect((await modesFormulairePour(SEULE_PAR_MAIL, VOIRIE, null)).materielMode).toBe('aucun');
+  });
+});
+
+describe('Son bureau, parmi ses bâtiments', () => {
+  it('est forcément son bâtiment quand il n’en a qu’un', async () => {
+    await definirDroits(AGENT, { sites: [{ siteId: MAIRIE }] }, ADMIN);
+    expect(await siteParDefautDe(AGENT)).toBe(MAIRIE);
+  });
+
+  it('se désigne parmi plusieurs, un seul à la fois', async () => {
+    await definirDroits(
+      AGENT,
+      { sites: [{ siteId: MAIRIE, parDefaut: true }, { siteId: ECOLE, parDefaut: true }] },
+      ADMIN
+    );
+    expect(await siteParDefautDe(AGENT)).toBe(MAIRIE);
+    const lignes = base.prepare('SELECT site_id, par_defaut FROM user_sites WHERE user_id = ? ORDER BY site_id').all(AGENT);
+    expect(lignes).toEqual([
+      { site_id: MAIRIE, par_defaut: 1 },
+      { site_id: ECOLE, par_defaut: 0 },
+    ]);
+  });
+
+  it('survit à un écran qui ne connaît pas le drapeau', async () => {
+    await definirDroits(AGENT, { sites: [{ siteId: MAIRIE }, { siteId: ECOLE, parDefaut: true }] }, ADMIN);
+    // Les rattachements des tickets renvoient les lignes sans le drapeau.
+    await definirSitesDe(AGENT, [{ siteId: MAIRIE }, { siteId: ECOLE }], ADMIN);
+    expect(await siteParDefautDe(AGENT)).toBe(ECOLE);
+  });
+
+  it('manque, et on le dit, quand il a plusieurs bâtiments sans bureau désigné', async () => {
+    await definirDroits(
+      AGENT,
+      {
+        sites: [{ siteId: MAIRIE, parDefaut: false }, { siteId: ECOLE, parDefaut: false }],
+        categories: [{ categorieId: INFORMATIQUE, niveau: 'demandeur' }],
+      },
+      ADMIN
+    );
+    expect(await siteParDefautDe(AGENT)).toBeNull();
+    expect((await lireDroits(AGENT))!.avertissements.join(' ')).toMatch(/aucun désigné comme son bureau/);
   });
 });

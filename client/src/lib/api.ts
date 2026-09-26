@@ -2737,6 +2737,8 @@ export const ticketApi = {
       statuts: StatutTicket[]
       /** Renseigné quand la personne n'a qu'un bâtiment : le champ est masqué. */
       siteImpose: number | null
+      /** Son bâtiment par défaut, celui où elle a son bureau ; son seul bâtiment s'il n'en a qu'un. */
+      siteParDefaut: number | null
       /** Rien ne lui a été attribué : l'écran le dit plutôt que d'afficher le vide. */
       sansRattachement: boolean
     }>('/tickets/formulaire'),
@@ -2905,6 +2907,8 @@ export interface RattachementSite {
   notifie: boolean
   /** Gère le bâtiment : ses salles, ses portes, ses rattachements. */
   gereLieu?: boolean
+  /** Son bâtiment par défaut : celui où elle a son bureau. */
+  parDefaut?: boolean
 }
 
 export interface CompteRattache {

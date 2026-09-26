@@ -1367,7 +1367,10 @@ async function semerReferentielTickets(): Promise<void> {
             rang + 1,
             categorie.visibilite ?? 'privee',
             categorie.visibilite === 'site' ? 'optionnel' : 'aucun',
-            'auto',
+            // Une demande personnelle — l'informatique — ne demande pas de
+            // lieu : elle porte le bâtiment par défaut de la personne, celui
+            // où elle a son bureau (migration 049).
+            categorie.visibilite === 'site' ? 'auto' : 'masque',
             maintenant,
             maintenant,
           ]

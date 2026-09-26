@@ -66,6 +66,7 @@ import migration035 from '../src/database/migrations/035_tickets_rattachements';
 import migration045 from '../src/database/migrations/045_tickets_niveaux';
 import migration046 from '../src/database/migrations/046_tickets_cloture';
 import migration047 from '../src/database/migrations/047_formulaire_par_personne';
+import migration049 from '../src/database/migrations/049_batiment_par_defaut';
 import type { ContexteMigration } from '../src/database/migrations/types';
 import ticketRoutes from '../src/routes/ticket.routes';
 
@@ -209,6 +210,7 @@ beforeAll(async () => {
   await migration045.up(ctx);
   await migration046.up(ctx);
   await migration047.up(ctx);
+  await migration049.up(ctx);
 });
 
 describe('Le rattrapage de la migration 045', () => {
@@ -369,5 +371,46 @@ describe('Les champs du formulaire, tenus par le serveur', () => {
       .send({ titre: 'Radiateur', categorieId: CAT_BATIMENT, siteId: MAIRIE });
     expect(res.status).toBe(201);
     expect((base.prepare('SELECT site_id FROM tickets WHERE id = ?').get(res.body.id) as any).site_id).toBeNull();
+  });
+});
+
+describe('Le bâtiment par défaut', () => {
+  const ECOLE = 2;
+  const siteDe = (id: number) => (base.prepare('SELECT site_id FROM tickets WHERE id = ?').get(id) as any).site_id;
+
+  beforeAll(() => {
+    base.prepare("INSERT INTO cle_sites (id, name) VALUES (?, 'École')").run(ECOLE);
+    base.prepare('INSERT INTO user_sites (user_id, site_id) VALUES (?, ?)').run(DEMANDEUR, MAIRIE);
+    base.prepare('INSERT INTO user_sites (user_id, site_id, par_defaut) VALUES (?, ?, 1)').run(DEMANDEUR, ECOLE);
+  });
+  afterEach(() => {
+    base.prepare('DELETE FROM user_ticket_reglages').run();
+  });
+
+  it('est imposé quand la catégorie ne demande pas de lieu', async () => {
+    base.prepare("INSERT INTO user_ticket_reglages (user_id, site_mode) VALUES (?, 'masque')").run(DEMANDEUR);
+    commeSi(DEMANDEUR, 'user');
+    const res = await request(app)
+      .post('/api/tickets')
+      .send({ titre: 'Écran noir', categorieId: CAT_BATIMENT, siteId: MAIRIE });
+    expect(res.status).toBe(201);
+    expect(siteDe(res.body.id)).toBe(ECOLE);
+  });
+
+  it('remplit un bâtiment laissé vide, et respecte celui qu’on a choisi', async () => {
+    commeSi(DEMANDEUR, 'user');
+    const vide = await request(app).post('/api/tickets').send({ titre: 'Store', categorieId: CAT_BATIMENT });
+    expect(siteDe(vide.body.id)).toBe(ECOLE);
+    const choisi = await request(app)
+      .post('/api/tickets')
+      .send({ titre: 'Store', categorieId: CAT_BATIMENT, siteId: MAIRIE });
+    expect(siteDe(choisi.body.id)).toBe(MAIRIE);
+  });
+
+  it('est annoncé au formulaire', async () => {
+    commeSi(DEMANDEUR, 'user');
+    const res = await request(app).get('/api/tickets/formulaire');
+    expect(res.body.siteParDefaut).toBe(ECOLE);
+    expect(res.body.siteImpose).toBeNull();
   });
 });

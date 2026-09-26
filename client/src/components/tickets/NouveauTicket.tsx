@@ -56,9 +56,11 @@ export default function NouveauTicket({
   })
 
   // Un seul bâtiment : on ne pose pas la question, on retient la réponse.
+  // Plusieurs : on part de celui où la personne a son bureau.
   useEffect(() => {
-    if (formulaire?.siteImpose && siteId === null) setSiteId(formulaire.siteImpose)
-  }, [formulaire?.siteImpose, siteId])
+    const depart = formulaire?.siteImpose ?? formulaire?.siteParDefaut ?? null
+    if (depart && siteId === null) setSiteId(depart)
+  }, [formulaire?.siteImpose, formulaire?.siteParDefaut, siteId])
 
   const { data: routage } = useQuery({
     queryKey: ['tickets', 'routage', categorieId, sousCategorieId],
@@ -103,6 +105,7 @@ export default function NouveauTicket({
         description: description || null,
         categorieId,
         sousCategorieId,
+        // Non demandé : le serveur pose le bâtiment par défaut de la personne.
         siteId: siteMode === 'masque' ? null : siteId,
         // Un matériel pré-rempli — on vient de la fiche du Nemo — est conservé
         // même si la catégorie choisie ne demande pas de matériel. L'effacer
@@ -229,6 +232,14 @@ export default function NouveauTicket({
                   ...(formulaire?.sites ?? []).map((s) => ({ value: String(s.id), label: s.nom })),
                 ]}
               />
+            )}
+
+            {/* Non demandé par la catégorie : on rappelle le bâtiment qu'elle portera. */}
+            {siteMode === 'masque' && formulaire?.siteParDefaut && (
+              <p className="flex items-center gap-2 text-sm text-gray-500">
+                <Building2 className="w-4 h-4" />
+                {(formulaire?.sites ?? []).find((s) => s.id === formulaire.siteParDefaut)?.nom}
+              </p>
             )}
 
             {/* Un seul bâtiment : on ne demande rien, on le rappelle simplement. */}

@@ -438,6 +438,7 @@ router.get('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
         peutVoirTickets: s.peutVoirTickets,
         notifie: s.notifie,
         gereLieu: s.gereLieu,
+        parDefaut: s.parDefaut,
       })),
       categories: categories.map((c: any) => ({
         categorieId: Number(c.ticket_categorie_id),
@@ -474,6 +475,7 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
           notifie: Boolean(s.notifie),
           // Absent = repris de l'existant : voir `definirSitesDe`.
           gereLieu: s.gereLieu === undefined ? undefined : Boolean(s.gereLieu),
+          parDefaut: s.parDefaut === undefined ? undefined : Boolean(s.parDefaut),
         })),
         req.user!.userId
       );

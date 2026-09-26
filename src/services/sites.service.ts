@@ -62,6 +62,8 @@ export interface SiteRattache extends Site {
   notifie: boolean;
   /** Gère le bâtiment : ses salles, ses portes, ses rattachements (migration 040). */
   gereLieu: boolean;
+  /** Son bâtiment par défaut, celui où elle a son bureau (migration 049). */
+  parDefaut: boolean;
 }
 
 export interface Ouvrant {
@@ -135,7 +137,24 @@ export async function sitesDe(userId: number | string): Promise<SiteRattache[]> 
     peutVoirTickets: Boolean(l.peut_voir_tickets),
     notifie: Boolean(l.notifie),
     gereLieu: Boolean(Number(l.gere_lieu ?? 0)),
+    parDefaut: Boolean(Number(l.par_defaut ?? 0)),
   }));
+}
+
+/**
+ * Le bâtiment par défaut d'une personne : celui où elle a son bureau.
+ *
+ * Celui qu'on a désigné parmi ses bâtiments ; à défaut, son seul bâtiment s'il
+ * n'en a qu'un — c'est forcément celui-là ; sinon aucun. C'est lui que porte
+ * une demande dont la catégorie ne demande pas de lieu (un souci informatique
+ * se règle à son bureau), et lui qui pré-remplit le champ quand elle en demande
+ * un.
+ */
+export async function siteParDefautDe(userId: number | string): Promise<number | null> {
+  const rattaches = await sitesDe(userId);
+  const designe = rattaches.find((s) => s.parDefaut);
+  if (designe) return designe.id;
+  return rattaches.length === 1 ? rattaches[0].id : null;
 }
 
 /** Les bâtiments dont cette personne est responsable — ceux pour lesquels elle signale. */
@@ -143,7 +162,7 @@ export async function sitesDontResponsable(userId: number | string): Promise<Sit
   const rattaches = await sitesDe(userId);
   return rattaches
     .filter((s) => s.estResponsable)
-    .map(({ estResponsable, peutVoirTickets, notifie, gereLieu, ...site }) => site);
+    .map(({ estResponsable, peutVoirTickets, notifie, gereLieu, parDefaut, ...site }) => site);
 }
 
 /**
@@ -180,7 +199,7 @@ export async function notifiesDuSite(siteId: number | string): Promise<Array<{ i
  */
 export async function sitesProposesA(userId: number | string): Promise<Site[]> {
   const rattaches = await sitesDe(userId);
-  return rattaches.map(({ estResponsable, peutVoirTickets, notifie, gereLieu, ...site }) => site);
+  return rattaches.map(({ estResponsable, peutVoirTickets, notifie, gereLieu, parDefaut, ...site }) => site);
 }
 
 /**
@@ -203,18 +222,30 @@ export async function definirSitesDe(
     peutVoirTickets?: boolean;
     notifie?: boolean;
     gereLieu?: boolean;
+    parDefaut?: boolean;
   }>,
   auteurId: number | null
 ): Promise<void> {
-  const avant = new Map((await sitesDe(userId)).map((s) => [s.id, s.gereLieu]));
+  const lus = await sitesDe(userId);
+  const avant = new Map(lus.map((s) => [s.id, s.gereLieu]));
+
+  // Un seul bâtiment par défaut : le premier désigné. Un écran qui ne connaît
+  // pas le drapeau (il n'en transmet aucun) garde celui d'avant, s'il reste
+  // parmi les bâtiments enregistrés — comme `gereLieu`.
+  const designes = rattachements.filter((r) => r.parDefaut).map((r) => Number(r.siteId));
+  const connaitLeDrapeau = rattachements.some((r) => r.parDefaut !== undefined);
+  const parDefaut = connaitLeDrapeau ? designes[0] ?? null : lus.find((s) => s.parDefaut)?.id ?? null;
 
   await db.transaction(async () => {
     await db.execute('DELETE FROM user_sites WHERE user_id = ?', [userId]);
     for (const r of rattachements) {
       const gere = r.gereLieu ?? avant.get(Number(r.siteId)) ?? false;
+      // Colonnes posées seulement quand elles valent 1 : une base qui n'a pas
+      // encore la colonne n'a pas non plus de valeur à y mettre.
+      const defaut = parDefaut !== null && Number(r.siteId) === parDefaut;
       await db.execute(
-        `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie, created_by${gere ? ', gere_lieu' : ''})
-         VALUES (?, ?, ?, ?, ?, ?${gere ? ', 1' : ''})`,
+        `INSERT INTO user_sites (user_id, site_id, est_responsable, peut_voir_tickets, notifie, created_by${gere ? ', gere_lieu' : ''}${defaut ? ', par_defaut' : ''})
+         VALUES (?, ?, ?, ?, ?, ?${gere ? ', 1' : ''}${defaut ? ', 1' : ''})`,
         [
           userId,
           r.siteId,
