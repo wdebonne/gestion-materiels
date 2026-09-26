@@ -35,6 +35,7 @@ import {
 } from '@/components/ui'
 import FileUpload, { type UploadedFile } from '@/components/ui/FileUpload'
 import TerminerTicket from '@/components/tickets/TerminerTicket'
+import BoutonFavori from '@/components/BoutonFavori'
 import { formaterDuree, jourEnFrancais } from '@/lib/duree'
 
 /**
@@ -143,8 +144,8 @@ export default function TicketDetailPage() {
   const categorieId = data?.ticket.categorie?.id ?? null
   const peutReaffecter = Boolean(data?.droits?.intervenant && categorieId)
   const { data: intervenants } = useQuery({
-    queryKey: ['tickets', 'intervenants', categorieId],
-    queryFn: async () => (await ticketApi.intervenants(categorieId!)).data.intervenants,
+    queryKey: ['tickets', 'intervenants', categorieId, Number(id)],
+    queryFn: async () => (await ticketApi.intervenants(categorieId!, Number(id))).data.intervenants,
     enabled: peutReaffecter,
   })
 
@@ -217,8 +218,13 @@ export default function TicketDetailPage() {
         <CardBody>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-mono text-gray-400">{t.reference}</p>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t.titre}</h1>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-mono text-gray-400">{t.reference}</p>
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t.titre}</h1>
+                </div>
+                <BoutonFavori type="ticket" cibleId={t.id} quoi="ce ticket" />
+              </div>
 
               {/*
                 Ce que le demandeur a écrit.

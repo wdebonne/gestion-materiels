@@ -314,6 +314,30 @@ describe('Les gardes des routes', () => {
     expect((await request(app).get(`/api/tickets/intervenants?categorieId=${CAT_BATIMENT}`)).status).toBe(403);
   });
 
+  it('la donne, pour sa demande, à qui on l’a confiée — comme la réaffectation', async () => {
+    const avant = (base.prepare('SELECT technicien_id FROM tickets WHERE id = ?').get(ticketId) as any).technicien_id;
+    base.prepare('UPDATE tickets SET technicien_id = ? WHERE id = ?').run(DEMANDEUR, ticketId);
+    try {
+      commeSi(DEMANDEUR, 'user');
+      // La catégorie demandée est ignorée : c'est celle de la demande qui compte.
+      const res = await request(app).get(`/api/tickets/intervenants?categorieId=${CAT_INFO}&ticketId=${ticketId}`);
+      expect(res.status).toBe(200);
+      const ids = res.body.intervenants.map((i: any) => i.id);
+      expect(ids).toEqual(expect.arrayContaining([CHEF_TECH, AGENT_TECH]));
+      expect(ids).not.toContain(CHEF_INFO);
+
+      // Sans la demande, la règle générale tient toujours.
+      expect((await request(app).get(`/api/tickets/intervenants?categorieId=${CAT_BATIMENT}`)).status).toBe(403);
+    } finally {
+      base.prepare('UPDATE tickets SET technicien_id = ? WHERE id = ?').run(avant, ticketId);
+    }
+
+    // Plus confiée : plus de liste, même en nommant la demande.
+    commeSi(DEMANDEUR, 'user');
+    const refus = await request(app).get(`/api/tickets/intervenants?categorieId=${CAT_BATIMENT}&ticketId=${ticketId}`);
+    expect([403, 404]).toContain(refus.status);
+  });
+
   it('rend les niveaux dans les permissions', async () => {
     commeSi(CHEF_TECH, 'supervisor');
     const res = await request(app).get('/api/tickets/permissions');

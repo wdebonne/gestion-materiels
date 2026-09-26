@@ -1,4 +1,4 @@
-import { SelectHTMLAttributes, forwardRef, ReactNode } from 'react'
+import { SelectHTMLAttributes, forwardRef, ReactNode, useId } from 'react'
 import { cn } from '@/lib/utils'
 
 interface Option {
@@ -17,7 +17,11 @@ interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 
 const Select = forwardRef<HTMLSelectElement, SelectProps>(
   ({ className, label, error, hint, options, placeholder, icon, id, ...props }, ref) => {
-    const selectId = id || props.name
+    // Sans `id` ni `name`, le libellé n'était relié à rien : un lecteur d'écran
+    // annonçait « zone de saisie » sans dire laquelle. Un identifiant stable
+    // est généré à défaut.
+    const idGenere = useId()
+    const selectId = id || props.name || idGenere
 
     return (
       <div className="w-full">

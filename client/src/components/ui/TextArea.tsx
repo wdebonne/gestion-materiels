@@ -1,4 +1,4 @@
-import { TextareaHTMLAttributes, forwardRef } from 'react'
+import { TextareaHTMLAttributes, forwardRef, useId } from 'react'
 import { cn } from '@/lib/utils'
 
 interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
@@ -9,7 +9,11 @@ interface TextAreaProps extends TextareaHTMLAttributes<HTMLTextAreaElement> {
 
 const TextArea = forwardRef<HTMLTextAreaElement, TextAreaProps>(
   ({ className, label, error, hint, id, ...props }, ref) => {
-    const textareaId = id || props.name
+    // Sans `id` ni `name`, le libellé n'était relié à rien : un lecteur d'écran
+    // annonçait « zone de saisie » sans dire laquelle. Un identifiant stable
+    // est généré à défaut.
+    const idGenere = useId()
+    const textareaId = id || props.name || idGenere
 
     return (
       <div className="w-full">

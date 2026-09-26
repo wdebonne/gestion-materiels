@@ -1,6 +1,7 @@
-import { ReactNode, useEffect } from 'react'
+import { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useFenetreModale } from './useFenetreModale'
 
 interface ModalProps {
   isOpen: boolean
@@ -9,32 +10,33 @@ interface ModalProps {
   children: ReactNode
   size?: 'sm' | 'md' | 'lg' | 'xl' | 'full'
   showCloseButton?: boolean
+  /** Le nom annoncé quand la fenêtre n'a pas de titre visible. */
+  ariaLabel?: string
+  /** `alertdialog` pour une confirmation qui attend une réponse. */
+  role?: 'dialog' | 'alertdialog'
 }
 
+/**
+ * Fenêtre modale.
+ *
+ * Elle s'annonce comme telle (`role="dialog"`, nommée par son titre) : sans
+ * cela, un lecteur d'écran lisait son contenu mêlé à la page derrière, sans
+ * dire qu'une fenêtre s'était ouverte. Le focus y entre à l'ouverture, n'en
+ * sort pas au clavier tant qu'elle est ouverte, et revient à la fermeture sur
+ * le bouton qui l'avait ouverte — sans quoi l'utilisateur du clavier se
+ * retrouvait en haut de la page.
+ */
 export default function Modal({
   isOpen,
   onClose,
   title,
   children,
   size = 'md',
-  showCloseButton = true
+  showCloseButton = true,
+  ariaLabel,
+  role = 'dialog',
 }: ModalProps) {
-  // Fermer avec Escape
-  useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose()
-    }
-
-    if (isOpen) {
-      document.addEventListener('keydown', handleEscape)
-      document.body.style.overflow = 'hidden'
-    }
-
-    return () => {
-      document.removeEventListener('keydown', handleEscape)
-      document.body.style.overflow = ''
-    }
-  }, [isOpen, onClose])
+  const { ref: panneauRef, idTitre, proprietes } = useFenetreModale(isOpen, onClose)
 
   if (!isOpen) return null
 
@@ -49,16 +51,22 @@ export default function Modal({
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto">
       {/* Overlay */}
-      <div 
+      <div
         className="fixed inset-0 bg-black/50 transition-opacity animate-fade-in"
         onClick={onClose}
+        aria-hidden="true"
       />
-      
+
       {/* Modal */}
       <div className="flex min-h-full items-center justify-center p-4">
-        <div 
+        <div
+          ref={panneauRef}
+          {...proprietes}
+          role={role}
+          aria-labelledby={title ? idTitre : undefined}
+          aria-label={title ? undefined : ariaLabel}
           className={cn(
-            "relative bg-white rounded-xl shadow-xl w-full max-h-[90vh] overflow-hidden animate-slide-in dark:bg-gray-800",
+            "relative bg-white rounded-xl shadow-xl w-full max-h-[90vh] overflow-hidden animate-slide-in outline-none dark:bg-gray-800",
             sizeClasses[size]
           )}
           onClick={(e) => e.stopPropagation()}
@@ -67,11 +75,14 @@ export default function Modal({
           {(title || showCloseButton) && (
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
               {title && (
-                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
+                <h2 id={idTitre} className="text-lg font-semibold text-gray-900 dark:text-gray-100">{title}</h2>
               )}
               {showCloseButton && (
                 <button
+                  type="button"
                   onClick={onClose}
+                  aria-label="Fermer"
+                  title="Fermer"
                   className="p-2 text-gray-600 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors dark:hover:bg-gray-700 dark:hover:text-gray-300"
                 >
                   <X className="w-5 h-5" />

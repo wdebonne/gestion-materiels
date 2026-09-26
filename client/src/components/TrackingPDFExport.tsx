@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useFenetreModale } from '@/components/ui/useFenetreModale'
 import { 
   Download, FileText, X, Loader2, Calendar
 } from 'lucide-react'
@@ -38,6 +39,9 @@ export default function TrackingPDFExport({
   const [includeAttachments, setIncludeAttachments] = useState(false)
   const [selectedAttachments, setSelectedAttachments] = useState<string[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
+  const fenetre = useFenetreModale(true, () => {
+    if (!isGenerating) onClose()
+  })
   const [showAttachmentSelector, setShowAttachmentSelector] = useState(false)
   const [progress, setProgress] = useState(0)
   const [progressText, setProgressText] = useState('')
@@ -651,7 +655,12 @@ export default function TrackingPDFExport({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+      <div
+        ref={fenetre.ref}
+        {...fenetre.proprietes}
+        aria-labelledby={fenetre.idTitre}
+        className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto outline-none"
+      >
         {/* Header */}
         <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between z-10">
           <div className="flex items-center gap-3">
@@ -659,11 +668,11 @@ export default function TrackingPDFExport({
               <FileText className="w-5 h-5 text-primary-600" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">Exporter en PDF</h2>
+              <h2 id={fenetre.idTitre} className="font-semibold text-gray-900">Exporter en PDF</h2>
               <p className="text-sm text-gray-500">Générer un fichier PDF du rapport</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg" disabled={isGenerating}>
+          <button onClick={onClose} aria-label="Fermer" title="Fermer" className="p-2 hover:bg-gray-100 rounded-lg" disabled={isGenerating}>
             <X className="w-5 h-5" />
           </button>
         </div>

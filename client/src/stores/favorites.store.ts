@@ -13,41 +13,32 @@ export interface MaterielMemorise {
 const MAX_RECENTS = 8
 
 interface FavoritesState {
+  /**
+   * Les matériels épinglés avant que les favoris ne rejoignent le compte.
+   * Lus une fois par `useReprendreFavorisLocaux` (`lib/accueil.ts`), puis vidés.
+   */
   favoris: MaterielMemorise[]
   recents: MaterielMemorise[]
 
-  basculerFavori: (materiel: Omit<MaterielMemorise, 'vuLe'>) => void
-  estFavori: (id: number) => boolean
   enregistrerConsultation: (materiel: Omit<MaterielMemorise, 'vuLe'>) => void
   oublier: (id: number) => void
+  viderFavoris: () => void
 }
 
 /**
- * Matériels épinglés et récemment consultés.
+ * Matériels récemment consultés, sur cet appareil.
  *
  * Un agent revient chaque jour sur les trois ou quatre mêmes machines. La liste
  * « Activité récente » du tableau de bord était globale — celle du service, pas
- * la sienne. On mémorise donc localement, par appareil : aucune API, aucune
- * table, et l'information reste utile même sans réseau.
+ * la sienne. Les consultations restent locales : propres à l'appareil, utiles
+ * même sans réseau. Les favoris, eux, vivent désormais sur le compte, pour se
+ * retrouver d'un appareil à l'autre.
  */
 export const useFavoritesStore = create<FavoritesState>()(
   persist(
     (set, get) => ({
       favoris: [],
       recents: [],
-
-      basculerFavori: (materiel) => {
-        const { favoris } = get()
-        const dejaPresent = favoris.some((f) => f.id === materiel.id)
-
-        set({
-          favoris: dejaPresent
-            ? favoris.filter((f) => f.id !== materiel.id)
-            : [...favoris, { ...materiel, vuLe: Date.now() }],
-        })
-      },
-
-      estFavori: (id) => get().favoris.some((f) => f.id === id),
 
       enregistrerConsultation: (materiel) => {
         const autres = get().recents.filter((r) => r.id !== materiel.id)
@@ -61,6 +52,8 @@ export const useFavoritesStore = create<FavoritesState>()(
           favoris: etat.favoris.filter((f) => f.id !== id),
           recents: etat.recents.filter((r) => r.id !== id),
         })),
+
+      viderFavoris: () => set({ favoris: [] }),
     }),
     { name: 'materiels-memorises' }
   )

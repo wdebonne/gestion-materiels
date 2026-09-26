@@ -4,6 +4,9 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, X, Package, Star, Clock, QrCode } from 'lucide-react'
 import api from '@/lib/api'
 import { useFavoritesStore } from '@/stores/favorites.store'
+import { useFavoris } from '@/lib/accueil'
+import { useFenetreModale } from '@/components/ui/useFenetreModale'
+import { TYPES_FAVORI, nomFavori } from '@/components/accueil/MesFavoris'
 
 interface GlobalSearchProps {
   ouvert: boolean
@@ -33,7 +36,9 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
   const [saisie, setSaisie] = useState('')
   const [recherche, setRecherche] = useState('')
 
-  const { favoris, recents } = useFavoritesStore()
+  const { recents } = useFavoritesStore()
+  // Les favoris du compte, tous types : un bâtiment épinglé se retrouve aussi d'ici.
+  const favoris = useFavoris({ actif: ouvert }).favoris.filter((f) => f.disponible && f.url)
 
   // Anti-rebond : on n'interroge le serveur qu'une fois la frappe stabilisée.
   useEffect(() => {
@@ -51,18 +56,8 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
     }
   }, [ouvert])
 
-  useEffect(() => {
-    if (!ouvert) return
-    const surTouche = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onFermer()
-    }
-    document.addEventListener('keydown', surTouche)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', surTouche)
-      document.body.style.overflow = ''
-    }
-  }, [ouvert, onFermer])
+  // Échap, défilement bloqué, focus gardé puis rendu : la règle commune des fenêtres.
+  const fenetre = useFenetreModale(ouvert, onFermer)
 
   const { data, isFetching } = useQuery({
     queryKey: ['recherche-globale', recherche],
@@ -79,25 +74,24 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
   const resultats = data ?? []
   const rechercheEnCours = recherche.length >= 2
 
-  const ouvrirMateriel = (id: number) => {
+  const ouvrir = (chemin: string) => {
     onFermer()
-    navigate(`/objects/${id}`)
+    navigate(chemin)
   }
 
   const Ligne = ({
-    id,
+    vers,
     nom,
     detail,
     icone,
   }: {
-    id: number
+    vers: string
     nom: string
     detail?: string
     icone: React.ReactNode
   }) => (
     <button
-      key={id}
-      onClick={() => ouvrirMateriel(id)}
+      onClick={() => ouvrir(vers)}
       className="flex min-h-[56px] w-full items-center gap-3 rounded-lg px-3 text-left transition-colors hover:bg-gray-100 dark:hover:bg-gray-700"
     >
       <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300">
@@ -114,7 +108,12 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 sm:items-center sm:justify-start sm:bg-black/50 sm:pt-20">
-      <div className="flex h-full w-full flex-col sm:h-auto sm:max-h-[70vh] sm:max-w-xl sm:rounded-2xl sm:bg-white sm:shadow-2xl sm:dark:bg-gray-800">
+      <div
+        ref={fenetre.ref}
+        {...fenetre.proprietes}
+        aria-label="Rechercher un matériel"
+        className="outline-none flex h-full w-full flex-col sm:h-auto sm:max-h-[70vh] sm:max-w-xl sm:rounded-2xl sm:bg-white sm:shadow-2xl sm:dark:bg-gray-800"
+      >
         {/* Barre de saisie */}
         <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
           <Search className="h-5 w-5 flex-shrink-0 text-gray-500 dark:text-gray-400" />
@@ -165,7 +164,7 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
               {resultats.map((r) => (
                 <Ligne
                   key={r.id}
-                  id={r.id}
+                  vers={`/objects/${r.id}`}
                   nom={r.name}
                   detail={[r.reference, r.categoryName].filter(Boolean).join(' • ')}
                   icone={<Package className="h-5 w-5" />}
@@ -177,17 +176,20 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
               {favoris.length > 0 && (
                 <section className="mb-2">
                   <h2 className="px-3 py-2 text-sm font-medium text-gray-600 dark:text-gray-400">
-                    Mes matériels
+                    Mes favoris
                   </h2>
-                  {favoris.map((f) => (
-                    <Ligne
-                      key={f.id}
-                      id={f.id}
-                      nom={f.name}
-                      detail={[f.reference, f.categoryName].filter(Boolean).join(' • ')}
-                      icone={<Star className="h-5 w-5 text-amber-500" />}
-                    />
-                  ))}
+                  {favoris.map((f) => {
+                    const Icone = f.type === 'materiel' ? Star : TYPES_FAVORI[f.type].icone
+                    return (
+                      <Ligne
+                        key={f.id}
+                        vers={f.url!}
+                        nom={nomFavori(f)}
+                        detail={f.detail ?? TYPES_FAVORI[f.type].libelle}
+                        icone={<Icone className="h-5 w-5 text-amber-500" />}
+                      />
+                    )
+                  })}
                 </section>
               )}
 
@@ -199,7 +201,7 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
                   {recents.map((r) => (
                     <Ligne
                       key={r.id}
-                      id={r.id}
+                      vers={`/objects/${r.id}`}
                       nom={r.name}
                       detail={[r.reference, r.categoryName].filter(Boolean).join(' • ')}
                       icone={<Clock className="h-5 w-5" />}

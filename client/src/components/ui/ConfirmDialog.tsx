@@ -50,6 +50,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         onClose={() => settle(false)}
         size="sm"
         showCloseButton={false}
+        // Une question qui attend une réponse : annoncée comme telle, sous son titre.
+        role="alertdialog"
+        ariaLabel={options?.title}
       >
         <ModalBody className="pt-6">
           <div className="flex gap-4">

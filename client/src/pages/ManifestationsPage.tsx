@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
   PartyPopper, Plus, Search, Package, Archive, FileDown, Truck, RotateCcw,
   Check, X, Edit, Trash2, Eye, ChevronDown, ChevronUp, ChevronsUpDown, Filter, Calendar, MapPin, Tag,
@@ -37,6 +37,7 @@ import {
   type ServiceBref
 } from '@/lib/api'
 import toast from 'react-hot-toast'
+import BoutonFavori from '@/components/BoutonFavori'
 
 // ==================== CONSTANTES ====================
 
@@ -149,6 +150,46 @@ export default function ManifestationsPage() {
   const [manifForm, setManifForm] = useState(emptyForm)
   const [stockForm, setStockForm] = useState(emptyStockForm)
   const [showFilters, setShowFilters] = useState(false)
+
+  /*
+   * Les liens directs : `?fiche=12` ouvre une manifestation, `?nouvelle=1` le
+   * formulaire de création. Un favori, une carte de l'accueil ou une action
+   * rapide mènent ainsi au geste lui-même, et non à la liste où le chercher.
+   * Le paramètre est retiré une fois lu, pour que fermer la fiche n'y ramène pas.
+   */
+  const [parametres, setParametres] = useSearchParams()
+  const ficheDemandee = Number(parametres.get('fiche')) || null
+  const creationDemandee = parametres.get('nouvelle') === '1'
+  useEffect(() => {
+    if (!ficheDemandee && !creationDemandee) return
+    const oublier = () =>
+      setParametres(
+        (p) => {
+          p.delete('fiche')
+          p.delete('nouvelle')
+          return p
+        },
+        { replace: true }
+      )
+    if (creationDemandee) {
+      if (isSupervisor) {
+        setActiveTab('manifestations')
+        setEditingManif(null)
+        setManifForm(emptyForm)
+        setShowManifModal(true)
+      }
+      oublier()
+      return
+    }
+    manifestationApi
+      .getById(ficheDemandee!)
+      .then(({ data }) => {
+        setActiveTab('manifestations')
+        setShowDetailModal(data.data)
+      })
+      .catch(() => toast.error("Cette manifestation n'existe plus, ou vous ne la suivez pas"))
+      .finally(oublier)
+  }, [ficheDemandee, creationDemandee, isSupervisor, setParametres])
 
   // ==================== QUERIES ====================
 
@@ -1786,6 +1827,7 @@ function ManifDetailModal({ manif: m, onClose }: { manif: Manifestation; onClose
       <ModalBody>
         <div className="space-y-4 text-sm">
           <div className="flex flex-wrap items-center gap-2">
+            <BoutonFavori type="manifestation" cibleId={m.id} quoi="cette manifestation" />
             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${statusColors[m.status]}`}>
               {statusLabels[m.status]}
             </span>

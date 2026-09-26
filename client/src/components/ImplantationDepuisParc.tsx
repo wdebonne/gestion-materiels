@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useFenetreModale } from '@/components/ui/useFenetreModale'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, X, Plus, Minus, Package, Boxes, AlertTriangle, Sprout } from 'lucide-react'
 import api from '@/lib/api'
@@ -81,6 +82,7 @@ export default function ImplantationDepuisParc({
   onClose: () => void
   onSaved: () => void
 }) {
+  const fenetre = useFenetreModale(true, onClose)
   const queryClient = useQueryClient()
   const [recherche, setRecherche] = useState('')
   const [categorie, setCategorie] = useState('')
@@ -213,10 +215,15 @@ export default function ImplantationDepuisParc({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div
+        ref={fenetre.ref}
+        {...fenetre.proprietes}
+        aria-labelledby={fenetre.idTitre}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col outline-none"
+      >
         <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+            <h3 id={fenetre.idTitre} className="text-lg font-bold text-gray-900 dark:text-white">
               Implanter du matériel du parc
             </h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">

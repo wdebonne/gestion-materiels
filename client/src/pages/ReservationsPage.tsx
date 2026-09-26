@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { CalendarClock, Plus, Check, RotateCcw, X, Search } from 'lucide-react'
 import { Button, Input, Modal, ModalBody, ModalFooter, Card, CardBody, LoadingInline } from '@/components/ui'
@@ -30,7 +31,19 @@ const statusColors: Record<string, string> = {
 export default function ReservationsPage() {
   const queryClient = useQueryClient()
   const { canManage: isSupervisor } = usePermissions()
-  const [showModal, setShowModal] = useState(false)
+  // `?nouvelle=1` ouvre la réservation, depuis l'action rapide « Réserver ».
+  const [parametres, setParametres] = useSearchParams()
+  const [showModal, setShowModal] = useState(() => parametres.get('nouvelle') === '1')
+  useEffect(() => {
+    if (parametres.get('nouvelle') === null) return
+    setParametres(
+      (p) => {
+        p.delete('nouvelle')
+        return p
+      },
+      { replace: true }
+    )
+  }, [parametres, setParametres])
   const [statusFilter, setStatusFilter] = useState('')
   // Verdict remonté par la vérification de disponibilité : le bouton de
   // création reste inactif tant que la période demandée est déjà prise.
