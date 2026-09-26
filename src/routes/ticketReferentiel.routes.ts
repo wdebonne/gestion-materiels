@@ -19,8 +19,10 @@ import {
   usagesStatut,
   VISIBILITES,
 } from '../services/ticketsReferentiel.service';
-import { versDateTime } from '../services/tickets.service';
+import { SaisieInvalide, versDateTime } from '../services/tickets.service';
 import { definirSitesDe, sitesDe } from '../services/sites.service';
+import { estNiveauTicket } from '../middleware/ticketScope';
+import { definirCategoriesDe, definirMaterielsDe } from '../services/droitsUtilisateur.service';
 
 /**
  * Le référentiel des demandes, et les rattachements des personnes.
@@ -127,10 +129,17 @@ router.put('/statuts/:id', authenticateToken, requireSupervisor, async (req: Aut
     if (req.body?.couleur !== undefined) poser('couleur', req.body.couleur);
     if (req.body?.icone !== undefined) poser('icone', req.body.icone);
     if (req.body?.ordre !== undefined) poser('ordre', entierOuNull(req.body.ordre) ?? 0);
-    if (req.body?.actif !== undefined) poser('is_active', req.body.actif ? 1 : 0);
-    if (req.body?.ouvert !== undefined) poser('is_ouvert', req.body.ouvert ? 1 : 0);
-    if (req.body?.defaut !== undefined) poser('is_defaut', req.body.defaut ? 1 : 0);
-    if (req.body?.final !== undefined) poser('is_final', req.body.final ? 1 : 0);
+    // « À valider » se renomme et se recolore, mais son sens ne se règle pas :
+    // ouvert, il retournerait dans la file des techniciens ; final, il
+    // clôturerait sans validation ; désactivé, les agents non autonomes ne
+    // pourraient plus terminer. Voir la migration 046.
+    const validation = Boolean(Number(statut.is_validation ?? 0));
+    if (!validation) {
+      if (req.body?.actif !== undefined) poser('is_active', req.body.actif ? 1 : 0);
+      if (req.body?.ouvert !== undefined) poser('is_ouvert', req.body.ouvert ? 1 : 0);
+      if (req.body?.defaut !== undefined) poser('is_defaut', req.body.defaut ? 1 : 0);
+      if (req.body?.final !== undefined) poser('is_final', req.body.final ? 1 : 0);
+    }
 
     if (colonnes.length === 0) return res.json({ success: true });
 
@@ -432,6 +441,8 @@ router.get('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
       })),
       categories: categories.map((c: any) => ({
         categorieId: Number(c.ticket_categorie_id),
+        niveau: estNiveauTicket(c.niveau) ? c.niveau : 'demandeur',
+        peutCloturer: c.peut_cloturer === undefined || c.peut_cloturer === null || Boolean(Number(c.peut_cloturer)),
         materielAutorise:
           c.materiel_autorise === null || c.materiel_autorise === undefined
             ? null
@@ -468,46 +479,22 @@ router.put('/utilisateurs/:userId', authenticateToken, requireAdmin, async (req:
       );
     }
 
+    // Un seul écrivain pour ces rattachements : celui de l'écran des
+    // utilisateurs (`droitsUtilisateur.service`), qui les règle aussi.
     if (Array.isArray(req.body?.categories)) {
-      await db.execute('DELETE FROM user_ticket_categories WHERE user_id = ?', [userId]);
-      for (const c of req.body.categories) {
-        const categorieId = entierOuNull(c?.categorieId);
-        if (categorieId === null) continue;
-        await db.execute(
-          `INSERT INTO user_ticket_categories (user_id, ticket_categorie_id, materiel_autorise, created_by, created_at)
-           VALUES (?, ?, ?, ?, ?)`,
-          [
-            userId,
-            categorieId,
-            // `null` veut dire « ce que la catégorie a décidé ».
-            c?.materielAutorise === null || c?.materielAutorise === undefined
-              ? null
-              : c.materielAutorise
-                ? 1
-                : 0,
-            req.user!.userId,
-            versDateTime(),
-          ]
-        );
-      }
+      await definirCategoriesDe(userId, req.body.categories, req.user!.userId);
     }
-
     if (Array.isArray(req.body?.materiels)) {
-      // Remplacement et non fusion : l'écran montre l'état complet, et c'est
-      // cet état qu'il enregistre.
-      await db.execute('DELETE FROM user_materiels WHERE user_id = ?', [userId]);
-      for (const m of req.body.materiels) {
-        const objectId = entierOuNull(m?.objectId ?? m);
-        if (objectId === null) continue;
-        await db.execute(
-          `INSERT INTO user_materiels (user_id, object_id, created_by, created_at) VALUES (?, ?, ?, ?)`,
-          [userId, objectId, req.user!.userId, versDateTime()]
-        );
-      }
+      await definirMaterielsDe(
+        userId,
+        req.body.materiels.map((m: any) => Number(m?.objectId ?? m)),
+        req.user!.userId
+      );
     }
 
     res.json({ success: true, message: 'Rattachements enregistrés' });
   } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
     console.error('Erreur enregistrement des rattachements :', erreur);
     refuser(res, 500, 'Erreur serveur');
   }

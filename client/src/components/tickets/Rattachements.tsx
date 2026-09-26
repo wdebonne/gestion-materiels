@@ -15,6 +15,8 @@ import {
 import api, {
   siteApi,
   ticketReferentielApi,
+  NIVEAUX_TICKET,
+  type NiveauTicket,
   type CategorieDemande,
   type CompteRattache,
   type RattachementSite,
@@ -307,12 +309,21 @@ function FicheRattachement({
     queryFn: async () => (await api.get('/objects?limit=500')).data,
   })
 
-  const [categorieIds, setCategorieIds] = useState<number[] | null>(null)
+  type LigneCategorie = {
+    categorieId: number
+    niveau: NiveauTicket
+    peutCloturer: boolean
+    materielAutorise: boolean | null
+  }
+  const [lignesCategories, setLignesCategories] = useState<LigneCategorie[] | null>(null)
   const [rattachements, setRattachements] = useState<RattachementSite[] | null>(null)
   const [materiels, setMateriels] = useState<Array<{ objectId: number; nom: string }> | null>(null)
 
-  // L'état vient du serveur, puis vit localement le temps de la modale.
-  const mesCategories = categorieIds ?? data?.categories.map((c) => c.categorieId) ?? []
+  // L'état vient du serveur, puis vit localement le temps de la modale. Chaque
+  // ligne garde son niveau et son exception de matériel : les renvoyer tels
+  // quels est ce qui évite de les remettre à zéro en enregistrant autre chose.
+  const mesLignes = lignesCategories ?? data?.categories ?? []
+  const ligneDe = (id: number) => mesLignes.find((l) => l.categorieId === id)
   const mesSites = rattachements ?? data?.sites ?? []
   const mesMateriels = materiels ?? data?.materiels ?? []
 
@@ -322,7 +333,7 @@ function FicheRattachement({
   const enregistrer = useMutation({
     mutationFn: () =>
       ticketReferentielApi.definirRattachements(compte.id, {
-        categories: mesCategories.map((id) => ({ categorieId: id })),
+        categories: mesLignes,
         sites: mesSites,
         materiels: mesMateriels.map((m) => ({ objectId: m.objectId })),
       }),
@@ -367,31 +378,78 @@ function FicheRattachement({
             {/* ------------------------------------------------ catégories */}
             <section>
               <h3 className="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
-                <Tags className="w-4 h-4" /> Ce qu'elle peut demander
+                <Tags className="w-4 h-4" /> Ses catégories de demandes
               </h3>
               <p className="mt-1 text-xs text-gray-500">
-                Sans aucune catégorie, cette personne ne peut ouvrir aucune demande.
+                Sans aucune catégorie, cette personne ne peut ouvrir aucune demande. Le niveau dit ce
+                qu'elle en fait : la demander, y intervenir, ou la superviser.
               </p>
-              <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-2 space-y-2">
                 {racines.map((c: CategorieDemande) => {
-                  const active = mesCategories.includes(c.id)
+                  const ligne = ligneDe(c.id)
+                  const active = Boolean(ligne)
                   return (
-                    <button
-                      key={c.id}
-                      onClick={() =>
-                        setCategorieIds(
-                          active ? mesCategories.filter((x) => x !== c.id) : [...mesCategories, c.id]
-                        )
-                      }
-                      className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition ${
-                        active
-                          ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
-                          : 'border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-400'
-                      }`}
-                    >
-                      {active && <Check className="w-3.5 h-3.5" />}
-                      {c.nom}
-                    </button>
+                    <div key={c.id} className="flex flex-wrap items-center gap-3">
+                      <button
+                        onClick={() =>
+                          setLignesCategories(
+                            active
+                              ? mesLignes.filter((l) => l.categorieId !== c.id)
+                              : [...mesLignes, { categorieId: c.id, niveau: 'demandeur', peutCloturer: true, materielAutorise: null }]
+                          )
+                        }
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition ${
+                          active
+                            ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                            : 'border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-400'
+                        }`}
+                      >
+                        {active && <Check className="w-3.5 h-3.5" />}
+                        {c.nom}
+                      </button>
+                      {ligne && (
+                        <select
+                          value={ligne.niveau}
+                          onChange={(e) =>
+                            setLignesCategories(
+                              mesLignes.map((l) =>
+                                l.categorieId === c.id ? { ...l, niveau: e.target.value as NiveauTicket } : l
+                              )
+                            )
+                          }
+                          title={NIVEAUX_TICKET.find((n) => n.valeur === ligne.niveau)?.aide}
+                          className="rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-2 py-1 text-sm text-gray-900 dark:text-white"
+                        >
+                          {NIVEAUX_TICKET.map((n) => (
+                            <option key={n.valeur} value={n.valeur}>
+                              {n.libelle}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {/* L'autonomie ne concerne que qui intervient : un
+                          superviseur valide son propre travail. */}
+                      {ligne && (ligne.niveau === 'intervenant' || ligne.niveau === 'intervenant_categorie') && (
+                        <label
+                          className="inline-flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300"
+                          title="Décoché : ses clôtures passent « À valider » chez un superviseur de la catégorie"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={ligne.peutCloturer}
+                            onChange={(e) =>
+                              setLignesCategories(
+                                mesLignes.map((l) =>
+                                  l.categorieId === c.id ? { ...l, peutCloturer: e.target.checked } : l
+                                )
+                              )
+                            }
+                            className="rounded border-gray-300"
+                          />
+                          Clôture seul
+                        </label>
+                      )}
+                    </div>
                   )
                 })}
               </div>

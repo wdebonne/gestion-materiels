@@ -43,6 +43,9 @@ import batimentsControles from './041_batiments_controles';
 import entreprisesPortail from './042_entreprises_portail';
 import etagesEtPlans from './043_etages_et_plans';
 import energieContratsInterventions from './044_energie_contrats_interventions';
+import ticketsNiveaux from './045_tickets_niveaux';
+import ticketsCloture from './046_tickets_cloture';
+import formulaireParPersonne from './047_formulaire_par_personne';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -98,6 +101,9 @@ export const MIGRATIONS: readonly Migration[] = [
   entreprisesPortail,
   etagesEtPlans,
   energieContratsInterventions,
+  ticketsNiveaux,
+  ticketsCloture,
+  formulaireParPersonne,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

@@ -12,14 +12,15 @@ import { filtreObjets } from './objectScope';
  * `objectScope.ts` a rassemblé celle du parc après avoir trouvé quatre routes
  * qui la contournaient sans le savoir.
  *
- * ## Six prédicats, réunis par `OR`
+ * ## Sept prédicats, réunis par `OR`
  *
  *   1. j'ai fait la demande            `demandeur_id`
  *   2. je l'ai saisie pour quelqu'un   `created_by`
  *   3. elle m'est confiée              `technicien_id`
- *   4. elle est confiée à mon équipe   `service_id`
+ *   4. elle est confiée à mon équipe   `service_id` — voir plus bas
  *   5. je la suis                      `ticket_watchers`
  *   6. elle concerne mon bâtiment      `site_id` **et** `visibilite_site = 1`
+ *   7. j'interviens sur sa catégorie   `user_ticket_categories.niveau`
  *
  * Les prédicats 1 et 3 portent sur **le périmètre de personnes** et non sur le
  * seul identifiant : un superviseur voit les demandes des agents qu'il encadre,
@@ -39,6 +40,29 @@ import { filtreObjets } from './objectScope';
  * existent déjà. C'est une décision d'administrateur, visible dans un tableau,
  * plutôt qu'un effet de bord d'un rôle attribué pour autre chose.
  *
+ * ## Le niveau par catégorie l'emporte sur le service
+ *
+ * Le responsable des interventions dans les bâtiments est membre du service
+ * technique ; le prédicat 4 lui ouvrait donc les espaces verts, que ce service
+ * route aussi. La migration 045 a posé un niveau par personne et par catégorie
+ * racine — `demandeur`, `intervenant`, `intervenant_categorie`, `superviseur` —
+ * et c'est lui qui décide dès qu'une personne en a un au-dessus de
+ * `demandeur` (`modeFin`) :
+ *
+ *   - le prédicat 7 ouvre les catégories où elle est `intervenant_categorie`
+ *     ou `superviseur` ;
+ *   - le référent (`intervenant`) ne voit que ce qu'on lui confie, par le
+ *     prédicat 3 ;
+ *   - le prédicat 4 ne garde que les demandes **sans catégorie** — celles
+ *     d'un import, par exemple — que rien d'autre ne couvrirait.
+ *
+ * Qui n'a aucun niveau au-dessus de `demandeur` garde l'ancienne règle, celle
+ * du service : un agent ajouté à une équipe après la migration continue de voir
+ * ce qu'elle traite tant qu'on ne l'a pas réglé plus finement.
+ *
+ * `droitsSurTicket()` dit ensuite ce qu'on peut **faire** d'une demande qu'on
+ * lit : intervenir, changer son statut, superviser.
+ *
  * ## Voir n'est pas lire
  *
  * Le prédicat 6 répond à « M. Dupont a déjà signalé le rideau cassé » — il est
@@ -49,6 +73,18 @@ import { filtreObjets } from './objectScope';
  * et la liste rend `acces_complet` pour que l'écran grise ces lignes au lieu de
  * promettre une fiche qu'il refusera.
  */
+
+/** Ce qu'une personne fait d'une catégorie de demandes, du moins au plus. */
+export const NIVEAUX_TICKET = ['demandeur', 'intervenant', 'intervenant_categorie', 'superviseur'] as const;
+export type NiveauTicket = (typeof NIVEAUX_TICKET)[number];
+
+export function estNiveauTicket(valeur: unknown): valeur is NiveauTicket {
+  return typeof valeur === 'string' && (NIVEAUX_TICKET as readonly string[]).includes(valeur);
+}
+
+function rang(niveau: NiveauTicket | null | undefined): number {
+  return niveau ? NIVEAUX_TICKET.indexOf(niveau) : -1;
+}
 
 export interface ContexteTickets {
   moi: number;
@@ -61,6 +97,21 @@ export interface ContexteTickets {
   services: number[];
   /** Les bâtiments dont on m'a accordé la lecture des demandes. */
   sitesPartages: number[];
+  /** Mon niveau par catégorie racine. */
+  niveaux: Map<number, NiveauTicket>;
+  /** Racine de chaque catégorie — racines et filles — où j'ai un niveau. */
+  racines: Map<number, number>;
+  /** Par racine : puis-je clore seul, ou ma clôture attend-elle un superviseur ? */
+  autonomie: Map<number, boolean>;
+  /**
+   * Catégories, racines et filles, dont je vois toutes les demandes :
+   * `intervenant_categorie` ou `superviseur` sur la racine.
+   */
+  categoriesCompletes: number[];
+  /** Racines que je supervise. */
+  categoriesSupervisees: number[];
+  /** Au moins un niveau au-dessus de `demandeur` : la règle fine s'applique. */
+  modeFin: boolean;
 }
 
 export type PorteeTickets =
@@ -113,17 +164,71 @@ export async function sitesPartagesDe(userId: number): Promise<number[]> {
   return lignes.map((l: any) => Number(l.site_id));
 }
 
+/**
+ * Les niveaux de cette personne, par catégorie racine, et la racine de chaque
+ * catégorie concernée.
+ *
+ * Deux requêtes, quel que soit le nombre de catégories. Une ligne posée sur une
+ * sous-catégorie — l'écran ne le fait pas, un import pourrait — compte pour sa
+ * racine ; deux lignes sur la même racine, c'est la plus haute qui vaut.
+ */
+export async function niveauxDe(userId: number): Promise<{
+  niveaux: Map<number, NiveauTicket>;
+  racines: Map<number, number>;
+  autonomie: Map<number, boolean>;
+}> {
+  // `utc.*` plutôt que la liste des colonnes : `peut_cloturer` n'existe
+  // qu'après la migration 046, et son absence vaut « autonome ».
+  const lignes = await db.query(
+    `SELECT utc.*, tc.id AS categorie_id, tc.parent_id AS categorie_parent_id
+       FROM user_ticket_categories utc
+       JOIN ticket_categories tc ON tc.id = utc.ticket_categorie_id
+      WHERE utc.user_id = ?`,
+    [userId]
+  );
+
+  const niveaux = new Map<number, NiveauTicket>();
+  const autonomie = new Map<number, boolean>();
+  for (const l of lignes) {
+    const racine = l.categorie_parent_id ? Number(l.categorie_parent_id) : Number(l.categorie_id);
+    const niveau: NiveauTicket = estNiveauTicket(l.niveau) ? l.niveau : 'demandeur';
+    if (rang(niveau) > rang(niveaux.get(racine))) {
+      niveaux.set(racine, niveau);
+      autonomie.set(racine, l.peut_cloturer === undefined || l.peut_cloturer === null || Boolean(Number(l.peut_cloturer)));
+    }
+  }
+
+  const racines = new Map<number, number>();
+  if (niveaux.size > 0) {
+    const ids = [...niveaux.keys()];
+    const marqueurs = ids.map(() => '?').join(',');
+    const categories = await db.query(
+      `SELECT id, parent_id FROM ticket_categories WHERE id IN (${marqueurs}) OR parent_id IN (${marqueurs})`,
+      [...ids, ...ids]
+    );
+    for (const c of categories) {
+      racines.set(Number(c.id), c.parent_id ? Number(c.parent_id) : Number(c.id));
+    }
+  }
+  return { niveaux, racines, autonomie };
+}
+
 /** Tout ce qu'il faut savoir du demandeur pour décider de ce qu'il voit. */
 export async function contexteTickets(req: AuthRequest): Promise<ContexteTickets> {
   const moi = Number(req.user!.userId);
   const role = String(req.user!.role);
 
-  const [voitTout, encadres, services, sitesPartages] = await Promise.all([
+  const [voitTout, encadres, services, sitesPartages, { niveaux, racines, autonomie }] = await Promise.all([
     voitToutLesTickets(moi, role),
     agentsDe(moi),
     servicesDe(moi),
     sitesPartagesDe(moi),
+    niveauxDe(moi),
   ]);
+
+  const racinesCompletes = new Set(
+    [...niveaux].filter(([, n]) => rang(n) >= rang('intervenant_categorie')).map(([r]) => r)
+  );
 
   // `Set` : quelqu'un peut être rattaché à lui-même par accident de données, et
   // un identifiant répété fausserait un `IN` sans le dire. Même précaution que
@@ -135,6 +240,12 @@ export async function contexteTickets(req: AuthRequest): Promise<ContexteTickets
     personnes: [...new Set([moi, ...encadres])],
     services,
     sitesPartages,
+    niveaux,
+    racines,
+    autonomie,
+    categoriesCompletes: [...racines].filter(([, r]) => racinesCompletes.has(r)).map(([id]) => id),
+    categoriesSupervisees: [...niveaux].filter(([, n]) => n === 'superviseur').map(([r]) => r),
+    modeFin: [...niveaux.values()].some((n) => n !== 'demandeur'),
   };
 }
 
@@ -173,9 +284,20 @@ export function fragmentPortee(
   conditions.push(`${p}technicien_id IN (${marqueurs(ctx.personnes.length)})`);
   params.push(...ctx.personnes);
 
+  // Le service ne décide plus, en mode fin, que des demandes sans catégorie :
+  // voir l'en-tête.
   if (ctx.services.length > 0) {
-    conditions.push(`${p}service_id IN (${marqueurs(ctx.services.length)})`);
+    const sansCategorie = ctx.modeFin
+      ? ` AND ${p}categorie_id IS NULL AND ${p}sous_categorie_id IS NULL`
+      : '';
+    conditions.push(`(${p}service_id IN (${marqueurs(ctx.services.length)})${sansCategorie})`);
     params.push(...ctx.services);
+  }
+
+  if (ctx.categoriesCompletes.length > 0) {
+    const m = marqueurs(ctx.categoriesCompletes.length);
+    conditions.push(`(${p}categorie_id IN (${m}) OR ${p}sous_categorie_id IN (${m}))`);
+    params.push(...ctx.categoriesCompletes, ...ctx.categoriesCompletes);
   }
 
   // Observateur, nommément ou par son service.
@@ -243,6 +365,109 @@ export async function accesTicket(req: AuthRequest, ticketId: number | string): 
   }
 
   return 'aucun';
+}
+
+/** La racine d'une demande, si j'ai un niveau dessus ; `null` sinon. */
+export function racineDe(
+  ctx: ContexteTickets,
+  ticket: { categorie_id?: any; sous_categorie_id?: any }
+): number | null {
+  for (const id of [ticket.sous_categorie_id, ticket.categorie_id]) {
+    if (id === null || id === undefined) continue;
+    const racine = ctx.racines.get(Number(id));
+    if (racine !== undefined) return racine;
+  }
+  return null;
+}
+
+/** Ce qu'une personne peut faire d'une demande qu'elle lit en entier. */
+export interface DroitsTicket {
+  /** Son niveau sur la catégorie de la demande, s'il en a un. */
+  niveau: NiveauTicket | null;
+  /** Elle travaille sur la demande, et pas seulement l'attend. */
+  intervenant: boolean;
+  /** Elle encadre la catégorie : valide ce que les agents clôturent. */
+  superviseur: boolean;
+  /** Sa clôture est définitive ; sinon, elle passe « À valider ». */
+  autonome: boolean;
+  peutChangerStatut: boolean;
+  /** Clore en disant le temps passé et qui a aidé. */
+  peutTerminer: boolean;
+  /** Relire, corriger et valider — ou renvoyer — une clôture « À valider ». */
+  peutValider: boolean;
+}
+
+/**
+ * Ce que l'auteur de la requête peut faire de cette demande.
+ *
+ * Fonction pure : le contexte est déjà chargé, la ligne aussi. On la garde à
+ * part de `accesTicket()` — qui dit si l'on **lit** — parce que lire et agir ne
+ * se recouvrent pas : un demandeur lit sa demande en entier, et n'en change pas
+ * le statut.
+ *
+ *   - `admin` : tout ;
+ *   - `superviseur` sur la racine : tout ;
+ *   - `intervenant_categorie` : intervient sur toutes les demandes de la racine ;
+ *   - `intervenant`, le référent : seulement si la demande lui est confiée ;
+ *   - la demande m'est confiée, ou à un agent que j'encadre : j'interviens,
+ *     quel que soit mon niveau — on ne confie pas un travail à qui ne pourrait
+ *     pas le rendre ;
+ *   - sans niveau au-dessus de `demandeur`, l'ancienne règle : un membre du
+ *     service de la demande intervient ;
+ *   - le droit de tout voir, accordé par module, vaut intervenant, comme avant.
+ *
+ * L'autonomie se lit sur la racine (`peut_cloturer`, migration 046) et ne
+ * concerne que les intervenants : un superviseur valide son propre travail, et
+ * qui intervient sans niveau fin — par son service, par une affectation — clôt
+ * comme il l'a toujours fait.
+ */
+export function droitsSurTicket(
+  ctx: ContexteTickets,
+  ticket: { categorie_id?: any; sous_categorie_id?: any; technicien_id?: any; service_id?: any }
+): DroitsTicket {
+  const racine = racineDe(ctx, ticket);
+  const niveau = racine !== null ? ctx.niveaux.get(racine) ?? null : null;
+
+  if (ctx.role === 'admin') {
+    return {
+      niveau,
+      intervenant: true,
+      superviseur: true,
+      autonome: true,
+      peutChangerStatut: true,
+      peutTerminer: true,
+      peutValider: true,
+    };
+  }
+
+  const superviseur = niveau === 'superviseur';
+  const confiee =
+    ticket.technicien_id !== null &&
+    ticket.technicien_id !== undefined &&
+    ctx.personnes.includes(Number(ticket.technicien_id));
+  const parSonService =
+    ticket.service_id !== null &&
+    ticket.service_id !== undefined &&
+    ctx.services.includes(Number(ticket.service_id)) &&
+    (!ctx.modeFin || (!ticket.categorie_id && !ticket.sous_categorie_id));
+
+  const intervenant =
+    superviseur || niveau === 'intervenant_categorie' || confiee || parSonService || ctx.voitTout;
+
+  const autonome =
+    superviseur ||
+    !(niveau === 'intervenant' || niveau === 'intervenant_categorie') ||
+    ctx.autonomie.get(racine!) !== false;
+
+  return {
+    niveau,
+    intervenant,
+    superviseur,
+    autonome,
+    peutChangerStatut: intervenant,
+    peutTerminer: intervenant,
+    peutValider: superviseur,
+  };
 }
 
 /**

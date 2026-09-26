@@ -11,6 +11,9 @@ import {
 import {
   accesTicket,
   contexteTickets,
+  droitsSurTicket,
+  DroitsTicket,
+  type ContexteTickets,
   materielsVisibles,
   porteeTickets,
   MATERIEL_HORS_PORTEE,
@@ -39,18 +42,28 @@ import {
   categoriesProposeesA,
   estViolationCleEtrangere,
   filtreMaterielDe,
+  lireStatut,
   listerStatuts,
   materielAutorisePour,
+  modesFormulairePour,
   materielsDe,
   resoudreRoutage,
 } from '../services/ticketsReferentiel.service';
 import { sitesDe, sitesProposesA } from '../services/sites.service';
 import {
   notifierAffectation,
+  notifierAValider,
   notifierMessage,
   notifierOuverture,
   notifierStatut,
 } from '../services/ticketNotify.service';
+import {
+  lireCloture,
+  refusChangementStatut,
+  renvoyerTicket,
+  terminerTicket,
+  validerTicket,
+} from '../services/ticketsCloture.service';
 import { servicesDe } from '../middleware/ticketScope';
 
 /**
@@ -96,13 +109,14 @@ function refuser(res: Response, code: number, message: string) {
   return res.status(code).json({ success: false, message });
 }
 
+/** Ce que le lecteur peut faire de cette demande : voir `droitsSurTicket()`. */
+async function droitsDe(req: AuthRequest, ticket: any): Promise<DroitsTicket> {
+  return droitsSurTicket(await contexteTickets(req), ticket);
+}
+
 /** Le lecteur est-il un intervenant sur cette demande, ou seulement le demandeur ? */
 async function estIntervenant(req: AuthRequest, ticket: any): Promise<boolean> {
-  const ctx = await contexteTickets(req);
-  if (ctx.voitTout) return true;
-  if (ticket.technicien_id && ctx.personnes.includes(Number(ticket.technicien_id))) return true;
-  if (ticket.service_id && ctx.services.includes(Number(ticket.service_id))) return true;
-  return false;
+  return (await droitsDe(req, ticket)).intervenant;
 }
 
 // ------------------------------------------------------------ ce que je peux
@@ -158,7 +172,8 @@ router.get('/formulaire/routage', authenticateToken, async (req: AuthRequest, re
     const sousCategorieId = req.query.sousCategorieId ? Number(req.query.sousCategorieId) : null;
 
     const routage = await resoudreRoutage(categorieId, sousCategorieId);
-    const materielAutorise = await materielAutorisePour(req.user!.userId, categorieId, routage);
+    // Catégorie et réglage propre à la personne : `modesFormulairePour` tranche.
+    const modes = await modesFormulairePour(req.user!.userId, categorieId, sousCategorieId, routage);
 
     // Le nom du service destinataire est rendu en clair : « cette demande
     // partira au service Informatique ». Personne n'aime envoyer dans le vide.
@@ -172,8 +187,8 @@ router.get('/formulaire/routage', authenticateToken, async (req: AuthRequest, re
     res.json({
       success: true,
       routage: {
-        siteMode: routage.siteMode,
-        materielMode: materielAutorise ? routage.materielMode : 'aucun',
+        siteMode: modes.siteMode,
+        materielMode: modes.materielMode,
         visibilite: routage.visibilite,
       },
       destinataire: {
@@ -238,12 +253,35 @@ router.get('/formulaire/materiels', authenticateToken, async (req: AuthRequest, 
 router.get('/permissions', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const ctx = await contexteTickets(req);
+    const niveaux = [...ctx.niveaux].map(([categorieId, niveau]) => ({
+      categorieId,
+      niveau,
+      peutCloturer: ctx.autonomie.get(categorieId) !== false,
+    }));
+    const estSuperviseur = ctx.role === 'admin' || ctx.categoriesSupervisees.length > 0;
+
+    // Le compteur de l'onglet « À valider » : ce que je supervise et vois.
+    let aValider = 0;
+    if (estSuperviseur) {
+      aValider = await compterTickets(await porteeTickets(req, 't'), {
+        aValider: true,
+        categoriesSupervisees: categoriesSuperviseesDe(ctx),
+      });
+    }
+
     res.json({
       success: true,
       voitTout: ctx.voitTout,
       services: ctx.services,
       sitesPartages: ctx.sitesPartages,
-      estIntervenant: ctx.services.length > 0 || ctx.voitTout,
+      niveaux,
+      estIntervenant:
+        ctx.role === 'admin' ||
+        ctx.voitTout ||
+        ctx.services.length > 0 ||
+        niveaux.some((n) => n.niveau !== 'demandeur'),
+      estSuperviseur,
+      aValider,
     });
   } catch (erreur: any) {
     console.error('Erreur permissions tickets :', erreur);
@@ -251,14 +289,84 @@ router.get('/permissions', authenticateToken, async (req: AuthRequest, res: Resp
   }
 });
 
+/**
+ * À qui l'on peut confier une demande de cette catégorie.
+ *
+ * Les personnes qui ont un niveau d'intervenant sur la racine, plus les membres
+ * du service qu'elle route — chacun repassé par `peutEtreConfieeA`, la même
+ * règle que celle qui refusera l'affectation : la liste ne propose jamais un nom
+ * que l'enregistrement rejetterait.
+ */
+router.get('/intervenants', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    const ctx = await contexteTickets(req);
+    const intervientQuelquePart =
+      ctx.role === 'admin' || ctx.voitTout || ctx.services.length > 0 || ctx.modeFin;
+    if (!intervientQuelquePart) return refuser(res, 403, 'Réservé aux intervenants');
+
+    const categorieId = Number(req.query.categorieId);
+    if (!Number.isFinite(categorieId)) return refuser(res, 400, 'Catégorie manquante');
+
+    const categorie = await db.queryOne('SELECT id, parent_id FROM ticket_categories WHERE id = ?', [categorieId]);
+    if (!categorie) return refuser(res, 404, 'Catégorie introuvable');
+    const racine = categorie.parent_id ? Number(categorie.parent_id) : Number(categorie.id);
+    const routage = await resoudreRoutage(racine, categorie.parent_id ? categorieId : null);
+
+    const candidats = await db.query(
+      `SELECT DISTINCT u.id, u.first_name, u.last_name, u.email
+         FROM users u
+        WHERE u.is_active = 1
+          AND (u.id IN (SELECT user_id FROM user_ticket_categories
+                         WHERE ticket_categorie_id = ? AND niveau <> 'demandeur')
+               OR u.id IN (SELECT user_id FROM service_members WHERE service_id = ?))
+        ORDER BY u.last_name ASC, u.first_name ASC`,
+      [racine, routage.serviceId ?? -1]
+    );
+
+    const ticket = {
+      categorie_id: racine,
+      sous_categorie_id: categorie.parent_id ? categorieId : null,
+      service_id: routage.serviceId,
+    };
+    const intervenants = [];
+    for (const c of candidats) {
+      if (!(await peutEtreConfieeA(Number(c.id), ticket))) continue;
+      intervenants.push({
+        id: Number(c.id),
+        nom: [c.first_name, c.last_name].filter(Boolean).join(' ').trim() || c.email,
+      });
+    }
+    res.json({ success: true, intervenants });
+  } catch (erreur: any) {
+    console.error('Erreur intervenants possibles :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
 // ------------------------------------------------------------------- la file
 
-function filtresDepuis(req: AuthRequest) {
+/** Les catégories, racines et filles, que le lecteur supervise ; `null` pour l'administrateur. */
+function categoriesSuperviseesDe(ctx: ContexteTickets): number[] | null {
+  if (ctx.role === 'admin') return null;
+  const supervisees = new Set(ctx.categoriesSupervisees);
+  return [...ctx.racines].filter(([, r]) => supervisees.has(r)).map(([id]) => id);
+}
+
+async function filtresDepuis(req: AuthRequest, ctx?: ContexteTickets) {
   const nombre = (v: any) => (v === undefined || v === '' ? null : Number(v));
   const ouverts =
     req.query.ouverts === 'true' ? true : req.query.ouverts === 'false' ? false : null;
+  const aValider = req.query.aValider === 'true';
+
+  // « À valider » ne montre que ce que le lecteur supervise : une clôture qu'on
+  // voit sans pouvoir la valider n'a rien à faire dans cette file.
+  const categoriesSupervisees = aValider
+    ? categoriesSuperviseesDe(ctx ?? (await contexteTickets(req)))
+    : null;
 
   return {
+    aValider,
+    categoriesSupervisees,
     statutId: nombre(req.query.statutId),
     categorieId: nombre(req.query.categorieId),
     sousCategorieId: nombre(req.query.sousCategorieId),
@@ -278,7 +386,7 @@ function filtresDepuis(req: AuthRequest) {
 router.get('/compteurs', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const portee = await porteeTickets(req, 't');
-    const filtres = filtresDepuis(req);
+    const filtres = await filtresDepuis(req);
     const [parStatut, total] = await Promise.all([
       compteursParStatut(portee, filtres),
       compterTickets(portee, { ...filtres, statutId: null }),
@@ -294,7 +402,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const ctx = await contexteTickets(req);
     const portee = await porteeTickets(req, 't');
-    const filtres = filtresDepuis(req);
+    const filtres = await filtresDepuis(req, ctx);
 
     const lignes = await listerTickets(portee, filtres);
     const total = await compterTickets(portee, filtres);
@@ -342,7 +450,14 @@ function presenterLigne(l: any, materielsOk: Set<number>, accesComplet: boolean)
     // Le voisinage donne de quoi reconnaître un doublon, pas de quoi lire.
     description: accesComplet ? l.description : null,
     accesComplet,
-    statut: { id: Number(l.statut_id), nom: l.statut_nom, couleur: l.statut_couleur, ouvert: Boolean(l.statut_ouvert) },
+    statut: {
+      id: Number(l.statut_id),
+      nom: l.statut_nom,
+      couleur: l.statut_couleur,
+      ouvert: Boolean(l.statut_ouvert),
+      // « À valider » : résolue par l'agent, en attente de son superviseur.
+      validation: Boolean(Number(l.statut_validation ?? 0)),
+    },
     categorie: l.categorie_id ? { id: Number(l.categorie_id), nom: l.categorie_nom, couleur: l.categorie_couleur } : null,
     sousCategorie: l.sous_categorie_id ? { id: Number(l.sous_categorie_id), nom: l.sous_categorie_nom } : null,
     site: l.site_id ? { id: Number(l.site_id), nom: l.site_nom } : null,
@@ -541,9 +656,70 @@ router.delete(
 
 // ----------------------------------------------------------------- la demande
 
+/**
+ * Ce qu'on garde d'une saisie de demande.
+ *
+ * Le corps était passé tel quel à `creerTicket` : n'importe quel demandeur
+ * pouvait choisir une catégorie qu'on ne lui propose pas, se désigner un
+ * technicien ou ouvrir au nom d'un autre. La catégorie est donc vérifiée contre
+ * celles qui lui sont proposées, et le routage explicite — service, technicien,
+ * demandeur — n'est retenu que d'un intervenant de la catégorie ; pour les
+ * autres, la catégorie décide, comme le formulaire le promet.
+ */
+async function saisieAutorisee(
+  req: AuthRequest
+): Promise<{ saisie: any } | { refus: string; code: number }> {
+  const saisie = { ...(req.body ?? {}) };
+  const ctx = await contexteTickets(req);
+
+  /*
+   * Les champs du formulaire, tenus aussi par le serveur : un bâtiment exigé
+   * qui manque est refusé, un bâtiment masqué est ignoré. Le matériel masqué ne
+   * l'est pas — une demande ouverte depuis la fiche d'un matériel le porte
+   * légitimement, quelle que soit la catégorie choisie ensuite.
+   */
+  if (saisie.categorieId || saisie.sousCategorieId) {
+    const modes = await modesFormulairePour(ctx.moi, saisie.categorieId, saisie.sousCategorieId);
+    if (modes.siteMode === 'masque') saisie.siteId = null;
+    if (modes.siteMode === 'requis' && !saisie.siteId) {
+      return { refus: 'Indiquez le bâtiment concerné', code: 400 };
+    }
+    if (modes.materielMode === 'requis' && !saisie.objectId) {
+      return { refus: 'Indiquez le matériel concerné', code: 400 };
+    }
+  }
+
+  if (ctx.role === 'admin' || ctx.voitTout) return { saisie };
+
+  const proposees = new Set((await categoriesProposeesA(ctx.moi)).map((c) => c.id));
+  for (const id of [saisie.categorieId, saisie.sousCategorieId]) {
+    if (id === null || id === undefined || id === '') continue;
+    if (!proposees.has(Number(id))) {
+      return { refus: 'Cette catégorie ne fait pas partie de celles qui vous sont proposées', code: 403 };
+    }
+  }
+
+  const routage = await resoudreRoutage(saisie.categorieId, saisie.sousCategorieId);
+  const droits = droitsSurTicket(ctx, {
+    categorie_id: saisie.categorieId ?? null,
+    sous_categorie_id: saisie.sousCategorieId ?? null,
+    service_id: routage.serviceId,
+    technicien_id: null,
+  });
+  if (!droits.intervenant) {
+    delete saisie.serviceId;
+    delete saisie.technicienId;
+    delete saisie.demandeurId;
+  }
+  return { saisie };
+}
+
 router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const id = await creerTicket(req.body ?? {}, req.user!.userId);
+    const autorisee = await saisieAutorisee(req);
+    if ('refus' in autorisee) return refuser(res, autorisee.code, autorisee.refus);
+
+    const id = await creerTicket(autorisee.saisie, req.user!.userId);
     const ticket = await lireTicket(id);
 
     // Après la réponse, jamais avant : un SMTP injoignable ne doit pas empêcher
@@ -585,14 +761,15 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
       });
     }
 
-    const intervenant = await estIntervenant(req, ligne);
+    const droits = await droitsDe(req, ligne);
+    const intervenant = droits.intervenant;
     const [fil, pieces, observateurs] = await Promise.all([
       filUnifie(Number(req.params.id), intervenant),
       piecesDuTicket(req.params.id),
       observateursDe(req.params.id),
     ]);
 
-    res.json({ success: true, ticket, acces, intervenant, fil, pieces, observateurs });
+    res.json({ success: true, ticket, acces, intervenant, droits, fil, pieces, observateurs });
   } catch (erreur: any) {
     console.error('Erreur lecture ticket :', erreur);
     refuser(res, 500, 'Erreur serveur');
@@ -611,12 +788,49 @@ async function exigerAccesComplet(req: AuthRequest, res: Response): Promise<bool
   return false;
 }
 
+/** Les champs qui décident de qui traite la demande, et quand. */
+const CHAMPS_ROUTAGE = ['serviceId', 'technicienId', 'categorieId', 'sousCategorieId', 'priorite'];
+
+/**
+ * Cette personne peut-elle se voir confier cette demande ?
+ *
+ * Un niveau au moins `intervenant` sur la catégorie, ou — sans niveau fin —
+ * l'appartenance au service de la demande. Confier une demande de voirie à
+ * l'informaticien la ferait sortir de la vue de ceux qui la traitent.
+ */
+async function peutEtreConfieeA(userId: number, ticket: any): Promise<boolean> {
+  const personne = await db.queryOne('SELECT role FROM users WHERE id = ? AND is_active = 1', [userId]);
+  if (!personne) return false;
+  const ctx = await contexteTickets({ user: { userId, role: personne.role } } as AuthRequest);
+  const droits = droitsSurTicket(ctx, { ...ticket, technicien_id: null });
+  return droits.intervenant || droits.niveau === 'intervenant';
+}
+
 router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     if (!(await exigerAccesComplet(req, res))) return;
 
     const avant = await lireTicket(req.params.id);
-    await modifierTicket(Number(req.params.id), req.body ?? {}, req.user!.userId);
+    const corps = req.body ?? {};
+    const routageTouche = CHAMPS_ROUTAGE.some((c) => corps[c] !== undefined);
+    if (routageTouche) {
+      if (!(await droitsDe(req, avant)).intervenant) {
+        return refuser(res, 403, 'Seuls les intervenants reclassent ou réaffectent une demande');
+      }
+      if (corps.technicienId !== undefined && corps.technicienId !== null && corps.technicienId !== '') {
+        const apresReclassement = {
+          ...avant,
+          categorie_id: corps.categorieId !== undefined ? corps.categorieId : avant?.categorie_id,
+          sous_categorie_id: corps.sousCategorieId !== undefined ? corps.sousCategorieId : avant?.sous_categorie_id,
+          service_id: corps.serviceId !== undefined ? corps.serviceId : avant?.service_id,
+        };
+        if (!(await peutEtreConfieeA(Number(corps.technicienId), apresReclassement))) {
+          return refuser(res, 400, 'Cette personne n’intervient pas sur cette catégorie de demandes');
+        }
+      }
+    }
+
+    await modifierTicket(Number(req.params.id), corps, req.user!.userId);
     const apres = await lireTicket(req.params.id);
 
     // Confier une demande à quelqu'un est le seul changement qui vaut un avis :
@@ -642,6 +856,15 @@ router.put('/:id/statut', authenticateToken, async (req: AuthRequest, res: Respo
     if (!Number.isFinite(statutId)) return refuser(res, 400, 'Statut manquant');
 
     const avant = await lireTicket(req.params.id);
+    const cible = await lireStatut(statutId);
+    if (!cible) return refuser(res, 400, 'Statut inconnu');
+
+    // Le demandeur suit sa demande, il ne la déclare pas résolue : c'était
+    // possible tant que la seule garde était la lecture complète. Le reste de
+    // la règle — la clôture passe par « Terminer » — est dans le service.
+    const refus = refusChangementStatut(await droitsDe(req, avant), await lireStatut(avant.statut_id), cible);
+    if (refus) return refuser(res, 403, refus);
+
     await changerStatut(Number(req.params.id), statutId, req.user!.userId);
     const apres = await lireTicket(req.params.id);
 
@@ -659,6 +882,168 @@ router.put('/:id/statut', authenticateToken, async (req: AuthRequest, res: Respo
   } catch (erreur: any) {
     if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
     console.error('Erreur changement de statut :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+// ------------------------------------------------------------- la clôture
+
+/** Les renforts d'une saisie, tels que le planning les attend. */
+function participantsDepuis(brut: any): Array<{ userId: number | null; libelle: string | null; minutes: number | null }> {
+  if (!Array.isArray(brut)) return [];
+  return brut.map((p: any) => ({
+    userId: p?.userId === undefined || p?.userId === null || p?.userId === '' ? null : Number(p.userId),
+    libelle: p?.libelle ?? null,
+    minutes: p?.minutes === undefined || p?.minutes === null || p?.minutes === '' ? null : Number(p.minutes),
+  }));
+}
+
+function dureeDepuis(corps: any) {
+  return {
+    jour: String(corps?.jour ?? ''),
+    heureDebut: corps?.heureDebut || null,
+    heureFin: corps?.heureFin || null,
+    minutes: corps?.minutes === undefined || corps?.minutes === null || corps?.minutes === '' ? null : Number(corps.minutes),
+    participants: participantsDepuis(corps?.participants),
+  };
+}
+
+/**
+ * L'intervenant a fini : il dit le temps passé et qui l'a aidé.
+ *
+ * La tâche part au planning ; la demande est résolue si l'agent est autonome
+ * sur la catégorie, sinon elle passe « À valider ». Voir `ticketsCloture`.
+ */
+router.post('/:id/terminer', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const avant = await lireTicket(req.params.id);
+    const droits = await droitsDe(req, avant);
+    if (!droits.peutTerminer) return refuser(res, 403, 'Seuls les intervenants terminent une demande');
+
+    const corps = req.body ?? {};
+    const { statut, tacheId } = await terminerTicket(
+      Number(req.params.id),
+      {
+        ...dureeDepuis(corps),
+        categorieId: corps.categorieId ? Number(corps.categorieId) : null,
+        titulaireId: corps.titulaireId ? Number(corps.titulaireId) : null,
+        commentaire: corps.commentaire ?? null,
+      },
+      { id: Number(req.user!.userId), superviseur: droits.superviseur, autonome: droits.autonome }
+    );
+
+    const apres = await lireTicket(req.params.id);
+    if (corps.commentaire) notifierMessage(Number(req.params.id), req.user!.userId, String(corps.commentaire), false);
+    notifierStatut(Number(req.params.id), req.user!.userId, avant?.statut_nom ?? null, statut.nom, Boolean(apres?.ferme_at));
+    if (statut.validation) notifierAValider(Number(req.params.id), req.user!.userId);
+
+    res.json({ success: true, statut, tacheId, ticket: apres });
+  } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
+    if (estViolationCleEtrangere(erreur)) return refuser(res, 400, REFUS_REFERENCE);
+    console.error('Erreur clôture de demande :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Le superviseur valide la clôture, après avoir corrigé le temps s'il le faut. */
+router.post('/:id/valider', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const avant = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, avant)).peutValider) {
+      return refuser(res, 403, 'Seul un superviseur de la catégorie valide une clôture');
+    }
+
+    const corps = req.body ?? {};
+    const corrections = corps.corrections
+      ? {
+          ...dureeDepuis(corps.corrections),
+          titulaireId: corps.corrections.titulaireId ? Number(corps.corrections.titulaireId) : null,
+        }
+      : null;
+    const statut = await validerTicket(Number(req.params.id), corrections, corps.commentaire ?? null, req.user!.userId);
+
+    if (corps.commentaire) notifierMessage(Number(req.params.id), req.user!.userId, String(corps.commentaire), false);
+    notifierStatut(Number(req.params.id), req.user!.userId, avant?.statut_nom ?? null, statut.nom, true);
+
+    res.json({ success: true, statut, ticket: await lireTicket(req.params.id) });
+  } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
+    console.error('Erreur validation de clôture :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Le superviseur renvoie la demande à l'agent, avec ce qui reste à faire. */
+router.post('/:id/renvoyer', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const avant = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, avant)).peutValider) {
+      return refuser(res, 403, 'Seul un superviseur de la catégorie renvoie une clôture');
+    }
+
+    const motif = String(req.body?.motif ?? '');
+    const statut = await renvoyerTicket(Number(req.params.id), motif, req.user!.userId);
+
+    notifierMessage(Number(req.params.id), req.user!.userId, motif, false);
+    notifierStatut(Number(req.params.id), req.user!.userId, avant?.statut_nom ?? null, statut.nom, false);
+
+    res.json({ success: true, statut, ticket: await lireTicket(req.params.id) });
+  } catch (erreur: any) {
+    if (erreur instanceof SaisieInvalide) return refuser(res, 400, erreur.message);
+    console.error('Erreur renvoi de clôture :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/** Le temps passé sur la demande, et la tâche de sa dernière clôture. */
+router.get('/:id/cloture', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const ligne = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, ligne)).intervenant) return refuser(res, 403, 'Réservé aux intervenants');
+    res.json({ success: true, ...(await lireCloture(Number(req.params.id))) });
+  } catch (erreur: any) {
+    console.error('Erreur lecture de clôture :', erreur);
+    refuser(res, 500, 'Erreur serveur');
+  }
+});
+
+/**
+ * Qui peut figurer parmi les renforts d'une clôture.
+ *
+ * Les personnes qui interviennent quelque part — un niveau d'intervenant, un
+ * service, un rôle de terrain — et pas l'annuaire entier : `/users/annuaire`
+ * est réservé au terrain et refuserait un référent de rôle `user`. Un renfort
+ * extérieur se saisit en libellé, comme au planning.
+ */
+router.get('/:id/renforts-possibles', authenticateToken, async (req: AuthRequest, res: Response) => {
+  try {
+    if (!(await exigerAccesComplet(req, res))) return;
+    const ligne = await lireTicket(req.params.id);
+    if (!(await droitsDe(req, ligne)).intervenant) return refuser(res, 403, 'Réservé aux intervenants');
+
+    const personnes = await db.query(
+      `SELECT u.id, u.first_name, u.last_name, u.email
+         FROM users u
+        WHERE u.is_active = 1
+          AND (u.role IN ('admin', 'supervisor', 'agent')
+               OR u.id IN (SELECT user_id FROM service_members)
+               OR u.id IN (SELECT user_id FROM user_ticket_categories WHERE niveau <> 'demandeur'))
+        ORDER BY u.last_name ASC, u.first_name ASC`
+    );
+    res.json({
+      success: true,
+      personnes: personnes.map((p: any) => ({
+        id: Number(p.id),
+        nom: [p.first_name, p.last_name].filter(Boolean).join(' ').trim() || p.email,
+      })),
+    });
+  } catch (erreur: any) {
+    console.error('Erreur renforts possibles :', erreur);
     refuser(res, 500, 'Erreur serveur');
   }
 });

@@ -42,6 +42,8 @@ export interface Statut {
   defaut: boolean;
   final: boolean;
   systeme: boolean;
+  /** « À valider » : résolue par un agent, en attente de son superviseur. */
+  validation: boolean;
   actif: boolean;
 }
 
@@ -57,6 +59,7 @@ function enStatut(l: any): Statut {
     defaut: Boolean(l.is_defaut),
     final: Boolean(l.is_final),
     systeme: Boolean(l.is_systeme),
+    validation: Boolean(l.is_validation),
     actif: Boolean(l.is_active),
   };
 }
@@ -89,6 +92,44 @@ export async function statutParDefaut(): Promise<Statut | null> {
     (await db.queryOne('SELECT * FROM ticket_statuts WHERE is_ouvert = 1 AND is_active = 1 ORDER BY ordre ASC')) ??
     (await db.queryOne('SELECT * FROM ticket_statuts ORDER BY ordre ASC'));
   return l ? enStatut(l) : null;
+}
+
+/**
+ * Les trois statuts dont la clôture a besoin, repérés par leurs drapeaux.
+ *
+ * Jamais par leur nom : la commune renomme « Résolu » en « Terminé » si elle
+ * veut. Chacun a un repli, pour qu'une base réglée à la main — un drapeau
+ * décoché par mégarde — ne bloque pas la clôture.
+ */
+export async function statutValidation(): Promise<Statut | null> {
+  const l = await db.queryOne(
+    'SELECT * FROM ticket_statuts WHERE is_validation = 1 AND is_active = 1 ORDER BY ordre ASC, id ASC'
+  );
+  return l ? enStatut(l) : null;
+}
+
+/** Le statut qui clôt une demande traitée : final, système, et pas « À valider ». */
+export async function statutResolution(): Promise<Statut | null> {
+  const l =
+    (await db.queryOne(
+      `SELECT * FROM ticket_statuts
+        WHERE is_final = 1 AND is_systeme = 1 AND is_validation = 0 AND is_active = 1
+        ORDER BY ordre ASC, id ASC`
+    )) ??
+    (await db.queryOne(
+      'SELECT * FROM ticket_statuts WHERE is_final = 1 AND is_validation = 0 ORDER BY ordre ASC, id ASC'
+    ));
+  return l ? enStatut(l) : null;
+}
+
+/** Où repart une demande renvoyée à l'agent : le premier état ouvert après l'ouverture. */
+export async function statutReprise(): Promise<Statut | null> {
+  const l = await db.queryOne(
+    `SELECT * FROM ticket_statuts
+      WHERE is_ouvert = 1 AND is_defaut = 0 AND is_validation = 0 AND is_active = 1
+      ORDER BY ordre ASC, id ASC`
+  );
+  return l ? enStatut(l) : statutParDefaut();
 }
 
 /** Combien de demandes portent ce statut — une suppression le regarde. */
@@ -364,6 +405,72 @@ export async function materielAutorisePour(
     return Boolean(ligne.materiel_autorise);
   }
   return true;
+}
+
+// ------------------------------------------------ le formulaire, par personne
+
+export function estSiteMode(v: unknown): v is SiteMode {
+  return typeof v === 'string' && (SITE_MODES as readonly string[]).includes(v);
+}
+export function estMaterielMode(v: unknown): v is MaterielMode {
+  return typeof v === 'string' && (MATERIEL_MODES as readonly string[]).includes(v);
+}
+
+/** Le réglage propre à une personne ; `null` partout veut dire « la catégorie décide ». */
+export async function reglagesFormulaireDe(
+  userId: number | string
+): Promise<{ siteMode: SiteMode | null; materielMode: MaterielMode | null }> {
+  // La table n'existe qu'après la migration 047 : son absence vaut « rien ».
+  const ligne = await db
+    .queryOne('SELECT site_mode, materiel_mode FROM user_ticket_reglages WHERE user_id = ?', [userId])
+    .catch(() => null);
+  return {
+    siteMode: estSiteMode(ligne?.site_mode) ? ligne.site_mode : null,
+    materielMode: estMaterielMode(ligne?.materiel_mode) ? ligne.materiel_mode : null,
+  };
+}
+
+/**
+ * Ce que le formulaire de demande montre à cette personne, pour cette
+ * catégorie : le seul endroit où la préséance est écrite.
+ *
+ * **Le matériel**, dans l'ordre :
+ *   1. une catégorie sans matériel (`aucun`) n'en propose à personne ;
+ *   2. l'exception de la personne sur la catégorie (`materiel_autorise = 0`)
+ *      le retire ;
+ *   3. sinon le réglage de la personne, s'il y en a un ;
+ *   4. sinon celui de la catégorie ;
+ *   5. un matériel **exigé** alors qu'aucun ne lui est attribué redescend à
+ *      `aucun` — sans quoi elle ne pourrait tout simplement pas envoyer.
+ *
+ * **Le bâtiment** : le réglage de la personne, sinon celui de la catégorie —
+ * sauf qu'une catégorie qui **exige** un bâtiment l'emporte sur une personne
+ * pour qui on l'a masqué : une demande de voirie sans lieu ne se traite pas.
+ * Le cas « un seul bâtiment », qui masque le champ en le pré-remplissant, reste
+ * celui du formulaire (`siteImpose`).
+ */
+export async function modesFormulairePour(
+  userId: number | string,
+  categorieId: number | null | undefined,
+  sousCategorieId: number | null | undefined,
+  routage?: Routage
+): Promise<{ siteMode: SiteMode; materielMode: MaterielMode }> {
+  const r = routage ?? (await resoudreRoutage(categorieId, sousCategorieId));
+  const perso = await reglagesFormulaireDe(userId);
+
+  let materielMode: MaterielMode = 'aucun';
+  if (await materielAutorisePour(userId, categorieId, r)) {
+    materielMode = perso.materielMode ?? r.materielMode;
+    if (materielMode === 'requis') {
+      const proposes = await materielsDe(userId, await filtreMaterielDe(categorieId, sousCategorieId));
+      if (proposes.length === 0) materielMode = 'aucun';
+    }
+  }
+
+  const siteMode: SiteMode =
+    r.siteMode === 'requis' && perso.siteMode === 'masque' ? 'requis' : perso.siteMode ?? r.siteMode;
+
+  return { siteMode, materielMode };
 }
 
 /**

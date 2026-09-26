@@ -186,7 +186,7 @@ export interface User {
   email: string | null
   firstName?: string
   lastName?: string
-  role: 'admin' | 'supervisor' | 'agent' | 'user'
+  role: 'admin' | 'supervisor' | 'agent' | 'user' | 'service'
   avatar?: string
   isActive: boolean
   /** Faux pour une fiche d'annuaire : elle est désignable, jamais connectée. */
@@ -2505,6 +2505,8 @@ export interface StatutTicket {
   defaut: boolean
   final: boolean
   systeme: boolean
+  /** « À valider » : on y arrive par *Terminer*, jamais par le sélecteur. */
+  validation?: boolean
   actif: boolean
 }
 
@@ -2561,7 +2563,8 @@ export interface Ticket {
   description: string | null
   /** Faux quand la demande n'est visible qu'au titre du bâtiment. */
   accesComplet: boolean
-  statut: { id: number; nom: string; couleur: string | null; ouvert: boolean }
+  /** `validation` : « À valider », résolue par un agent et en attente de son superviseur. */
+  statut: { id: number; nom: string; couleur: string | null; ouvert: boolean; validation?: boolean }
   categorie: { id: number; nom: string; couleur: string | null } | null
   sousCategorie: { id: number; nom: string } | null
   site: { id: number; nom: string } | null
@@ -2589,6 +2592,8 @@ export interface FiltresTickets {
   demandeurId?: number | null
   objectId?: number | null
   ouverts?: boolean | null
+  /** Les clôtures qui attendent ma validation. */
+  aValider?: boolean | null
   recherche?: string | null
   limite?: number
   depuis?: number
@@ -2603,6 +2608,99 @@ function parametresTickets(filtres: Record<string, unknown>): string {
   return p.toString()
 }
 
+/** Ce qu'une personne fait d'une catégorie de demandes, du moins au plus. */
+export type NiveauTicket = 'demandeur' | 'intervenant' | 'intervenant_categorie' | 'superviseur'
+
+export const NIVEAUX_TICKET: { valeur: NiveauTicket; libelle: string; aide: string }[] = [
+  { valeur: 'demandeur', libelle: 'Demandeur', aide: 'Demande dans cette catégorie, suit ses demandes' },
+  { valeur: 'intervenant', libelle: 'Intervenant (ses tickets)', aide: 'Référent : ne voit que ce qu’on lui confie' },
+  {
+    valeur: 'intervenant_categorie',
+    libelle: 'Intervenant (toute la catégorie)',
+    aide: 'Voit et traite toutes les demandes de la catégorie',
+  },
+  { valeur: 'superviseur', libelle: 'Superviseur', aide: 'Tout cela, et valide ce que les agents clôturent' },
+]
+
+/** Un module du menu, et ce qu'en voit une personne. */
+export interface ModuleVisible {
+  pluginId: number
+  slug: string
+  nom: string
+  /** Ce que le rôle donne, faute de réglage individuel. */
+  parRole: boolean
+  /** `null` : le rôle décide. */
+  individuel: boolean | null
+  effectif: boolean
+}
+
+export interface CategorieDroits {
+  categorieId: number
+  nom: string
+  couleur: string | null
+  /** `null` : catégorie non attribuée. */
+  niveau: NiveauTicket | null
+  peutCloturer: boolean
+  materielAutorise: boolean | null
+  proposeMateriel: boolean
+  aUnSuperviseur: boolean
+}
+
+/** Tous les droits d'une personne, lus et écrits d'un bloc. */
+export interface DroitsPersonne {
+  personne: { id: number; nom: string; role: string }
+  modules: ModuleVisible[]
+  tickets: {
+    categories: CategorieDroits[]
+    sites: RattachementSite[]
+    materiels: { objectId: number; nom: string; reference: string | null }[]
+    formulaire: { siteMode: string | null; materielMode: string | null }
+  }
+  avertissements: string[]
+}
+
+export const droitsApi = {
+  lire: (userId: number) => api.get<{ success: boolean } & DroitsPersonne>(`/users/${userId}/droits`),
+  enregistrer: (
+    userId: number,
+    data: {
+      modules?: { pluginId: number; acces: boolean | null }[]
+      categories?: { categorieId: number; niveau: NiveauTicket; peutCloturer: boolean; materielAutorise: boolean | null }[]
+      sites?: RattachementSite[]
+      formulaire?: { siteMode: string | null; materielMode: string | null }
+    }
+  ) => api.put<{ success: boolean; message: string } & DroitsPersonne>(`/users/${userId}/droits`, data),
+}
+
+/** Ce que le lecteur peut faire d'une demande, calculé par le serveur. */
+export interface DroitsTicket {
+  niveau: NiveauTicket | null
+  intervenant: boolean
+  superviseur: boolean
+  /** Sa clôture est définitive ; sinon elle passe « À valider ». */
+  autonome: boolean
+  peutChangerStatut: boolean
+  peutTerminer: boolean
+  peutValider: boolean
+}
+
+/** Une durée saisie : des horaires, ou des minutes, et les renforts. */
+export interface SaisieDureeTicket {
+  jour: string
+  heureDebut?: string | null
+  heureFin?: string | null
+  minutes?: number | null
+  participants?: { userId: number | null; libelle: string | null; minutes: number | null }[]
+  titulaireId?: number | null
+}
+
+/** Le temps passé sur une demande, lu au planning. */
+export interface ClotureTicket {
+  tacheCloture: TachePlanning | null
+  taches: TachePlanning[]
+  minutes: number
+}
+
 export const ticketApi = {
   permissions: () =>
     api.get<{
@@ -2610,8 +2708,18 @@ export const ticketApi = {
       voitTout: boolean
       services: number[]
       sitesPartages: number[]
+      niveaux: { categorieId: number; niveau: NiveauTicket; peutCloturer: boolean }[]
       estIntervenant: boolean
+      estSuperviseur: boolean
+      /** Les clôtures qui attendent ma validation. */
+      aValider: number
     }>('/tickets/permissions'),
+
+  /** À qui l'on peut confier une demande de cette catégorie. */
+  intervenants: (categorieId: number) =>
+    api.get<{ success: boolean; intervenants: { id: number; nom: string }[] }>(
+      `/tickets/intervenants?categorieId=${categorieId}`
+    ),
 
   /** Tout ce dont le formulaire a besoin, en un seul appel. */
   formulaire: () =>
@@ -2662,6 +2770,7 @@ export const ticketApi = {
       ticket: Ticket
       acces: 'complet' | 'voisinage'
       intervenant?: boolean
+      droits?: DroitsTicket
       fil: LigneFilTicket[]
       pieces: any[]
       observateurs: any[]
@@ -2674,6 +2783,19 @@ export const ticketApi = {
     api.put<{ success: boolean }>(`/tickets/${id}`, data),
   changerStatut: (id: number, statutId: number) =>
     api.put<{ success: boolean }>(`/tickets/${id}/statut`, { statutId }),
+
+  /** Clore en disant le temps passé et qui a aidé : la tâche part au planning. */
+  terminer: (id: number, data: SaisieDureeTicket & { categorieId?: number | null; commentaire?: string | null }) =>
+    api.post<{ success: boolean; statut: StatutTicket; tacheId: number }>(`/tickets/${id}/terminer`, data),
+  /** Le superviseur valide, après avoir corrigé le temps s'il le faut. */
+  valider: (id: number, data: { corrections?: SaisieDureeTicket | null; commentaire?: string | null }) =>
+    api.post<{ success: boolean; statut: StatutTicket }>(`/tickets/${id}/valider`, data),
+  renvoyer: (id: number, motif: string) =>
+    api.post<{ success: boolean; statut: StatutTicket }>(`/tickets/${id}/renvoyer`, { motif }),
+  cloture: (id: number | string) =>
+    api.get<{ success: boolean } & ClotureTicket>(`/tickets/${id}/cloture`),
+  renfortsPossibles: (id: number | string) =>
+    api.get<{ success: boolean; personnes: { id: number; nom: string }[] }>(`/tickets/${id}/renforts-possibles`),
   supprimer: (id: number) => api.delete<{ success: boolean }>(`/tickets/${id}`),
 
   fil: (id: number | string) => api.get<{ success: boolean; fil: LigneFilTicket[] }>(`/tickets/${id}/fil`),
@@ -2737,7 +2859,12 @@ export const ticketReferentielApi = {
     api.get<{
       success: boolean
       sites: RattachementSite[]
-      categories: { categorieId: number; materielAutorise: boolean | null }[]
+      categories: {
+        categorieId: number
+        niveau: NiveauTicket
+        peutCloturer: boolean
+        materielAutorise: boolean | null
+      }[]
       materiels: { objectId: number; nom: string; reference: string | null }[]
     }>(`/tickets/referentiel/utilisateurs/${userId}`),
   definirRattachements: (userId: number, data: Record<string, unknown>) =>

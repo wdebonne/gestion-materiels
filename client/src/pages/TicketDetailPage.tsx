@@ -15,6 +15,9 @@ import {
   Clock,
   Trash2,
   Eye,
+  CheckCircle2,
+  Hourglass,
+  Timer,
 } from 'lucide-react'
 import {
   ticketApi,
@@ -31,6 +34,8 @@ import {
   TextArea,
 } from '@/components/ui'
 import FileUpload, { type UploadedFile } from '@/components/ui/FileUpload'
+import TerminerTicket from '@/components/tickets/TerminerTicket'
+import { formaterDuree, jourEnFrancais } from '@/lib/duree'
 
 /**
  * La fiche d'une demande.
@@ -97,6 +102,7 @@ export default function TicketDetailPage() {
   const [message, setMessage] = useState('')
   const [interne, setInterne] = useState(false)
   const [pieces, setPieces] = useState<UploadedFile[]>([])
+  const [cloture, setCloture] = useState<null | 'terminer' | 'valider'>(null)
 
   const { data, isLoading } = useQuery({
     queryKey: ['tickets', 'fiche', id],
@@ -132,6 +138,33 @@ export default function TicketDetailPage() {
       toast.error(erreur?.response?.data?.message ?? "Le message n'a pas pu être envoyé"),
   })
 
+  // Seuls les intervenants réaffectent ; la liste vient du serveur, qui ne
+  // propose que les personnes à qui il accepterait de confier la demande.
+  const categorieId = data?.ticket.categorie?.id ?? null
+  const peutReaffecter = Boolean(data?.droits?.intervenant && categorieId)
+  const { data: intervenants } = useQuery({
+    queryKey: ['tickets', 'intervenants', categorieId],
+    queryFn: async () => (await ticketApi.intervenants(categorieId!)).data.intervenants,
+    enabled: peutReaffecter,
+  })
+
+  const reaffectation = useMutation({
+    mutationFn: (technicienId: number | null) => ticketApi.modifier(Number(id), { technicienId }),
+    onSuccess: () => {
+      toast.success('Demande réaffectée')
+      queryClient.invalidateQueries({ queryKey: ['tickets'] })
+    },
+    onError: (erreur: any) =>
+      toast.error(erreur?.response?.data?.message ?? 'La demande n’a pas pu être réaffectée'),
+  })
+
+  // Le temps passé, lu au planning : c'est là qu'il vit, pas sur la demande.
+  const { data: temps } = useQuery({
+    queryKey: ['tickets', 'cloture', Number(id)],
+    queryFn: async () => (await ticketApi.cloture(id!)).data,
+    enabled: Boolean(data?.droits?.intervenant),
+  })
+
   const changementStatut = useMutation({
     mutationFn: (statutId: number) => ticketApi.changerStatut(Number(id), statutId),
     onSuccess: () => {
@@ -152,6 +185,23 @@ export default function TicketDetailPage() {
   }
 
   const t = data.ticket
+  const droits = data.droits
+  const statutActuel = referentiel?.statuts.find((s) => s.id === t.statut.id)
+  const enValidation = Boolean(t.statut.validation)
+  const close = Boolean(statutActuel?.final)
+
+  /*
+   * Les états que le sélecteur propose : ceux que le serveur accepterait.
+   * « À valider » n'y figure jamais — on y arrive par *Terminer* — et la
+   * résolution sans temps passé reste au superviseur.
+   */
+  const statutsProposes = (referentiel?.statuts ?? []).filter((s) => {
+    if (s.id === t.statut.id) return true
+    if (s.validation) return false
+    if (s.final && s.systeme && !droits?.superviseur) return false
+    if (s.final && !droits?.superviseur && !droits?.autonome) return false
+    return true
+  })
 
   return (
     <div className="space-y-6">
@@ -227,17 +277,56 @@ export default function TicketDetailPage() {
             </div>
 
             <div className="sm:w-56 shrink-0 space-y-3">
-              <Select
-                label="Statut"
-                value={t.statut.id}
-                onChange={(e: any) => changementStatut.mutate(Number(e.target.value))}
-                options={(referentiel?.statuts ?? []).map((s) => ({
-                  value: String(s.id),
-                  label: s.nom,
-                }))}
-              />
+              {/*
+                Le demandeur suit sa demande, il ne la déclare pas résolue :
+                le serveur refuse, l'écran ne propose donc pas.
+              */}
+              {droits?.peutChangerStatut && (!enValidation || droits.peutValider) ? (
+                <Select
+                  label="Statut"
+                  value={t.statut.id}
+                  onChange={(e: any) => changementStatut.mutate(Number(e.target.value))}
+                  options={statutsProposes.map((s) => ({
+                    value: String(s.id),
+                    label: s.nom,
+                  }))}
+                />
+              ) : (
+                <div>
+                  <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Statut</p>
+                  <Badge variant="default">
+                    {/* Pour le demandeur, c'est réglé : la relecture est interne. */}
+                    {enValidation && !droits?.intervenant ? 'Résolue — en cours de validation' : t.statut.nom}
+                  </Badge>
+                </div>
+              )}
+              {droits?.peutTerminer && !enValidation && !close && (
+                <Button
+                  className="w-full"
+                  icon={<CheckCircle2 className="w-4 h-4" />}
+                  onClick={() => setCloture('terminer')}
+                >
+                  Terminer
+                </Button>
+              )}
+              {peutReaffecter && (
+                <Select
+                  label="Confiée à"
+                  value={t.technicien?.id ?? ''}
+                  onChange={(e: any) => reaffectation.mutate(e.target.value ? Number(e.target.value) : null)}
+                  options={[
+                    { value: '', label: 'Non affectée' },
+                    // L'actuel reste dans la liste même s'il n'y figurerait plus :
+                    // sans lui, le Select afficherait un autre nom que le vrai.
+                    ...(t.technicien && !(intervenants ?? []).some((i) => i.id === t.technicien!.id)
+                      ? [{ value: String(t.technicien.id), label: t.technicien.nom }]
+                      : []),
+                    ...(intervenants ?? []).map((i) => ({ value: String(i.id), label: i.nom })),
+                  ]}
+                />
+              )}
               <div className="text-xs text-gray-500 space-y-1">
-                {t.technicien ? (
+                {peutReaffecter ? null : t.technicien ? (
                   <p>Confiée à {t.technicien.nom}</p>
                 ) : (
                   <p className="italic">Non affectée</p>
@@ -251,6 +340,73 @@ export default function TicketDetailPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* ------------------------------------------------------ à valider */}
+      {enValidation && droits?.intervenant && (
+        <Card>
+          <CardBody className="flex flex-col sm:flex-row sm:items-center gap-3 text-sm">
+            <Hourglass className="w-5 h-5 shrink-0 text-teal-600" />
+            <p className="flex-1 text-gray-700 dark:text-gray-300">
+              {droits.peutValider
+                ? 'Un agent a terminé cette demande : relisez le temps passé et les personnes qui ont travaillé, puis validez.'
+                : 'Terminée, cette demande attend la validation d’un superviseur de la catégorie.'}
+            </p>
+            {droits.peutValider && (
+              <Button icon={<CheckCircle2 className="w-4 h-4" />} onClick={() => setCloture('valider')}>
+                Contrôler et valider
+              </Button>
+            )}
+          </CardBody>
+        </Card>
+      )}
+
+      {/* ---------------------------------------------------- temps passé */}
+      {temps && temps.taches.length > 0 && (
+        <Card>
+          <CardBody className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-2 font-semibold text-gray-900 dark:text-white">
+                <Timer className="w-4 h-4" /> Temps passé
+              </h2>
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                {formaterDuree(temps.minutes)}
+              </span>
+            </div>
+            <ul className="divide-y divide-gray-100 dark:divide-gray-700 text-sm">
+              {temps.taches.map((tache) => (
+                <li key={tache.id} className="py-2 flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="text-gray-700 dark:text-gray-300">
+                    {jourEnFrancais(tache.jour, { day: 'numeric', month: 'long' })} — {tache.titulaire.nom}
+                    {tache.participants.length > 0 && (
+                      <span className="text-gray-500">
+                        {' '}avec{' '}
+                        {tache.participants
+                          .map((p) => `${p.personne?.nom ?? p.libelle} (${formaterDuree(p.minutes)})`)
+                          .join(', ')}
+                      </span>
+                    )}
+                  </span>
+                  <span className="text-gray-500">
+                    {formaterDuree(tache.minutes)}
+                    {tache.minutesMobilisees !== tache.minutes &&
+                      ` · ${formaterDuree(tache.minutesMobilisees)} mobilisées`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </CardBody>
+        </Card>
+      )}
+
+      {cloture && droits && (
+        <TerminerTicket
+          ticket={t}
+          droits={droits}
+          mode={cloture}
+          ouvert
+          onClose={() => setCloture(null)}
+        />
+      )}
 
       {/* Visible au titre du bâtiment : on explique pourquoi c'est amputé. */}
       {data.acces === 'voisinage' && (

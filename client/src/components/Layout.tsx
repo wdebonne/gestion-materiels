@@ -1,4 +1,4 @@
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth.store'
 import { usePermissions } from '@/lib/permissions'
 import { useSettingsStore } from '@/stores/settings.store'
@@ -109,13 +109,45 @@ export default function Layout() {
   })
 
   // Récupérer les plugins de type menu
-  const { data: menuPlugins = [] } = useQuery({
+  const { data: menuPlugins = [], isSuccess: menuCharge } = useQuery({
     queryKey: ['menuPlugins'],
     queryFn: async () => {
       const response = await api.get('/plugins/menu')
       return response.data
     }
   })
+
+  /*
+   * Le demandeur, et rien d'autre.
+   *
+   * « Si je coche Demandeur pour quelqu'un, qu'il n'ait accès qu'aux tickets,
+   * pour ne pas le perdre dans des onglets qui lui sont inutiles. » Le bouton
+   * « Demandeur » de ses droits ne lui laisse que le module Tickets : quand
+   * c'est tout ce que le menu lui rend, l'application se réduit à ses
+   * demandes — ni tableau de bord, ni catégories, ni alertes, ni scanner — et
+   * l'accueil l'y emmène directement.
+   *
+   * Déduit du menu plutôt que d'un réglage de plus : c'est la même décision,
+   * prise au même endroit, et un rôle réglé pour ne voir que les tickets en
+   * profite aussi. Tant que le menu n'est pas chargé, rien ne change, pour ne
+   * pas faire clignoter l'interface.
+   */
+  const demandeurSeul =
+    menuCharge &&
+    user?.role !== 'admin' &&
+    !isService &&
+    menuPlugins.length === 1 &&
+    menuPlugins[0]?.slug === 'tickets'
+
+  const location = useLocation()
+  useEffect(() => {
+    if (!demandeurSeul) return
+    // Ses demandes, sa fiche, et le matériel qu'une demande lui fait ouvrir.
+    const permis = ['/tickets', '/profile', '/objects/']
+    if (!permis.some((debut) => location.pathname.startsWith(debut))) {
+      navigate('/tickets', { replace: true })
+    }
+  }, [demandeurSeul, location.pathname, navigate])
 
   // Récupérer les permissions pour le module Suivi
   const { data: trackingPermissions } = useQuery({
@@ -189,8 +221,15 @@ export default function Layout() {
     { name: t('nav.dashboard'), href: '/', icon: Home },
     { name: t('nav.categories'), href: '/categories', icon: FolderOpen },
     { name: t('nav.alerts'), href: '/alerts', icon: Bell, badge: alertsCount },
-    { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
   ]
+
+  // Les manifestations sont un module comme les autres : masquées à qui on les
+  // a retirées (Paramètres › Utilisateurs › Droits) — un demandeur qui n'a
+  // besoin que des tickets. Tant que le menu n'est pas chargé, l'entrée reste,
+  // pour ne pas la voir apparaître et disparaître à chaque ouverture.
+  if (!menuCharge || menuPlugins.some((p: any) => p.slug === 'manifestations')) {
+    baseNavigation.push({ name: 'Manifestations', href: '/manifestations', icon: CalendarDays })
+  }
 
   // Ajouter le menu Suivi si l'utilisateur a les permissions
   if (trackingPermissions?.canView) {
@@ -224,7 +263,9 @@ export default function Layout() {
   // dans le cloisonnement ne suffit donc pas, il faut aussi l'ajouter là. Un
   // service partenaire qui traite des demandes sans voir l'entrée « Tickets »
   // aurait une API accessible et aucun bouton pour y aller.
-  const navigation = isService
+  const navigation = demandeurSeul
+    ? [{ name: 'Mes demandes', href: '/tickets', icon: LifeBuoy }]
+    : isService
     ? [
         { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
         { name: 'Tickets', href: '/tickets', icon: LifeBuoy },
@@ -288,6 +329,7 @@ export default function Layout() {
               C'est le geste le plus direct sur le terrain — viser l'étiquette
               du matériel plutôt que le chercher dans l'arborescence.
             */}
+            {!demandeurSeul && (
             <NavLink
               to="/scan"
               aria-label="Scanner une étiquette"
@@ -301,6 +343,7 @@ export default function Layout() {
             >
               <QrCode className="w-6 h-6" />
             </NavLink>
+            )}
 
             {/* User menu */}
             <div className="relative">
@@ -439,6 +482,7 @@ export default function Layout() {
       <MobileBottomBar
         onOuvrirRecherche={() => setRechercheOuverte(true)}
         nombreAlertes={alertsCount}
+        demandeurSeul={demandeurSeul}
       />
 
       <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />

@@ -570,6 +570,39 @@ const DEFAULT_EMAIL_TEMPLATES = [
     description: 'Envoyé quand une demande est confiée à quelqu’un ou à un service'
   },
   {
+    name: 'ticket_a_valider',
+    subject: '✅ Clôture à valider — {{titre}}',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    <div style="background: #0d9488; color: white; padding: 20px; text-align: center;">
+      <h1 style="margin: 0; font-size: 20px;">Une clôture attend votre validation</h1>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>{{#if technicien}}{{technicien}} a terminé{{else}}Un agent a terminé{{/if}} cette demande. Relisez le temps passé et les personnes qui ont travaillé, corrigez-les au besoin, puis validez — ou renvoyez-la avec ce qui reste à faire.</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;">
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Référence</td><td style="padding: 4px 8px;"><strong>{{reference}}</strong></td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demande</td><td style="padding: 4px 8px;">{{titre}}</td></tr>
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Catégorie</td><td style="padding: 4px 8px;">{{categorie}}{{#if sous_categorie}} › {{sous_categorie}}{{/if}}</td></tr>
+        {{#if batiment}}<tr><td style="padding: 4px 8px; color: #6b7280;">Bâtiment</td><td style="padding: 4px 8px;">{{batiment}}</td></tr>{{/if}}
+        <tr><td style="padding: 4px 8px; color: #6b7280;">Demandeur</td><td style="padding: 4px 8px;">{{demandeur}}</td></tr>
+      </table>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{lien}}" style="display: inline-block; padding: 12px 24px; background: #0d9488; color: white; text-decoration: none; border-radius: 4px;">Contrôler et valider</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['reference', 'titre', 'categorie', 'sous_categorie', 'batiment', 'demandeur', 'technicien', 'lien']),
+    description: 'Envoyé aux superviseurs d’une catégorie quand un agent non autonome termine une demande'
+  },
+  {
     name: 'ticket_message',
     subject: '💬 Nouveau message — {{titre}}',
     body: `<!DOCTYPE html>
@@ -1138,6 +1171,9 @@ const DEFAULT_PLUGINS = [
         { nom: 'En cours', couleur: 'blue', ouvert: true, defaut: false, final: false, systeme: false },
         { nom: 'En attente de retour', couleur: 'amber', ouvert: true, defaut: false, final: false, systeme: false },
         { nom: 'En commande', couleur: 'purple', ouvert: true, defaut: false, final: false, systeme: false },
+        // Résolue par un agent qui n'est pas autonome : attend son superviseur.
+        // Voir la migration 046.
+        { nom: 'À valider', couleur: 'teal', ouvert: false, defaut: false, final: false, systeme: true, validation: true },
         { nom: 'Résolu', couleur: 'green', ouvert: false, defaut: false, final: true, systeme: true },
         { nom: 'Refusé', couleur: 'gray', ouvert: false, defaut: false, final: true, systeme: false }
       ],
@@ -1286,8 +1322,8 @@ async function semerReferentielTickets(): Promise<void> {
 
     for (const [rang, statut] of (config.statuts_initiaux ?? []).entries()) {
       await db.execute(
-        `INSERT INTO ticket_statuts (nom, slug, couleur, ordre, is_ouvert, is_defaut, is_final, is_systeme, is_active, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        `INSERT INTO ticket_statuts (nom, slug, couleur, ordre, is_ouvert, is_defaut, is_final, is_systeme, is_validation, is_active, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
         [
           statut.nom,
           enSlug(statut.nom),
@@ -1297,6 +1333,7 @@ async function semerReferentielTickets(): Promise<void> {
           statut.defaut ? 1 : 0,
           statut.final ? 1 : 0,
           statut.systeme ? 1 : 0,
+          statut.validation ? 1 : 0,
           maintenant,
           maintenant,
         ]

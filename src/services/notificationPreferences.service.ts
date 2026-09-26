@@ -50,6 +50,7 @@ export type EvenementNotification =
   | 'ticket_message'
   | 'ticket_statut'
   | 'ticket_resolu'
+  | 'ticket_a_valider'
   | 'ticket_echeance';
 
 export interface DefinitionEvenement {
@@ -214,6 +215,16 @@ export const EVENEMENTS_NOTIFICATION: DefinitionEvenement[] = [
     engageant: false,
     rolesParDefaut: [],
     servicesParDefaut: true,
+  },
+  {
+    domaine: 'ticket',
+    evenement: 'ticket_a_valider',
+    libelle: 'Clôture à valider',
+    description: 'Un agent a terminé une demande de votre catégorie : elle attend votre validation.',
+    engageant: true,
+    raisonEngageant: 'sans cet avis, la demande attendrait une validation que personne ne sait devoir donner',
+    rolesParDefaut: [],
+    servicesParDefaut: false,
   },
   {
     domaine: 'ticket',

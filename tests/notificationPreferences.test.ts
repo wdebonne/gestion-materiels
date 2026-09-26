@@ -106,8 +106,9 @@ describe('Catalogue des événements', () => {
       .filter((e) => e.engageant)
       .map((e) => e.evenement);
     // Une demande confiée et jamais lue attend indéfiniment, et son demandeur
-    // n'a aucun moyen de le savoir. Le reste se coupe librement.
-    expect(engageants).toEqual(['ticket_assigne']);
+    // n'a aucun moyen de le savoir ; une clôture « À valider » aussi, faute
+    // d'un superviseur qui sache devoir la relire. Le reste se coupe librement.
+    expect(engageants).toEqual(['ticket_assigne', 'ticket_a_valider']);
   });
 
   it('range chaque événement dans un domaine, et sépare les deux catalogues', () => {
