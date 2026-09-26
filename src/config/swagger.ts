@@ -365,13 +365,18 @@ const options: swaggerJSDoc.Options = {
 
       // ─── Tracking ───
       '/tracking/data': {
-        get: { tags: ['Tracking'], summary: 'Données de suivi', responses: { '200': { description: 'Données' } } },
+        get: {
+          tags: ['Tracking'],
+          summary: 'Données de suivi : résumé, détail par source, comparaison de périodes',
+          description: 'Paramètres : startDate, endDate (YYYY-MM-DD), dataTypes (fuel, maintenance, technical_control, green_space, buildings, events), categoryIds, subcategoryIds, objectIds, siteIds, fuelTypes, maintenanceTypes, compareStartDate, compareEndDate. Une source dont le module est fermé au compte est ignorée ; un bâtiment non suivi est refusé (403).',
+          responses: { '200': { description: 'Données' }, '400': { description: 'Période invalide' }, '403': { description: 'Bâtiment hors périmètre' } },
+        },
       },
       '/tracking/charts': {
-        get: { tags: ['Tracking'], summary: 'Données graphiques', responses: { '200': { description: 'Graphiques' } } },
+        get: { tags: ['Tracking'], summary: 'Données graphiques : série par période (groupBy week|month|year), par objet, par bâtiment, par type', responses: { '200': { description: 'Graphiques' } } },
       },
       '/tracking/filters': {
-        get: { tags: ['Tracking'], summary: 'Filtres disponibles', responses: { '200': { description: 'Filtres' } } },
+        get: { tags: ['Tracking'], summary: 'Filtres disponibles, sources ouvertes au compte et bâtiments suivis', responses: { '200': { description: 'Filtres' } } },
       },
 
       // ─── Upload ───

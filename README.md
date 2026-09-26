@@ -89,10 +89,11 @@ Les agents — jardiniers, mécaniciens, chauffeurs — travaillent sur téléph
 
 ![Suivi des coûts](docs/captures/suivi-couts.png)
 
-- Vue consolidée du **carburant**, des **entretiens**, des **contrôles techniques** et des **espaces verts**
-- Filtres par période, catégorie, sous-catégorie, matériel et type de dépense ; regroupement par semaine, mois ou année
-- **Comparaison** de deux périodes libres, de deux années ou de deux mois
-- **Export PDF** du rapport, graphiques compris
+- Tout ce que la collectivité dépense au même endroit : **carburant**, **entretiens**, **contrôles techniques**, **espaces verts**, **bâtiments** (énergie, contrats de maintenance, interventions, contrôles) et **manifestations** (prestations et pertes)
+- Filtres par période, type de dépense, catégorie, sous-catégorie et matériel pour le parc, et par bâtiment ; regroupement par semaine ISO, mois ou année
+- Évolution empilée par source, répartition du total, dix objets et dix bâtiments les plus coûteux, coût des bâtiments au m²
+- **Comparaison** de deux périodes libres, de deux années ou de deux mois, source par source
+- **Export PDF** du rapport, graphiques et détail de chaque source compris
 - Accès réglé par rôle et par personne
 
 ### 🎪 Manifestations

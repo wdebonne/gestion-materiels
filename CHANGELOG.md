@@ -7,6 +7,57 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Suivi des coûts : les bâtiments, les manifestations, et les espaces verts partout
+
+> La page **Suivi** ne connaissait que le parc. Elle additionne maintenant
+> tout ce que la collectivité dépense : **carburant, entretiens, contrôles
+> techniques, espaces verts, bâtiments** (factures d'énergie, contrats de
+> maintenance, interventions, contrôles obligatoires) **et manifestations**
+> (prestations déployées, pertes constatées). Chaque source a sa carte, sa
+> couleur dans le graphique d'évolution (désormais empilé), sa ligne dans les
+> comparaisons et son onglet : l'onglet **Bâtiments** donne le coût de chacun
+> par nature et **au m²**, l'onglet **Manifestations** le coût de chacune, les
+> pertes restant « à venir » tant que le matériel n'est pas revenu. Un
+> camembert montre la répartition du total, un classement les dix bâtiments
+> les plus coûteux. Un filtre **Bâtiments** s'ajoute aux filtres avancés.
+>
+> Les bâtiments gardent la règle de leur page de statistiques : une facture
+> de décembre-janvier compte pour moitié dans chaque mois, un contrat au
+> prorata de ses jours, partagé entre ses bâtiments. Un bâtiment désactivé
+> compte encore pour ce qu'il a coûté.
+>
+> Chacun ne chiffre que ce qu'il verrait ailleurs : ses catégories pour le
+> parc, les bâtiments qu'il suit, sa portée sur les manifestations. Une
+> source dont le module lui est fermé ne se propose pas.
+>
+> Corrigé au passage :
+>
+> - les **espaces verts** manquaient au graphique d'évolution, au total de
+>   la période comparée et à toute la comparaison annuelle ;
+> - le regroupement **par semaine** ne numérotait pas les semaines de la
+>   même façon sur SQLite et MySQL : les périodes se calculent maintenant en
+>   semaines ISO, et un mois ou une semaine sans dépense vaut zéro au lieu de
+>   disparaître du graphique ;
+> - la liste déroulante des filtres avancés écrasait son champ de recherche
+>   dans un carré de 44 px ;
+> - la date de fin par défaut pouvait être la veille, passé minuit ;
+> - une période inversée répond 400 au lieu de 500 ;
+> - la **comparaison annuelle ou mensuelle** calculait « année 2 − année 1 »,
+>   si bien qu'avec « 2026 vs 2025 » une année 2026 moins chère s'affichait
+>   en rouge comme une « augmentation ». Elle se lit maintenant comme la
+>   comparaison de périodes : la première est celle qu'on regarde, la seconde
+>   la référence. L'écart vaut donc année 1 − année 2, en pourcentage de
+>   l'année 2, et l'écran l'écrit en toutes lettres : « 2026 a coûté 19,8 %
+>   de moins que 2025 ». Sans aucune dépense sur la référence, pas de
+>   pourcentage (`percentage: null`) plutôt qu'un 0 % trompeur.
+>
+> Côté API : `dataTypes` accepte `buildings` et `events`, `siteIds` filtre les
+> bâtiments. Les réponses gardent leurs noms et en ajoutent :
+> `totalBuildingCost`, `totalEventCost`, `summary.buildings`,
+> `summary.events`, `buildings`, `events`, `costByBuilding`,
+> `buildingByCategory`, `sources` (celles ouvertes au compte). La série
+> `costByPeriod` porte un `label` lisible (« janv. 2026 ») et un `labelLong`.
+
 ### Alertes : une page rapide, rangée en groupes dépliables
 
 > Sur un parc chargé, la page **Alertes** restait plusieurs secondes sur

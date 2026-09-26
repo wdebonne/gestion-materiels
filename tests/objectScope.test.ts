@@ -87,8 +87,12 @@ const EXEMPTIONS: Record<string, string> = {
     "Ne lit que les prestations déjà rattachées à une manifestation donnée, pour remplir le document destiné à un service — et les filtre par le périmètre de ce service, ce qui est une portée plus étroite que celle des catégories. Aucun appelant n'est piloté par un utilisateur qui naviguerait dans le parc : la génération tourne côté serveur sans requête, et l'aperçu est réservé à l'administrateur.",
 };
 
-/** Marques d'une portée appliquée. */
-const MARQUES_PORTEE = ['filtreObjets', 'filtreObjetsLies', 'peutVoirObjet', 'getAccessibleCategoryIds'];
+/**
+ * Marques d'une portée appliquée. `conditionObjets` (Suivi des coûts) ajoute
+ * toujours les catégories de `getAccessibleCategoryIds`, et rend `null` quand
+ * il n'y en a aucune : voir `suiviCouts.test.ts`, « Le périmètre ».
+ */
+const MARQUES_PORTEE = ['filtreObjets', 'filtreObjetsLies', 'peutVoirObjet', 'getAccessibleCategoryIds', 'conditionObjets'];
 
 function fichiersTypeScript(dossier: string, trouves: string[] = []): string[] {
   for (const entree of fs.readdirSync(dossier, { withFileTypes: true })) {

@@ -140,9 +140,11 @@ sans passer par « Modifier » — un agent de terrain y a droit, et n'obtient p
 passage la permission de renommer le véhicule.
 
 ### 📊 Module Suivi
-- 📈 **Tableau de bord** : Vue consolidée des coûts (carburant, entretiens, contrôles techniques)
-- 🔍 **Filtres avancés** : Par période, catégorie, sous-catégorie, objet(s), type de données
-- 📉 **Graphiques interactifs** : Évolution des coûts, répartition par type, coûts par objet/catégorie
+- 📈 **Tableau de bord** : Vue consolidée des coûts — carburant, entretiens, contrôles techniques, espaces verts, **bâtiments** (factures d'énergie, contrats de maintenance, interventions, contrôles obligatoires) et **manifestations** (prestations déployées, pertes constatées)
+- 🧮 **Même règle de répartition que les bâtiments** : une facture couvrant décembre-janvier compte pour moitié dans chaque mois, un contrat au prorata de ses jours et partagé entre ses bâtiments. Les achats de matériel posé restent dans Bâtiments › Coûts et statistiques
+- 🔍 **Filtres avancés** : Par période, type de dépense, catégorie, sous-catégorie, objet(s) — ces trois derniers pour le parc — et par bâtiment. Une source dont le module est fermé à la personne ne se propose pas
+- 📉 **Graphiques interactifs** : Évolution empilée par source (semaines ISO, périodes vides comprises), répartition du total, coûts par objet, coûts par bâtiment et par nature de dépense
+- 🏢 **Onglets Bâtiments et Manifestations** : coût de chaque bâtiment par nature et au m² ; coût de chaque manifestation, pertes « à venir » tant que le matériel n'est pas revenu
 - 🔄 **Comparaison unifiée** : Trois modes de comparaison disponibles
   - Périodes personnalisées : Comparer deux plages de dates libres
   - Années : Graphiques comparatifs année par année (ex: 2025 vs 2026)

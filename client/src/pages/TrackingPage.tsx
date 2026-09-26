@@ -1,22 +1,27 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
+import { Link } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { useFenetreModale } from '@/components/ui/useFenetreModale'
-import { 
-  BarChart3, TrendingUp, TrendingDown, Calendar, 
+import {
+  BarChart3, TrendingUp, TrendingDown, Calendar,
   Download, Fuel, Wrench, ClipboardCheck, ChevronDown, ChevronUp,
   X, Search, RefreshCw, ArrowRightLeft, FileText, Paperclip,
-  Building, Car, FolderOpen, Settings2, Eye, EyeOff, Layers, TreePine
+  Building, Building2, Car, FolderOpen, Settings2, Eye, EyeOff, Layers, TreePine, PartyPopper
 } from 'lucide-react'
-import { 
-  Card, CardBody, CardHeader, Button, Badge, 
+import {
+  Card, CardBody, CardHeader, Button, Badge,
   LoadingInline, Alert, Input, Tabs, Tab
 } from '@/components/ui'
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
-  LineChart, Line, ComposedChart
+  LineChart, Line, ComposedChart, PieChart, Pie, Cell
 } from 'recharts'
 import api from '@/lib/api'
 import { cn, formatCurrency, formatNumber } from '@/lib/utils'
+import {
+  CATEGORIES_BATIMENT, SOURCES_SUIVI, TOUTES_LES_SOURCES, jourFr, jourLocal,
+  type DescriptionSource, type SourceSuivi
+} from '@/lib/suiviCouts'
 import TrackingPDFExport from '@/components/TrackingPDFExport'
 
 interface FilterOption {
@@ -36,7 +41,8 @@ interface TrackingFilters {
   categoryIds: number[]
   subcategoryIds: number[]
   objectIds: number[]
-  dataTypes: ('fuel' | 'maintenance' | 'technical_control' | 'green_space')[]
+  siteIds: number[]
+  dataTypes: SourceSuivi[]
   maintenanceTypes: string[]
   fuelTypes: string[]
   compareEnabled: boolean
@@ -64,27 +70,28 @@ const formatAxisValue = (value: number): string => {
   return `${value}€`
 }
 
-// Fonction pour obtenir les dates par défaut (année en cours)
+// Fonction pour obtenir les dates par défaut (année en cours). En heure
+// locale : `toISOString()` donnait la veille, passé minuit, en hiver.
 const getDefaultDates = () => {
   const now = new Date()
-  const startOfYear = new Date(now.getFullYear(), 0, 1)
   return {
-    startDate: startOfYear.toISOString().split('T')[0],
-    endDate: now.toISOString().split('T')[0],
+    startDate: `${now.getFullYear()}-01-01`,
+    endDate: jourLocal(now),
   }
 }
 
-// Fonction pour obtenir les dates de comparaison (année précédente)
-const getComparisonDates = (startDate: string, endDate: string) => {
-  const start = new Date(startDate)
-  const end = new Date(endDate)
-  start.setFullYear(start.getFullYear() - 1)
-  end.setFullYear(end.getFullYear() - 1)
-  return {
-    compareStartDate: start.toISOString().split('T')[0],
-    compareEndDate: end.toISOString().split('T')[0],
-  }
+// Fonction pour obtenir les dates de comparaison (année précédente). Le
+// 29 février retombe sur le 28.
+const unAnPlusTot = (jour: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(jour)) return jour
+  const [a, m, j] = jour.split('-').map(Number)
+  const dernier = new Date(a - 1, m, 0).getDate()
+  return `${a - 1}-${String(m).padStart(2, '0')}-${String(Math.min(j, dernier)).padStart(2, '0')}`
 }
+const getComparisonDates = (startDate: string, endDate: string) => ({
+  compareStartDate: unAnPlusTot(startDate),
+  compareEndDate: unAnPlusTot(endDate),
+})
 
 // Composant pour afficher une carte de statistique
 function StatCard({ 
@@ -103,12 +110,15 @@ function StatCard({
   trend?: 'up' | 'down' | 'neutral'
 }) {
   const colorClasses: Record<string, string> = {
-    blue: 'bg-blue-50 text-blue-600',
-    green: 'bg-green-50 text-green-600',
-    amber: 'bg-amber-50 text-amber-600',
-    purple: 'bg-purple-50 text-purple-600',
-    red: 'bg-red-50 text-red-600',
-    emerald: 'bg-emerald-50 text-emerald-600',
+    blue: 'bg-blue-50 text-blue-600 dark:bg-blue-900/30 dark:text-blue-300',
+    green: 'bg-green-50 text-green-600 dark:bg-green-900/30 dark:text-green-300',
+    amber: 'bg-amber-50 text-amber-600 dark:bg-amber-900/30 dark:text-amber-300',
+    purple: 'bg-purple-50 text-purple-600 dark:bg-purple-900/30 dark:text-purple-300',
+    red: 'bg-red-50 text-red-600 dark:bg-red-900/30 dark:text-red-300',
+    emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300',
+    lime: 'bg-lime-50 text-lime-700 dark:bg-lime-900/30 dark:text-lime-300',
+    stone: 'bg-stone-100 text-stone-600 dark:bg-stone-800 dark:text-stone-300',
+    pink: 'bg-pink-50 text-pink-600 dark:bg-pink-900/30 dark:text-pink-300',
   }
 
   return (
@@ -205,15 +215,16 @@ function MultiSelectFilter({
       </label>
       <button
         type="button"
+        aria-expanded={isOpen}
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "w-full flex items-center justify-between px-3 py-2 border rounded-lg text-left text-sm",
-          selected.length > 0 
-            ? "border-primary-300 bg-primary-50" 
-            : "border-gray-300 bg-white"
+          "w-full flex items-center justify-between px-3 py-2 border rounded-lg text-left text-sm min-h-[44px]",
+          selected.length > 0
+            ? "border-primary-300 bg-primary-50 dark:border-primary-700 dark:bg-primary-900/30"
+            : "border-gray-300 bg-white dark:border-gray-600 dark:bg-gray-800"
         )}
       >
-        <span className={selected.length > 0 ? "text-gray-900" : "text-gray-500"}>
+        <span className={selected.length > 0 ? "text-gray-900 dark:text-gray-100" : "text-gray-500 dark:text-gray-400"}>
           {selected.length > 0 
             ? selected.length === 1 
               ? selectedNames[0] 
@@ -229,7 +240,7 @@ function MultiSelectFilter({
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
           <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-64 overflow-auto">
             {searchable && (
-              <div className="h-11 w-11 flex items-center justify-center border-b sticky top-0 bg-white dark:bg-gray-800">
+              <div className="p-2 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
                 <Input
                   placeholder="Rechercher..."
                   value={search}
@@ -239,8 +250,8 @@ function MultiSelectFilter({
                 />
               </div>
             )}
-            
-            <div className="h-11 w-11 flex items-center justify-center border-b flex gah-11 w-11 flex items-center justify-center">
+
+            <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-700 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => onChange(options.map(o => o.id))}
@@ -307,38 +318,41 @@ function MultiSelectFilter({
   )
 }
 
-// Composant de sélection des types de données
+// Composant de sélection des types de données : seules les sources ouvertes à
+// ce compte se proposent — pas de bouton « Bâtiments » à qui ne les suit pas.
 function DataTypeFilter({
+  disponibles,
   selected,
   onChange
 }: {
-  selected: ('fuel' | 'maintenance' | 'technical_control' | 'green_space')[]
-  onChange: (types: ('fuel' | 'maintenance' | 'technical_control' | 'green_space')[]) => void
+  disponibles: SourceSuivi[]
+  selected: SourceSuivi[]
+  onChange: (types: SourceSuivi[]) => void
 }) {
-  const types = [
-    { id: 'fuel' as const, label: 'Carburant', icon: Fuel, color: 'amber' },
-    { id: 'maintenance' as const, label: 'Entretiens', icon: Wrench, color: 'blue' },
-    { id: 'technical_control' as const, label: 'Contrôle technique', icon: ClipboardCheck, color: 'green' },
-    { id: 'green_space' as const, label: 'Espaces verts', icon: TreePine, color: 'emerald' },
-  ]
-
-  const colorClasses: Record<string, string> = {
-    amber: 'border-amber-300 bg-amber-50 text-amber-700',
-    blue: 'border-blue-300 bg-blue-50 text-blue-700',
-    green: 'border-green-300 bg-green-50 text-green-700',
-    emerald: 'border-emerald-300 bg-emerald-50 text-emerald-700',
-  }
+  const types = SOURCES_SUIVI.filter(s => disponibles.includes(s.id))
 
   return (
     <div>
-      <label className="block text-sm font-medium text-gray-700 dark:text-gray-200 mb-2">
-        Types de données
-      </label>
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+        <span className="block text-sm font-medium text-gray-700 dark:text-gray-200">
+          Types de dépenses
+        </span>
+        {selected.length < types.length && (
+          <button
+            type="button"
+            onClick={() => onChange(types.map(t => t.id))}
+            className="text-xs font-medium text-primary-600 dark:text-primary-400 hover:underline"
+          >
+            Tout cocher
+          </button>
+        )}
+      </div>
       <div className="flex flex-wrap gap-2">
         {types.map(type => (
           <button
             key={type.id}
             type="button"
+            aria-pressed={selected.includes(type.id)}
             onClick={() => {
               if (selected.includes(type.id)) {
                 if (selected.length > 1) {
@@ -349,14 +363,14 @@ function DataTypeFilter({
               }
             }}
             className={cn(
-              "flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all",
+              "flex items-center gap-2 px-3 py-2 rounded-lg border-2 text-sm font-medium transition-all min-h-[44px]",
               selected.includes(type.id)
-                ? colorClasses[type.color]
-                : "border-gray-200 bg-white text-gray-500 hover:border-gray-300"
+                ? type.classesActif
+                : "border-gray-200 bg-white text-gray-500 hover:border-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400"
             )}
           >
-            <type.icon className="w-4 h-4" />
-            {type.label}
+            <type.icone className="w-4 h-4" />
+            {type.libelle}
           </button>
         ))}
       </div>
@@ -364,12 +378,13 @@ function DataTypeFilter({
   )
 }
 
-// Tooltip personnalisé pour les graphiques
+// Tooltip personnalisé pour les graphiques. Une série par période porte son
+// libellé long (« Semaine 12 (16 – 22 mars 2026) ») : on le préfère au court.
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg p-3">
-        <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">{label}</p>
+        <p className="font-medium text-gray-900 dark:text-gray-100 mb-2">{payload[0]?.payload?.labelLong || label}</p>
         {payload.map((entry: any, index: number) => (
           <div key={index} className="flex items-center gap-2 text-sm">
             <div 
@@ -461,7 +476,7 @@ function DataTable({
             {paginatedData.map((item: any) => (
               <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                  {new Date(item.date).toLocaleDateString('fr-FR')}
+                  {jourFr(item.date)}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -539,7 +554,7 @@ function DataTable({
             {paginatedData.map((item: any) => (
               <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                 <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                  {new Date(item.date).toLocaleDateString('fr-FR')}
+                  {jourFr(item.date)}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center gap-2">
@@ -561,7 +576,7 @@ function DataTable({
                 <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{formatCurrency(item.cost)}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.provider || '-'}</td>
                 <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                  {item.nextDate ? new Date(item.nextDate).toLocaleDateString('fr-FR') : '-'}
+                  {jourFr(item.nextDate)}
                 </td>
                 <td className="px-4 py-3 text-center">
                   {item.attachments?.length > 0 && (
@@ -618,7 +633,7 @@ function DataTable({
           {paginatedData.map((item: any) => (
             <tr key={item.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
               <td className="px-4 py-3 text-sm text-gray-900 dark:text-gray-100 whitespace-nowrap">
-                {new Date(item.date).toLocaleDateString('fr-FR')}
+                {jourFr(item.date)}
               </td>
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
@@ -642,7 +657,7 @@ function DataTable({
               <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{formatCurrency(item.cost)}</td>
               <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{item.centerName || '-'}</td>
               <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">
-                {item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('fr-FR') : '-'}
+                {jourFr(item.expiryDate)}
               </td>
               <td className="px-4 py-3 text-center">
                 {item.attachments?.length > 0 && (
@@ -679,17 +694,191 @@ function DataTable({
   )
 }
 
+/**
+ * « 2026 a coûté 23,3 % de moins que 2025 » : la première période comparée à
+ * la seconde, qui sert de référence — le sens de l'écart que rend l'API.
+ */
+function phraseEcartAnnuel(yearlyData: any, filters: TrackingFilters): string {
+  const mensuel = filters.compareMode === 'monthly'
+  const premiere = mensuel ? `${MONTHS_SHORT[filters.month1 - 1]} ${filters.year1}` : `${filters.year1}`
+  const seconde = mensuel ? `${MONTHS_SHORT[filters.month2 - 1]} ${filters.year2}` : `${filters.year2}`
+  const ecart = yearlyData.difference.total
+  const pourcentage = yearlyData.difference.percentage
+  if (!ecart) return `${premiere} a coûté autant que ${seconde}`
+  if (pourcentage === null || pourcentage === undefined) return `Rien n'a été dépensé en ${seconde} : pas de pourcentage`
+  const valeur = Math.abs(pourcentage).toLocaleString('fr-FR', { maximumFractionDigits: 1 })
+  return `${premiere} a coûté ${valeur} % de ${ecart > 0 ? 'plus' : 'moins'} que ${seconde}`
+}
+
+const STATUTS_MANIFESTATION: Record<string, string> = {
+  pending: 'En attente',
+  approbation: 'En approbation',
+  validated: 'Validée',
+  delivered: 'Livrée',
+  recovered: 'Récupérée',
+  archived: 'Archivée',
+}
+
+/** Les lignes « source : montant » d'une carte de comparaison. */
+function LignesParSource({
+  sources,
+  montant,
+}: {
+  sources: DescriptionSource[]
+  montant: (s: DescriptionSource) => number
+}) {
+  return (
+    <>
+      {sources.map(s => (
+        <div key={s.id} className="flex justify-between">
+          <span className="text-gray-500 dark:text-gray-400">{s.libelle}</span>
+          <span className={cn('font-medium', s.classesTexte)}>{formatCurrency(montant(s) || 0)}</span>
+        </div>
+      ))}
+    </>
+  )
+}
+
+/** Ce que coûtent les bâtiments, un par un. */
+function TableBatiments({ lignes, avecComparaison }: { lignes: any[]; avecComparaison: boolean }) {
+  const somme = (cle: string) => lignes.reduce((t, b) => t + (b[cle] || 0), 0)
+  const entete = 'px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase'
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-900/40">
+            <tr>
+              <th className={cn(entete, 'text-left')}>Bâtiment</th>
+              {CATEGORIES_BATIMENT.map(c => (
+                <th key={c.id} className={cn(entete, 'text-right')}>{c.libelle}</th>
+              ))}
+              <th className={cn(entete, 'text-right')}>Total</th>
+              <th className={cn(entete, 'text-right')}>€ / m²</th>
+              {avecComparaison && <th className={cn(entete, 'text-right')}>Période comparée</th>}
+            </tr>
+          </thead>
+          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            {lignes.map((b: any) => (
+              <tr key={b.siteId} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <td className="px-4 py-3 text-sm font-medium">
+                  <Link to={`/batiments/${b.siteId}`} className="text-primary-600 dark:text-primary-400 hover:underline">
+                    {b.name}
+                  </Link>
+                  {b.surfaceM2 ? (
+                    <div className="text-xs text-gray-500 dark:text-gray-400">{formatNumber(b.surfaceM2, 0)} m²</div>
+                  ) : null}
+                </td>
+                {CATEGORIES_BATIMENT.map(c => (
+                  <td key={c.id} className="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                    {b[c.id] ? formatCurrency(b[c.id]) : '-'}
+                  </td>
+                ))}
+                <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                  {formatCurrency(b.totalCost)}
+                </td>
+                <td className="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                  {b.costPerM2 !== null && b.costPerM2 !== undefined ? formatCurrency(b.costPerM2) : '-'}
+                </td>
+                {avecComparaison && (
+                  <td className="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                    {formatCurrency(b.compareCost || 0)}
+                  </td>
+                )}
+              </tr>
+            ))}
+          </tbody>
+          <tfoot className="bg-gray-50 dark:bg-gray-900/40">
+            <tr>
+              <td className="px-4 py-3 text-sm font-semibold text-gray-900 dark:text-gray-100">Total</td>
+              {CATEGORIES_BATIMENT.map(c => (
+                <td key={c.id} className="px-4 py-3 text-sm text-right font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                  {formatCurrency(somme(c.id))}
+                </td>
+              ))}
+              <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                {formatCurrency(somme('totalCost'))}
+              </td>
+              <td />
+              {avecComparaison && (
+                <td className="px-4 py-3 text-sm text-right font-medium text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                  {formatCurrency(somme('compareCost'))}
+                </td>
+              )}
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Une facture d'énergie est répartie au jour sur la période qu'elle couvre ; un contrat compte au prorata de son
+        montant annuel, partagé entre ses bâtiments. Le détail par fluide et les achats de matériel se trouvent dans
+        Bâtiments › Coûts et statistiques.
+      </p>
+    </div>
+  )
+}
+
+/** Ce que coûtent les manifestations de la période. */
+function TableManifestations({ lignes }: { lignes: any[] }) {
+  const entete = 'px-4 py-3 text-xs font-medium text-gray-500 dark:text-gray-400 uppercase'
+  return (
+    <div className="space-y-3">
+      <div className="overflow-x-auto">
+        <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+          <thead className="bg-gray-50 dark:bg-gray-900/40">
+            <tr>
+              <th className={cn(entete, 'text-left')}>Manifestation</th>
+              <th className={cn(entete, 'text-left')}>Date</th>
+              <th className={cn(entete, 'text-left')}>Statut</th>
+              <th className={cn(entete, 'text-right')}>Prestations</th>
+              <th className={cn(entete, 'text-right')}>Pertes</th>
+              <th className={cn(entete, 'text-right')}>Total</th>
+            </tr>
+          </thead>
+          <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+            {lignes.map((e: any) => (
+              <tr key={e.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{e.title}</td>
+                <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                  {jourFr(e.date)}{e.dateEnd && e.dateEnd !== e.date ? ` → ${jourFr(e.dateEnd)}` : ''}
+                </td>
+                <td className="px-4 py-3 text-sm">
+                  <Badge variant={e.definitif ? 'success' : 'default'}>{STATUTS_MANIFESTATION[e.status] || e.status}</Badge>
+                </td>
+                <td className="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                  {formatCurrency(e.prestations)}
+                </td>
+                <td className="px-4 py-3 text-sm text-right text-gray-600 dark:text-gray-300 whitespace-nowrap">
+                  {e.definitif ? formatCurrency(e.pertes) : <span title="Le matériel n'est pas encore revenu">à venir</span>}
+                </td>
+                <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900 dark:text-gray-100 whitespace-nowrap">
+                  {formatCurrency(e.total)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Les prestations comptent dès la demande ; ce qui n'est pas revenu ne devient une perte qu'une fois la
+        manifestation récupérée. Les brouillons et les manifestations annulées ou refusées ne comptent pas.
+      </p>
+    </div>
+  )
+}
+
 export default function TrackingPage() {
   const currentYear = new Date().getFullYear()
   const defaultDates = getDefaultDates()
   const chartRef = useRef<HTMLDivElement>(null)
-  
+
   const [filters, setFilters] = useState<TrackingFilters>({
     ...defaultDates,
     categoryIds: [],
     subcategoryIds: [],
     objectIds: [],
-    dataTypes: ['fuel', 'maintenance', 'technical_control', 'green_space'],
+    siteIds: [],
+    dataTypes: TOUTES_LES_SOURCES,
     maintenanceTypes: [],
     fuelTypes: [],
     compareEnabled: false,
@@ -703,7 +892,7 @@ export default function TrackingPage() {
   })
   const [showFilters, setShowFilters] = useState(true)
   const [showAdvanced, setShowAdvanced] = useState(false)
-  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'fuel' | 'maintenance' | 'control' | 'green_space'>('overview')
+  const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'fuel' | 'maintenance' | 'control' | 'green_space' | 'buildings' | 'events'>('overview')
   const [showPDFExport, setShowPDFExport] = useState(false)
   const [viewingAttachments, setViewingAttachments] = useState<any[] | null>(null)
   const fenetrePieces = useFenetreModale(viewingAttachments !== null, () => setViewingAttachments(null))
@@ -717,25 +906,37 @@ export default function TrackingPage() {
     }
   })
 
-  // Récupérer les options de filtrage
+  // Récupérer les options de filtrage, et les sources ouvertes à ce compte
   const { data: filterOptions, isLoading: loadingFilters } = useQuery({
     queryKey: ['tracking-filters'],
     queryFn: async () => {
       const response = await api.get('/tracking/filters')
       return response.data
-    }
+    },
+    enabled: !!permissions?.canView
   })
+
+  // Une source dont le module est fermé à ce compte ne se propose pas.
+  const disponibles: SourceSuivi[] = filterOptions?.sources ?? TOUTES_LES_SOURCES
+  const actives = useMemo(() => {
+    const retenues = filters.dataTypes.filter(s => disponibles.includes(s))
+    return retenues.length ? retenues : disponibles
+  }, [filters.dataTypes, disponibles])
+  const sourcesActives = useMemo(() => SOURCES_SUIVI.filter(s => actives.includes(s.id)), [actives])
+  const actif = (id: SourceSuivi) => actives.includes(id)
+  const parcActif = sourcesActives.some(s => s.parc)
 
   // Construire les paramètres de requête
   const queryParams = useMemo(() => {
     const params: any = {
       startDate: filters.startDate,
       endDate: filters.endDate,
-      dataTypes: filters.dataTypes.join(','),
+      dataTypes: actives.join(','),
     }
     if (filters.categoryIds.length) params.categoryIds = filters.categoryIds.join(',')
     if (filters.subcategoryIds.length) params.subcategoryIds = filters.subcategoryIds.join(',')
     if (filters.objectIds.length) params.objectIds = filters.objectIds.join(',')
+    if (filters.siteIds.length && actives.includes('buildings')) params.siteIds = filters.siteIds.join(',')
     if (filters.maintenanceTypes.length) params.maintenanceTypes = filters.maintenanceTypes.join(',')
     if (filters.fuelTypes.length) params.fuelTypes = filters.fuelTypes.join(',')
     if (filters.compareEnabled && filters.compareMode === 'period') {
@@ -743,7 +944,10 @@ export default function TrackingPage() {
       params.compareEndDate = filters.compareEndDate
     }
     return params
-  }, [filters])
+  }, [filters, actives])
+
+  // Attendre les sources ouvertes évite une première requête pour rien.
+  const pret = !!permissions?.canView && !!filterOptions
 
   // Récupérer les données de suivi
   const { data: trackingData, isLoading: loadingData, refetch } = useQuery({
@@ -752,29 +956,29 @@ export default function TrackingPage() {
       const response = await api.get('/tracking/data', { params: queryParams })
       return response.data
     },
-    enabled: permissions?.canView
+    enabled: pret
   })
 
   // Récupérer les données des graphiques
   const { data: chartsData, isLoading: loadingCharts } = useQuery({
     queryKey: ['tracking-charts', queryParams, filters.groupBy],
     queryFn: async () => {
-      const response = await api.get('/tracking/charts', { 
-        params: { ...queryParams, groupBy: filters.groupBy } 
+      const response = await api.get('/tracking/charts', {
+        params: { ...queryParams, groupBy: filters.groupBy }
       })
       return response.data
     },
-    enabled: permissions?.canView
+    enabled: pret
   })
 
   // Récupérer les données de comparaison annuelle/mensuelle
   const { data: yearlyData } = useQuery({
-    queryKey: ['tracking-yearly', filters.year1, filters.year2, filters.month1, filters.month2, filters.compareMode, filters.dataTypes, filters.categoryIds, filters.subcategoryIds, filters.objectIds],
+    queryKey: ['tracking-yearly', filters.year1, filters.year2, filters.month1, filters.month2, filters.compareMode, actives, filters.categoryIds, filters.subcategoryIds, filters.objectIds, filters.siteIds],
     queryFn: async () => {
       const params: any = {
         year1: filters.year1,
         year2: filters.year2,
-        dataTypes: filters.dataTypes.join(','),
+        dataTypes: actives.join(','),
       }
       // Pour le mode mensuel, ajouter les mois
       if (filters.compareMode === 'monthly') {
@@ -784,11 +988,12 @@ export default function TrackingPage() {
       if (filters.categoryIds.length) params.categoryIds = filters.categoryIds.join(',')
       if (filters.subcategoryIds.length) params.subcategoryIds = filters.subcategoryIds.join(',')
       if (filters.objectIds.length) params.objectIds = filters.objectIds.join(',')
-      
+      if (filters.siteIds.length && actives.includes('buildings')) params.siteIds = filters.siteIds.join(',')
+
       const response = await api.get('/tracking/yearly-comparison', { params })
       return response.data
     },
-    enabled: permissions?.canView && permissions?.canCompare && filters.compareEnabled && (filters.compareMode === 'yearly' || filters.compareMode === 'monthly')
+    enabled: pret && permissions?.canCompare && filters.compareEnabled && (filters.compareMode === 'yearly' || filters.compareMode === 'monthly')
   })
 
   // Mettre à jour les dates de comparaison quand les dates principales changent
@@ -798,6 +1003,17 @@ export default function TrackingPage() {
       setFilters(f => ({ ...f, ...compDates }))
     }
   }, [filters.startDate, filters.endDate, filters.compareEnabled])
+
+  // Un onglet dont la source vient d'être décochée ne reste pas ouvert, vide.
+  useEffect(() => {
+    const sourceDeLOnglet: Record<string, SourceSuivi> = {
+      fuel: 'fuel', maintenance: 'maintenance', control: 'technical_control',
+      green_space: 'green_space', buildings: 'buildings', events: 'events',
+    }
+    const source = sourceDeLOnglet[activeTab]
+    if (source && !actives.includes(source)) setActiveTab('overview')
+    if (activeTab === 'comparison' && !filters.compareEnabled) setActiveTab('overview')
+  }, [actives, activeTab, filters.compareEnabled])
 
   // Générer les années disponibles (5 dernières années)
   const availableYears = useMemo(() => {
@@ -810,25 +1026,32 @@ export default function TrackingPage() {
 
   // Préparer les données pour les graphiques comparatifs
   const comparisonChartData = useMemo(() => {
-    if (!yearlyData?.monthly) return []
-    
+    if (!yearlyData?.monthly?.year1?.length) return []
+
     return MONTHS_SHORT.map((month, index) => {
       const year1Data = yearlyData.monthly.year1?.find((d: any) => d.month === index + 1) || {}
       const year2Data = yearlyData.monthly.year2?.find((d: any) => d.month === index + 1) || {}
-      
-      return {
+      const point: Record<string, string | number> = {
         month,
         [`${filters.year1}`]: year1Data.total || 0,
         [`${filters.year2}`]: year2Data.total || 0,
-        [`fuel_${filters.year1}`]: year1Data.fuel || 0,
-        [`fuel_${filters.year2}`]: year2Data.fuel || 0,
-        [`maintenance_${filters.year1}`]: year1Data.maintenance || 0,
-        [`maintenance_${filters.year2}`]: year2Data.maintenance || 0,
-        [`control_${filters.year1}`]: year1Data.control || 0,
-        [`control_${filters.year2}`]: year2Data.control || 0,
       }
+      for (const s of SOURCES_SUIVI) {
+        point[`${s.annuel}_${filters.year1}`] = year1Data[s.annuel] || 0
+        point[`${s.annuel}_${filters.year2}`] = year2Data[s.annuel] || 0
+      }
+      return point
     })
   }, [yearlyData, filters.year1, filters.year2])
+
+  // Répartition du total par source, pour le camembert
+  const repartition = useMemo(() => {
+    const resume = trackingData?.summary
+    if (!resume) return []
+    return sourcesActives
+      .map(s => ({ name: s.libelle, value: resume[s.total] || 0, color: s.couleur }))
+      .filter(r => r.value > 0)
+  }, [trackingData, sourcesActives])
 
   // Obtenir le label de l'onglet de comparaison
   const getComparisonTabLabel = () => {
@@ -858,6 +1081,9 @@ export default function TrackingPage() {
     totalFuelQuantity: 0,
     totalMaintenanceCost: 0,
     totalControlCost: 0,
+    totalGreenSpaceCost: 0,
+    totalBuildingCost: 0,
+    totalEventCost: 0,
     totalCost: 0,
     fuelEntryCount: 0,
     maintenanceCount: 0,
@@ -865,6 +1091,11 @@ export default function TrackingPage() {
   }
 
   const comparison = trackingData?.comparison
+  const tendance = (ecart: number | undefined) => (ecart && ecart > 0 ? 'up' : ecart && ecart < 0 ? 'down' : 'neutral') as 'up' | 'down' | 'neutral'
+  const chargement = !pret || loadingData || loadingCharts
+  const listes = ['fuel', 'maintenance', 'technicalControl', 'greenSpace', 'buildings', 'events']
+  const aucuneDonnee = summary.totalCost === 0 && !listes.some(cle => trackingData?.[cle]?.length)
+  const sites: FilterOption[] = filterOptions?.sites ?? []
 
   return (
     <div className="space-y-6">
@@ -873,10 +1104,10 @@ export default function TrackingPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Suivi des coûts</h1>
           <p className="text-gray-500 dark:text-gray-400 mt-1">
-            Analysez et comparez les dépenses carburant, entretiens et contrôles techniques
+            Analysez et comparez ce que coûtent le parc, les espaces verts, les bâtiments et les manifestations
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant="outline"
             icon={<RefreshCw className="w-4 h-4" />}
@@ -895,6 +1126,7 @@ export default function TrackingPage() {
             <Button
               icon={<Download className="w-4 h-4" />}
               onClick={() => setShowPDFExport(true)}
+              disabled={chargement}
             >
               Exporter PDF
             </Button>
@@ -944,70 +1176,54 @@ export default function TrackingPage() {
                   <option value="year">Année</option>
                 </select>
               </div>
-              <div className="flex items-end">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={filters.compareEnabled}
-                    onChange={(e) => setFilters(f => ({ ...f, compareEnabled: e.target.checked }))}
-                    className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-primary-600"
-                  />
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
-                    <ArrowRightLeft className="w-4 h-4 inline-block mr-1" />
-                    Comparer
-                  </span>
-                </label>
-              </div>
+              {permissions?.canCompare && (
+                <div className="flex items-end">
+                  <label className="flex items-center gap-2 cursor-pointer min-h-[44px]">
+                    <input
+                      type="checkbox"
+                      checked={filters.compareEnabled}
+                      onChange={(e) => setFilters(f => ({ ...f, compareEnabled: e.target.checked }))}
+                      className="w-5 h-5 rounded border-gray-300 dark:border-gray-600 text-primary-600"
+                    />
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-200">
+                      <ArrowRightLeft className="w-4 h-4 inline-block mr-1" />
+                      Comparer
+                    </span>
+                  </label>
+                </div>
+              )}
             </div>
 
             {/* Section de comparaison unifiée */}
             {filters.compareEnabled && permissions?.canCompare && (
-              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border border-blue-200 space-y-4">
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/40 dark:to-purple-950/40 rounded-lg border border-blue-200 dark:border-blue-800 space-y-4">
                 <div className="flex items-center gap-4 flex-wrap">
                   <div className="flex items-center gap-2">
-                    <Layers className="w-5 h-5 text-blue-600" />
-                    <span className="text-sm font-semibold text-blue-800">Mode de comparaison</span>
+                    <Layers className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                    <span className="text-sm font-semibold text-blue-800 dark:text-blue-200">Mode de comparaison</span>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setFilters(f => ({ ...f, compareMode: 'period' }))}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                        filters.compareMode === 'period'
-                          ? "bg-blue-600 text-white"
-                          : "bg-white text-gray-600 border border-gray-300 hover:border-blue-300"
-                      )}
-                    >
-                      <Calendar className="w-4 h-4 inline-block mr-1" />
-                      Périodes personnalisées
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilters(f => ({ ...f, compareMode: 'yearly' }))}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                        filters.compareMode === 'yearly'
-                          ? "bg-purple-600 text-white"
-                          : "bg-white text-gray-600 border border-gray-300 hover:border-purple-300"
-                      )}
-                    >
-                      <BarChart3 className="w-4 h-4 inline-block mr-1" />
-                      Années
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setFilters(f => ({ ...f, compareMode: 'monthly' }))}
-                      className={cn(
-                        "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                        filters.compareMode === 'monthly'
-                          ? "bg-green-600 text-white"
-                          : "bg-white text-gray-600 border border-gray-300 hover:border-green-300"
-                      )}
-                    >
-                      <Calendar className="w-4 h-4 inline-block mr-1" />
-                      Mois spécifiques
-                    </button>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { id: 'period', libelle: 'Périodes personnalisées', icone: Calendar, actif: 'bg-blue-600 text-white' },
+                      { id: 'yearly', libelle: 'Années', icone: BarChart3, actif: 'bg-purple-600 text-white' },
+                      { id: 'monthly', libelle: 'Mois spécifiques', icone: Calendar, actif: 'bg-green-600 text-white' },
+                    ] as const).map(mode => (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        aria-pressed={filters.compareMode === mode.id}
+                        onClick={() => setFilters(f => ({ ...f, compareMode: mode.id }))}
+                        className={cn(
+                          "px-3 py-1.5 rounded-lg text-sm font-medium transition-all min-h-[44px]",
+                          filters.compareMode === mode.id
+                            ? mode.actif
+                            : "bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 hover:border-blue-300"
+                        )}
+                      >
+                        <mode.icone className="w-4 h-4 inline-block mr-1" />
+                        {mode.libelle}
+                      </button>
+                    ))}
                   </div>
                 </div>
 
@@ -1040,90 +1256,57 @@ export default function TrackingPage() {
                 {/* Comparaison par années */}
                 {filters.compareMode === 'yearly' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-purple-700 mb-1">
-                        Année 1
-                      </label>
-                      <select
-                        value={filters.year1}
-                        onChange={(e) => setFilters(f => ({ ...f, year1: parseInt(e.target.value) }))}
-                        className="block w-full rounded-lg border border-purple-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none min-h-[44px]"
-                      >
-                        {availableYears.map(year => (
-                          <option key={year} value={year}>{year}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-purple-700 mb-1">
-                        Année 2
-                      </label>
-                      <select
-                        value={filters.year2}
-                        onChange={(e) => setFilters(f => ({ ...f, year2: parseInt(e.target.value) }))}
-                        className="block w-full rounded-lg border border-purple-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none min-h-[44px]"
-                      >
-                        {availableYears.map(year => (
-                          <option key={year} value={year}>{year}</option>
-                        ))}
-                      </select>
-                    </div>
+                    {([['year1', 'Année 1'], ['year2', 'Année 2']] as const).map(([cle, libelle]) => (
+                      <div key={cle}>
+                        <label className="block text-sm font-medium text-purple-700 dark:text-purple-300 mb-1">
+                          {libelle}
+                        </label>
+                        <select
+                          value={filters[cle]}
+                          onChange={(e) => setFilters(f => ({ ...f, [cle]: parseInt(e.target.value) }))}
+                          className="block w-full rounded-lg border border-purple-300 dark:border-purple-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 focus:outline-none min-h-[44px]"
+                        >
+                          {availableYears.map(year => (
+                            <option key={year} value={year}>{year}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ))}
                   </div>
                 )}
 
                 {/* Comparaison par mois spécifiques */}
                 {filters.compareMode === 'monthly' && (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-green-700 dark:text-green-300">
-                        Mois 1
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={filters.month1}
-                          onChange={(e) => setFilters(f => ({ ...f, month1: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
-                        >
-                          {MONTHS_SHORT.map((month, index) => (
-                            <option key={index} value={index + 1}>{month}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={filters.year1}
-                          onChange={(e) => setFilters(f => ({ ...f, year1: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
-                        >
-                          {availableYears.map(year => (
-                            <option key={year} value={year}>{year}</option>
-                          ))}
-                        </select>
+                    {([['month1', 'year1', 'Mois 1'], ['month2', 'year2', 'Mois 2']] as const).map(([cleMois, cleAnnee, libelle]) => (
+                      <div key={cleMois} className="space-y-2">
+                        <label className="block text-sm font-medium text-green-700 dark:text-green-300">
+                          {libelle}
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <select
+                            aria-label={`${libelle} : mois`}
+                            value={filters[cleMois]}
+                            onChange={(e) => setFilters(f => ({ ...f, [cleMois]: parseInt(e.target.value) }))}
+                            className="block w-full rounded-lg border border-green-300 dark:border-green-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
+                          >
+                            {MONTHS_SHORT.map((month, index) => (
+                              <option key={index} value={index + 1}>{month}</option>
+                            ))}
+                          </select>
+                          <select
+                            aria-label={`${libelle} : année`}
+                            value={filters[cleAnnee]}
+                            onChange={(e) => setFilters(f => ({ ...f, [cleAnnee]: parseInt(e.target.value) }))}
+                            className="block w-full rounded-lg border border-green-300 dark:border-green-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
+                          >
+                            {availableYears.map(year => (
+                              <option key={year} value={year}>{year}</option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="block text-sm font-medium text-green-700 dark:text-green-300">
-                        Mois 2
-                      </label>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                        <select
-                          value={filters.month2}
-                          onChange={(e) => setFilters(f => ({ ...f, month2: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
-                        >
-                          {MONTHS_SHORT.map((month, index) => (
-                            <option key={index} value={index + 1}>{month}</option>
-                          ))}
-                        </select>
-                        <select
-                          value={filters.year2}
-                          onChange={(e) => setFilters(f => ({ ...f, year2: parseInt(e.target.value) }))}
-                          className="block w-full rounded-lg border border-green-300 bg-white dark:bg-gray-800 px-3 py-2.5 text-sm text-gray-900 dark:text-gray-100 focus:border-green-500 focus:ring-2 focus:ring-green-500/20 focus:outline-none min-h-[44px]"
-                        >
-                          {availableYears.map(year => (
-                            <option key={year} value={year}>{year}</option>
-                          ))}
-                        </select>
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -1131,15 +1314,17 @@ export default function TrackingPage() {
 
             {/* Types de données */}
             <DataTypeFilter
-              selected={filters.dataTypes}
+              disponibles={disponibles}
+              selected={actives}
               onChange={(types) => setFilters(f => ({ ...f, dataTypes: types }))}
             />
 
             {/* Bouton pour afficher les filtres avancés */}
             <button
               type="button"
+              aria-expanded={showAdvanced}
               onClick={() => setShowAdvanced(!showAdvanced)}
-              className="flex items-center gap-2 text-sm font-medium text-primary-600 hover:text-primary-800"
+              className="flex items-center gap-2 text-sm font-medium text-primary-600 dark:text-primary-400 hover:text-primary-800 min-h-[44px]"
             >
               <Settings2 className="w-4 h-4" />
               {showAdvanced ? 'Masquer les filtres avancés' : 'Afficher les filtres avancés'}
@@ -1148,54 +1333,71 @@ export default function TrackingPage() {
 
             {/* Filtres avancés */}
             {showAdvanced && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-gray-50 dark:bg-gray-900/40 rounded-lg overflow-visible relative z-10">
-                {!loadingFilters && filterOptions && (
-                  <>
+              <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-900/40 rounded-lg overflow-visible relative z-10">
+                {!loadingFilters && filterOptions && parcActif && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Parc de matériel : ces filtres ne s'appliquent qu'au carburant, aux entretiens et aux contrôles techniques.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      <MultiSelectFilter
+                        label="Catégories"
+                        icon={FolderOpen}
+                        options={filterOptions.categories}
+                        selected={filters.categoryIds}
+                        onChange={(ids) => setFilters(f => ({
+                          ...f,
+                          categoryIds: ids,
+                          subcategoryIds: [],
+                          objectIds: []
+                        }))}
+                        placeholder="Toutes les catégories"
+                      />
+                      <MultiSelectFilter
+                        label="Sous-catégories"
+                        icon={Building}
+                        options={filterOptions.subcategories.filter((s: any) =>
+                          filters.categoryIds.length === 0 || filters.categoryIds.includes(s.categoryId)
+                        )}
+                        selected={filters.subcategoryIds}
+                        onChange={(ids) => setFilters(f => ({
+                          ...f,
+                          subcategoryIds: ids,
+                          objectIds: []
+                        }))}
+                        placeholder="Toutes les sous-catégories"
+                      />
+                      <MultiSelectFilter
+                        label="Objets"
+                        icon={Car}
+                        options={filterOptions.objects.filter((o: any) => {
+                          if (filters.subcategoryIds.length > 0) {
+                            return filters.subcategoryIds.includes(o.subcategoryId)
+                          }
+                          if (filters.categoryIds.length > 0) {
+                            return filters.categoryIds.includes(o.categoryId)
+                          }
+                          return true
+                        })}
+                        selected={filters.objectIds}
+                        onChange={(ids) => setFilters(f => ({ ...f, objectIds: ids }))}
+                        placeholder="Tous les objets"
+                        groupBy="category"
+                      />
+                    </div>
+                  </div>
+                )}
+                {actif('buildings') && sites.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     <MultiSelectFilter
-                      label="Catégories"
-                      icon={FolderOpen}
-                      options={filterOptions.categories}
-                      selected={filters.categoryIds}
-                      onChange={(ids) => setFilters(f => ({ 
-                        ...f, 
-                        categoryIds: ids,
-                        subcategoryIds: [],
-                        objectIds: []
-                      }))}
-                      placeholder="Toutes les catégories"
+                      label="Bâtiments"
+                      icon={Building2}
+                      options={sites}
+                      selected={filters.siteIds}
+                      onChange={(ids) => setFilters(f => ({ ...f, siteIds: ids }))}
+                      placeholder="Tous les bâtiments suivis"
                     />
-                    <MultiSelectFilter
-                      label="Sous-catégories"
-                      icon={Building}
-                      options={filterOptions.subcategories.filter((s: any) => 
-                        filters.categoryIds.length === 0 || filters.categoryIds.includes(s.categoryId)
-                      )}
-                      selected={filters.subcategoryIds}
-                      onChange={(ids) => setFilters(f => ({ 
-                        ...f, 
-                        subcategoryIds: ids,
-                        objectIds: []
-                      }))}
-                      placeholder="Toutes les sous-catégories"
-                    />
-                    <MultiSelectFilter
-                      label="Objets"
-                      icon={Car}
-                      options={filterOptions.objects.filter((o: any) => {
-                        if (filters.subcategoryIds.length > 0) {
-                          return filters.subcategoryIds.includes(o.subcategoryId)
-                        }
-                        if (filters.categoryIds.length > 0) {
-                          return filters.categoryIds.includes(o.categoryId)
-                        }
-                        return true
-                      })}
-                      selected={filters.objectIds}
-                      onChange={(ids) => setFilters(f => ({ ...f, objectIds: ids }))}
-                      placeholder="Tous les objets"
-                      groupBy="category"
-                    />
-                  </>
+                  </div>
                 )}
               </div>
             )}
@@ -1204,7 +1406,7 @@ export default function TrackingPage() {
       )}
 
       {/* Chargement */}
-      {(loadingData || loadingCharts) && (
+      {chargement && (
         <Card>
           <CardBody className="py-12 text-center">
             <LoadingInline />
@@ -1214,19 +1416,20 @@ export default function TrackingPage() {
       )}
 
       {/* Contenu */}
-      {!loadingData && !loadingCharts && summary.totalCost === 0 && !trackingData?.fuel?.length && !trackingData?.maintenance?.length && !trackingData?.technicalControl?.length && (
+      {!chargement && aucuneDonnee && (
         <Card>
           <CardBody className="py-16 text-center">
-            <BarChart3 className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <BarChart3 className="w-16 h-16 text-gray-300 dark:text-gray-600 mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-gray-600 dark:text-gray-300 mb-2">Aucune donnée pour cette période</h3>
             <p className="text-sm text-gray-600 dark:text-gray-300 max-w-md mx-auto">
-              Modifiez les dates ou les filtres pour afficher des données de suivi. Vérifiez que des entrées de carburant, d'entretien ou de contrôle technique existent pour la période sélectionnée.
+              Modifiez les dates ou les filtres pour afficher des données de suivi. Vérifiez que des dépenses
+              ({sourcesActives.map(s => s.libelle.toLowerCase()).join(', ')}) existent pour la période sélectionnée.
             </p>
           </CardBody>
         </Card>
       )}
 
-      {!loadingData && !loadingCharts && (summary.totalCost > 0 || trackingData?.fuel?.length || trackingData?.maintenance?.length || trackingData?.technicalControl?.length) && (
+      {!chargement && !aucuneDonnee && (
         <>
           {/* Cartes statistiques */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -1236,50 +1439,23 @@ export default function TrackingPage() {
               icon={BarChart3}
               color="purple"
               comparison={comparison?.percentageChange?.totalCost}
-              trend={comparison?.difference?.totalCost > 0 ? 'up' : comparison?.difference?.totalCost < 0 ? 'down' : 'neutral'}
+              trend={tendance(comparison?.difference?.totalCost)}
             />
-            {filters.dataTypes.includes('fuel') && (
+            {sourcesActives.map(s => (
               <StatCard
-                title="Carburant"
-                value={formatCurrency(summary.totalFuelCost)}
-                icon={Fuel}
-                color="amber"
-                comparison={comparison?.percentageChange?.totalFuelCost}
-                trend={comparison?.difference?.totalFuelCost > 0 ? 'up' : comparison?.difference?.totalFuelCost < 0 ? 'down' : 'neutral'}
+                key={s.id}
+                title={s.libelle}
+                value={formatCurrency(summary[s.total] || 0)}
+                icon={s.icone}
+                color={s.teinte}
+                comparison={comparison?.percentageChange?.[s.total]}
+                trend={tendance(comparison?.difference?.[s.total])}
               />
-            )}
-            {filters.dataTypes.includes('maintenance') && (
-              <StatCard
-                title="Entretiens"
-                value={formatCurrency(summary.totalMaintenanceCost)}
-                icon={Wrench}
-                color="blue"
-                comparison={comparison?.percentageChange?.totalMaintenanceCost}
-                trend={comparison?.difference?.totalMaintenanceCost > 0 ? 'up' : comparison?.difference?.totalMaintenanceCost < 0 ? 'down' : 'neutral'}
-              />
-            )}
-            {filters.dataTypes.includes('technical_control') && (
-              <StatCard
-                title="Contrôles techniques"
-                value={formatCurrency(summary.totalControlCost)}
-                icon={ClipboardCheck}
-                color="green"
-                comparison={comparison?.percentageChange?.totalControlCost}
-                trend={comparison?.difference?.totalControlCost > 0 ? 'up' : comparison?.difference?.totalControlCost < 0 ? 'down' : 'neutral'}
-              />
-            )}
-            {filters.dataTypes.includes('green_space') && (
-              <StatCard
-                title="Espaces verts"
-                value={formatCurrency(summary.totalGreenSpaceCost || 0)}
-                icon={TreePine}
-                color="emerald"
-              />
-            )}
+            ))}
           </div>
 
           {/* Cartes secondaires carburant */}
-          {filters.dataTypes.includes('fuel') && (
+          {actif('fuel') && summary.fuelEntryCount > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <StatCard
                 title="Quantité de carburant"
@@ -1306,44 +1482,58 @@ export default function TrackingPage() {
           <Card>
             <CardHeader>
               <Tabs value={activeTab} onChange={(id) => setActiveTab(id as typeof activeTab)}>
-                <Tab 
+                <Tab
                   value="overview"
                   label="Vue d'ensemble"
                   icon={<BarChart3 className="w-4 h-4" />}
                 />
                 {filters.compareEnabled && permissions?.canCompare && (
-                  <Tab 
+                  <Tab
                     value="comparison"
                     label={getComparisonTabLabel()}
                     icon={<Layers className="w-4 h-4" />}
                   />
                 )}
-                {filters.dataTypes.includes('fuel') && (
-                  <Tab 
+                {actif('fuel') && (
+                  <Tab
                     value="fuel"
                     label={`Carburant (${trackingData?.fuel?.length || 0})`}
                     icon={<Fuel className="w-4 h-4" />}
                   />
                 )}
-                {filters.dataTypes.includes('maintenance') && (
-                  <Tab 
+                {actif('maintenance') && (
+                  <Tab
                     value="maintenance"
                     label={`Entretiens (${trackingData?.maintenance?.length || 0})`}
                     icon={<Wrench className="w-4 h-4" />}
                   />
                 )}
-                {filters.dataTypes.includes('technical_control') && (
-                  <Tab 
+                {actif('technical_control') && (
+                  <Tab
                     value="control"
                     label={`Contrôles (${trackingData?.technicalControl?.length || 0})`}
                     icon={<ClipboardCheck className="w-4 h-4" />}
                   />
                 )}
-                {filters.dataTypes.includes('green_space') && (
-                  <Tab 
+                {actif('green_space') && (
+                  <Tab
                     value="green_space"
                     label={`Espaces verts (${trackingData?.greenSpace?.length || 0})`}
                     icon={<TreePine className="w-4 h-4" />}
+                  />
+                )}
+                {actif('buildings') && (
+                  <Tab
+                    value="buildings"
+                    label={`Bâtiments (${trackingData?.buildings?.length || 0})`}
+                    icon={<Building2 className="w-4 h-4" />}
+                  />
+                )}
+                {actif('events') && (
+                  <Tab
+                    value="events"
+                    label={`Manifestations (${trackingData?.events?.length || 0})`}
+                    icon={<PartyPopper className="w-4 h-4" />}
                   />
                 )}
               </Tabs>
@@ -1359,19 +1549,20 @@ export default function TrackingPage() {
                         <ResponsiveContainer width="100%" height="100%">
                           <ComposedChart data={chartsData.costByPeriod}>
                             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                            <XAxis dataKey="period" tick={{ fontSize: 10 }} stroke="#6b7280" angle={-45} textAnchor="end" height={60} />
+                            <XAxis dataKey="label" tick={{ fontSize: 10 }} stroke="#6b7280" angle={-45} textAnchor="end" height={60} />
                             <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} width={50} />
                             <Tooltip content={<CustomTooltip />} />
                             <Legend />
-                            {filters.dataTypes.includes('fuel') && (
-                              <Bar dataKey="fuelCost" name="Carburant" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                            )}
-                            {filters.dataTypes.includes('maintenance') && (
-                              <Bar dataKey="maintenanceCost" name="Entretiens" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                            )}
-                            {filters.dataTypes.includes('technical_control') && (
-                              <Bar dataKey="controlCost" name="Contrôles" fill="#10b981" radius={[4, 4, 0, 0]} />
-                            )}
+                            {sourcesActives.map((s, i) => (
+                              <Bar
+                                key={s.id}
+                                dataKey={s.serie}
+                                name={s.libelle}
+                                fill={s.couleur}
+                                stackId="couts"
+                                radius={i === sourcesActives.length - 1 ? [4, 4, 0, 0] : undefined}
+                              />
+                            ))}
                             <Line type="monotone" dataKey="totalCost" name="Total" stroke="#8b5cf6" strokeWidth={2} dot={{ fill: '#8b5cf6' }} />
                           </ComposedChart>
                         </ResponsiveContainer>
@@ -1379,8 +1570,28 @@ export default function TrackingPage() {
                     </div>
                   )}
 
+                  {/* Répartition par source */}
+                  {repartition.length > 1 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Répartition des coûts</h3>
+                      <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart>
+                            <Pie data={repartition} dataKey="value" nameKey="name" innerRadius="55%" outerRadius="85%" paddingAngle={2}>
+                              {repartition.map(r => (
+                                <Cell key={r.name} fill={r.color} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(v: any) => formatCurrency(Number(v))} />
+                            <Legend />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Coûts par objet */}
-                  {chartsData?.costByObject?.length > 0 && (
+                  {parcActif && chartsData?.costByObject?.length > 0 && (
                     <div>
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Coûts par objet (Top 10)</h3>
                       <div className="h-80">
@@ -1391,15 +1602,30 @@ export default function TrackingPage() {
                             <YAxis dataKey="name" type="category" width={80} tick={{ fontSize: 9 }} stroke="#6b7280" />
                             <Tooltip content={<CustomTooltip />} />
                             <Legend />
-                            {filters.dataTypes.includes('fuel') && (
-                              <Bar dataKey="fuelCost" name="Carburant" fill="#f59e0b" stackId="a" />
-                            )}
-                            {filters.dataTypes.includes('maintenance') && (
-                              <Bar dataKey="maintenanceCost" name="Entretiens" fill="#3b82f6" stackId="a" />
-                            )}
-                            {filters.dataTypes.includes('technical_control') && (
-                              <Bar dataKey="controlCost" name="Contrôles" fill="#10b981" stackId="a" />
-                            )}
+                            {sourcesActives.filter(s => s.parc).map(s => (
+                              <Bar key={s.id} dataKey={s.serie} name={s.libelle} fill={s.couleur} stackId="a" />
+                            ))}
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Coûts par bâtiment */}
+                  {actif('buildings') && chartsData?.costByBuilding?.length > 0 && (
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Coûts par bâtiment (Top 10)</h3>
+                      <div className="h-80">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={chartsData.costByBuilding} layout="vertical">
+                            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                            <XAxis type="number" tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} />
+                            <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 9 }} stroke="#6b7280" />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Legend />
+                            {CATEGORIES_BATIMENT.map(c => (
+                              <Bar key={c.id} dataKey={c.id} name={c.libelle} fill={c.couleur} stackId="b" />
+                            ))}
                           </BarChart>
                         </ResponsiveContainer>
                       </div>
@@ -1414,12 +1640,12 @@ export default function TrackingPage() {
                   {filters.compareMode === 'period' && comparison && (
                     <>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <Card className="border-2 border-blue-200">
+                        <Card className="border-2 border-blue-200 dark:border-blue-800">
                           <CardBody className="p-4">
                             <h4 className="font-semibold text-blue-700 dark:text-blue-300 mb-3">
                               Période actuelle
                               <span className="block text-xs font-normal text-gray-500 dark:text-gray-400 mt-1">
-                                {new Date(filters.startDate).toLocaleDateString('fr-FR')} - {new Date(filters.endDate).toLocaleDateString('fr-FR')}
+                                {jourFr(filters.startDate)} - {jourFr(filters.endDate)}
                               </span>
                             </h4>
                             <div className="space-y-2">
@@ -1427,34 +1653,17 @@ export default function TrackingPage() {
                                 <span className="text-gray-600 dark:text-gray-300">Coût total</span>
                                 <span className="font-bold text-lg">{formatCurrency(summary.totalCost)}</span>
                               </div>
-                              {filters.dataTypes.includes('fuel') && (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500 dark:text-gray-400">Carburant</span>
-                                  <span className="font-medium text-amber-600">{formatCurrency(summary.totalFuelCost)}</span>
-                                </div>
-                              )}
-                              {filters.dataTypes.includes('maintenance') && (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
-                                  <span className="font-medium text-blue-600">{formatCurrency(summary.totalMaintenanceCost)}</span>
-                                </div>
-                              )}
-                              {filters.dataTypes.includes('technical_control') && (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
-                                  <span className="font-medium text-green-600">{formatCurrency(summary.totalControlCost)}</span>
-                                </div>
-                              )}
+                              <LignesParSource sources={sourcesActives} montant={s => summary[s.total]} />
                             </div>
                           </CardBody>
                         </Card>
 
-                        <Card className="border-2 border-indigo-200">
+                        <Card className="border-2 border-indigo-200 dark:border-indigo-800">
                           <CardBody className="p-4">
-                            <h4 className="font-semibold text-indigo-700 mb-3">
+                            <h4 className="font-semibold text-indigo-700 dark:text-indigo-300 mb-3">
                               Période de comparaison
                               <span className="block text-xs font-normal text-gray-500 dark:text-gray-400 mt-1">
-                                {new Date(filters.compareStartDate).toLocaleDateString('fr-FR')} - {new Date(filters.compareEndDate).toLocaleDateString('fr-FR')}
+                                {jourFr(filters.compareStartDate)} - {jourFr(filters.compareEndDate)}
                               </span>
                             </h4>
                             <div className="space-y-2">
@@ -1462,24 +1671,7 @@ export default function TrackingPage() {
                                 <span className="text-gray-600 dark:text-gray-300">Coût total</span>
                                 <span className="font-bold text-lg">{formatCurrency(comparison.summary?.totalCost || 0)}</span>
                               </div>
-                              {filters.dataTypes.includes('fuel') && (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500 dark:text-gray-400">Carburant</span>
-                                  <span className="font-medium text-amber-600">{formatCurrency(comparison.summary?.totalFuelCost || 0)}</span>
-                                </div>
-                              )}
-                              {filters.dataTypes.includes('maintenance') && (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
-                                  <span className="font-medium text-blue-600">{formatCurrency(comparison.summary?.totalMaintenanceCost || 0)}</span>
-                                </div>
-                              )}
-                              {filters.dataTypes.includes('technical_control') && (
-                                <div className="flex justify-between">
-                                  <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
-                                  <span className="font-medium text-green-600">{formatCurrency(comparison.summary?.totalControlCost || 0)}</span>
-                                </div>
-                              )}
+                              <LignesParSource sources={sourcesActives} montant={s => comparison.summary?.[s.total]} />
                             </div>
                           </CardBody>
                         </Card>
@@ -1488,16 +1680,20 @@ export default function TrackingPage() {
                       {/* Différence pour périodes */}
                       <Card className={cn(
                         "border-2",
-                        comparison.difference?.totalCost > 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+                        comparison.difference?.totalCost > 0
+                          ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+                          : "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30"
                       )}>
                         <CardBody className="p-4">
-                          <div className="flex items-center justify-between">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <h4 className="font-semibold text-gray-900 dark:text-gray-100">Différence entre périodes</h4>
                               <p className="text-sm text-gray-500 dark:text-gray-400">
-                                {comparison.difference?.totalCost > 0 
-                                  ? `Augmentation de ${comparison.percentageChange?.totalCost || 0}%` 
-                                  : `Réduction de ${Math.abs(parseFloat(comparison.percentageChange?.totalCost) || 0).toFixed(1)}%`
+                                {comparison.percentageChange?.totalCost === null || comparison.percentageChange?.totalCost === undefined
+                                  ? 'Rien à comparer sur la période de référence'
+                                  : comparison.difference?.totalCost > 0
+                                    ? `Augmentation de ${comparison.percentageChange.totalCost}%`
+                                    : `Réduction de ${Math.abs(comparison.percentageChange.totalCost).toFixed(1)}%`
                                 }
                               </p>
                             </div>
@@ -1526,75 +1722,28 @@ export default function TrackingPage() {
                       {/* Résumé comparatif */}
                       {yearlyData?.summary && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <Card className="border-2 border-purple-200">
-                            <CardBody className="p-4">
-                              <h4 className="font-semibold text-purple-700 mb-3">
-                                {filters.compareMode === 'monthly' 
-                                  ? `${MONTHS_SHORT[filters.month1 - 1]} ${filters.year1}`
-                                  : `Année ${filters.year1}`
-                                }
-                              </h4>
-                              <div className="space-y-2">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600 dark:text-gray-300">Coût total</span>
-                                  <span className="font-bold text-lg">{formatCurrency(yearlyData.summary.year1.total)}</span>
+                          {([
+                            ['year1', filters.month1, filters.year1, 'border-purple-200 dark:border-purple-800', 'text-purple-700 dark:text-purple-300'],
+                            ['year2', filters.month2, filters.year2, 'border-indigo-200 dark:border-indigo-800', 'text-indigo-700 dark:text-indigo-300'],
+                          ] as const).map(([cle, mois, annee, bordure, titre]) => (
+                            <Card key={cle} className={cn('border-2', bordure)}>
+                              <CardBody className="p-4">
+                                <h4 className={cn('font-semibold mb-3', titre)}>
+                                  {filters.compareMode === 'monthly'
+                                    ? `${MONTHS_SHORT[mois - 1]} ${annee}`
+                                    : `Année ${annee}`
+                                  }
+                                </h4>
+                                <div className="space-y-2">
+                                  <div className="flex justify-between">
+                                    <span className="text-gray-600 dark:text-gray-300">Coût total</span>
+                                    <span className="font-bold text-lg">{formatCurrency(yearlyData.summary[cle].total)}</span>
+                                  </div>
+                                  <LignesParSource sources={sourcesActives} montant={s => yearlyData.summary[cle][s.annuel]} />
                                 </div>
-                                {filters.dataTypes.includes('fuel') && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500 dark:text-gray-400">Carburant</span>
-                                    <span className="font-medium text-amber-600">{formatCurrency(yearlyData.summary.year1.fuel)}</span>
-                                  </div>
-                                )}
-                                {filters.dataTypes.includes('maintenance') && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
-                                    <span className="font-medium text-blue-600">{formatCurrency(yearlyData.summary.year1.maintenance)}</span>
-                                  </div>
-                                )}
-                                {filters.dataTypes.includes('technical_control') && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
-                                    <span className="font-medium text-green-600">{formatCurrency(yearlyData.summary.year1.control)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </CardBody>
-                          </Card>
-
-                          <Card className="border-2 border-indigo-200">
-                            <CardBody className="p-4">
-                              <h4 className="font-semibold text-indigo-700 mb-3">
-                                {filters.compareMode === 'monthly' 
-                                  ? `${MONTHS_SHORT[filters.month2 - 1]} ${filters.year2}`
-                                  : `Année ${filters.year2}`
-                                }
-                              </h4>
-                              <div className="space-y-2">
-                                <div className="flex justify-between">
-                                  <span className="text-gray-600 dark:text-gray-300">Coût total</span>
-                                  <span className="font-bold text-lg">{formatCurrency(yearlyData.summary.year2.total)}</span>
-                                </div>
-                                {filters.dataTypes.includes('fuel') && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500 dark:text-gray-400">Carburant</span>
-                                    <span className="font-medium text-amber-600">{formatCurrency(yearlyData.summary.year2.fuel)}</span>
-                                  </div>
-                                )}
-                                {filters.dataTypes.includes('maintenance') && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500 dark:text-gray-400">Entretiens</span>
-                                    <span className="font-medium text-blue-600">{formatCurrency(yearlyData.summary.year2.maintenance)}</span>
-                                  </div>
-                                )}
-                                {filters.dataTypes.includes('technical_control') && (
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500 dark:text-gray-400">Contrôles</span>
-                                    <span className="font-medium text-green-600">{formatCurrency(yearlyData.summary.year2.control)}</span>
-                                  </div>
-                                )}
-                              </div>
-                            </CardBody>
-                          </Card>
+                              </CardBody>
+                            </Card>
+                          ))}
                         </div>
                       )}
 
@@ -1602,22 +1751,21 @@ export default function TrackingPage() {
                       {yearlyData?.difference && (
                         <Card className={cn(
                           "border-2",
-                          yearlyData.difference.total > 0 ? "border-red-200 bg-red-50" : "border-green-200 bg-green-50"
+                          yearlyData.difference.total > 0
+                            ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30"
+                            : "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30"
                         )}>
                           <CardBody className="p-4">
-                            <div className="flex items-center justify-between">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
                               <div>
                                 <h4 className="font-semibold text-gray-900 dark:text-gray-100">
-                                  Différence {filters.compareMode === 'monthly' 
+                                  Différence {filters.compareMode === 'monthly'
                                     ? `${MONTHS_SHORT[filters.month1 - 1]} ${filters.year1} vs ${MONTHS_SHORT[filters.month2 - 1]} ${filters.year2}`
                                     : `${filters.year1} vs ${filters.year2}`
                                   }
                                 </h4>
                                 <p className="text-sm text-gray-500 dark:text-gray-400">
-                                  {yearlyData.difference.total > 0 
-                                    ? `Augmentation de ${yearlyData.difference.percentage?.toFixed(1)}%` 
-                                    : `Réduction de ${Math.abs(yearlyData.difference.percentage || 0).toFixed(1)}%`
-                                  }
+                                  {phraseEcartAnnuel(yearlyData, filters)}
                                 </p>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1660,12 +1808,12 @@ export default function TrackingPage() {
                         </div>
                       )}
 
-                      {/* Graphiques par type (uniquement pour mode yearly) */}
-                      {filters.compareMode === 'yearly' && filters.dataTypes.includes('fuel') && comparisonChartData.length > 0 && (
-                        <div>
+                      {/* Graphiques par source (uniquement pour mode yearly) */}
+                      {filters.compareMode === 'yearly' && comparisonChartData.length > 0 && sourcesActives.map(s => (
+                        <div key={s.id}>
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                            <Fuel className="w-5 h-5 inline-block mr-2 text-amber-500" />
-                            Carburant : {filters.year1} vs {filters.year2}
+                            <s.icone className="w-5 h-5 inline-block mr-2" style={{ color: s.couleur }} />
+                            {s.libelle} : {filters.year1} vs {filters.year2}
                           </h3>
                           <div className="h-64">
                             <ResponsiveContainer width="100%" height="100%">
@@ -1675,35 +1823,13 @@ export default function TrackingPage() {
                                 <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} width={50} />
                                 <Tooltip content={<CustomTooltip />} />
                                 <Legend />
-                                <Line type="monotone" dataKey={`fuel_${filters.year1}`} name={`${filters.year1}`} stroke="#f59e0b" strokeWidth={2} dot={{ fill: '#f59e0b' }} />
-                                <Line type="monotone" dataKey={`fuel_${filters.year2}`} name={`${filters.year2}`} stroke="#d97706" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#d97706' }} />
+                                <Line type="monotone" dataKey={`${s.annuel}_${filters.year1}`} name={`${filters.year1}`} stroke={s.couleur} strokeWidth={2} dot={{ fill: s.couleur }} />
+                                <Line type="monotone" dataKey={`${s.annuel}_${filters.year2}`} name={`${filters.year2}`} stroke={s.couleur} strokeOpacity={0.6} strokeWidth={2} strokeDasharray="5 5" dot={{ fill: s.couleur }} />
                               </LineChart>
                             </ResponsiveContainer>
                           </div>
                         </div>
-                      )}
-
-                      {filters.compareMode === 'yearly' && filters.dataTypes.includes('maintenance') && comparisonChartData.length > 0 && (
-                        <div>
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-                            <Wrench className="w-5 h-5 inline-block mr-2 text-blue-500" />
-                            Entretiens : {filters.year1} vs {filters.year2}
-                          </h3>
-                          <div className="h-64">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <LineChart data={comparisonChartData}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                                <XAxis dataKey="month" tick={{ fontSize: 10 }} stroke="#6b7280" />
-                                <YAxis tick={{ fontSize: 10 }} stroke="#6b7280" tickFormatter={formatAxisValue} width={50} />
-                                <Tooltip content={<CustomTooltip />} />
-                                <Legend />
-                                <Line type="monotone" dataKey={`maintenance_${filters.year1}`} name={`${filters.year1}`} stroke="#3b82f6" strokeWidth={2} dot={{ fill: '#3b82f6' }} />
-                                <Line type="monotone" dataKey={`maintenance_${filters.year2}`} name={`${filters.year2}`} stroke="#1d4ed8" strokeWidth={2} strokeDasharray="5 5" dot={{ fill: '#1d4ed8' }} />
-                              </LineChart>
-                            </ResponsiveContainer>
-                          </div>
-                        </div>
-                      )}
+                      ))}
                     </>
                   )}
 
@@ -1718,24 +1844,24 @@ export default function TrackingPage() {
               )}
 
               {activeTab === 'fuel' && trackingData?.fuel && (
-                <DataTable 
-                  data={trackingData.fuel} 
+                <DataTable
+                  data={trackingData.fuel}
                   type="fuel"
                   onViewAttachments={setViewingAttachments}
                 />
               )}
 
               {activeTab === 'maintenance' && trackingData?.maintenance && (
-                <DataTable 
-                  data={trackingData.maintenance} 
+                <DataTable
+                  data={trackingData.maintenance}
                   type="maintenance"
                   onViewAttachments={setViewingAttachments}
                 />
               )}
 
               {activeTab === 'control' && trackingData?.technicalControl && (
-                <DataTable 
-                  data={trackingData.technicalControl} 
+                <DataTable
+                  data={trackingData.technicalControl}
                   type="technical_control"
                   onViewAttachments={setViewingAttachments}
                 />
@@ -1760,16 +1886,27 @@ export default function TrackingPage() {
                         <tr key={g.id} className="hover:bg-gray-50 dark:hover:bg-gray-700/50">
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">{g.spaceName}</td>
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.type}{g.title ? ` - ${g.title}` : ''}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.date ? new Date(g.date).toLocaleDateString('fr-FR') : '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{jourFr(g.date)}</td>
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.performer || '-'}</td>
                           <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.duration ? `${g.duration} min` : '-'}</td>
                           <td className="px-4 py-3 text-sm text-right font-medium text-gray-900 dark:text-gray-100">{formatCurrency(g.cost)}</td>
-                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{g.nextDate ? new Date(g.nextDate).toLocaleDateString('fr-FR') : '-'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400">{jourFr(g.nextDate)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+              )}
+
+              {activeTab === 'buildings' && trackingData?.buildings && (
+                <TableBatiments
+                  lignes={trackingData.buildings}
+                  avecComparaison={!!comparison && filters.compareMode === 'period'}
+                />
+              )}
+
+              {activeTab === 'events' && trackingData?.events && (
+                <TableManifestations lignes={trackingData.events} />
               )}
             </CardBody>
           </Card>
@@ -1779,7 +1916,7 @@ export default function TrackingPage() {
       {/* Modal d'export PDF */}
       {showPDFExport && (
         <TrackingPDFExport
-          filters={filters}
+          filters={{ ...filters, dataTypes: actives }}
           data={trackingData}
           chartsData={chartsData}
           summary={summary}
