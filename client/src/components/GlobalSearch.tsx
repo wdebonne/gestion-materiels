@@ -117,7 +117,12 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 sm:items-center sm:justify-start sm:bg-black/50 sm:pt-20">
-      <div className="flex h-full w-full flex-col sm:h-auto sm:max-h-[70vh] sm:max-w-xl sm:rounded-2xl sm:bg-white sm:shadow-2xl sm:dark:bg-gray-800">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Rechercher un matériel"
+        className="flex h-full w-full flex-col sm:h-auto sm:max-h-[70vh] sm:max-w-xl sm:rounded-2xl sm:bg-white sm:shadow-2xl sm:dark:bg-gray-800"
+      >
         {/* Barre de saisie */}
         <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">
           <Search className="h-5 w-5 flex-shrink-0 text-gray-500 dark:text-gray-400" />

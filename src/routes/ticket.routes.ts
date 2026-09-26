@@ -299,13 +299,37 @@ router.get('/permissions', authenticateToken, async (req: AuthRequest, res: Resp
  */
 router.get('/intervenants', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const ctx = await contexteTickets(req);
-    const intervientQuelquePart =
-      ctx.role === 'admin' || ctx.voitTout || ctx.services.length > 0 || ctx.modeFin;
-    if (!intervientQuelquePart) return refuser(res, 403, 'Réservé aux intervenants');
+    /*
+     * Pour une demande précise (`?ticketId=`), la règle est celle de la
+     * réaffectation (`PUT /:id`) : être intervenant **sur cette demande** —
+     * celle qu'on vous a confiée comprise. Sans quoi un agent sans niveau,
+     * à qui l'on confie une demande, pouvait la réaffecter sans pouvoir
+     * savoir à qui : la fiche affichait un refus à chaque ouverture.
+     *
+     * La catégorie est alors celle de la demande, pas celle de la requête :
+     * une demande confiée ne sert pas à lister les intervenants d'ailleurs.
+     */
+    const ticketId = Number(req.query.ticketId) || null;
+    let categorieId: number;
+    if (ticketId) {
+      const acces = await accesTicket(req, ticketId);
+      if (acces === 'voisinage') return refuser(res, 403, 'Cette demande ne vous est visible qu’au titre de votre bâtiment');
+      if (acces !== 'complet') return refuser(res, 404, 'Demande introuvable');
+      const ticket = await lireTicket(ticketId);
+      if (!ticket || !(await estIntervenant(req, ticket))) {
+        return refuser(res, 403, 'Seuls les intervenants réaffectent une demande');
+      }
+      categorieId = Number(ticket.sous_categorie_id ?? ticket.categorie_id);
+      if (!categorieId) return res.json({ success: true, intervenants: [] });
+    } else {
+      const ctx = await contexteTickets(req);
+      const intervientQuelquePart =
+        ctx.role === 'admin' || ctx.voitTout || ctx.services.length > 0 || ctx.modeFin;
+      if (!intervientQuelquePart) return refuser(res, 403, 'Réservé aux intervenants');
 
-    const categorieId = Number(req.query.categorieId);
-    if (!Number.isFinite(categorieId)) return refuser(res, 400, 'Catégorie manquante');
+      categorieId = Number(req.query.categorieId);
+      if (!Number.isFinite(categorieId)) return refuser(res, 400, 'Catégorie manquante');
+    }
 
     const categorie = await db.queryOne('SELECT id, parent_id FROM ticket_categories WHERE id = ?', [categorieId]);
     if (!categorie) return refuser(res, 404, 'Catégorie introuvable');

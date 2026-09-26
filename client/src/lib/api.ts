@@ -2715,10 +2715,14 @@ export const ticketApi = {
       aValider: number
     }>('/tickets/permissions'),
 
-  /** À qui l'on peut confier une demande de cette catégorie. */
-  intervenants: (categorieId: number) =>
+  /**
+   * À qui l'on peut confier une demande de cette catégorie. Avec `ticketId`,
+   * la règle est celle de la réaffectation de cette demande-là : la personne
+   * à qui elle est confiée peut la passer à un autre.
+   */
+  intervenants: (categorieId: number, ticketId?: number) =>
     api.get<{ success: boolean; intervenants: { id: number; nom: string }[] }>(
-      `/tickets/intervenants?categorieId=${categorieId}`
+      `/tickets/intervenants?categorieId=${categorieId}${ticketId ? `&ticketId=${ticketId}` : ''}`
     ),
 
   /** Tout ce dont le formulaire a besoin, en un seul appel. */

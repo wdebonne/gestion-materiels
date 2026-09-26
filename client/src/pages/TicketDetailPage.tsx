@@ -144,8 +144,8 @@ export default function TicketDetailPage() {
   const categorieId = data?.ticket.categorie?.id ?? null
   const peutReaffecter = Boolean(data?.droits?.intervenant && categorieId)
   const { data: intervenants } = useQuery({
-    queryKey: ['tickets', 'intervenants', categorieId],
-    queryFn: async () => (await ticketApi.intervenants(categorieId!)).data.intervenants,
+    queryKey: ['tickets', 'intervenants', categorieId, Number(id)],
+    queryFn: async () => (await ticketApi.intervenants(categorieId!, Number(id))).data.intervenants,
     enabled: peutReaffecter,
   })
 

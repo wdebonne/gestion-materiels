@@ -1,4 +1,4 @@
-import { InputHTMLAttributes, forwardRef, ReactNode } from 'react'
+import { InputHTMLAttributes, forwardRef, ReactNode, useId } from 'react'
 import { cn } from '@/lib/utils'
 
 // `size` est redéfini en gabarit visuel ; celui de l'attribut HTML (un nombre
@@ -14,7 +14,11 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
   ({ className, label, error, hint, icon, rightIcon, type = 'text', id, size = 'md', ...props }, ref) => {
-    const inputId = id || props.name
+    // Sans `id` ni `name`, le libellé n'était relié à rien : un lecteur d'écran
+    // annonçait « zone de saisie » sans dire laquelle. Un identifiant stable
+    // est généré à défaut.
+    const idGenere = useId()
+    const inputId = id || props.name || idGenere
 
     const sizeClasses = {
       sm: 'px-2.5 py-1.5 text-sm',
