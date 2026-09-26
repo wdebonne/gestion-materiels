@@ -3,6 +3,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import { usePermissions } from '@/lib/permissions'
 import { useSettingsStore } from '@/stores/settings.store'
 import { useGestion } from '@/lib/gestion'
+import { useMenuPlugins } from '@/lib/modules'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useEffect, useState } from 'react'
@@ -109,13 +110,7 @@ export default function Layout() {
   })
 
   // Récupérer les plugins de type menu
-  const { data: menuPlugins = [], isSuccess: menuCharge } = useQuery({
-    queryKey: ['menuPlugins'],
-    queryFn: async () => {
-      const response = await api.get('/plugins/menu')
-      return response.data
-    }
-  })
+  const { data: menuPlugins = [], isSuccess: menuCharge } = useMenuPlugins()
 
   /*
    * Le demandeur, et rien d'autre.

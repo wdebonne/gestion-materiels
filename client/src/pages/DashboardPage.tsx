@@ -10,7 +10,8 @@ import {
   Wrench,
   ClipboardCheck,
   Euro,
-  Clock
+  Clock,
+  Building2
 } from 'lucide-react'
 import { StatCard, Card, CardBody, CardHeader, CardTitle, ImageCard, LoadingInline } from '@/components/ui'
 import api from '@/lib/api'
@@ -18,6 +19,19 @@ import { formatDate } from '@/lib/utils'
 import QuickActions from '@/components/QuickActions'
 import GlobalSearch from '@/components/GlobalSearch'
 import HelpSheet from '@/components/HelpSheet'
+import ATraiter from '@/components/ATraiter'
+
+/**
+ * Où mène une alerte. Une échéance de bâtiment n'a pas de matériel : sans ce
+ * lien, la ligne restait muette, sans nom ni destination.
+ */
+function lienAlerte(alert: any): string | null {
+  if (alert.pluginReference === 'green-space-maintenance') return '/espaces-verts'
+  if (alert.pluginReference === 'batiment-suivi') return `/batiments?suivi=${alert.pluginReferenceId}`
+  if (alert.pluginReference === 'batiment-contrat') return `/batiments?contrat=${alert.pluginReferenceId}`
+  if (alert.objectId) return `/objects/${alert.objectId}`
+  return null
+}
 
 export default function DashboardPage() {
   const [rechercheOuverte, setRechercheOuverte] = useState(false)
@@ -79,7 +93,7 @@ export default function DashboardPage() {
 <div className="flex items-start justify-between gap-2">
       <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Tableau de bord</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Vue d'ensemble de votre gestion de matériels</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Ce qui vous attend, puis l'état du parc</p>
         </div>
         <HelpSheet
           titre="Le tableau de bord"
@@ -87,8 +101,9 @@ export default function DashboardPage() {
               "Les quatre tuiles du haut sont les gestes du quotidien : scanner une étiquette, faire un plein, chercher un matériel.",
               "« Faire un plein » vous emmène directement sur votre matériel épinglé, formulaire ouvert.",
               "Pour épingler un matériel, ouvrez sa fiche et touchez l'étoile.",
-              "Les chiffres en dessous donnent l'état du parc : catégories, matériels, alertes en cours.",
-              "La pastille rouge sur « Alertes » compte les contrôles et entretiens à prévoir.",
+              "« À traiter » réunit une carte par module que vous utilisez : tickets qui vous sont confiés, contrôles de bâtiments en retard, manifestations à confirmer, réservations à approuver. Chaque chiffre ouvre la liste correspondante.",
+              "Les chiffres du parc donnent son état : catégories, matériels, alertes en cours.",
+              "La pastille rouge sur « Alertes » compte les contrôles, entretiens et échéances de bâtiments à prévoir.",
           ]}
         />
       </div>
@@ -97,7 +112,11 @@ export default function DashboardPage() {
       <QuickActions onOuvrirRecherche={() => setRechercheOuverte(true)} />
       <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />
 
+      {/* Ce que chaque module attend, avant l'état du parc */}
+      <ATraiter />
+
       {/* Statistiques */}
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Le parc</h2>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         <StatCard
           title="Catégories"
@@ -191,26 +210,34 @@ export default function DashboardPage() {
                 </p>
               ) : (
                 <div className="divide-y divide-gray-100">
-                  {alerts?.map((alert: any) => (
-                    <div key={alert.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
+                  {alerts?.map((alert: any) => {
+                    const lien = lienAlerte(alert)
+                    return (
+                    <div
+                      key={alert.id}
+                      className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors${lien ? ' cursor-pointer' : ''}`}
+                      onClick={lien ? () => navigate(lien) : undefined}
+                    >
                       <div className="flex items-start gap-3">
                         <div className={`p-2 rounded-lg ${
                           alert.type === 'technical_control' ? 'bg-blue-100 text-blue-600' :
                           alert.type === 'maintenance' ? 'bg-orange-100 text-orange-600' :
                           alert.type === 'fuel' ? 'bg-green-100 text-green-600' :
+                          alert.type === 'batiment' ? 'bg-purple-100 text-purple-600' :
                           'bg-gray-100 text-gray-600'
                         }`}>
                           {alert.type === 'technical_control' ? <ClipboardCheck className="w-4 h-4" /> :
                            alert.type === 'maintenance' ? <Wrench className="w-4 h-4" /> :
                            alert.type === 'fuel' ? <Fuel className="w-4 h-4" /> :
+                           alert.type === 'batiment' ? <Building2 className="w-4 h-4" /> :
                            <AlertTriangle className="w-4 h-4" />}
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
                             {alert.title}
                           </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-                            {alert.objectName}
+                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">
+                            {alert.objectName || alert.batiments?.map((b: any) => b.nom).join(', ')}
                           </p>
                           <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
                             {formatDate(alert.dueDate)}
@@ -218,7 +245,8 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               )}
             </CardBody>
@@ -324,10 +352,10 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Stats des plugins */}
+      {/* Véhicules et engins : les autres modules ont leur carte dans « À traiter » */}
       <Card>
         <CardHeader>
-          <CardTitle>Statistiques des modules</CardTitle>
+          <CardTitle>Véhicules et entretiens</CardTitle>
         </CardHeader>
         <CardBody>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
