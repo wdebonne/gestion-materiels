@@ -4,6 +4,8 @@ import { usePermissions } from '@/lib/permissions'
 import { useSettingsStore } from '@/stores/settings.store'
 import { useGestion } from '@/lib/gestion'
 import { useMenuPlugins } from '@/lib/modules'
+import { useReprendreFavorisLocaux } from '@/lib/accueil'
+import AjouterRaccourci from '@/components/accueil/AjouterRaccourci'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import api from '@/lib/api'
 import { useEffect, useState } from 'react'
@@ -43,7 +45,8 @@ import {
   TreePine,
   KeyRound,
   LifeBuoy,
-  Building2
+  Building2,
+  Link2
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -69,6 +72,7 @@ export default function Layout() {
   })
   const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [rechercheOuverte, setRechercheOuverte] = useState(false)
+  const [raccourciOuvert, setRaccourciOuvert] = useState(false)
   const { theme, setTheme } = useDarkMode()
   const { textSize, setTextSize, highContrast, setHighContrast } = useDisplayPrefs()
   const { t } = useTranslation()
@@ -135,6 +139,10 @@ export default function Layout() {
     menuPlugins[0]?.slug === 'tickets'
 
   const location = useLocation()
+
+  // Les matériels épinglés dans ce navigateur, avant que les favoris ne
+  // rejoignent le compte : repris une fois, où qu'on arrive dans l'application.
+  useReprendreFavorisLocaux(!!user)
   useEffect(() => {
     if (!demandeurSeul) return
     // Ses demandes, sa fiche, et le matériel qu'une demande lui fait ouvrir.
@@ -371,6 +379,17 @@ export default function Layout() {
                       <User className="w-4 h-4" />
                       {t('nav.profile')}
                     </NavLink>
+                    {/* La page ouverte, filtres compris, dans « Mes favoris » de l'accueil. */}
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false)
+                        setRaccourciOuvert(true)
+                      }}
+                      className="flex w-full items-center gap-2 px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                    >
+                      <Link2 className="w-4 h-4 shrink-0" />
+                      Ajouter cette page à mes raccourcis
+                    </button>
                     {/* Thème */}
                     <div className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300">
                       <span className="text-xs text-gray-600 dark:text-gray-400 uppercase font-medium">{t('theme.title')}</span>
@@ -481,6 +500,13 @@ export default function Layout() {
       />
 
       <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />
+      <AjouterRaccourci
+        ouvert={raccourciOuvert}
+        onFermer={() => setRaccourciOuvert(false)}
+        nomDeRepli={
+          navigation.find((n) => n.href !== '/' && location.pathname.startsWith(n.href))?.name ?? 'Tableau de bord'
+        }
+      />
     </div>
   )
 }

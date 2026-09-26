@@ -54,6 +54,7 @@ import OngletEnergie from '@/components/batiments/exploitation/OngletEnergie'
 import OngletContrats from '@/components/batiments/exploitation/OngletContrats'
 import OngletInterventions from '@/components/batiments/exploitation/OngletInterventions'
 import { ouvrirFichier } from '@/components/batiments/ouvrirFichier'
+import BoutonFavori from '@/components/BoutonFavori'
 import {
   jourFr,
   libellePeriodicite,
@@ -144,9 +145,12 @@ export default function BatimentDetailPage() {
             </h1>
             {fiche.batiment.adresse && <p className="text-gray-500 dark:text-gray-400 mt-1">{fiche.batiment.adresse}</p>}
           </div>
-          <Button icon={<Upload className="w-4 h-4" />} onClick={() => setDepot({})}>
-            Déposer un document
-          </Button>
+          <div className="flex items-center gap-2">
+            <BoutonFavori type="batiment" cibleId={siteId} quoi="ce bâtiment" />
+            <Button icon={<Upload className="w-4 h-4" />} onClick={() => setDepot({})}>
+              Déposer un document
+            </Button>
+          </div>
         </div>
       </div>
 

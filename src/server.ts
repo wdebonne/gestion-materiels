@@ -55,6 +55,7 @@ import manifestationRoutes from './routes/manifestation.routes';
 import manifestationIntakeRoutes from './routes/manifestationIntake.routes';
 import serviceRoutes from './routes/service.routes';
 import notificationRoutes from './routes/notification.routes';
+import accueilRoutes from './routes/accueil.routes';
 import manifestationExportRoutes from './routes/manifestationExport.routes';
 import nextcloudRoutes from './routes/nextcloud.routes';
 import espaceVertRoutes from './routes/espaceVert.routes';
@@ -312,6 +313,8 @@ app.use('/api/services', serviceRoutes);
 // l'a rendue nécessaire, les modèles de document s'en servent depuis.
 app.use('/api/nextcloud', nextcloudRoutes);
 app.use('/api/notifications', notificationRoutes);
+// Le tableau de bord de chacun : ses blocs, ses actions rapides, ses favoris.
+app.use('/api/accueil', accueilRoutes);
 app.use('/api/green-spaces', espaceVertRoutes);
 app.use('/api/mobilier-urbain', mobilierUrbainRoutes);
 app.use('/api/plannings', planningsRoutes);

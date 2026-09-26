@@ -1,402 +1,104 @@
-import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
-import { 
-  LayoutGrid, 
-  Package, 
-  AlertTriangle, 
-  Calendar as CalendarIcon,
-  Fuel,
-  Wrench,
-  ClipboardCheck,
-  Euro,
-  Clock,
-  Building2
-} from 'lucide-react'
-import { StatCard, Card, CardBody, CardHeader, CardTitle, ImageCard, LoadingInline } from '@/components/ui'
-import api from '@/lib/api'
-import { formatDate } from '@/lib/utils'
+import { useState, type ComponentType } from 'react'
+import { SlidersHorizontal } from 'lucide-react'
+import { Button } from '@/components/ui'
 import QuickActions from '@/components/QuickActions'
 import GlobalSearch from '@/components/GlobalSearch'
 import HelpSheet from '@/components/HelpSheet'
-import ATraiter from '@/components/ATraiter'
+import PanneauPersonnalisation from '@/components/accueil/PanneauPersonnalisation'
+import { BlocFavoris } from '@/components/accueil/MesFavoris'
+import { CarteBatiments, CarteManifestations, CarteReservations, CarteTickets } from '@/components/accueil/CartesModules'
+import {
+  BlocActivite,
+  BlocAlertes,
+  BlocCategories,
+  BlocEvenements,
+  BlocParc,
+  BlocVehicules,
+} from '@/components/accueil/BlocsParc'
+import { useAccueil, type IdBloc } from '@/lib/accueil'
+import { cn } from '@/lib/utils'
 
-/**
- * Où mène une alerte. Une échéance de bâtiment n'a pas de matériel : sans ce
- * lien, la ligne restait muette, sans nom ni destination.
- */
-function lienAlerte(alert: any): string | null {
-  if (alert.pluginReference === 'green-space-maintenance') return '/espaces-verts'
-  if (alert.pluginReference === 'batiment-suivi') return `/batiments?suivi=${alert.pluginReferenceId}`
-  if (alert.pluginReference === 'batiment-contrat') return `/batiments?contrat=${alert.pluginReferenceId}`
-  if (alert.objectId) return `/objects/${alert.objectId}`
-  return null
+/** Ce que chaque identifiant du catalogue (`lib/accueil.ts`) affiche. */
+const COMPOSANTS: Record<IdBloc, ComponentType> = {
+  favoris: BlocFavoris,
+  tickets: CarteTickets,
+  batiments: CarteBatiments,
+  manifestations: CarteManifestations,
+  reservations: CarteReservations,
+  parc: BlocParc,
+  categories: BlocCategories,
+  alertes: BlocAlertes,
+  evenements: BlocEvenements,
+  activite: BlocActivite,
+  vehicules: BlocVehicules,
 }
 
+/**
+ * L'accueil, tel que chacun l'a composé.
+ *
+ * La page ne décide plus de rien : elle range les blocs dans l'ordre enregistré
+ * sur le compte, en saute ceux qu'on a masqués et ceux d'un module qu'on n'a
+ * pas. Un bloc masqué n'est pas monté : il ne coûte aucune requête.
+ */
 export default function DashboardPage() {
   const [rechercheOuverte, setRechercheOuverte] = useState(false)
-  const navigate = useNavigate()
+  const [personnalisation, setPersonnalisation] = useState(false)
+  const { blocs } = useAccueil()
 
-  // Récupérer les statistiques
-  const { data: stats } = useQuery({
-    queryKey: ['dashboard-stats'],
-    queryFn: async () => {
-      const response = await api.get('/dashboard/stats')
-      return response.data
-    }
-  })
-
-  // Récupérer les alertes récentes
-  const { data: alerts, isLoading: alertsLoading } = useQuery({
-    queryKey: ['alerts', { limit: 5 }],
-    queryFn: async () => {
-      const response = await api.get('/alerts?limit=5&status=active')
-      return response.data.alerts
-    }
-  })
-
-  // Récupérer les événements à venir
-  const { data: upcomingEvents, isLoading: eventsLoading } = useQuery({
-    queryKey: ['calendar-upcoming'],
-    queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0]
-      const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
-      const response = await api.get(`/calendar?startDate=${today}&endDate=${nextWeek}`)
-      return response.data.events?.slice(0, 5) || []
-    }
-  })
-
-  // Récupérer les catégories
-  const { data: categories, isLoading: categoriesLoading } = useQuery({
-    // Même clé que les autres listes complètes : découper ici, et non dans le
-    // cache, sinon les pages qui attendent toutes les catégories n'en reçoivent
-    // que quatre.
-    queryKey: ['categories', 'simple'],
-    queryFn: async () => {
-      const response = await api.get('/categories')
-      return response.data.categories || []
-    }
-  })
-
-  // Récupérer les dernières activités
-  const { data: recentObjects, isLoading: objectsLoading } = useQuery({
-    queryKey: ['recent-objects'],
-    queryFn: async () => {
-      const response = await api.get('/objects?limit=5&sort=updatedAt')
-      return response.data.objects || []
-    }
-  })
+  const affiches = blocs.filter((b) => b.visible && b.disponible)
 
   return (
     <div className="space-y-6">
       {/* En-tête */}
-<div className="flex items-start justify-between gap-2">
-      <div>
+      <div className="flex items-start justify-between gap-2">
+        <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Tableau de bord</h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">Ce qui vous attend, puis l'état du parc</p>
+          <p className="text-gray-500 dark:text-gray-400 mt-1">Ce qui vous attend, à votre façon</p>
         </div>
-        <HelpSheet
-          titre="Le tableau de bord"
-          points={[
-              "Les quatre tuiles du haut sont les gestes du quotidien : scanner une étiquette, faire un plein, chercher un matériel.",
-              "« Faire un plein » vous emmène directement sur votre matériel épinglé, formulaire ouvert.",
-              "Pour épingler un matériel, ouvrez sa fiche et touchez l'étoile.",
-              "« À traiter » réunit une carte par module que vous utilisez : tickets qui vous sont confiés, contrôles de bâtiments en retard, manifestations à confirmer, réservations à approuver. Chaque chiffre ouvre la liste correspondante.",
-              "Les chiffres du parc donnent son état : catégories, matériels, alertes en cours.",
-              "La pastille rouge sur « Alertes » compte les contrôles, entretiens et échéances de bâtiments à prévoir.",
-          ]}
-        />
+        <div className="flex items-center gap-1">
+          <Button
+            variant="outline"
+            icon={<SlidersHorizontal className="w-4 h-4" />}
+            onClick={() => setPersonnalisation(true)}
+            aria-label="Personnaliser mon tableau de bord"
+          >
+            <span className="hidden sm:inline">Personnaliser</span>
+          </Button>
+          <HelpSheet
+            titre="Le tableau de bord"
+            points={[
+              'Les tuiles du haut sont vos gestes du quotidien. « Personnaliser » vous laisse choisir les quatre qui vous servent : nouvelle demande, mes tickets, réserver, faire un plein…',
+              "Chaque carte de module (tickets, bâtiments, manifestations, réservations) dit ce qui vous attend. Chaque chiffre ouvre la liste correspondante.",
+              "Touchez l'étoile d'une fiche pour l'épingler dans « Mes favoris ». Pour revenir à une page ou une liste filtrée, choisissez « Ajouter cette page à mes raccourcis » dans le menu de votre nom.",
+              '« Personnaliser » : cochez les blocs à afficher, rangez-les avec les flèches. Tout est enregistré sur votre compte, et vous le retrouvez sur tous vos appareils.',
+              'La pastille rouge sur « Alertes » compte les contrôles, entretiens et échéances de bâtiments à prévoir.',
+            ]}
+          />
+        </div>
       </div>
 
       {/* Ce que l'agent vient faire, avant les chiffres */}
       <QuickActions onOuvrirRecherche={() => setRechercheOuverte(true)} />
       <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />
 
-      {/* Ce que chaque module attend, avant l'état du parc */}
-      <ATraiter />
-
-      {/* Statistiques */}
-      <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Le parc</h2>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard
-          title="Catégories"
-          value={stats?.categoriesCount || 0}
-          icon={<LayoutGrid className="w-6 h-6" />}
-          color="blue"
-        />
-        <StatCard
-          title="Matériels"
-          value={stats?.objectsCount || 0}
-          icon={<Package className="w-6 h-6" />}
-          color="green"
-        />
-        <StatCard
-          title="Valeur du parc"
-          value={`${Number(stats?.totalValue || 0).toLocaleString('fr-FR')} €`}
-          icon={<Euro className="w-6 h-6" />}
-          color="emerald"
-        />
-        <StatCard
-          title="Alertes actives"
-          value={stats?.activeAlertsCount || 0}
-          icon={<AlertTriangle className="w-6 h-6" />}
-          color="yellow"
-        />
-        <StatCard
-          title="Événements ce mois"
-          value={stats?.eventsThisMonth || 0}
-          icon={<CalendarIcon className="w-6 h-6" />}
-          color="purple"
-        />
-      </div>
-
-      {/* Grille principale */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Catégories */}
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Catégories</CardTitle>
-              <button 
-                onClick={() => navigate('/categories')}
-                className="inline-flex min-h-[44px] items-center px-2 -mx-2 rounded-lg text-sm text-primary-600 hover:bg-primary-50 hover:text-primary-700 font-medium dark:hover:bg-primary-900/30"
-              >
-                Voir tout →
-              </button>
-            </CardHeader>
-            <CardBody>
-              {categoriesLoading ? (
-                <LoadingInline />
-              ) : categories?.length === 0 ? (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                  Aucune catégorie créée
-                </p>
-              ) : (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  {categories?.slice(0, 4).map((category: any) => (
-                    <ImageCard
-                      key={category.id}
-                      title={category.name}
-                      image={category.image}
-                      icon={<LayoutGrid className="w-full h-full" />}
-                      count={category.objectCount}
-                      onClick={() => navigate(`/categories/${category.slug}`)}
-                    />
-                  ))}
-                </div>
-              )}
-            </CardBody>
-          </Card>
+      {affiches.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-gray-300 p-8 text-center text-gray-600 dark:border-gray-600 dark:text-gray-400">
+          Tous les blocs sont masqués. « Personnaliser » permet d'en afficher de nouveau.
+        </p>
+      ) : (
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {affiches.map((b) => {
+            const Bloc = COMPOSANTS[b.id]
+            return (
+              <div key={b.id} className={cn('min-w-0', b.largeur === 'plein' && 'lg:col-span-2')}>
+                <Bloc />
+              </div>
+            )
+          })}
         </div>
+      )}
 
-        {/* Alertes */}
-        <div>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
-              <CardTitle>Alertes récentes</CardTitle>
-              <button 
-                onClick={() => navigate('/alerts')}
-                className="inline-flex min-h-[44px] items-center px-2 -mx-2 rounded-lg text-sm text-primary-600 hover:bg-primary-50 hover:text-primary-700 font-medium dark:hover:bg-primary-900/30"
-              >
-                Voir tout →
-              </button>
-            </CardHeader>
-            <CardBody className="p-0">
-              {alertsLoading ? (
-                <div className="p-4"><LoadingInline /></div>
-              ) : alerts?.length === 0 ? (
-                <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                  Aucune alerte active
-                </p>
-              ) : (
-                <div className="divide-y divide-gray-100">
-                  {alerts?.map((alert: any) => {
-                    const lien = lienAlerte(alert)
-                    return (
-                    <div
-                      key={alert.id}
-                      className={`p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors${lien ? ' cursor-pointer' : ''}`}
-                      onClick={lien ? () => navigate(lien) : undefined}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className={`p-2 rounded-lg ${
-                          alert.type === 'technical_control' ? 'bg-blue-100 text-blue-600' :
-                          alert.type === 'maintenance' ? 'bg-orange-100 text-orange-600' :
-                          alert.type === 'fuel' ? 'bg-green-100 text-green-600' :
-                          alert.type === 'batiment' ? 'bg-purple-100 text-purple-600' :
-                          'bg-gray-100 text-gray-600'
-                        }`}>
-                          {alert.type === 'technical_control' ? <ClipboardCheck className="w-4 h-4" /> :
-                           alert.type === 'maintenance' ? <Wrench className="w-4 h-4" /> :
-                           alert.type === 'fuel' ? <Fuel className="w-4 h-4" /> :
-                           alert.type === 'batiment' ? <Building2 className="w-4 h-4" /> :
-                           <AlertTriangle className="w-4 h-4" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                            {alert.title}
-                          </p>
-                          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 truncate">
-                            {alert.objectName || alert.batiments?.map((b: any) => b.nom).join(', ')}
-                          </p>
-                          <p className="text-xs text-gray-600 dark:text-gray-300 mt-1">
-                            {formatDate(alert.dueDate)}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                    )
-                  })}
-                </div>
-              )}
-            </CardBody>
-          </Card>
-        </div>
-      </div>
-
-      {/* Deuxième ligne */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Événements à venir */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Événements à venir</CardTitle>
-            <button 
-              onClick={() => navigate('/calendar')}
-              className="inline-flex min-h-[44px] items-center px-2 -mx-2 rounded-lg text-sm text-primary-600 hover:bg-primary-50 hover:text-primary-700 font-medium dark:hover:bg-primary-900/30"
-            >
-              Voir calendrier →
-            </button>
-          </CardHeader>
-          <CardBody className="p-0">
-            {eventsLoading ? (
-              <div className="p-4"><LoadingInline /></div>
-            ) : upcomingEvents?.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                Aucun événement cette semaine
-              </p>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {upcomingEvents?.map((event: any) => (
-                  <div key={event.id} className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors flex items-center gap-3">
-                    <div className="flex-shrink-0 w-12 text-center">
-                      <div className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                        {new Date(event.startDate).getDate()}
-                      </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 uppercase">
-                        {new Date(event.startDate).toLocaleDateString('fr-FR', { month: 'short' })}
-                      </div>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {event.title}
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400 truncate">
-                        {event.description}
-                      </p>
-                    </div>
-                    <div 
-                      className="w-3 h-3 rounded-full flex-shrink-0" 
-                      style={{ backgroundColor: event.color || '#3B82F6' }}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-
-        {/* Matériels récemment modifiés */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>Activité récente</CardTitle>
-          </CardHeader>
-          <CardBody className="p-0">
-            {objectsLoading ? (
-              <div className="p-4"><LoadingInline /></div>
-            ) : recentObjects?.length === 0 ? (
-              <p className="text-gray-500 dark:text-gray-400 text-center py-8">
-                Aucune activité récente
-              </p>
-            ) : (
-              <div className="divide-y divide-gray-100">
-                {recentObjects?.map((obj: any) => (
-                  <div 
-                    key={obj.id} 
-                    className="p-4 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors cursor-pointer flex items-center gap-3"
-                    onClick={() => navigate(`/objects/${obj.id}`)}
-                  >
-                    <div className="w-10 h-10 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center flex-shrink-0">
-                      {obj.image ? (
-                        <img src={obj.image} alt={obj.name} className="w-full h-full object-cover rounded-lg" />
-                      ) : (
-                        <Package className="w-5 h-5 text-gray-600 dark:text-gray-300" />
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">
-                        {obj.name}
-                      </p>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
-                        {obj.categoryName}
-                      </p>
-                    </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1">
-                      <Clock className="w-3 h-3" />
-                      {formatDate(obj.updatedAt)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardBody>
-        </Card>
-      </div>
-
-      {/* Véhicules et engins : les autres modules ont leur carte dans « À traiter » */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Véhicules et entretiens</CardTitle>
-        </CardHeader>
-        <CardBody>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-900/30 rounded-xl">
-              <div className="p-3 bg-green-100 dark:bg-green-900/40 rounded-lg">
-                <Fuel className="w-6 h-6 text-green-600" />
-              </div>
-              <div>
-                <p className="text-sm text-green-700 dark:text-green-300">Carburant ce mois</p>
-                <p className="text-2xl font-bold text-green-900 dark:text-green-200">
-                  {Number(stats?.fuelThisMonth || 0).toFixed(0)} L
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4 p-4 bg-blue-50 dark:bg-blue-900/30 rounded-xl">
-              <div className="p-3 bg-blue-100 dark:bg-blue-900/40 rounded-lg">
-                <ClipboardCheck className="w-6 h-6 text-blue-600" />
-              </div>
-              <div>
-                <p className="text-sm text-blue-700 dark:text-blue-300">Contrôles à venir</p>
-                <p className="text-2xl font-bold text-blue-900 dark:text-blue-200">
-                  {stats?.upcomingControls || 0}
-                </p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4 p-4 bg-orange-50 dark:bg-orange-900/30 rounded-xl">
-              <div className="p-3 bg-orange-100 rounded-lg">
-                <Wrench className="w-6 h-6 text-orange-600" />
-              </div>
-              <div>
-                <p className="text-sm text-orange-700 dark:text-orange-300">Entretiens à prévoir</p>
-                <p className="text-2xl font-bold text-orange-900 dark:text-orange-200">
-                  {stats?.upcomingMaintenance || 0}
-                </p>
-              </div>
-            </div>
-          </div>
-        </CardBody>
-      </Card>
+      <PanneauPersonnalisation ouvert={personnalisation} onFermer={() => setPersonnalisation(false)} />
     </div>
   )
 }

@@ -167,6 +167,9 @@ async function retirerDesRolesVivants(userId: number | string): Promise<void> {
     'DELETE FROM user_module_permissions WHERE user_id = ?',
     'DELETE FROM notification_preferences WHERE user_id = ?',
     'DELETE FROM manifestation_watchers WHERE user_id = ?',
+    // Ses favoris nomment ce qu'il suivait : une trace de plus à effacer.
+    'DELETE FROM user_favoris WHERE user_id = ?',
+    'DELETE FROM user_accueil WHERE user_id = ?',
   ];
 
   for (const requete of nettoyages) {

@@ -35,6 +35,7 @@ import {
 } from '@/components/ui'
 import FileUpload, { type UploadedFile } from '@/components/ui/FileUpload'
 import TerminerTicket from '@/components/tickets/TerminerTicket'
+import BoutonFavori from '@/components/BoutonFavori'
 import { formaterDuree, jourEnFrancais } from '@/lib/duree'
 
 /**
@@ -217,8 +218,13 @@ export default function TicketDetailPage() {
         <CardBody>
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-mono text-gray-400">{t.reference}</p>
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t.titre}</h1>
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="text-xs font-mono text-gray-400">{t.reference}</p>
+                  <h1 className="text-xl font-bold text-gray-900 dark:text-white">{t.titre}</h1>
+                </div>
+                <BoutonFavori type="ticket" cibleId={t.id} quoi="ce ticket" />
+              </div>
 
               {/*
                 Ce que le demandeur a écrit.

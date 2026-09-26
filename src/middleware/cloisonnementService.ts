@@ -70,6 +70,10 @@ const CHEMINS_AUTORISES: ReadonlyArray<{
   // les lui refuser reviendrait à le laisser subir ce qu'il reçoit. Les défauts
   // de la collectivité restent gardés par `requireAdmin` sur la route.
   { prefixe: '/api/notifications' },
+  // Ses favoris et sa disposition : la recherche globale, commune à toutes les
+  // pages, les lit. Chaque favori repasse par la portée de son module, celle
+  // des manifestations « service » comprise : rien ne s'ouvre ici de plus.
+  { prefixe: '/api/accueil' },
 ];
 
 const METHODES_LECTURE = new Set(['GET', 'HEAD', 'OPTIONS']);

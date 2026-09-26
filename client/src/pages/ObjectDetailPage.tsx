@@ -4,7 +4,7 @@ import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import { 
   ChevronRight, ArrowLeft, Edit2, Package, Fuel, Wrench, 
   ClipboardCheck, Plus, Save, X, Trash2, Pencil,
-  Image as ImageIcon, Settings2, Search, ArrowUpDown, Clock, Star, Boxes
+  Image as ImageIcon, Settings2, Search, ArrowUpDown, Clock, Boxes
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth.store'
 import QRCodeDisplay from '@/components/QRCodeDisplay'
@@ -18,6 +18,7 @@ import ImplantationsDuMateriel, {
 import PanneauCle from '@/components/PanneauCle'
 import Can from '@/components/Can'
 import { useFavoritesStore } from '@/stores/favorites.store'
+import BoutonFavori from '@/components/BoutonFavori'
 import { useValidation, schemaPlein, schemaEntretien, schemaControle } from '@/lib/validation'
 import {
   CarteCompteurs,
@@ -44,7 +45,7 @@ import { formatDate, formatCurrency } from '@/lib/utils'
 export default function ObjectDetailPage() {
   const { objectId: id } = useParams<{ objectId: string }>()
   const [parametres, setParametres] = useSearchParams()
-  const { enregistrerConsultation, basculerFavori, estFavori } = useFavoritesStore()
+  const { enregistrerConsultation } = useFavoritesStore()
   const validationPlein = useValidation<typeof fuelData>(schemaPlein)
   const validationEntretien = useValidation<typeof maintenanceData>(schemaEntretien)
   const validationControle = useValidation<typeof controlData>(schemaControle)
@@ -1055,25 +1056,9 @@ export default function ObjectDetailPage() {
                         <ArrowLeft className="w-4 h-4" />
                       </Button>
                       <QRCodeDisplay objectId={Number(id)} objectName={object?.name || ''} />
-                      {/* Épingler : ce matériel remonte alors en tête de la
-                          recherche et alimente le raccourci d'accueil. */}
-                      <Button
-                        variant={estFavori(object.id) ? 'primary' : 'outline'}
-                        size="sm"
-                        onClick={() =>
-                          basculerFavori({
-                            id: object.id,
-                            name: object.name,
-                            reference: object.reference,
-                            categoryName: object.category?.name,
-                          })
-                        }
-                        title={estFavori(object.id) ? 'Retirer de mes matériels' : 'Ajouter à mes matériels'}
-                        aria-label={estFavori(object.id) ? 'Retirer de mes matériels' : 'Ajouter à mes matériels'}
-                        aria-pressed={estFavori(object.id)}
-                      >
-                        <Star className={estFavori(object.id) ? 'w-4 h-4 fill-current' : 'w-4 h-4'} />
-                      </Button>
+                      {/* Épingler : le matériel rejoint « Mes favoris » de l'accueil,
+                          sur tous les appareils, et le raccourci « Faire un plein ». */}
+                      <BoutonFavori type="materiel" cibleId={object.id} quoi="ce matériel" />
                       <Can manage>
                         <Button variant="outline" size="sm" onClick={handleEditStart} title="Modifier la fiche" aria-label="Modifier la fiche">
                           <Edit2 className="w-4 h-4" />

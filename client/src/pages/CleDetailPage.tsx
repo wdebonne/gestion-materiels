@@ -31,6 +31,7 @@ import Can from '@/components/Can'
 import HistoriqueCle from '@/components/HistoriqueCle'
 import AttribuerTrousseau from '@/components/AttribuerTrousseau'
 import { BoutonEtiquettesAvery } from '@/components/EtiquettesAvery'
+import BoutonFavori from '@/components/BoutonFavori'
 import { formatCurrency, formatDate } from '@/lib/utils'
 
 /**
@@ -170,6 +171,7 @@ export default function CleDetailPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <BoutonFavori type="cle" cibleId={cle.id} quoi="cette clé" />
           <BoutonEtiquettesAvery
             materiels={[{ id: cle.id, name: cle.name, reference: cle.reference }]}
           />

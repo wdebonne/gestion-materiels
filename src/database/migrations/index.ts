@@ -46,6 +46,7 @@ import energieContratsInterventions from './044_energie_contrats_interventions';
 import ticketsNiveaux from './045_tickets_niveaux';
 import ticketsCloture from './046_tickets_cloture';
 import formulaireParPersonne from './047_formulaire_par_personne';
+import accueilPersonnel from './048_accueil_personnel';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -104,6 +105,7 @@ export const MIGRATIONS: readonly Migration[] = [
   ticketsNiveaux,
   ticketsCloture,
   formulaireParPersonne,
+  accueilPersonnel,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

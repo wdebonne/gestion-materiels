@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -75,7 +75,19 @@ export default function TicketsPage() {
   const [parametres, setParametres] = useSearchParams()
   const [recherche, setRecherche] = useState(parametres.get('recherche') ?? '')
   const [filtresOuverts, setFiltresOuverts] = useState(false)
-  const [creation, setCreation] = useState(false)
+  // `?nouvelle=1` ouvre le formulaire : l'action rapide « Nouvelle demande »
+  // mène au geste, pas à la liste. Le paramètre est retiré une fois lu.
+  const [creation, setCreation] = useState(() => parametres.get('nouvelle') === '1')
+  useEffect(() => {
+    if (parametres.get('nouvelle') === null) return
+    setParametres(
+      (p) => {
+        p.delete('nouvelle')
+        return p
+      },
+      { replace: true }
+    )
+  }, [parametres, setParametres])
   // L'onglet vit dans l'URL comme les filtres : « regarde le rapport du mois »
   // se partage par un lien, pas par une suite de clics à décrire.
   const onglet = parametres.get('onglet') === 'rapport' ? 'rapport' : 'file'
