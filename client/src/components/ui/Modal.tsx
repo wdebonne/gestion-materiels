@@ -1,6 +1,7 @@
-import { KeyboardEvent as ReactKeyboardEvent, ReactNode, useEffect, useId, useRef } from 'react'
+import { ReactNode } from 'react'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { useFenetreModale } from './useFenetreModale'
 
 interface ModalProps {
   isOpen: boolean
@@ -13,25 +14,6 @@ interface ModalProps {
   ariaLabel?: string
   /** `alertdialog` pour une confirmation qui attend une réponse. */
   role?: 'dialog' | 'alertdialog'
-}
-
-/**
- * Les fenêtres ouvertes, de la plus ancienne à celle du dessus.
- *
- * Chaque fenêtre écoutait Échap sur tout le document : avec une confirmation
- * ouverte par-dessus un formulaire, une seule touche fermait les deux, et le
- * formulaire se perdait. Seule celle du dessus répond désormais. La page ne
- * défile de nouveau que quand la dernière est fermée.
- */
-const pile: symbol[] = []
-
-const FOCALISABLES =
-  'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-
-function focalisables(conteneur: HTMLElement): HTMLElement[] {
-  return Array.from(conteneur.querySelectorAll<HTMLElement>(FOCALISABLES)).filter(
-    (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true'
-  )
 }
 
 /**
@@ -54,62 +36,9 @@ export default function Modal({
   ariaLabel,
   role = 'dialog',
 }: ModalProps) {
-  const idTitre = useId()
-  const panneauRef = useRef<HTMLDivElement>(null)
-  // `onClose` est souvent une fonction recréée à chaque rendu : la lire par
-  // référence évite de rouvrir la fenêtre dans la pile à chaque rendu.
-  const onCloseRef = useRef(onClose)
-  onCloseRef.current = onClose
-
-  useEffect(() => {
-    if (!isOpen) return
-    const moi = Symbol('modale')
-    pile.push(moi)
-    document.body.style.overflow = 'hidden'
-
-    // Le focus : sur l'élément marqué `autoFocus` s'il y en a un (déjà placé
-    // au montage), sinon sur le premier élément utilisable, sinon la fenêtre.
-    const precedent = document.activeElement as HTMLElement | null
-    const panneau = panneauRef.current
-    if (panneau && !panneau.contains(document.activeElement)) {
-      const cible = focalisables(panneau)[0] ?? panneau
-      cible.focus()
-    }
-
-    const surEchap = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && pile[pile.length - 1] === moi) onCloseRef.current()
-    }
-    document.addEventListener('keydown', surEchap)
-
-    return () => {
-      document.removeEventListener('keydown', surEchap)
-      pile.splice(pile.indexOf(moi), 1)
-      if (pile.length === 0) document.body.style.overflow = ''
-      // Rendre le focus là où il était, si cet élément existe encore.
-      if (precedent && precedent.isConnected) precedent.focus()
-    }
-  }, [isOpen])
+  const { ref: panneauRef, idTitre, proprietes } = useFenetreModale(isOpen, onClose)
 
   if (!isOpen) return null
-
-  // Tab et Maj+Tab tournent dans la fenêtre au lieu de partir dans la page derrière.
-  const garderLeFocus = (e: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (e.key !== 'Tab' || !panneauRef.current) return
-    const liste = focalisables(panneauRef.current)
-    if (liste.length === 0) {
-      e.preventDefault()
-      return
-    }
-    const premier = liste[0]
-    const dernier = liste[liste.length - 1]
-    if (e.shiftKey && (document.activeElement === premier || document.activeElement === panneauRef.current)) {
-      e.preventDefault()
-      dernier.focus()
-    } else if (!e.shiftKey && document.activeElement === dernier) {
-      e.preventDefault()
-      premier.focus()
-    }
-  }
 
   const sizeClasses = {
     sm: 'max-w-sm',
@@ -132,12 +61,10 @@ export default function Modal({
       <div className="flex min-h-full items-center justify-center p-4">
         <div
           ref={panneauRef}
+          {...proprietes}
           role={role}
-          aria-modal="true"
           aria-labelledby={title ? idTitre : undefined}
           aria-label={title ? undefined : ariaLabel}
-          tabIndex={-1}
-          onKeyDown={garderLeFocus}
           className={cn(
             "relative bg-white rounded-xl shadow-xl w-full max-h-[90vh] overflow-hidden animate-slide-in outline-none dark:bg-gray-800",
             sizeClasses[size]

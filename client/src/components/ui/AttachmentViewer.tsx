@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Paperclip, FileText, Image as ImageIcon, Download, X } from 'lucide-react'
 import type { UploadedFile } from './FileUpload'
+import { useFenetreModale } from './useFenetreModale'
 
 interface AttachmentViewerProps {
   attachments: UploadedFile[]
@@ -92,6 +93,7 @@ function PreviewModal({
   onClose: () => void
   onNavigate: (file: UploadedFile) => void
 }) {
+  const fenetre = useFenetreModale(true, onClose)
   const isImage = (mimetype: string) => mimetype?.startsWith('image/')
   const isPdf = (mimetype: string) => mimetype === 'application/pdf'
 
@@ -114,8 +116,11 @@ function PreviewModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
       onClick={onClose}
     >
-      <div 
-        className="relative max-w-4xl max-h-[90vh] w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl overflow-hidden"
+      <div
+        ref={fenetre.ref}
+        {...fenetre.proprietes}
+        aria-label={`Aperçu de ${file.originalName}`}
+        className="relative max-w-4xl max-h-[90vh] w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl overflow-hidden outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -138,6 +143,8 @@ function PreviewModal({
                 <button
                   onClick={() => hasPrev && onNavigate(files[currentIndex - 1])}
                   disabled={!hasPrev}
+                  aria-label="Pièce précédente"
+                  title="Pièce précédente"
                   className={`p-1.5 rounded transition-colors ${
                     hasPrev 
                       ? 'text-gray-600 hover:bg-gray-100' 
@@ -151,6 +158,8 @@ function PreviewModal({
                 <button
                   onClick={() => hasNext && onNavigate(files[currentIndex + 1])}
                   disabled={!hasNext}
+                  aria-label="Pièce suivante"
+                  title="Pièce suivante"
                   className={`p-1.5 rounded transition-colors ${
                     hasNext 
                       ? 'text-gray-600 hover:bg-gray-100' 
@@ -173,6 +182,8 @@ function PreviewModal({
             </a>
             <button
               onClick={onClose}
+              aria-label="Fermer"
+              title="Fermer"
               className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
             >
               <X className="w-5 h-5" />

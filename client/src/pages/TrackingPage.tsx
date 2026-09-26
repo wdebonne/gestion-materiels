@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { useFenetreModale } from '@/components/ui/useFenetreModale'
 import { 
   BarChart3, TrendingUp, TrendingDown, Calendar, 
   Download, Fuel, Wrench, ClipboardCheck, ChevronDown, ChevronUp,
@@ -705,6 +706,7 @@ export default function TrackingPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'comparison' | 'fuel' | 'maintenance' | 'control' | 'green_space'>('overview')
   const [showPDFExport, setShowPDFExport] = useState(false)
   const [viewingAttachments, setViewingAttachments] = useState<any[] | null>(null)
+  const fenetrePieces = useFenetreModale(viewingAttachments !== null, () => setViewingAttachments(null))
 
   // Récupérer les permissions
   const { data: permissions } = useQuery({
@@ -1792,13 +1794,18 @@ export default function TrackingPage() {
       {viewingAttachments && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <div className="fixed inset-0 bg-black/50" onClick={() => setViewingAttachments(null)} />
-          <div className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-auto">
+          <div
+            ref={fenetrePieces.ref}
+            {...fenetrePieces.proprietes}
+            aria-labelledby={fenetrePieces.idTitre}
+            className="relative bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-auto outline-none"
+          >
             <div className="sticky top-0 bg-white dark:bg-gray-800 border-b px-4 py-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900 dark:text-gray-100">
+              <h3 id={fenetrePieces.idTitre} className="font-semibold text-gray-900 dark:text-gray-100">
                 <Paperclip className="w-5 h-5 inline-block mr-2" />
                 Pièces jointes ({viewingAttachments.length})
               </h3>
-              <button onClick={() => setViewingAttachments(null)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
+              <button onClick={() => setViewingAttachments(null)} aria-label="Fermer" title="Fermer" className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                 <X className="w-5 h-5" />
               </button>
             </div>

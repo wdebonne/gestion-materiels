@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { useState } from 'react'
 import { render, screen, fireEvent } from '@testing-library/react'
 import Modal from '../components/ui/Modal'
+import { useFenetreModale } from '../components/ui/useFenetreModale'
 
 /**
  * La fenêtre modale partagée : ce qu'un lecteur d'écran et un clavier en
@@ -95,5 +96,37 @@ describe('Modal', () => {
 
     fireEvent.keyDown(document, { key: 'Escape' })
     expect(fermerDessous).toHaveBeenCalledTimes(1)
+  })
+
+  it('une fenêtre dessinée à la main suit les mêmes règles, et la même pile', () => {
+    const fermerModal = vi.fn()
+    function FenetreMaison({ onFermer }: { onFermer: () => void }) {
+      const fenetre = useFenetreModale(true, onFermer)
+      return (
+        <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre}>
+          <h4 id={fenetre.idTitre}>Street View</h4>
+          <button onClick={onFermer}>Fermer la vue</button>
+        </div>
+      )
+    }
+    function Page() {
+      const [vue, setVue] = useState(true)
+      return (
+        <Modal isOpen onClose={fermerModal} title="Élément">
+          <p>Formulaire</p>
+          {vue && <FenetreMaison onFermer={() => setVue(false)} />}
+        </Modal>
+      )
+    }
+    render(<Page />)
+
+    const vue = screen.getByRole('dialog', { name: 'Street View' })
+    expect(vue).toHaveAttribute('aria-modal', 'true')
+    expect(vue.contains(document.activeElement)).toBe(true)
+
+    // Échap ferme la vue, ouverte en dernier, et laisse le formulaire.
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByRole('dialog', { name: 'Street View' })).not.toBeInTheDocument()
+    expect(fermerModal).not.toHaveBeenCalled()
   })
 })

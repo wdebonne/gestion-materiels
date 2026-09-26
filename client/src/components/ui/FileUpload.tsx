@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useFenetreModale } from './useFenetreModale'
 import { Upload, X, FileText, Image as ImageIcon, Eye, Download, Trash2, Camera } from 'lucide-react'
 import api from '@/lib/api'
 import toast from 'react-hot-toast'
@@ -60,6 +61,7 @@ export default function FileUpload({
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
   const [previewModal, setPreviewModal] = useState<UploadedFile | null>(null)
+  const apercu = useFenetreModale(previewModal !== null, () => setPreviewModal(null))
   const fileInputRef = useRef<HTMLInputElement>(null)
   const cameraInputRef = useRef<HTMLInputElement>(null)
 
@@ -338,8 +340,11 @@ export default function FileUpload({
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
           onClick={() => setPreviewModal(null)}
         >
-          <div 
-            className="relative max-w-4xl max-h-[90vh] w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl overflow-hidden"
+          <div
+            ref={apercu.ref}
+            {...apercu.proprietes}
+            aria-label={`Aperçu de ${previewModal.originalName}`}
+            className="relative max-w-4xl max-h-[90vh] w-full bg-white dark:bg-gray-800 rounded-lg shadow-2xl overflow-hidden outline-none"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -361,6 +366,8 @@ export default function FileUpload({
                 </a>
                 <button
                   onClick={() => setPreviewModal(null)}
+                  aria-label="Fermer"
+                  title="Fermer"
                   className="p-2 text-gray-600 dark:text-gray-300 hover:text-red-600 hover:bg-red-50 rounded transition-colors"
                 >
                   <X className="w-5 h-5" />

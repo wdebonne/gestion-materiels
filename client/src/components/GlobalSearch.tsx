@@ -5,6 +5,7 @@ import { Search, X, Package, Star, Clock, QrCode } from 'lucide-react'
 import api from '@/lib/api'
 import { useFavoritesStore } from '@/stores/favorites.store'
 import { useFavoris } from '@/lib/accueil'
+import { useFenetreModale } from '@/components/ui/useFenetreModale'
 import { TYPES_FAVORI, nomFavori } from '@/components/accueil/MesFavoris'
 
 interface GlobalSearchProps {
@@ -55,18 +56,8 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
     }
   }, [ouvert])
 
-  useEffect(() => {
-    if (!ouvert) return
-    const surTouche = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onFermer()
-    }
-    document.addEventListener('keydown', surTouche)
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.removeEventListener('keydown', surTouche)
-      document.body.style.overflow = ''
-    }
-  }, [ouvert, onFermer])
+  // Échap, défilement bloqué, focus gardé puis rendu : la règle commune des fenêtres.
+  const fenetre = useFenetreModale(ouvert, onFermer)
 
   const { data, isFetching } = useQuery({
     queryKey: ['recherche-globale', recherche],
@@ -118,10 +109,10 @@ export default function GlobalSearch({ ouvert, onFermer }: GlobalSearchProps) {
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-white dark:bg-gray-900 sm:items-center sm:justify-start sm:bg-black/50 sm:pt-20">
       <div
-        role="dialog"
-        aria-modal="true"
+        ref={fenetre.ref}
+        {...fenetre.proprietes}
         aria-label="Rechercher un matériel"
-        className="flex h-full w-full flex-col sm:h-auto sm:max-h-[70vh] sm:max-w-xl sm:rounded-2xl sm:bg-white sm:shadow-2xl sm:dark:bg-gray-800"
+        className="outline-none flex h-full w-full flex-col sm:h-auto sm:max-h-[70vh] sm:max-w-xl sm:rounded-2xl sm:bg-white sm:shadow-2xl sm:dark:bg-gray-800"
       >
         {/* Barre de saisie */}
         <div className="flex items-center gap-2 border-b border-gray-200 px-3 py-2 dark:border-gray-700">

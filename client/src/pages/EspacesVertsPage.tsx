@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useFenetreModale } from '@/components/ui/useFenetreModale'
 import {
   TreePine, Plus, Search, MapPin, Trash2, Edit3,
   FileText, X, Eye,
@@ -1129,9 +1130,11 @@ function AxeCout({ titre, aide, lignes, total }: {
 function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient: any }) {
   const confirm = useConfirm()
   const [showGroupForm, setShowGroupForm] = useState(false)
+  const fenetreGroupe = useFenetreModale(showGroupForm, () => resetForm())
   const [editingGroup, setEditingGroup] = useState<CompositionGroup | null>(null)
   const [expandedGroups, setExpandedGroups] = useState<Set<number>>(new Set())
   const [assigningGroup, setAssigningGroup] = useState<CompositionGroup | null>(null)
+  const fenetreAssignation = useFenetreModale(assigningGroup !== null, () => setAssigningGroup(null))
   const [selectedElementIds, setSelectedElementIds] = useState<number[]>([])
   const [showGroupTypeSettings, setShowGroupTypeSettings] = useState(false)
   /** Groupe dans lequel on est en train d'implanter du matériel du parc. */
@@ -1366,8 +1369,8 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
       {/* Modal formulaire groupe */}
       {showGroupForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => resetForm()}>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-96 p-5" onClick={e => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+          <div ref={fenetreGroupe.ref} {...fenetreGroupe.proprietes} aria-labelledby={fenetreGroupe.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-96 p-5" onClick={e => e.stopPropagation()}>
+            <h3 id={fenetreGroupe.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <Layers className="h-5 w-5 text-purple-600" />
               {editingGroup ? 'Modifier le groupe' : 'Nouveau groupe'}
             </h3>
@@ -1448,9 +1451,9 @@ function GroupsSection({ space, queryClient }: { space: GreenSpace, queryClient:
       {/* Modal assignation éléments */}
       {assigningGroup && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAssigningGroup(null)}>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-96 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+          <div ref={fenetreAssignation.ref} {...fenetreAssignation.proprietes} aria-labelledby={fenetreAssignation.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-96 max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <h3 id={fenetreAssignation.idTitre} className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: assigningGroup.color }} />
                 Éléments de « {assigningGroup.name} »
               </h3>
@@ -4044,6 +4047,7 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
   const [searchDoc, setSearchDoc] = useState('')
   const [uploadingDoc, setUploadingDoc] = useState(false)
   const [showDocTypeManager, setShowDocTypeManager] = useState(false)
+  const fenetreTypesDocs = useFenetreModale(showDocTypeManager, () => setShowDocTypeManager(false))
   const [newDocType, setNewDocType] = useState({ value: '', label: '' })
   const [editingDocType, setEditingDocType] = useState<{ id: number, label: string } | null>(null)
   const docFileRef = useRef<HTMLInputElement>(null)
@@ -4368,12 +4372,12 @@ function DocumentsTab({ space, queryClient }: { space: GreenSpace, queryClient: 
       {/* Modal gestion des types de documents */}
       {showDocTypeManager && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowDocTypeManager(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+          <div ref={fenetreTypesDocs.ref} {...fenetreTypesDocs.proprietes} aria-labelledby={fenetreTypesDocs.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-full max-w-md max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <h3 id={fenetreTypesDocs.idTitre} className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                 <Settings className="h-4 w-4 text-green-600" /> Gérer les types de documents
               </h3>
-              <button onClick={() => setShowDocTypeManager(false)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-4 w-4" /></button>
+              <button aria-label="Fermer" title="Fermer" onClick={() => setShowDocTypeManager(false)} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-4 w-4" /></button>
             </div>
             <div className="p-4 space-y-3">
               <div className="space-y-1">
@@ -4497,6 +4501,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [searchMaintenance, setSearchMaintenance] = useState('')
   const [showMaintenanceTypeManager, setShowMaintenanceTypeManager] = useState(false)
+  const fenetreTypesEntretien = useFenetreModale(showMaintenanceTypeManager, () => setShowMaintenanceTypeManager(false))
   const [newMaintType, setNewMaintType] = useState('')
   const [editingMaintType, setEditingMaintType] = useState<{ id: number, label: string } | null>(null)
 
@@ -5089,10 +5094,10 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
       {/* Modal gestion des types d'entretien */}
       {showMaintenanceTypeManager && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowMaintenanceTypeManager(false)}>
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+          <div ref={fenetreTypesEntretien.ref} {...fenetreTypesEntretien.proprietes} aria-labelledby={fenetreTypesEntretien.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Gérer les types d'entretien</h3>
-              <button onClick={() => setShowMaintenanceTypeManager(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
+              <h3 id={fenetreTypesEntretien.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white">Gérer les types d'entretien</h3>
+              <button aria-label="Fermer" title="Fermer" onClick={() => setShowMaintenanceTypeManager(false)} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
                 <X className="h-5 w-5" />
               </button>
             </div>
@@ -5194,6 +5199,7 @@ function MaintenanceTab({ space, queryClient }: { space: GreenSpace, queryClient
 // ======================== MODAL CLONER ESPACE VERT ========================
 
 function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, onClose: () => void, queryClient: any }) {
+  const fenetre = useFenetreModale(true, onClose)
   const [name, setName] = useState(`${space.name} (copie)`)
   const [status, setStatus] = useState('projet')
   const [copyElements, setCopyElements] = useState(true)
@@ -5231,13 +5237,13 @@ function CloneSpaceModal({ space, onClose, queryClient }: { space: GreenSpace, o
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between p-5 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <h3 id={fenetre.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Copy className="h-5 w-5 text-green-600" />
             Cloner l'espace vert
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
+          <button aria-label="Fermer" title="Fermer" onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
             <X className="h-5 w-5 text-gray-500" />
           </button>
         </div>
@@ -5831,6 +5837,7 @@ function ArchivesTab({ space, queryClient }: { space: GreenSpace, queryClient: a
  * obligatoire, et un plan d'architecte s'envoie toujours à la place.
  */
 function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { space: GreenSpace | null, spaceTypes: any[], statuses: any[], onClose: () => void, onSaved: () => void }) {
+  const fenetre = useFenetreModale(true, onClose)
   const [form, setForm] = useState({
     name: space?.name || '',
     description: space?.description || '',
@@ -6019,12 +6026,12 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+          <h3 id={fenetre.idTitre} className="text-lg font-bold text-gray-900 dark:text-white">
             {space ? 'Modifier l\'espace vert' : 'Nouvel espace vert'}
           </h3>
-          <button onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Fermer" title="Fermer" onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -6309,6 +6316,7 @@ function SpaceFormModal({ space, spaceTypes, statuses, onClose, onSaved }: { spa
 function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace, onHistory }: {
   element: GreenSpaceElement, space: GreenSpace, onClose: () => void, onEdit: () => void, onDelete: () => void, onReplace?: () => void, onHistory?: () => void
 }) {
+  const fenetre = useFenetreModale(true, onClose)
   const typeInfo = ELEMENT_TYPES.find(t => t.value === element.element_type)
   const conditionInfo = CONDITION_STATES.find(c => c.value === element.condition_state)
   const relatedMaintenances = (space.maintenances || []).filter(m =>
@@ -6317,12 +6325,12 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
           <div className="flex items-center gap-3">
             <span className="text-2xl">{typeInfo?.icon || '📌'}</span>
             <div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">{element.label}</h3>
+              <h3 id={fenetre.idTitre} className="text-lg font-bold text-gray-900 dark:text-white">{element.label}</h3>
               {element.code && <span className="px-2 py-0.5 bg-gray-200 dark:bg-gray-600 rounded text-xs font-mono text-gray-600 dark:text-gray-300">{element.code}</span>}
             </div>
           </div>
@@ -6343,7 +6351,7 @@ function ElementViewModal({ element, space, onClose, onEdit, onDelete, onReplace
             <button aria-label="Supprimer" onClick={onDelete} className="h-11 w-11 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg text-gray-500 hover:text-red-600" title="Supprimer">
               <Trash2 className="h-5 w-5" />
             </button>
-            <button onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button aria-label="Fermer" title="Fermer" onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -6505,6 +6513,7 @@ function ElementFormModal({ spaceId, element, positionInitiale, onClose, onSaved
   onClose: () => void
   onSaved: () => void
 }) {
+  const fenetre = useFenetreModale(true, onClose)
   const queryClient = useQueryClient()
   const [form, setForm] = useState({
     label: element?.label || '',
@@ -6531,6 +6540,7 @@ function ElementFormModal({ spaceId, element, positionInitiale, onClose, onSaved
   const [objectSearch, setObjectSearch] = useState('')
   const [showObjectResults, setShowObjectResults] = useState(false)
   const [showStreetView, setShowStreetView] = useState(false)
+  const fenetreStreetView = useFenetreModale(!!(showStreetView && form.latitude && form.longitude), () => setShowStreetView(false))
 
   // Documents à joindre
   const [attachments, setAttachments] = useState<{ name: string, file_path: string, doc_type: string }[]>([])
@@ -6619,12 +6629,12 @@ function ElementFormModal({ spaceId, element, positionInitiale, onClose, onSaved
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
-          <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+          <h3 id={fenetre.idTitre} className="text-lg font-bold text-gray-900 dark:text-white">
             {element ? 'Modifier l\'élément' : 'Ajouter un élément'}
           </h3>
-          <button onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Fermer" title="Fermer" onClick={onClose} className="h-11 w-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -7054,15 +7064,15 @@ function ElementFormModal({ spaceId, element, positionInitiale, onClose, onSaved
         {/* Modal Google Street View */}
         {showStreetView && form.latitude && form.longitude && (
           <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60" onClick={() => setShowStreetView(false)}>
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-[900px] max-w-[95vw] max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div ref={fenetreStreetView.ref} {...fenetreStreetView.proprietes} aria-labelledby={fenetreStreetView.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-[900px] max-w-[95vw] max-h-[90vh] overflow-hidden" onClick={e => e.stopPropagation()}>
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                <h4 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                <h4 id={fenetreStreetView.idTitre} className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
                   <Globe className="h-4 w-4 text-blue-600" />
                   Google Street View — {form.label || 'Élément'}
                 </h4>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{form.latitude}, {form.longitude}</span>
-                  <button onClick={() => setShowStreetView(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
+                  <button aria-label="Fermer" title="Fermer" onClick={() => setShowStreetView(false)} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
                     <X className="h-4 w-4" />
                   </button>
                 </div>
@@ -7112,6 +7122,7 @@ function ElementFormModal({ spaceId, element, positionInitiale, onClose, onSaved
 // ======================== MODAL OPTIONS (TYPES & STATUTS) ========================
 
 function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
+  const fenetre = useFenetreModale(true, onClose)
   const confirm = useConfirm()
   const queryClient = useQueryClient()
   const [settingsTab, setSettingsTab] = useState<'types' | 'statuts'>('types')
@@ -7176,13 +7187,13 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <h3 id={fenetre.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Settings className="h-5 w-5" />
             Options Espaces Verts
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
+          <button aria-label="Fermer" title="Fermer" onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -7430,6 +7441,7 @@ function SpaceSettingsModal({ onClose }: { onClose: () => void }) {
 // ======================== MODAL TYPES DE GROUPES ========================
 
 function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
+  const fenetre = useFenetreModale(true, onClose)
   const confirm = useConfirm()
   const queryClient = useQueryClient()
 
@@ -7458,13 +7470,13 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] overflow-y-auto p-6" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <h3 id={fenetre.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Layers className="h-5 w-5 text-purple-600" />
             Types de groupes de composition
           </h3>
-          <button onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
+          <button aria-label="Fermer" title="Fermer" onClick={onClose} className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded touch-target">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -7592,6 +7604,7 @@ function GroupTypesSettingsModal({ onClose }: { onClose: () => void }) {
 function ReplaceElementModal({ element, onClose, onReplaced }: {
   element: GreenSpaceElement, spaceId: number, onClose: () => void, onReplaced: () => void
 }) {
+  const fenetre = useFenetreModale(true, onClose)
   const SEASONS = [
     { value: 'printemps', label: '🌱 Printemps' },
     { value: 'ete', label: '☀️ Été' },
@@ -7625,9 +7638,9 @@ function ReplaceElementModal({ element, onClose, onReplaced }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <h3 id={fenetre.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <RefreshCw className="h-5 w-5 text-orange-600" />
             Remplacer l'élément
           </h3>
@@ -7767,6 +7780,7 @@ function ReplaceElementModal({ element, onClose, onReplaced }: {
 // ======================== MODAL HISTORIQUE DES REMPLACEMENTS ========================
 
 function ElementHistoryModal({ element, onClose }: { element: GreenSpaceElement, onClose: () => void }) {
+  const fenetre = useFenetreModale(true, onClose)
   const { data: historyData = [], isLoading } = useQuery({
     queryKey: ['element-history', element.id],
     queryFn: () => api.get(`/green-spaces/elements/${element.id}/history`).then(r => r.data.data)
@@ -7784,13 +7798,13 @@ function ElementHistoryModal({ element, onClose }: { element: GreenSpaceElement,
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div ref={fenetre.ref} {...fenetre.proprietes} aria-labelledby={fenetre.idTitre} className="outline-none bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <div className="p-5 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <h3 id={fenetre.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <History className="h-5 w-5 text-blue-600" />
             Historique des remplacements — {element.label}
           </h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
+          <button aria-label="Fermer" title="Fermer" onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg touch-target">
             <X className="h-5 w-5" />
           </button>
         </div>

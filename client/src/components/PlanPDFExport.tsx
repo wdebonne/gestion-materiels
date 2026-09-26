@@ -1,4 +1,5 @@
 import { useState, useRef } from 'react'
+import { useFenetreModale } from '@/components/ui/useFenetreModale'
 import { Download, Loader2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
@@ -14,6 +15,7 @@ interface PlanPDFExportProps {
 }
 
 export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
+  const fenetre = useFenetreModale(true, onClose)
   const { typeGroupe } = useTypesGroupes()
   const [isGenerating, setIsGenerating] = useState(false)
   const [includeElements, setIncludeElements] = useState(true)
@@ -321,14 +323,20 @@ export default function PlanPDFExport({ space, onClose }: PlanPDFExportProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-[900px] max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+      <div
+        ref={fenetre.ref}
+        {...fenetre.proprietes}
+        aria-labelledby={fenetre.idTitre}
+        className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-600 w-[900px] max-h-[90vh] overflow-y-auto outline-none"
+        onClick={e => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+          <h3 id={fenetre.idTitre} className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
             <Download className="h-5 w-5 text-green-600" />
             Exporter le plan annoté en PDF
           </h3>
-          <button onClick={onClose} className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
+          <button onClick={onClose} aria-label="Fermer" title="Fermer" className="text-gray-600 hover:text-gray-600 dark:hover:text-gray-200"><X className="h-5 w-5" /></button>
         </div>
 
         <div className="p-4 space-y-4">
