@@ -157,6 +157,13 @@ class DatabaseManager {
      * l'accueil dès la connexion, sans la moindre trace côté serveur. Prix
      * d'achat, quantités de carburant, coûts, surfaces et positions sur plan
      * sont tous des DECIMAL : la conversion se fait une fois, ici.
+     *
+     * `dateStrings: ['DATE']` : même logique pour les jours. Sans elle, une
+     * colonne DATE revient en objet `Date` à minuit local — décalée d'un jour
+     * une fois sérialisée en UTC, et rendue « Tue Oct 24 2023 00:00:00 GMT… »
+     * dès qu'on l'insère dans un texte. SQLite rend `AAAA-MM-JJ` : MySQL aussi,
+     * désormais. DATETIME et TIMESTAMP restent des `Date`, qui portent leur
+     * fuseau jusqu'au client.
      */
     // Connexion à la base de données
     this.mysqlPool = mysql.createPool({
@@ -168,7 +175,8 @@ class DatabaseManager {
       waitForConnections: true,
       connectionLimit: 10,
       queueLimit: 0,
-      decimalNumbers: true
+      decimalNumbers: true,
+      dateStrings: ['DATE']
     });
   }
 
