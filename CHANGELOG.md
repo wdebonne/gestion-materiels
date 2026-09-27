@@ -7,6 +7,8 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+## [1.4.0] - 2026-09-27
+
 ### Comptabilité : les immobilisations de Ciril rangées dans le parc, les sorties renvoyées à la compta
 
 > Une facture saisie dans **Ciril Finance** crée une immobilisation ; le même

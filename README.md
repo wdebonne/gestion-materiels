@@ -2,7 +2,7 @@
 
 Application web de gestion du patrimoine d'une collectivité : le **parc de matériel** (véhicules, engins, outillage, mobilier, informatique), et tout ce qui s'y rattache au quotidien — **manifestations** et prêts, **demandes internes**, **bâtiments** et leurs contrôles obligatoires, **espaces verts**, **clés et badges**, **heures passées**, **cartographie** du mobilier urbain.
 
-![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.4.0-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen.svg)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.3-blue.svg)
 ![React](https://img.shields.io/badge/React-18-61dafb.svg)
