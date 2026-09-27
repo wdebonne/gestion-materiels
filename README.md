@@ -21,7 +21,7 @@ Application web de gestion du patrimoine d'une collectivité : le **parc de mat�
   - [Manifestations](#-manifestations) · [Tickets](#-tickets--les-demandes-internes) · [Plannings et heures](#️-plannings-et-heures)
   - [Clés et badges](#-clés-et-badges) · [Bâtiments](#️-bâtiments) · [Organisation](#-organisation)
   - [Espaces verts](#-espaces-verts) · [Cartographie](#️-cartographie) · [Calendrier et alertes](#-calendrier-et-alertes)
-  - [Réservations, amortissement, import/export](#-réservations-amortissement-importexport) · [Utilisateurs, rôles et droits](#-utilisateurs-rôles-et-droits) · [Administration](#️-administration) · [Interface](#-interface)
+  - [Réservations, amortissement, import/export](#-réservations-amortissement-importexport) · [Comptabilité](#-comptabilité--passerelle-avec-ciril-finance) · [Utilisateurs, rôles et droits](#-utilisateurs-rôles-et-droits) · [Administration](#️-administration) · [Interface](#-interface)
 - [Installation](#-installation) · [Docker](#-déploiement-avec-docker) · [Configuration](#-configuration)
 - [API](#-api) · [Sécurité](#-sécurité--authentification) · [État réel](#-état-réel) · [Développement](#️-développement)
 
@@ -32,6 +32,7 @@ Le détail de chaque module — ce qu'il fait, et pourquoi il le fait ainsi — 
 - 🧩 **Un seul outil, un seul annuaire** : parc, prêts, demandes, bâtiments, clés et heures partagent les mêmes personnes, les mêmes bâtiments et les mêmes services
 - 📲 **Fait pour le terrain** : téléphone, gants, pas de réseau — saisie hors ligne rejouée au retour du réseau, photo, GPS, scan de QR code
 - 🔐 **Cloisonné** : cinq rôles, portée par catégorie appliquée à chaque route, gestion confiée bâtiment par bâtiment sans changer de rôle
+- 🧾 **Relié à la comptabilité** : les immobilisations de Ciril Finance s'importent et se rangent dans le parc, les sorties d'inventaire repartent à la compta en un fichier par jour, et un tableau dit qui attend qui
 - 📊 **Des chiffres qu'on peut projeter** : coûts du parc, des bâtiments, des manifestations et des espaces verts, comparés d'une période à l'autre, exportés en PDF et Excel
 - 🔌 **Modulaire** : chaque module est un plugin activable, et de nouveaux plugins s'importent en ZIP
 - 🌙 **Thème sombre**, 📲 **PWA installable**, ⚡ **temps réel** (Socket.io), 📖 **API documentée** (Swagger)
@@ -89,10 +90,11 @@ Les agents — jardiniers, mécaniciens, chauffeurs — travaillent sur téléph
 
 ![Suivi des coûts](docs/captures/suivi-couts.png)
 
-- Vue consolidée du **carburant**, des **entretiens**, des **contrôles techniques** et des **espaces verts**
-- Filtres par période, catégorie, sous-catégorie, matériel et type de dépense ; regroupement par semaine, mois ou année
-- **Comparaison** de deux périodes libres, de deux années ou de deux mois
-- **Export PDF** du rapport, graphiques compris
+- Tout ce que la collectivité dépense au même endroit : **carburant**, **entretiens**, **contrôles techniques**, **espaces verts**, **bâtiments** (énergie, contrats de maintenance, interventions, contrôles) et **manifestations** (prestations et pertes)
+- Filtres par période, type de dépense, catégorie, sous-catégorie et matériel pour le parc, et par bâtiment ; regroupement par semaine ISO, mois ou année
+- Évolution empilée par source, répartition du total, dix objets et dix bâtiments les plus coûteux, coût des bâtiments au m²
+- **Comparaison** de deux périodes libres, de deux années ou de deux mois, source par source
+- **Export PDF** du rapport, graphiques et détail de chaque source compris
 - Accès réglé par rôle et par personne
 
 ### 🎪 Manifestations
@@ -287,6 +289,35 @@ Où est implanté le matériel — voirie et espaces verts sur la même carte, e
 - 📉 **Amortissement** linéaire, valeur résiduelle et graphiques
 - 📥 **Import CSV/Excel** reconnu par intitulé de colonne, corrigeable avant l'import ; 📤 **export réimportable**, filtrable, cloisonné par catégorie
 
+### 🧾 Comptabilité — passerelle avec Ciril Finance
+
+<table>
+<tr>
+<td width="50%"><img src="docs/captures/comptabilite-suivi.png" alt="Tableau de suivi de la comptabilité"></td>
+<td width="50%"><img src="docs/captures/comptabilite-sorties.png" alt="Sorties d'inventaire et envois à la compta"></td>
+</tr>
+<tr>
+<td width="50%"><img src="docs/captures/comptabilite-a-ranger.png" alt="Immobilisations à ranger dans les catégories"></td>
+<td width="50%"><img src="docs/captures/fiche-materiel-sortie.png" alt="Fiche d'un matériel sorti de l'inventaire"></td>
+</tr>
+</table>
+
+<table>
+<tr>
+<td width="66%"><img src="docs/captures/parametres-droits-comptable.png" alt="Profil Comptable dans les droits d'une personne"></td>
+<td width="34%"><img src="docs/captures/mobile-comptabilite.png" alt="L'application réduite d'un comptable, sur téléphone"></td>
+</tr>
+</table>
+
+Une facture saisie dans Ciril crée une immobilisation. La passerelle évite de ressaisir des deux côtés :
+
+- 📥 **Import de l'export des immobilisations** (CSV `;` ou `,`, UTF-8 ou Windows, ou XLSX) : colonnes reconnues par leur intitulé, corrigeables et retenues pour la fois suivante. **Rejouable** : un numéro déjà connu est mis à jour, jamais dupliqué, et son rangement est conservé
+- 🗂️ **Rangement** : chaque immobilisation devient un objet dans une catégorie ou une sous-catégorie — en lot, ou en plusieurs exemplaires si Ciril n'a créé qu'un numéro —, ou se **rattache** à un objet déjà saisi ; le numéro comptable reste sur la fiche
+- 🚪 **Sortie d'inventaire** au lieu de la suppression : date, motif (perdu, cassé, volé, vendu, réformé…), commentaire. L'objet quitte les listes mais reste consultable ; un objet immobilisé ne peut plus être supprimé
+- 📤 **Un seul envoi par jour** : toutes les sorties du jour partent dans **un fichier** — déposé dans un dossier Nextcloud (« Compta/A traiter ») et/ou envoyé par mail en pièce jointe. File vide, rien n'est envoyé ; un échec garde les sorties pour le lot suivant. Format du fichier réglable : colonnes, séparateur, encodage, codes motif
+- ✅ **Trois étapes datées par sortie** — déclarée, envoyée, **intégrée dans Ciril** (confirmée par la compta) — et un **tableau de suivi** qui dit qui attend qui : ce qui reste à ranger (l'inventaire), ce qui n'est pas parti, ce que la compta n'a pas intégré, la date du dernier import
+- 👤 **Droits à cocher** par personne (importer, ranger, sortir, envoyer, confirmer l'intégration, régler, recevoir le mail) et trois profils en un clic : **Comptable** (l'application se réduit au module, sans le rangement), **Inventaire**, **Comptable et inventaire** (tout, en gardant ses autres modules). Le module est fermé par défaut aux rôles non administrateurs
+
 ### 👥 Utilisateurs, rôles et droits
 
 <table>
@@ -299,6 +330,7 @@ Où est implanté le matériel — voirie et espaces verts sur la même carte, e
 - 🧑‍🤝‍🧑 **Un seul annuaire** : les comptes qui se connectent, et les personnes qu'on désigne sans qu'elles se connectent — le gardien qui détient une clé, l'élu, l'emprunteur. Accorder un accès plus tard ne recopie personne
 - 🔏 **Passkeys** (empreinte, visage, clé USB), en connexion sans mot de passe ou en second facteur ; ✅ **Rester connecté** ; 🔑 réinitialisation par e-mail
 - 🔐 **Droits par catégorie** (voir, modifier, supprimer) par groupe et par personne, et droits par module
+- 🧾 **Profils en un clic** : *Demandeur* et *Technicien* pour les demandes, *Comptable*, *Inventaire* et *Comptable et inventaire* pour la comptabilité — un profil qui ne laisse qu'un module réduit l'application à lui
 
 | Geste | Utilisateur | Agent de terrain | Superviseur | Admin |
 |-------|:-----------:|:-----:|:-----------:|:-----:|
@@ -608,6 +640,7 @@ Cette section liste ce qui est visible dans l'interface sans fonctionner, pour q
 - Une image déposée est systématiquement ré-encodée en JPEG par `normalizeImage()`, mais conserve son extension et son `Content-Type` d'origine : un PNG à fond transparent ressort opaque, sous un nom en `.png` dont le contenu est du JPEG. Sans effet sur un cliché de terrain, visible sur un logo ou un favicon
 - **Réception d'un agenda externe : quatre réserves.** Elle ne ramène que la fenêtre **d'aujourd'hui à +90 jours** — un rendez-vous passé ou lointain ne remonte pas. Elle **remplace** à chaque passage ce qu'elle avait ramené : une modification faite dans l'application sur un événement reçu est écrasée au passage suivant, le carnet d'origine fait foi. Un événement reçu n'est **jamais réexporté** vers un autre carnet, sinon deux agendas se recopieraient indéfiniment. Enfin, un événement reçu n'est rattaché à aucun matériel, donc **aucun filtre de catégorie ne s'y applique** : il est visible par tous les comptes. Brancher un agenda personnel en réception l'expose à toute la commune — préférez un carnet de service
 - L'**envoi** vers un agenda externe couvre la fenêtre **-30 jours à +365 jours** : assez pour rattraper ce qui vient d'être saisi et couvrir les échéances annuelles, sans repousser dix ans d'historique à chaque passage
+- **Passerelle comptable : formats de Ciril non vérifiés sur un vrai fichier.** Les intitulés reconnus à l'import et le fichier des sorties par défaut (`;`, encodage Windows, dates JJ/MM/AAAA, codes PERTE, CASSE, VOL, CESSION…) sont des valeurs probables. L'import laisse choisir chaque colonne et retient le choix ; le fichier des sorties se règle dans *Comptabilité › Réglages*, à caler sur le modèle d'import des sorties de Ciril
 - Le typage du client comporte encore des avertissements ESLint, presque tous des `any` — aucune erreur
 
 ## 🛠️ Développement
@@ -649,7 +682,7 @@ npm run test          # Mode watch
 npm run test:run      # Exécution unique
 ```
 
-78 suites backend (Jest) et 6 suites frontend (Vitest). Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas vérifier à l'œil — le reste couvre les routes et les écrans module par module.
+84 suites backend (Jest) et 10 suites frontend (Vitest). Les suites ci-dessous sont celles qui gardent une règle qu'on ne peut pas vérifier à l'œil — le reste couvre les routes et les écrans module par module.
 
 | Suite | Couvre |
 |-------|--------|
@@ -666,6 +699,7 @@ npm run test:run      # Exécution unique
 | `manifestationApprobations.test.ts` | Qui approuve quoi, dans quel ordre, et ce que change une délégation |
 | `tourneeManifestation.test.ts` | Ce qu'un agent voit en arrivant le matin : quel jour un arrêt est dû, ce qu'il reste à charger ou à rentrer, ce qui est en retard |
 | `saisieTerrainDroits.test.ts` | Le partage entre constater et arbitrer : l'agent pointe ce qui part et ce qui revient, le superviseur seul corrige la demande et prononce les statuts |
+| `comptabilite.test.ts` | Passerelle comptable : import rejouable (formats français, Windows-1252, guillemet des pouces), un seul lot par jour, échec d'envoi qui garde les sorties, et une case par geste — un comptable voit ce qui attend d'être rangé sans pouvoir le ranger |
 | `batchQuery.test.ts` | Chargement groupé : regroupement, découpage en tranches |
 | `settingsColumns.test.ts` | Aucune requête n'interroge `settings` avec de mauvais noms de colonnes |
 | `valeursSql.test.ts` | Le vide d'un formulaire devient `NULL`, et « ne rien dire » ne vaut pas « effacer » |
@@ -705,7 +739,7 @@ Pour écrire un plugin, voir [docs/PLUGIN_STRUCTURE.md](docs/PLUGIN_STRUCTURE.md
 
 ### 📸 Captures d'écran
 
-Les images de `docs/captures/` ont été prises avec Playwright (Chromium, 1440 px de large, téléphone en 390 × 844), sur une base SQLite à part remplie par `npm run db:charge -- --echelle=0.1`, complétée pour le module Bâtiments (contrôles, factures d'énergie, contrats, interventions). Aucune donnée réelle n'y figure. Pour les refaire après une évolution de l'interface, repartez d'une base de ce type — jamais de la base de production.
+Les images de `docs/captures/` ont été prises avec Playwright (Chromium, 1440 px de large, téléphone en 390 × 844), sur une base SQLite à part remplie par `npm run db:charge -- --echelle=0.1`, complétée pour le module Bâtiments (contrôles, factures d'énergie, contrats, interventions) et, pour la Comptabilité, par un faux export Ciril, des rangements, des sorties et deux envois datés. Aucune donnée réelle n'y figure. Pour les refaire après une évolution de l'interface, repartez d'une base de ce type — jamais de la base de production.
 
 ## 📝 Licence
 

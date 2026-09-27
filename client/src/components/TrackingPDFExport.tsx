@@ -10,6 +10,7 @@ import { cn, formatCurrency, formatNumber } from '@/lib/utils'
 import toast from 'react-hot-toast'
 import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
+import { CATEGORIES_BATIMENT, SOURCES_SUIVI, jourFr } from '@/lib/suiviCouts'
 
 interface TrackingPDFExportProps {
   filters: any
@@ -45,6 +46,8 @@ export default function TrackingPDFExport({
   const [showAttachmentSelector, setShowAttachmentSelector] = useState(false)
   const [progress, setProgress] = useState(0)
   const [progressText, setProgressText] = useState('')
+  // Les sources retenues à l'écran, dans leur ordre d'affichage.
+  const sources = SOURCES_SUIVI.filter(s => filters.dataTypes.includes(s.id))
 
   // Collecter toutes les pièces jointes
   const allAttachments: { id: string; name: string; url: string; type: string; source: string }[] = []
@@ -53,7 +56,7 @@ export default function TrackingPDFExport({
     item.attachments?.forEach((att: any, attIndex: number) => {
       allAttachments.push({
         id: `fuel-${index}-${attIndex}`,
-        name: att.name || `Carburant - ${item.objectName} - ${new Date(item.date).toLocaleDateString('fr-FR')}`,
+        name: att.name || `Carburant - ${item.objectName} - ${jourFr(item.date)}`,
         url: att.url || att,
         type: 'fuel',
         source: item.objectName
@@ -65,7 +68,7 @@ export default function TrackingPDFExport({
     item.attachments?.forEach((att: any, attIndex: number) => {
       allAttachments.push({
         id: `maintenance-${index}-${attIndex}`,
-        name: att.name || `Entretien - ${item.objectName} - ${new Date(item.date).toLocaleDateString('fr-FR')}`,
+        name: att.name || `Entretien - ${item.objectName} - ${jourFr(item.date)}`,
         url: att.url || att,
         type: 'maintenance',
         source: item.objectName
@@ -86,7 +89,7 @@ export default function TrackingPDFExport({
     item.attachments?.forEach((att: any, attIndex: number) => {
       allAttachments.push({
         id: `control-${index}-${attIndex}`,
-        name: att.name || `Contrôle - ${item.objectName} - ${new Date(item.date).toLocaleDateString('fr-FR')}`,
+        name: att.name || `Contrôle - ${item.objectName} - ${jourFr(item.date)}`,
         url: att.url || att,
         type: 'technical_control',
         source: item.objectName
@@ -153,7 +156,7 @@ export default function TrackingPDFExport({
       
       pdf.setFontSize(11)
       pdf.setFont('helvetica', 'normal')
-      const periodLabel = `Période : ${new Date(filters.startDate).toLocaleDateString('fr-FR')} - ${new Date(filters.endDate).toLocaleDateString('fr-FR')}`
+      const periodLabel = `Période : ${jourFr(filters.startDate)} - ${jourFr(filters.endDate)}`
       pdf.text(periodLabel, margin, 23)
       
       pdf.setFontSize(9)
@@ -170,61 +173,28 @@ export default function TrackingPDFExport({
         yPos = addText('[#] RESUME', margin, yPos, { fontSize: 14, fontStyle: 'bold' })
         yPos += 5
 
-        // Dessiner les cartes de résumé
+        // Dessiner les cartes de résumé : le total, puis une carte par source
+        // retenue, deux par ligne.
         const cardWidth = (pageWidth - 3 * margin) / 2
         const cardHeight = 25
-
-        // Carte Coût Total
-        pdf.setFillColor(243, 244, 246)
-        pdf.roundedRect(margin, yPos, cardWidth, cardHeight, 3, 3, 'F')
-        pdf.setTextColor(107, 114, 128)
-        pdf.setFontSize(9)
-        pdf.text('Coût total', margin + 5, yPos + 8)
-        pdf.setTextColor(17, 24, 39)
-        pdf.setFontSize(14)
-        pdf.setFont('helvetica', 'bold')
-        pdf.text(formatCurrency(summary.totalCost), margin + 5, yPos + 18)
-
-        // Carte Carburant
-        if (filters.dataTypes.includes('fuel')) {
-          pdf.setFillColor(254, 243, 199)
-          pdf.roundedRect(margin + cardWidth + margin/2, yPos, cardWidth, cardHeight, 3, 3, 'F')
-          pdf.setTextColor(146, 64, 14)
+        const cartes = [
+          { libelle: 'Coût total', montant: summary.totalCost, fond: [243, 244, 246], texte: [17, 24, 39] },
+          ...sources.map(s => ({ libelle: s.libelle, montant: summary[s.total] || 0, fond: s.pdf.fond, texte: s.pdf.texte })),
+        ]
+        cartes.forEach((carte, i) => {
+          const x = i % 2 === 0 ? margin : margin + cardWidth + margin / 2
+          if (i % 2 === 0 && i > 0) yPos += cardHeight + 5
+          if (i % 2 === 0) checkNewPage(cardHeight + 5)
+          pdf.setFillColor(carte.fond[0], carte.fond[1], carte.fond[2])
+          pdf.roundedRect(x, yPos, cardWidth, cardHeight, 3, 3, 'F')
+          pdf.setTextColor(carte.texte[0], carte.texte[1], carte.texte[2])
           pdf.setFontSize(9)
           pdf.setFont('helvetica', 'normal')
-          pdf.text('Carburant', margin + cardWidth + margin/2 + 5, yPos + 8)
+          pdf.text(carte.libelle, x + 5, yPos + 8)
           pdf.setFontSize(14)
           pdf.setFont('helvetica', 'bold')
-          pdf.text(formatCurrency(summary.totalFuelCost), margin + cardWidth + margin/2 + 5, yPos + 18)
-        }
-
-        yPos += cardHeight + 5
-
-        // Carte Entretiens
-        if (filters.dataTypes.includes('maintenance')) {
-          pdf.setFillColor(219, 234, 254)
-          pdf.roundedRect(margin, yPos, cardWidth, cardHeight, 3, 3, 'F')
-          pdf.setTextColor(30, 64, 175)
-          pdf.setFontSize(9)
-          pdf.setFont('helvetica', 'normal')
-          pdf.text('Entretiens', margin + 5, yPos + 8)
-          pdf.setFontSize(14)
-          pdf.setFont('helvetica', 'bold')
-          pdf.text(formatCurrency(summary.totalMaintenanceCost), margin + 5, yPos + 18)
-        }
-
-        // Carte Contrôles
-        if (filters.dataTypes.includes('technical_control')) {
-          pdf.setFillColor(209, 250, 229)
-          pdf.roundedRect(margin + cardWidth + margin/2, yPos, cardWidth, cardHeight, 3, 3, 'F')
-          pdf.setTextColor(6, 95, 70)
-          pdf.setFontSize(9)
-          pdf.setFont('helvetica', 'normal')
-          pdf.text('Contrôles techniques', margin + cardWidth + margin/2 + 5, yPos + 8)
-          pdf.setFontSize(14)
-          pdf.setFont('helvetica', 'bold')
-          pdf.text(formatCurrency(summary.totalControlCost), margin + cardWidth + margin/2 + 5, yPos + 18)
-        }
+          pdf.text(formatCurrency(carte.montant), x + 5, yPos + 18)
+        })
 
         yPos += cardHeight + 10
 
@@ -263,34 +233,30 @@ export default function TrackingPDFExport({
           yPos = addText(`[~] COMPARAISON : ${label1} vs ${label2}`, margin, yPos, { fontSize: 14, fontStyle: 'bold' })
           yPos += 5
 
-          // Carte année/mois 1
+          // Une carte par année (ou mois) : le total, puis chaque source retenue.
           const cardWidth = (pageWidth - 3 * margin) / 2
-          pdf.setFillColor(243, 232, 255)
-          pdf.roundedRect(margin, yPos, cardWidth, 35, 3, 3, 'F')
-          pdf.setTextColor(107, 33, 168)
-          pdf.setFontSize(10)
-          pdf.setFont('helvetica', 'bold')
-          pdf.text(label1, margin + 5, yPos + 8)
-          pdf.setFont('helvetica', 'normal')
-          pdf.setFontSize(9)
-          pdf.text(`Cout total : ${formatCurrency(yearlyComparison.summary?.year1?.total || 0)}`, margin + 5, yPos + 18)
-          pdf.text(`Carburant : ${formatCurrency(yearlyComparison.summary?.year1?.fuel || 0)}`, margin + 5, yPos + 26)
-          pdf.text(`Entretiens : ${formatCurrency(yearlyComparison.summary?.year1?.maintenance || 0)}`, margin + 5, yPos + 34)
+          const hauteur = 20 + sources.length * 7
+          checkNewPage(hauteur + 30)
+          ;([
+            ['year1', label1, margin, [243, 232, 255], [107, 33, 168]],
+            ['year2', label2, margin + cardWidth + margin / 2, [224, 231, 255], [67, 56, 202]],
+          ] as const).forEach(([cle, libelle, x, fond, texte]) => {
+            const totaux = yearlyComparison.summary?.[cle] || {}
+            pdf.setFillColor(fond[0], fond[1], fond[2])
+            pdf.roundedRect(x, yPos, cardWidth, hauteur, 3, 3, 'F')
+            pdf.setTextColor(texte[0], texte[1], texte[2])
+            pdf.setFontSize(10)
+            pdf.setFont('helvetica', 'bold')
+            pdf.text(libelle, x + 5, yPos + 8)
+            pdf.setFontSize(9)
+            pdf.text(`Cout total : ${formatCurrency(totaux.total || 0)}`, x + 5, yPos + 16)
+            pdf.setFont('helvetica', 'normal')
+            sources.forEach((s, i) => {
+              pdf.text(`${s.libelle} : ${formatCurrency(totaux[s.annuel] || 0)}`, x + 5, yPos + 23 + i * 7)
+            })
+          })
 
-          // Carte année/mois 2
-          pdf.setFillColor(224, 231, 255)
-          pdf.roundedRect(margin + cardWidth + margin/2, yPos, cardWidth, 35, 3, 3, 'F')
-          pdf.setTextColor(67, 56, 202)
-          pdf.setFontSize(10)
-          pdf.setFont('helvetica', 'bold')
-          pdf.text(label2, margin + cardWidth + margin/2 + 5, yPos + 8)
-          pdf.setFont('helvetica', 'normal')
-          pdf.setFontSize(9)
-          pdf.text(`Cout total : ${formatCurrency(yearlyComparison.summary?.year2?.total || 0)}`, margin + cardWidth + margin/2 + 5, yPos + 18)
-          pdf.text(`Carburant : ${formatCurrency(yearlyComparison.summary?.year2?.fuel || 0)}`, margin + cardWidth + margin/2 + 5, yPos + 26)
-          pdf.text(`Entretiens : ${formatCurrency(yearlyComparison.summary?.year2?.maintenance || 0)}`, margin + cardWidth + margin/2 + 5, yPos + 34)
-
-          yPos += 42
+          yPos += hauteur + 7
 
           // Différence
           const diff = yearlyComparison.difference?.total || 0
@@ -307,7 +273,14 @@ export default function TrackingPDFExport({
           
           pdf.setTextColor(diffColor[0], diffColor[1], diffColor[2])
           pdf.setFontSize(12)
-          const diffText = `${diff > 0 ? '+' : ''}${formatCurrency(diff)} (${diff > 0 ? 'Augmentation' : 'Reduction'} de ${Math.abs(yearlyComparison.difference?.percentage || 0).toFixed(1)}%)`
+          // L'écart se lit « label1 comparé à label2 » : label2 est la référence.
+          const pourcentage = yearlyComparison.difference?.percentage
+          const sens = diff > 0 ? 'de plus' : 'de moins'
+          const diffText = `${diff > 0 ? '+' : ''}${formatCurrency(diff)}` + (
+            !diff ? ` (${label1} = ${label2})`
+              : pourcentage === null || pourcentage === undefined ? ` (rien sur ${label2})`
+              : ` (${label1} : ${Math.abs(pourcentage).toFixed(1)} % ${sens} que ${label2})`
+          )
           pdf.text(diffText, margin + 5, yPos + 16)
 
           yPos += 25
@@ -326,7 +299,7 @@ export default function TrackingPDFExport({
           pdf.setFontSize(10)
           pdf.setFont('helvetica', 'bold')
           pdf.text(
-            `Comparaison avec : ${new Date(comparison.period.start).toLocaleDateString('fr-FR')} - ${new Date(comparison.period.end).toLocaleDateString('fr-FR')}`,
+            `Comparaison avec : ${jourFr(comparison.period.start)} - ${jourFr(comparison.period.end)}`,
             margin + 5, yPos + 8
           )
 
@@ -436,7 +409,7 @@ export default function TrackingPDFExport({
             }
 
             xPos = margin + 2
-            pdf.text(new Date(item.date).toLocaleDateString('fr-FR'), xPos, yPos + 4)
+            pdf.text(jourFr(item.date), xPos, yPos + 4)
             xPos += colWidths[0]
             pdf.text((item.objectName || '').substring(0, 25), xPos, yPos + 4)
             xPos += colWidths[1]
@@ -511,7 +484,7 @@ export default function TrackingPDFExport({
             }
 
             xPos = margin + 2
-            pdf.text(new Date(item.date).toLocaleDateString('fr-FR'), xPos, yPos + 4)
+            pdf.text(jourFr(item.date), xPos, yPos + 4)
             xPos += colWidths[0]
             pdf.text((item.objectName || '').substring(0, 25), xPos, yPos + 4)
             xPos += colWidths[1]
@@ -583,7 +556,7 @@ export default function TrackingPDFExport({
             }
 
             xPos = margin + 2
-            pdf.text(new Date(item.date).toLocaleDateString('fr-FR'), xPos, yPos + 4)
+            pdf.text(jourFr(item.date), xPos, yPos + 4)
             xPos += colWidths[0]
             pdf.text((item.objectName || '').substring(0, 25), xPos, yPos + 4)
             xPos += colWidths[1]
@@ -591,7 +564,7 @@ export default function TrackingPDFExport({
             xPos += colWidths[2]
             pdf.text(formatCurrency(item.cost), xPos, yPos + 4)
             xPos += colWidths[3]
-            pdf.text(item.expiryDate ? new Date(item.expiryDate).toLocaleDateString('fr-FR') : '-', xPos, yPos + 4)
+            pdf.text(jourFr(item.expiryDate), xPos, yPos + 4)
 
             pdf.setDrawColor(229, 231, 235)
             pdf.line(margin, yPos + 6, pageWidth - margin, yPos + 6)
@@ -599,6 +572,95 @@ export default function TrackingPDFExport({
           }
 
           yPos += 10
+        }
+
+        // Les sources venues après le parc : un tableau chacune, même mise en page.
+        const tableau = (titre: string, entetes: string[], largeurs: number[], lignes: string[][], alignDroite: number[] = []) => {
+          checkNewPage(40)
+          yPos = addText(titre, margin, yPos, { fontSize: 12, fontStyle: 'bold' })
+          yPos += 5
+          const enTete = () => {
+            pdf.setFillColor(243, 244, 246)
+            pdf.rect(margin, yPos, pageWidth - 2 * margin, 8, 'F')
+            pdf.setFontSize(8)
+            pdf.setFont('helvetica', 'bold')
+            pdf.setTextColor(55, 65, 81)
+            let x = margin + 2
+            entetes.forEach((e, i) => {
+              if (alignDroite.includes(i)) pdf.text(e, x + largeurs[i] - 4, yPos + 5, { align: 'right' })
+              else pdf.text(e, x, yPos + 5)
+              x += largeurs[i]
+            })
+            yPos += 10
+            pdf.setFont('helvetica', 'normal')
+            pdf.setTextColor(0, 0, 0)
+          }
+          enTete()
+          lignes.slice(0, 50).forEach(ligne => {
+            if (checkNewPage(8)) enTete()
+            let x = margin + 2
+            ligne.forEach((cellule, i) => {
+              if (alignDroite.includes(i)) pdf.text(cellule, x + largeurs[i] - 4, yPos + 4, { align: 'right' })
+              else pdf.text(cellule, x, yPos + 4)
+              x += largeurs[i]
+            })
+            pdf.setDrawColor(229, 231, 235)
+            pdf.line(margin, yPos + 6, pageWidth - margin, yPos + 6)
+            yPos += 8
+          })
+          if (lignes.length > 50) {
+            pdf.setTextColor(107, 114, 128)
+            pdf.text(`... et ${lignes.length - 50} autres lignes`, margin, yPos + 4)
+            yPos += 10
+          }
+          yPos += 10
+        }
+
+        if (filters.dataTypes.includes('green_space') && data?.greenSpace?.length > 0) {
+          tableau(
+            `[+] DETAILS ESPACES VERTS (${data.greenSpace.length} entree(s))`,
+            ['Date', 'Espace vert', 'Type', 'Intervenant', 'Coût'],
+            [22, 50, 40, 38, 30],
+            data.greenSpace.map((g: any) => [
+              jourFr(g.date),
+              (g.spaceName || '').substring(0, 28),
+              (g.type || '').substring(0, 22),
+              (g.performer || '-').substring(0, 20),
+              formatCurrency(g.cost || 0),
+            ]),
+            [4]
+          )
+        }
+
+        if (filters.dataTypes.includes('buildings') && data?.buildings?.length > 0) {
+          tableau(
+            `[#] DETAILS BATIMENTS (${data.buildings.length} batiment(s))`,
+            ['Bâtiment', 'Énergie', 'Contrats', 'Interv.', 'Contrôles', 'Total', '€/m²'],
+            [44, 22, 22, 22, 22, 26, 22],
+            data.buildings.map((b: any) => [
+              (b.name || '').substring(0, 24),
+              ...CATEGORIES_BATIMENT.map(c => formatCurrency(b[c.id] || 0)),
+              formatCurrency(b.totalCost || 0),
+              b.costPerM2 !== null && b.costPerM2 !== undefined ? formatCurrency(b.costPerM2) : '-',
+            ]),
+            [1, 2, 3, 4, 5, 6]
+          )
+        }
+
+        if (filters.dataTypes.includes('events') && data?.events?.length > 0) {
+          tableau(
+            `[*] DETAILS MANIFESTATIONS (${data.events.length} manifestation(s))`,
+            ['Date', 'Manifestation', 'Prestations', 'Pertes', 'Total'],
+            [22, 70, 30, 28, 30],
+            data.events.map((e: any) => [
+              jourFr(e.date),
+              (e.title || '').substring(0, 40),
+              formatCurrency(e.prestations || 0),
+              e.definitif ? formatCurrency(e.pertes || 0) : 'à venir',
+              formatCurrency(e.total || 0),
+            ]),
+            [2, 3, 4]
+          )
         }
       }
 
@@ -698,14 +760,14 @@ export default function TrackingPDFExport({
               <Calendar className="w-4 h-4" />
               <span>Période : </span>
               <strong>
-                {new Date(filters.startDate).toLocaleDateString('fr-FR')} - {new Date(filters.endDate).toLocaleDateString('fr-FR')}
+                {jourFr(filters.startDate)} - {jourFr(filters.endDate)}
               </strong>
             </div>
             {filters.compareEnabled && (
               <div className="flex items-center gap-2 text-sm text-blue-600 mt-2">
                 <span>Comparaison : </span>
                 <strong>
-                  {new Date(filters.compareStartDate).toLocaleDateString('fr-FR')} - {new Date(filters.compareEndDate).toLocaleDateString('fr-FR')}
+                  {jourFr(filters.compareStartDate)} - {jourFr(filters.compareEndDate)}
                 </strong>
               </div>
             )}

@@ -73,7 +73,7 @@ export interface FiltreStatistiques {
 }
 
 /** Un montant étalé sur une période, rangé dans une catégorie. */
-interface Mouvement {
+export interface Mouvement {
   siteId: number;
   categorie: CategorieStat;
   /** L'énergie, la nature d'intervention, ou le contrat. */
@@ -299,6 +299,35 @@ async function mouvementsAchats(
   return { mouvements, sansPrix };
 }
 
+/**
+ * Toutes les dépenses de ces bâtiments qui touchent l'étendue, rangées par
+ * catégorie. Le Suivi des coûts s'en sert aussi, pour mettre les bâtiments à
+ * côté du parc sans refaire le prorata des factures et des contrats.
+ */
+export async function mouvementsBatiments(
+  siteIds: number[],
+  etendue: Bornes,
+  categories: readonly CategorieStat[],
+  energies: Energie[] = [],
+  lecteur: AuthRequest | null = null
+): Promise<{ mouvements: Mouvement[]; achatsSansPrix: number }> {
+  const veut = (c: CategorieStat) => categories.includes(c);
+  const mouvements: Mouvement[] = [];
+  let achatsSansPrix = 0;
+  if (siteIds.length === 0) return { mouvements, achatsSansPrix };
+  if (veut('energie')) mouvements.push(...(await mouvementsEnergie(siteIds, etendue, energies)));
+  if (veut('contrats')) mouvements.push(...(await mouvementsContrats(siteIds, etendue)));
+  if (veut('interventions') || veut('controles')) {
+    mouvements.push(...(await mouvementsInterventions(siteIds, etendue)).filter((m) => veut(m.categorie)));
+  }
+  if (veut('achats')) {
+    const achats = await mouvementsAchats(siteIds, etendue, lecteur);
+    mouvements.push(...achats.mouvements);
+    achatsSansPrix = achats.sansPrix;
+  }
+  return { mouvements, achatsSansPrix };
+}
+
 // ============================================================== l'agrégation
 
 export interface SerieStat {
@@ -400,21 +429,7 @@ export async function statistiquesBatiments(
     : [];
   const ids = sites.map((s: any) => Number(s.id));
 
-  const veut = (c: CategorieStat) => filtre.categories.includes(c);
-  let achatsSansPrix = 0;
-  const mouvements: Mouvement[] = [];
-  if (ids.length) {
-    if (veut('energie')) mouvements.push(...(await mouvementsEnergie(ids, etendue, filtre.energies)));
-    if (veut('contrats')) mouvements.push(...(await mouvementsContrats(ids, etendue)));
-    if (veut('interventions') || veut('controles')) {
-      mouvements.push(...(await mouvementsInterventions(ids, etendue)).filter((m) => veut(m.categorie)));
-    }
-    if (veut('achats')) {
-      const achats = await mouvementsAchats(ids, etendue, lecteur);
-      mouvements.push(...achats.mouvements);
-      achatsSansPrix = achats.sansPrix;
-    }
-  }
+  const { mouvements, achatsSansPrix } = await mouvementsBatiments(ids, etendue, filtre.categories, filtre.energies, lecteur);
 
   const somme = (liste: Mouvement[], f: Bornes) => liste.reduce((s, m) => s + dansFenetre(m, f), 0);
   const sommeParCategorie = (liste: Mouvement[], f: Bornes) => {

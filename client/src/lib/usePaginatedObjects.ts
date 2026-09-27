@@ -8,6 +8,8 @@ interface Options {
   enabled?: boolean
   /** Taille de page. 20 correspond au défaut du serveur. */
   parPage?: number
+  /** Montrer aussi les matériels sortis de l'inventaire, masqués par défaut. */
+  inclureSortis?: boolean
 }
 
 interface Page {
@@ -30,15 +32,17 @@ export function usePaginatedObjects({
   search,
   enabled = true,
   parPage = 20,
+  inclureSortis = false,
 }: Options) {
   const requete = useInfiniteQuery<Page>({
-    queryKey: ['objects', { categoryId, subcategoryId, search, parPage }],
+    queryKey: ['objects', { categoryId, subcategoryId, search, parPage, inclureSortis }],
     initialPageParam: 1,
     queryFn: async ({ pageParam }) => {
       const params = new URLSearchParams()
       if (categoryId !== undefined) params.append('categoryId', String(categoryId))
       if (subcategoryId !== undefined) params.append('subcategoryId', String(subcategoryId))
       if (search) params.append('search', search)
+      if (inclureSortis) params.append('inclureSortis', '1')
       params.append('page', String(pageParam))
       params.append('limit', String(parPage))
 

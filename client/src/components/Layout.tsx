@@ -46,7 +46,8 @@ import {
   KeyRound,
   LifeBuoy,
   Building2,
-  Link2
+  Link2,
+  Landmark
 } from 'lucide-react'
 import { cn, getInitials } from '@/lib/utils'
 import { useDarkMode } from '@/lib/useDarkMode'
@@ -57,6 +58,26 @@ import MobileBottomBar from '@/components/MobileBottomBar'
 import GlobalSearch from '@/components/GlobalSearch'
 import OfflineBanner from '@/components/OfflineBanner'
 import PasswordExpiredBanner from '@/components/PasswordExpiredBanner'
+
+/**
+ * Les modules qui, seuls au menu, réduisent l'application à eux : la page où
+ * l'on arrive, celles qui restent permises, et la navigation qui reste.
+ */
+type ModuleSeul = 'tickets' | 'comptabilite'
+const MODULES_SEULS: Record<ModuleSeul, { accueil: string; permis: string[]; navigation: { name: string; href: string; icon: any }[] }> = {
+  // Ses demandes, sa fiche, et le matériel qu'une demande lui fait ouvrir.
+  tickets: {
+    accueil: '/tickets',
+    permis: ['/tickets', '/profile', '/objects/'],
+    navigation: [{ name: 'Mes demandes', href: '/tickets', icon: LifeBuoy }],
+  },
+  // Le module et sa fiche : les biens se consultent dans le module lui-même.
+  comptabilite: {
+    accueil: '/comptabilite',
+    permis: ['/comptabilite', '/profile'],
+    navigation: [{ name: 'Comptabilité', href: '/comptabilite', icon: Landmark }],
+  },
+}
 
 export default function Layout() {
   const { user, logout } = useAuthStore()
@@ -131,12 +152,16 @@ export default function Layout() {
    * profite aussi. Tant que le menu n'est pas chargé, rien ne change, pour ne
    * pas faire clignoter l'interface.
    */
-  const demandeurSeul =
-    menuCharge &&
-    user?.role !== 'admin' &&
-    !isService &&
-    menuPlugins.length === 1 &&
-    menuPlugins[0]?.slug === 'tickets'
+  /*
+   * Même règle pour le profil « Comptable » : un agent du service comptable
+   * n'a que le module Comptabilité, et l'application se réduit à lui — ni
+   * catégories, ni alertes, ni scanner.
+   */
+  const slugSeul = menuPlugins.length === 1 ? menuPlugins[0]?.slug : null
+  const moduleSeul: ModuleSeul | null =
+    menuCharge && user?.role !== 'admin' && !isService && (slugSeul === 'tickets' || slugSeul === 'comptabilite')
+      ? slugSeul
+      : null
 
   const location = useLocation()
 
@@ -144,13 +169,12 @@ export default function Layout() {
   // rejoignent le compte : repris une fois, où qu'on arrive dans l'application.
   useReprendreFavorisLocaux(!!user)
   useEffect(() => {
-    if (!demandeurSeul) return
-    // Ses demandes, sa fiche, et le matériel qu'une demande lui fait ouvrir.
-    const permis = ['/tickets', '/profile', '/objects/']
+    if (!moduleSeul) return
+    const { accueil, permis } = MODULES_SEULS[moduleSeul]
     if (!permis.some((debut) => location.pathname.startsWith(debut))) {
-      navigate('/tickets', { replace: true })
+      navigate(accueil, { replace: true })
     }
-  }, [demandeurSeul, location.pathname, navigate])
+  }, [moduleSeul, location.pathname, navigate])
 
   // Récupérer les permissions pour le module Suivi
   const { data: trackingPermissions } = useQuery({
@@ -216,7 +240,9 @@ export default function Layout() {
     keyround: KeyRound,
     'key-round': KeyRound,
     Clock,
-    clock: Clock
+    clock: Clock,
+    Landmark,
+    landmark: Landmark
   }
 
   // Navigation de base
@@ -240,7 +266,7 @@ export default function Layout() {
   }
 
   // Plugins de type menu (inclut calendrier, réservations, amortissement, cartographie, import/export)
-  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings', 'tickets', 'batiments']
+  const builtInPluginSlugs = ['calendar', 'reservations', 'depreciation', 'map', 'import-export', 'manifestations', 'espaces-verts', 'cles', 'plannings', 'tickets', 'batiments', 'comptabilite']
   // Exclure les plugins déjà présents dans baseNavigation pour éviter les doublons
   const baseNavSlugs = ['manifestations']
   const pluginNavigation = menuPlugins
@@ -266,8 +292,8 @@ export default function Layout() {
   // dans le cloisonnement ne suffit donc pas, il faut aussi l'ajouter là. Un
   // service partenaire qui traite des demandes sans voir l'entrée « Tickets »
   // aurait une API accessible et aucun bouton pour y aller.
-  const navigation = demandeurSeul
-    ? [{ name: 'Mes demandes', href: '/tickets', icon: LifeBuoy }]
+  const navigation = moduleSeul
+    ? MODULES_SEULS[moduleSeul].navigation
     : isService
     ? [
         { name: 'Manifestations', href: '/manifestations', icon: CalendarDays },
@@ -332,7 +358,7 @@ export default function Layout() {
               C'est le geste le plus direct sur le terrain — viser l'étiquette
               du matériel plutôt que le chercher dans l'arborescence.
             */}
-            {!demandeurSeul && (
+            {!moduleSeul && (
             <NavLink
               to="/scan"
               aria-label="Scanner une étiquette"
@@ -496,7 +522,7 @@ export default function Layout() {
       <MobileBottomBar
         onOuvrirRecherche={() => setRechercheOuverte(true)}
         nombreAlertes={alertsCount}
-        demandeurSeul={demandeurSeul}
+        moduleSeul={moduleSeul}
       />
 
       <GlobalSearch ouvert={rechercheOuverte} onFermer={() => setRechercheOuverte(false)} />

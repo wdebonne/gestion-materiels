@@ -78,7 +78,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
       ),
       // Nombre de matériels
       db.queryOne<{ count: number }>(
-        `SELECT COUNT(*) as count FROM objects o WHERE 1=1${objectFilter}`,
+        `SELECT COUNT(*) as count FROM objects o WHERE (o.status IS NULL OR o.status <> 'sorti')${objectFilter}`,
         objectParams
       ),
       // Nombre d'alertes actives (non rejetées), sans les échéances des
@@ -94,7 +94,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res: Response) 
       ),
       // Valeur totale du parc
       db.queryOne<{ total: number }>(
-        `SELECT COALESCE(SUM(purchase_price), 0) as total FROM objects o WHERE 1=1${objectFilter}`,
+        `SELECT COALESCE(SUM(purchase_price), 0) as total FROM objects o WHERE (o.status IS NULL OR o.status <> 'sorti')${objectFilter}`,
         objectParams
       ),
       // Nombre de sous-catégories

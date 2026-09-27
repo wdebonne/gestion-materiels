@@ -13,7 +13,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 |---|----------|---------------|--------|---------|
 | 1 | 🔴 Haute | QR Codes matériels | ✅ Fait | Génération, scan terrain et impression en lot |
 | 2 | 🔴 Haute | Import/Export CSV & Excel | ✅ Fait | Colonnes reconnues par leur intitulé, export réimportable |
-| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 1152 tests (1108 backend, 44 frontend) |
+| 3 | 🔴 Haute | Tests automatisés | ✅ Fait | 1900 tests (1829 backend, 71 frontend) — septembre 2026 |
 | 4 | 🟠 Moyenne | Réservation / Prêt de matériel | ✅ Fait | Disponibilité affichée avant l'envoi depuis août 2026 |
 | 5 | 🟠 Moyenne | Amortissement / Dépréciation | ✅ Fait | |
 | 6 | 🟠 Moyenne | PWA (Progressive Web App) | 🟡 Partiel | Installation et cache ✅ — les **notifications push** ne sont pas implémentées |
@@ -29,6 +29,7 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
 | 16 | 🔴 Haute | Ergonomie terrain (rôle agent, hors-ligne, scan, photo, GPS) | ✅ Fait | Voir la section dédiée plus bas |
 | 17 | 🔴 Haute | Consolidation structurelle (index, migrations, types, tests) | 🟡 Partiel | Voir la section dédiée plus bas |
 | 18 | 🟠 Moyenne | Compteurs et énergie (relevés par catégorie, recharges électriques) | ✅ Fait | Septembre 2026 — voir la section dédiée plus bas |
+| 21 | 🟠 Moyenne | Passerelle comptable avec Ciril Finance | 🟡 Partiel | Septembre 2026 — fonctionne de bout en bout ; format des fichiers de Ciril à vérifier sur un vrai export. Voir la section dédiée plus bas |
 
 **Légende** — ✅ fonctionne · 🟡 fonctionne partiellement, écart documenté · ⚠️ visible dans l'interface mais sans effet
 
@@ -469,3 +470,14 @@ Les statuts ci-dessous ont été vérifiés dans le code, pas déduits de l'inte
   - **Page `/batiments/statistiques`** : filtres combinables, cartes avec évolution, camemberts, barres empilées par période avec la ligne de la période comparée, barres par bâtiment (option au m²), courbe de consommation, tableaux
   - **Export PDF filtrable** (`exportStatistiquesPdf.ts`) sur les briques communes déplacées dans `client/src/lib/pdf/document.ts`
 - **Reste à faire :** les coûts de personnel (heures des plannings passées dans un bâtiment) ne sont pas encore rapprochés des bâtiments
+
+### 21. Passerelle comptable avec Ciril Finance
+
+- **Contexte :** une facture saisie dans Ciril Finance crée une immobilisation. Le matériel se ressaisissait dans l'inventaire, et sa sortie — perdu, cassé, vendu — dans Ciril. Supprimer un objet effaçait en plus son historique, sans que la compta le sache.
+- **Livré (septembre 2026) :**
+  - **Migration `050_comptabilite`** : `immobilisations` (numéro unique, ligne source gardée en JSON, état `a_ranger` | `rangee` | `ignoree`), `imports_comptables`, `sorties_inventaire` (une par objet, statut précédent gardé pour l'annulation), `exports_comptables` (un par lot, statut par destination, intégration), `comptabilite_droits` ; `objects.immobilisation_id` indexé sans unicité. Jours en `VARCHAR(10)`
+  - **Import rejouable** (`comptabilite.service.ts`, `utils/tableurComptable.ts`) : CSV `;` ou `,`, UTF-8 ou Windows-1252, XLSX ; colonnes reconnues par `detecterSelon` et retenues par leur intitulé ; rapprochement par numéro
+  - **Rangement** en lot, en N exemplaires, rattachement, ignorer ; **sortie douce** avec statut `sorti` masqué des listes, compteurs et valeur du parc ; suppression refusée pour un objet immobilisé non sorti
+  - **Envoi groupé** (`envoyerLotSiEcheance`, passage horaire) vers Nextcloud (`deposerFichier`) et/ou mail (`compta_sorties`) ; échec total → file conservée ; renvoi ; téléchargement ; confirmation d'intégration
+  - **Tableau de suivi** et bloc d'accueil ; **droits par geste** et profils Comptable, Inventaire, Comptable et inventaire ; application réduite au module pour un comptable (`moduleSeul`)
+- **Reste à faire :** caler les intitulés reconnus et le fichier des sorties par défaut sur un vrai export de Ciril et sur son modèle d'import des sorties d'immobilisations.

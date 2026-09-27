@@ -11,6 +11,7 @@ import QRCodeDisplay from '@/components/QRCodeDisplay'
 import DetenteursDuMateriel from '@/components/tickets/DetenteursDuMateriel'
 import DemandesDuMateriel from '@/components/tickets/DemandesDuMateriel'
 import ObjectTimeline from '@/components/ObjectTimeline'
+import BlocComptabiliteObjet from '@/components/comptabilite/BlocComptabiliteObjet'
 import ImplantationsDuMateriel, {
   useImplantationsDuMateriel,
   usePiecesDuMateriel,
@@ -1027,7 +1028,7 @@ export default function ObjectDetailPage() {
                           object.status === 'maintenance' ? 'warning' :
                           object.status === 'inactive' ? 'default' : 'danger'
                         }>
-                          {statusOptions.find(s => s.value === object.status)?.label || 'Actif'}
+                          {object.status === 'sorti' ? 'Sorti de l’inventaire' : statusOptions.find(s => s.value === object.status)?.label || 'Actif'}
                         </Badge>
                       </div>
                       {object.description && (
@@ -1072,6 +1073,9 @@ export default function ObjectDetailPage() {
           </div>
         </CardBody>
       </Card>
+
+      {/* Numéro comptable et sortie d'inventaire : visibles quel que soit l'onglet. */}
+      <BlocComptabiliteObjet objet={object as any} />
 
       {/* Onglets */}
       <div className="overflow-x-auto scrollbar-hide -mx-4 px-4 sm:mx-0 sm:px-0">

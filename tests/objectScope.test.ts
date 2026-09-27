@@ -83,12 +83,20 @@ const EXEMPTIONS: Record<string, string> = {
     "Ne joint `objects` que pour nommer le matériel d'une demande, et la portée est appliquée par `ticket.routes.ts` — qui importe `filtreObjets` pour le sélecteur du formulaire et `materielsVisibles` pour la liste. La distinction est volontaire : `filtreObjetsLies` écarterait la **ligne entière** quand aucune catégorie n'est accessible, ce qui ferait disparaître de sa propre file la demande que l'utilisateur vient d'ouvrir sur un matériel qu'il n'a pas le droit de consulter. On garde donc la demande et on vide la colonne, le nom étant remplacé par « Matériel hors de votre périmètre ». Aucune fiche, aucune référence ni prix d'achat ne sort d'ici sans passer par ce filtrage.",
   'services/donneesTest.service.ts':
     "Ne lit `objects` que pour compter — combien de matériels en tout, combien générés par le jeu de test — et n'est appelé que par `donneesTest.routes.ts`, gardé par `requireAdmin` sur chaque route : `getAccessibleCategoryIds` rend `null` pour un administrateur, il n'y a donc aucune portée à appliquer. Aucune fiche, aucun nom, aucun prix ne sort d'ici.",
+  'services/comptabilite.service.ts':
+    "La passerelle comptable ne lit que les objets liés à une immobilisation de Ciril, ou ceux qu'une sortie d'inventaire désigne, et n'est appelée que par comptabilite.routes.ts — gardé en entier par le droit au module Comptabilité, fermé par défaut à tout autre rôle qu'administrateur — ou par object.routes.ts, qui vérifie l'édition de la catégorie avant de sortir un objet. Un comptable n'a précisément aucune catégorie : lui appliquer la portée par catégorie lui cacherait tous les biens dont il doit suivre la sortie. Ne rend que nom, numéro comptable, catégorie, localisation et valeur Ciril.",
+  'routes/comptabilite.routes.ts':
+    "Même raison que comptabilite.service : tout le routeur est gardé par le droit au module Comptabilité (moduleOuvert), et chaque geste par sa case. La seule lecture directe de `objects` est la recherche d'un objet à rattacher, réservée à la case « Ranger » qu'un administrateur accorde en connaissance de cause ; elle ne rend que nom, numéro d'inventaire, catégorie et localisation, jamais de prix ni de fiche.",
   'services/donneesModele.service.ts':
     "Ne lit que les prestations déjà rattachées à une manifestation donnée, pour remplir le document destiné à un service — et les filtre par le périmètre de ce service, ce qui est une portée plus étroite que celle des catégories. Aucun appelant n'est piloté par un utilisateur qui naviguerait dans le parc : la génération tourne côté serveur sans requête, et l'aperçu est réservé à l'administrateur.",
 };
 
-/** Marques d'une portée appliquée. */
-const MARQUES_PORTEE = ['filtreObjets', 'filtreObjetsLies', 'peutVoirObjet', 'getAccessibleCategoryIds'];
+/**
+ * Marques d'une portée appliquée. `conditionObjets` (Suivi des coûts) ajoute
+ * toujours les catégories de `getAccessibleCategoryIds`, et rend `null` quand
+ * il n'y en a aucune : voir `suiviCouts.test.ts`, « Le périmètre ».
+ */
+const MARQUES_PORTEE = ['filtreObjets', 'filtreObjetsLies', 'peutVoirObjet', 'getAccessibleCategoryIds', 'conditionObjets'];
 
 function fichiersTypeScript(dossier: string, trouves: string[] = []): string[] {
   for (const entree of fs.readdirSync(dossier, { withFileTypes: true })) {

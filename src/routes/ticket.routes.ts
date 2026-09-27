@@ -49,7 +49,7 @@ import {
   materielsDe,
   resoudreRoutage,
 } from '../services/ticketsReferentiel.service';
-import { sitesDe, sitesProposesA } from '../services/sites.service';
+import { siteParDefautDe, sitesDe, sitesProposesA } from '../services/sites.service';
 import {
   notifierAffectation,
   notifierAValider,
@@ -155,6 +155,9 @@ router.get('/formulaire', authenticateToken, async (req: AuthRequest, res: Respo
       statuts,
       // Un seul bâtiment : le champ n'a pas à être posé.
       siteImpose: sites.length === 1 ? sites[0].id : null,
+      // Celui où elle a son bureau : il pré-remplit le champ, et c'est lui
+      // que porte une demande dont la catégorie ne demande pas de lieu.
+      siteParDefaut: await siteParDefautDe(userId),
       // Rien ne lui a été attribué : l'écran le dit et vers qui se tourner,
       // plutôt que d'afficher des listes vides sans explication.
       sansRattachement: sites.length === 0 && categories.length === 0,
@@ -693,26 +696,49 @@ router.delete(
 async function saisieAutorisee(
   req: AuthRequest
 ): Promise<{ saisie: any } | { refus: string; code: number }> {
-  const saisie = { ...(req.body ?? {}) };
   const ctx = await contexteTickets(req);
+  const filtree = await routageAutorise(req, ctx);
+  if ('refus' in filtree) return filtree;
+  const { saisie } = filtree;
 
   /*
-   * Les champs du formulaire, tenus aussi par le serveur : un bâtiment exigé
-   * qui manque est refusé, un bâtiment masqué est ignoré. Le matériel masqué ne
-   * l'est pas — une demande ouverte depuis la fiche d'un matériel le porte
-   * légitimement, quelle que soit la catégorie choisie ensuite.
+   * Les champs du formulaire, tenus aussi par le serveur, pour la personne au
+   * nom de qui la demande est ouverte.
+   *
+   * Le bâtiment : non demandé par la catégorie — une demande informatique —,
+   * la demande porte **obligatoirement** le bâtiment par défaut de la
+   * personne, celui où elle a son bureau ; demandé mais laissé vide, c'est lui
+   * encore qui est retenu ; exigé sans qu'elle en ait, la demande est refusée.
+   *
+   * Le matériel masqué n'est pas effacé — une demande ouverte depuis la fiche
+   * d'un matériel le porte légitimement, quelle que soit la catégorie choisie
+   * ensuite.
    */
-  if (saisie.categorieId || saisie.sousCategorieId) {
-    const modes = await modesFormulairePour(ctx.moi, saisie.categorieId, saisie.sousCategorieId);
-    if (modes.siteMode === 'masque') saisie.siteId = null;
-    if (modes.siteMode === 'requis' && !saisie.siteId) {
-      return { refus: 'Indiquez le bâtiment concerné', code: 400 };
-    }
-    if (modes.materielMode === 'requis' && !saisie.objectId) {
-      return { refus: 'Indiquez le matériel concerné', code: 400 };
-    }
-  }
+  const pour = Number(saisie.demandeurId ?? ctx.moi);
+  const parDefaut = await siteParDefautDe(pour);
+  const modes =
+    saisie.categorieId || saisie.sousCategorieId
+      ? await modesFormulairePour(pour, saisie.categorieId, saisie.sousCategorieId)
+      : null;
 
+  if (modes?.siteMode === 'masque') saisie.siteId = parDefaut;
+  else if (!saisie.siteId) saisie.siteId = parDefaut;
+
+  if (modes?.siteMode === 'requis' && !saisie.siteId) {
+    return { refus: 'Indiquez le bâtiment concerné', code: 400 };
+  }
+  if (modes?.materielMode === 'requis' && !saisie.objectId) {
+    return { refus: 'Indiquez le matériel concerné', code: 400 };
+  }
+  return { saisie };
+}
+
+/** La catégorie proposée, et le routage explicite réservé aux intervenants. */
+async function routageAutorise(
+  req: AuthRequest,
+  ctx: ContexteTickets
+): Promise<{ saisie: any } | { refus: string; code: number }> {
+  const saisie = { ...(req.body ?? {}) };
   if (ctx.role === 'admin' || ctx.voitTout) return { saisie };
 
   const proposees = new Set((await categoriesProposeesA(ctx.moi)).map((c) => c.id));

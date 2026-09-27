@@ -49,6 +49,7 @@ import cleRoutes from './routes/cle.routes';
 import clePublicRoutes from './routes/clePublic.routes';
 import snipeItRoutes from './routes/snipeIt.routes';
 import importExportRoutes from './routes/importExport.routes';
+import comptabiliteRoutes from './routes/comptabilite.routes';
 import reservationRoutes from './routes/reservation.routes';
 import authSettingsRoutes from './routes/authSettings.routes';
 import manifestationRoutes from './routes/manifestation.routes';
@@ -297,6 +298,9 @@ app.use('/api/security', securityRoutes);
 app.use('/api/api-tokens', apiTokenRoutes);
 app.use('/api/qrcode', qrcodeRoutes);
 app.use('/api/import-export', exportLimiter, importExportRoutes);
+// Pas derrière `exportLimiter` en bloc : le tableau de suivi s'interroge souvent ;
+// seules les routes qui produisent ou reçoivent un fichier y passent.
+app.use('/api/comptabilite', comptabiliteRoutes);
 app.use('/api/reservations', reservationRoutes);
 app.use('/api/settings/auth', authSettingsRoutes);
 // Monté avant `/api/manifestations` : le dépôt d'une demande est signé, pas

@@ -3,6 +3,17 @@ import { body, validationResult } from 'express-validator';
 import { db } from '../database';
 import { authenticateToken, AuthRequest, requireAdmin, requireSupervisor, requireFieldWrite, getAccessibleCategoryIds, checkCategoryPermission, checkCategoryAccess } from '../middleware/auth.middleware';
 import { notifierWebhooks } from '../services/webhook.service';
+import { moduleOuvert } from '../services/modules.service';
+import {
+  annulerSortie,
+  droitsComptaDe,
+  immobilisationDeObjet,
+  IntrouvableCompta,
+  lierObjet,
+  SaisieCompta,
+  sortieDe,
+  sortirObjet,
+} from '../services/comptabilite.service';
 import { dateOuNull, nombreOuNull } from '../utils/valeursSql';
 import { filtreObjets, peutVoirObjet, REFUS_PORTEE } from '../middleware/objectScope';
 import {
@@ -101,7 +112,7 @@ function priorityToSeverity(priority: string, daysUntilDue: number): string {
 // GET /api/objects - Liste des objets
 router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const { categoryId, subcategoryId, status, search, page = 1, limit = 20, sort } = req.query;
+    const { categoryId, subcategoryId, status, search, page = 1, limit = 20, sort, inclureSortis } = req.query;
 
     let whereClause = '1=1';
     const params: any[] = [];
@@ -135,6 +146,10 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     if (status) {
       whereClause += ' AND o.status = ?';
       params.push(status);
+    } else if (inclureSortis !== '1') {
+      // Un objet sorti de l'inventaire reste en base pour la comptabilité, mais
+      // n'encombre plus les listes : on le demande explicitement.
+      whereClause += " AND (o.status IS NULL OR o.status <> 'sorti')";
     }
 
     if (search) {
@@ -402,6 +417,9 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res: Response) =>
         // Stock d'un lot, lu directement sur sa fiche de parc : ce qui est
         // dehors aujourd'hui, ce qui est promis, ce qui reste.
         ...(await stockDuLot(obj)),
+        // Le numéro comptable et la sortie d'inventaire, avec ses trois étapes.
+        immobilisation: await immobilisationDeObjet(Number(obj.id)),
+        sortie: await sortieDe(Number(obj.id)),
         createdAt: obj.created_at,
         updatedAt: obj.updated_at,
         category: obj.category_name ? {
@@ -568,12 +586,23 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       categoryId, subcategoryId, name, description, image,
       reference, inventaireInterne, serialNumber, purchaseDate, purchasePrice,
       status, location, notes, customFields, isPrestation, materialType, quantityTotal,
-      unitCost, availableForManifestations
+      unitCost, availableForManifestations, immobilisationId
     } = req.body;
 
-    const obj = await db.queryOne('SELECT id, category_id, subcategory_id FROM objects WHERE id = ?', [id]);
+    const obj = await db.queryOne('SELECT id, category_id, subcategory_id, status FROM objects WHERE id = ?', [id]);
     if (!obj) {
       return res.status(404).json({ success: false, message: 'Objet non trouvé' });
+    }
+
+    // Le statut `sorti` ne se pose et ne se retire que par la sortie
+    // d'inventaire, qui tient sa date, son motif et son envoi à la compta.
+    if (status !== undefined && status !== obj.status && (status === 'sorti' || obj.status === 'sorti')) {
+      return res.status(400).json({
+        success: false,
+        message: status === 'sorti'
+          ? 'Utilisez « Sortir de l’inventaire » : la sortie a une date et un motif, et part à la compta.'
+          : 'Cet objet est sorti de l’inventaire : annulez la sortie pour le remettre en service.'
+      });
     }
 
     // Vérifier la permission d'édition sur la catégorie de l'objet
@@ -582,6 +611,24 @@ router.put('/:id', authenticateToken, requireSupervisor, async (req: AuthRequest
       const canEdit = await checkCategoryPermission(req.user!.userId, req.user!.role, objCategoryId, 'can_edit');
       if (!canEdit) {
         return res.status(403).json({ success: false, message: 'Accès refusé - Vous n\'avez pas la permission de modifier dans cette catégorie' });
+      }
+    }
+
+    // Le lien comptable : réservé à qui a la case « Ranger » du module.
+    if (immobilisationId !== undefined) {
+      const permis =
+        (await moduleOuvert(req.user!, 'comptabilite')) &&
+        (await droitsComptaDe(req.user!.userId, req.user!.role)).ranger;
+      if (!permis) {
+        return res.status(403).json({ success: false, message: 'Modifier le numéro comptable demande le droit « Ranger » de la Comptabilité.' });
+      }
+      try {
+        await lierObjet(Number(id), immobilisationId === null || immobilisationId === '' ? null : Number(immobilisationId), req.user!.userId);
+      } catch (erreur: any) {
+        if (erreur instanceof SaisieCompta || erreur instanceof IntrouvableCompta) {
+          return res.status(400).json({ success: false, message: erreur.message });
+        }
+        throw erreur;
       }
     }
 
@@ -699,6 +746,20 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
   try {
     const { id } = req.params;
 
+    // Un objet immobilisé ne disparaît pas sans que la compta le sache : il
+    // sort de l'inventaire, et sa sortie part dans le prochain envoi.
+    const lien = await db.queryOne(
+      `SELECT o.immobilisation_id, s.export_id FROM objects o
+         LEFT JOIN sorties_inventaire s ON s.object_id = o.id WHERE o.id = ?`,
+      [id]
+    ).catch(() => null);
+    if (lien?.immobilisation_id && !lien.export_id) {
+      return res.status(409).json({
+        success: false,
+        message: 'Cet objet a un numéro comptable : sortez-le de l’inventaire pour que la comptabilité suive.'
+      });
+    }
+
     const result = await db.execute('DELETE FROM objects WHERE id = ?', [id]);
 
     if (result.changes === 0) {
@@ -711,6 +772,55 @@ router.delete('/:id', authenticateToken, requireAdmin, async (req: AuthRequest, 
   } catch (error: any) {
     console.error('Erreur delete object:', error);
     res.status(500).json({ success: false, message: 'Erreur serveur' });
+  }
+});
+
+// === SORTIE D'INVENTAIRE ===
+
+/**
+ * Sortir un objet de l'inventaire depuis sa fiche : le geste du terrain.
+ * Le même droit que pour modifier l'objet — superviseur, et édition de sa
+ * catégorie —, sans passer par le module Comptabilité.
+ */
+async function peutModifierObjet(req: AuthRequest, objectId: number): Promise<'introuvable' | boolean> {
+  const obj = await db.queryOne(
+    `SELECT o.id, COALESCE(o.category_id, s.category_id) AS categorie
+       FROM objects o LEFT JOIN subcategories s ON s.id = o.subcategory_id WHERE o.id = ?`,
+    [objectId]
+  );
+  if (!obj) return 'introuvable';
+  if (!obj.categorie) return true;
+  return checkCategoryPermission(req.user!.userId, req.user!.role, Number(obj.categorie), 'can_edit');
+}
+
+function repondreSortie(res: Response, erreur: any) {
+  if (erreur instanceof SaisieCompta) return res.status(400).json({ success: false, message: erreur.message });
+  if (erreur instanceof IntrouvableCompta) return res.status(404).json({ success: false, message: erreur.message });
+  console.error('Erreur sortie d’inventaire:', erreur);
+  return res.status(500).json({ success: false, message: 'Erreur serveur' });
+}
+
+router.post('/:id/sortie', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const permis = await peutModifierObjet(req, Number(req.params.id));
+    if (permis === 'introuvable') return res.status(404).json({ success: false, message: 'Objet non trouvé' });
+    if (!permis) return res.status(403).json({ success: false, message: 'Accès refusé - Vous n\'avez pas la permission de modifier dans cette catégorie' });
+    await sortirObjet(Number(req.params.id), req.body ?? {}, req.user!.userId);
+    res.json({ success: true, message: 'Objet sorti de l’inventaire', sortie: await sortieDe(Number(req.params.id)) });
+  } catch (erreur) {
+    repondreSortie(res, erreur);
+  }
+});
+
+router.delete('/:id/sortie', authenticateToken, requireSupervisor, async (req: AuthRequest, res: Response) => {
+  try {
+    const permis = await peutModifierObjet(req, Number(req.params.id));
+    if (permis === 'introuvable') return res.status(404).json({ success: false, message: 'Objet non trouvé' });
+    if (!permis) return res.status(403).json({ success: false, message: 'Accès refusé - Vous n\'avez pas la permission de modifier dans cette catégorie' });
+    await annulerSortie(Number(req.params.id), req.user!.userId);
+    res.json({ success: true, message: 'Sortie annulée' });
+  } catch (erreur) {
+    repondreSortie(res, erreur);
   }
 });
 

@@ -418,7 +418,7 @@ function FicheCategorie({
             { value: '', label: racine ? 'Selon la personne' : 'Hérite de la catégorie' },
             { value: 'auto', label: 'Selon la personne' },
             { value: 'requis', label: 'Toujours demandé' },
-            { value: 'masque', label: 'Jamais demandé' },
+            { value: 'masque', label: 'Non demandé — son bâtiment par défaut' },
           ]}
         />
         <Input

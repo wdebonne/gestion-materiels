@@ -37,6 +37,7 @@ export const BLOCS = [
   'evenements',
   'activite',
   'vehicules',
+  'comptabilite',
 ] as const;
 
 export const ACTIONS = [

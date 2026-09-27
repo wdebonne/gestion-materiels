@@ -140,9 +140,11 @@ sans passer par « Modifier » — un agent de terrain y a droit, et n'obtient p
 passage la permission de renommer le véhicule.
 
 ### 📊 Module Suivi
-- 📈 **Tableau de bord** : Vue consolidée des coûts (carburant, entretiens, contrôles techniques)
-- 🔍 **Filtres avancés** : Par période, catégorie, sous-catégorie, objet(s), type de données
-- 📉 **Graphiques interactifs** : Évolution des coûts, répartition par type, coûts par objet/catégorie
+- 📈 **Tableau de bord** : Vue consolidée des coûts — carburant, entretiens, contrôles techniques, espaces verts, **bâtiments** (factures d'énergie, contrats de maintenance, interventions, contrôles obligatoires) et **manifestations** (prestations déployées, pertes constatées)
+- 🧮 **Même règle de répartition que les bâtiments** : une facture couvrant décembre-janvier compte pour moitié dans chaque mois, un contrat au prorata de ses jours et partagé entre ses bâtiments. Les achats de matériel posé restent dans Bâtiments › Coûts et statistiques
+- 🔍 **Filtres avancés** : Par période, type de dépense, catégorie, sous-catégorie, objet(s) — ces trois derniers pour le parc — et par bâtiment. Une source dont le module est fermé à la personne ne se propose pas
+- 📉 **Graphiques interactifs** : Évolution empilée par source (semaines ISO, périodes vides comprises), répartition du total, coûts par objet, coûts par bâtiment et par nature de dépense
+- 🏢 **Onglets Bâtiments et Manifestations** : coût de chaque bâtiment par nature et au m² ; coût de chaque manifestation, pertes « à venir » tant que le matériel n'est pas revenu
 - 🔄 **Comparaison unifiée** : Trois modes de comparaison disponibles
   - Périodes personnalisées : Comparer deux plages de dates libres
   - Années : Graphiques comparatifs année par année (ex: 2025 vs 2026)
@@ -316,6 +318,46 @@ Le rôle « Service partenaire » n'y a pas accès.
 - 🔑 **Code `ABCD-EFGH` permanent**, montré une seule fois à la génération et envoyé avec le lien ; date de fin facultative, suspension, régénération (l'ancien code et ses sessions tombent)
 - 📤 **Dépôt simplifié** : titre, date, objet — le champ objet (et bâtiment) ne s'affiche pas quand un seul est ouvert ; le document attend la validation, au nom de l'entreprise
 - 🛡️ Même réponse pour un lien inconnu et un code faux ; dix essais par quart d'heure et par poste, verrou d'une demi-heure après vingt échecs d'affilée ; session de huit heures, jamais mise en cache
+
+### 🧾 Comptabilité — passerelle avec Ciril Finance
+
+Une facture saisie dans Ciril Finance crée une **immobilisation**, avec son numéro comptable. Sans passerelle, le même matériel se saisissait deux fois — dans Ciril puis dans l'inventaire —, et sa sortie aussi, dans l'autre sens. Le module **Comptabilité** relie les deux, et dit à chacun ce qui l'attend.
+
+**De Ciril vers l'inventaire**
+
+- 📥 **Import de l'export des immobilisations** : CSV à point-virgule ou à virgule, en UTF-8 ou en encodage Windows, ou classeur XLSX. Montants « 1 234,56 », dates JJ/MM/AAAA ou numéros de série Excel sont lus tels quels. Les colonnes sont reconnues par leur intitulé (« N° inventaire », « Désignation », « Valeur brute », « Date de mise en service »…), corrigeables avant l'import, et **retenues par leur nom** pour le fichier suivant — même si leur ordre change
+- 🔁 **Rejouable** : chaque ligne est rapprochée par son numéro. Un numéro inconnu arrive « à ranger » ; un numéro connu voit ses données mises à jour, jamais son rangement. Une colonne vide n'efface pas ce qu'on savait. La ligne d'origine est gardée entière, pour ne rien perdre de ce que Ciril envoie
+- 🗂️ **Rangement** : une sélection d'immobilisations devient des objets dans une catégorie ou une sous-catégorie (nom, date et prix d'achat, fournisseur et facture en note). La règle est **un numéro par objet** — deux armoires, deux numéros, et l'une peut sortir sans l'autre ; « objets par ligne » couvre la facture qui n'aurait produit qu'un seul numéro pour plusieurs objets, chacun avec sa part de la valeur. Une immobilisation peut aussi se **rattacher** à un objet déjà saisi, ou être **ignorée** (des travaux, par exemple)
+
+**De l'inventaire vers Ciril**
+
+- 🚪 **Sortie d'inventaire**, depuis la fiche de l'objet : date, motif (perdu, cassé, volé, vendu — avec son prix —, réformé, donné, autre), commentaire, quantité pour un lot. L'objet **n'est plus supprimé** : il quitte les listes, les compteurs et la valeur du parc, reste consultable (« Afficher les sortis »), et se remet en service tant que sa sortie n'est pas partie. Un objet qui a un numéro comptable ne peut plus être supprimé
+- 📤 **Un seul envoi par jour** : les sorties ne partent pas une par une. À l'heure réglée (18 h par défaut, ou une fois par semaine, ou seulement à la main), toute la file part dans **un fichier** — déposé dans un dossier Nextcloud (« Compta/A traiter », créé s'il manque) et/ou envoyé par mail en pièce jointe, avec la liste des biens dans le message. Dix objets retirés font un mail. File vide : rien n'est envoyé. Si toutes les destinations échouent, les sorties restent dans la file pour le lot suivant et l'échec s'affiche ; si une seule échoue, « Renvoyer » la reprend. Un serveur arrêté à l'heure dite rattrape l'envoi au passage suivant
+- 🧾 **Le fichier se règle** pour s'importer tel quel dans Ciril : colonnes et leur ordre, séparateur, encodage, format des dates, code de chaque motif. Il peut aussi se télécharger pour être transmis à la main
+- ✅ **La compta confirme l'intégration** d'un clic — depuis le module ou le lien du mail. Chaque sortie a ainsi trois étapes datées : **déclarée** (par qui), **envoyée**, **intégrée dans Ciril** (par qui)
+
+**Qui attend qui**
+
+- 📊 **Tableau de suivi** en quatre cartes, vertes, orange ou rouges au-delà d'un seuil réglable (7 jours) : ce qui reste **à ranger** (l'inventaire), les **sorties à envoyer** et le prochain envoi, ce qui est **à intégrer dans Ciril** (la compta), et la date du **dernier import** de l'export Ciril. Chaque carte ouvre sa liste. En dessous, les derniers mouvements en langage courant. Le même tableau existe en bloc de l'accueil
+- 🗃️ **Biens immobilisés** : la liste des objets liés à Ciril, avec leur catégorie, leur localisation et leur éventuelle sortie, et une fiche en lecture seule — pour la compta, qui n'a pas accès aux catégories
+
+**Les droits**
+
+Voir le module (droit de menu, fermé par défaut à tout autre rôle qu'administrateur) permet de tout **consulter**. Chaque geste s'ajoute ensuite par une case, dans *Paramètres › Utilisateurs › Droits* :
+
+| Case | Permet |
+|---|---|
+| Importer l'export Ciril | déposer le fichier des immobilisations |
+| Ranger dans les catégories | créer ou rattacher les objets — le travail de l'inventaire |
+| Déclarer des sorties | sortir un bien depuis le module |
+| Envoyer les sorties à la compta | envoyer tout de suite, ou télécharger le lot |
+| Confirmer l'intégration dans Ciril | marquer un envoi « intégré » |
+| Régler le module | envoi automatique, destinataires, format du fichier |
+| Reçoit le lot par mail | destinataire du mail quotidien |
+
+Trois profils les posent d'un clic : **Comptable** (le module seul — l'application se réduit à lui, sans tableau de bord, catégories ni scanner — et tout sauf le rangement), **Inventaire** (ranger, sortir, envoyer, en gardant ses autres modules) et **Comptable et inventaire** (tout, en gardant ses autres modules). Ranger ne demande pas le droit d'édition de la catégorie : la case est accordée par un administrateur en connaissance de cause. La sortie depuis la fiche de l'objet, elle, reste le geste du terrain : superviseur et droit d'édition de la catégorie, sans le module.
+
+> Le format exact des fichiers de Ciril n'a pas encore été vérifié sur un vrai export : les intitulés reconnus et le fichier des sorties par défaut sont des valeurs probables, et tout se règle à l'écran.
 
 ### 🌳 Espaces Verts
 - 📦 **Implantation depuis le parc** : le matériel se déclare **une fois**, dans le parc — des lots (rosiers, bulbes, graminées) et du mobilier tenu à l'exemplaire ou en lot — puis se **pose** dans un espace vert, en quantité, éventuellement dans une jardinière qui mêle plusieurs variétés. Le type d'élément est deviné de la branche du parc, la jardinière se crée au moment où l'on plante

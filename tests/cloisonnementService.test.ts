@@ -65,6 +65,9 @@ describe('Ce qui est refusé', () => {
     // voir avec les manifestations d'un service partenaire.
     ['/api/batiments', 'GET'],
     ['/api/batiments/documents/3/fichier', 'GET'],
+    // La passerelle comptable : immobilisations, sorties, fichiers envoyés.
+    ['/api/comptabilite/suivi', 'GET'],
+    ['/api/comptabilite/exports/1/fichier', 'GET'],
   ])('%s %s', (chemin, methode) => {
     expect(cheminAutorise(chemin, methode)).toBe(false);
   });

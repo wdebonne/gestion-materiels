@@ -412,6 +412,17 @@ Les trois lectures appliquent `filtreObjets()` en plus du rôle : régler la dis
 
 Enfin, l'onglet du plan proposait toutes ses commandes d'édition à n'importe quel compte connecté : le serveur refusait, sans que rien ne l'explique à l'écran. Les actions sont désormais masquées selon le droit — défense en profondeur, le contrôle serveur restant le seul qui compte.
 
+### Révision de septembre 2026 — passerelle comptable
+
+Le module **Comptabilité** (`/api/comptabilite`) ouvre des lectures du parc à des comptes qui n'ont **aucune catégorie** : un agent du service comptable doit suivre la sortie de biens qu'il n'a pas à voir dans l'inventaire. Le compromis est borné ainsi :
+
+- **Deux portes successives.** Tout le routeur passe par `moduleOuvert('comptabilite')` — la même règle que le menu —, et le module est **fermé par défaut** à tout autre rôle qu'administrateur (`plugin_permissions` posé à la création, sans jamais écraser un réglage). Chaque écriture demande ensuite sa case dans `comptabilite_droits` (`exigerGeste`) ; le rôle « Service partenaire » est refusé, et figuré dans `cloisonnementService.test.ts`.
+- **Lectures bornées.** Le module ne lit que les objets **liés à une immobilisation** ou désignés par une sortie, et ne rend que nom, numéro comptable, catégorie, localisation et valeur Ciril. `GET /api/objects/:id` n'est **pas** élargi : la fiche de la compta est une route à part, en lecture seule. Les deux fichiers sont exemptés de la portée par catégorie dans `objectScope.test.ts`, raison écrite.
+- **Rangement sans droit d'édition de la catégorie.** La case « Ranger » crée des objets dans n'importe quelle catégorie ; elle est accordée par un administrateur, en connaissance de cause. La sortie depuis la fiche de l'objet garde, elle, `requireSupervisor` et `can_edit` sur la catégorie.
+- **Fichiers.** L'import passe par multer (CSV, TXT, XLSX, 20 Mo), le fichier téléversé est effacé après lecture. Les fichiers envoyés sont gardés sous `uploads/exports-comptables/`, servis par une route du module, jamais en statique. Le dossier Nextcloud réglé refuse `..`.
+- **Limiteur.** Seules les routes qui produisent ou reçoivent un fichier passent par `exportLimiter` ; le monter sur tout le module aurait bloqué le tableau de suivi après dix lectures.
+- **Suppression.** `DELETE /api/objects/:id` renvoie 409 pour un objet immobilisé dont la sortie n'est pas partie à la compta : l'historique comptable ne disparaît plus d'un clic.
+
 ### Ouvert après la révision d'août 2026
 
 - [x] ~~**Appliquer ou retirer la politique de mot de passe et le blocage après N tentatives**~~ ✅ Août 2026 — appliqués ; les trois réglages inapplicables ont été retirés du formulaire

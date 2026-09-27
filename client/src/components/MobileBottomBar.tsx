@@ -1,12 +1,15 @@
 import { NavLink } from 'react-router-dom'
-import { Home, QrCode, Search, Bell, User, LifeBuoy } from 'lucide-react'
+import { Home, QrCode, Search, Bell, User, LifeBuoy, Landmark } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 interface MobileBottomBarProps {
   onOuvrirRecherche: () => void
   nombreAlertes?: number
-  /** Un demandeur qui n'a que les tickets : ses demandes et sa fiche, rien d'autre. */
-  demandeurSeul?: boolean
+  /**
+   * Un seul module au menu — les tickets d'un demandeur, la comptabilité d'un
+   * comptable : ce module et sa fiche, rien d'autre.
+   */
+  moduleSeul?: 'tickets' | 'comptabilite' | null
 }
 
 /**
@@ -16,7 +19,7 @@ interface MobileBottomBarProps {
  * d'ouvrir le tiroir, de lire douze entrées, puis de choisir. Les quatre gestes
  * réellement quotidiens méritent d'être à portée de pouce, en permanence.
  */
-export default function MobileBottomBar({ onOuvrirRecherche, nombreAlertes, demandeurSeul = false }: MobileBottomBarProps) {
+export default function MobileBottomBar({ onOuvrirRecherche, nombreAlertes, moduleSeul = null }: MobileBottomBarProps) {
   const classes = ({ isActive }: { isActive: boolean }) =>
     cn(
       'flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-xs transition-colors',
@@ -25,17 +28,24 @@ export default function MobileBottomBar({ onOuvrirRecherche, nombreAlertes, dema
         : 'text-gray-600 dark:text-gray-400'
     )
 
-  if (demandeurSeul) {
+  if (moduleSeul) {
     return (
       <nav
         aria-label="Navigation principale"
         className="fixed inset-x-0 bottom-0 z-40 flex border-t border-gray-200 bg-white/95 backdrop-blur-md lg:hidden dark:border-gray-700 dark:bg-gray-800/95"
         style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
       >
-        <NavLink to="/tickets" className={classes}>
-          <LifeBuoy className="h-6 w-6" />
-          Mes demandes
-        </NavLink>
+        {moduleSeul === 'tickets' ? (
+          <NavLink to="/tickets" className={classes}>
+            <LifeBuoy className="h-6 w-6" />
+            Mes demandes
+          </NavLink>
+        ) : (
+          <NavLink to="/comptabilite" className={classes}>
+            <Landmark className="h-6 w-6" />
+            Comptabilité
+          </NavLink>
+        )}
         <NavLink to="/profile" className={classes}>
           <User className="h-6 w-6" />
           Profil

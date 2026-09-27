@@ -47,6 +47,8 @@ import ticketsNiveaux from './045_tickets_niveaux';
 import ticketsCloture from './046_tickets_cloture';
 import formulaireParPersonne from './047_formulaire_par_personne';
 import accueilPersonnel from './048_accueil_personnel';
+import batimentParDefaut from './049_batiment_par_defaut';
+import comptabilite from './050_comptabilite';
 
 /**
  * Migrations connues, dans leur ordre d'application.
@@ -106,6 +108,8 @@ export const MIGRATIONS: readonly Migration[] = [
   ticketsCloture,
   formulaireParPersonne,
   accueilPersonnel,
+  batimentParDefaut,
+  comptabilite,
 ];
 
 export type { Migration, ContexteMigration, Dialecte } from './types';

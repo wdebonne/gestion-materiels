@@ -159,6 +159,11 @@ describe('Contrat des routes', () => {
     it('put /:id (modifier un matériel)', () => {
       expect(allowedRolesFor(objectRoutes, 'put', '/:id')).toEqual(GESTION);
     });
+
+    // Sortir de l'inventaire est une modification du matériel : même garde.
+    it.each([['post'], ['delete']])('%s /:id/sortie (sortie d’inventaire)', (method) => {
+      expect(allowedRolesFor(objectRoutes, method, '/:id/sortie')).toEqual(GESTION);
+    });
   });
 
   describe('Suppression d’un matériel — réservée aux administrateurs', () => {

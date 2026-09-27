@@ -71,8 +71,12 @@ GET    /api/objects           # Liste des objets
 POST   /api/objects           # Créer un objet
 GET    /api/objects/:id       # Détail d'un objet
 PUT    /api/objects/:id       # Modifier un objet
-DELETE /api/objects/:id       # Supprimer un objet
+DELETE /api/objects/:id       # Supprimer un objet (409 s'il a un numéro comptable et que sa sortie n'est pas partie)
+POST   /api/objects/:id/sortie   # Sortir de l'inventaire : { date, motif, commentaire?, valeurCession?, quantite? }
+DELETE /api/objects/:id/sortie   # Annuler la sortie, tant qu'elle n'est pas envoyée à la compta
 ```
+
+La liste masque les objets sortis de l'inventaire ; `?inclureSortis=1` ou `?status=sorti` les montre. Le détail rend aussi `immobilisation` (numéro comptable) et `sortie` (date, motif, et les trois étapes : déclarée, envoyée, intégrée). `PUT /api/objects/:id` refuse de poser ou de retirer le statut `sorti`, et n'accepte `immobilisationId` que du droit « Ranger » de la Comptabilité. La sortie demande `requireSupervisor` et le droit d'édition de la catégorie.
 
 ### Plugins
 
@@ -570,6 +574,41 @@ GET  /api/import-export/export # Exporter les matériels (CSV/XLSX)
 POST /api/import-export/import # Importer des matériels (CSV/XLSX)
 GET  /api/import-export/template # Télécharger le template d'import
 ```
+
+### Comptabilité — passerelle avec Ciril Finance
+
+Toutes les routes demandent le module `comptabilite` (droit de menu) ; le rôle « Service partenaire » est refusé. Chaque geste demande en plus sa case (`comptabilite_droits`), sinon 403 avec le nom du droit manquant. Seules les routes qui produisent ou reçoivent un fichier passent par `exportLimiter`.
+
+```
+GET    /api/comptabilite/mes-droits                      # Gestes permis, libellés des motifs et des colonnes
+GET    /api/comptabilite/suivi                           # Les quatre cartes et les derniers mouvements
+GET    /api/comptabilite/immobilisations?etat=&recherche=&page=   # a_ranger | rangee | ignoree
+GET    /api/comptabilite/sorties?filtre=                  # a_envoyer | a_integrer | integrees | hors_compta | toutes
+GET    /api/comptabilite/exports                          # Historique des envois
+GET    /api/comptabilite/exports/:id/fichier              # Retélécharger le fichier d'un envoi
+GET    /api/comptabilite/biens?recherche=&sortis=         # Objets liés à une immobilisation
+GET    /api/comptabilite/biens/:id                        # Fiche en lecture seule
+POST   /api/comptabilite/immobilisations/analyser         # importer — colonnes reconnues, aperçu (multipart « file »)
+POST   /api/comptabilite/immobilisations/importer         # importer — import rejouable (« file », « correspondance » en JSON)
+POST   /api/comptabilite/immobilisations/ranger           # ranger — { ids, categoryId | subcategoryId, exemplaires? }
+POST   /api/comptabilite/immobilisations/:id/rattacher    # ranger — { objectId }
+POST   /api/comptabilite/immobilisations/:id/ignorer      # ranger
+POST   /api/comptabilite/immobilisations/:id/retablir     # ranger
+GET    /api/comptabilite/objets-a-rattacher?q=            # ranger — recherche d'un objet existant
+POST   /api/comptabilite/biens/:id/sortie                 # sortir — même corps que /api/objects/:id/sortie
+DELETE /api/comptabilite/biens/:id/sortie                 # sortir — annuler avant l'envoi
+POST   /api/comptabilite/envoyer                          # envoyer — lot immédiat vers Nextcloud et/ou mail
+POST   /api/comptabilite/exports                          # envoyer — lot rendu en téléchargement
+POST   /api/comptabilite/exports/:id/renvoyer             # envoyer — reprendre la destination qui a échoué
+POST   /api/comptabilite/exports/:id/integration          # integrer — « intégré dans Ciril »
+DELETE /api/comptabilite/exports/:id/integration          # integrer — retirer la confirmation (son auteur ou un admin)
+DELETE /api/comptabilite/exports/:id                      # admin — annuler un envoi, ses sorties reviennent dans la file
+GET    /api/comptabilite/reglages                          # Réglages, et si Nextcloud et le SMTP sont configurés
+PUT    /api/comptabilite/reglages                          # regler — envoi, format du fichier, seuil de retard
+POST   /api/comptabilite/envoi/tester                      # regler — fichier d'essai vers les destinations réglées
+```
+
+Les droits comptables d'une personne se lisent et s'écrivent avec ses autres droits : `GET|PUT /api/users/:id/droits`, champ `comptabilite` (`importer`, `ranger`, `sortir`, `envoyer`, `integrer`, `regler`, `recoitMail`).
 
 ### Réservations
 

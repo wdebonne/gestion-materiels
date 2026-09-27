@@ -15,6 +15,7 @@ import {
   BlocParc,
   BlocVehicules,
 } from '@/components/accueil/BlocsParc'
+import CarteComptabilite from '@/components/comptabilite/CarteComptabilite'
 import { useAccueil, type IdBloc } from '@/lib/accueil'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +32,7 @@ const COMPOSANTS: Record<IdBloc, ComponentType> = {
   evenements: BlocEvenements,
   activite: BlocActivite,
   vehicules: BlocVehicules,
+  comptabilite: CarteComptabilite,
 }
 
 /**
