@@ -65,6 +65,7 @@ const TrackingPage = lazy(() => import('@/pages/TrackingPage'))
 const ReservationsPage = lazy(() => import('@/pages/ReservationsPage'))
 const DepreciationPage = lazy(() => import('@/pages/DepreciationPage'))
 const ImportExportPage = lazy(() => import('@/pages/ImportExportPage'))
+const ComptabilitePage = lazy(() => import('@/pages/ComptabilitePage'))
 const MapPage = lazy(() => import('@/pages/MapPage'))
 const ManifestationsPage = lazy(() => import('@/pages/ManifestationsPage'))
 const EspacesVertsPage = lazy(() => import('@/pages/EspacesVertsPage'))
@@ -188,6 +189,7 @@ function App() {
           <Route path="reservations" element={<ReservationsPage />} />
           <Route path="depreciation" element={<DepreciationPage />} />
           <Route path="import-export" element={<ImportExportPage />} />
+          <Route path="comptabilite" element={<ComptabilitePage />} />
           <Route path="map" element={<MapPage />} />
           <Route path="manifestations" element={<ManifestationsPage />} />
           <Route path="espaces-verts" element={<EspacesVertsPage />} />

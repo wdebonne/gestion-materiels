@@ -96,6 +96,8 @@ export function getStatusLabel(status: string): string {
       return 'En maintenance'
     case 'out_of_service':
       return 'Hors service'
+    case 'sorti':
+      return 'Sorti de l’inventaire'
     default:
       return status
   }

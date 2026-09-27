@@ -132,7 +132,7 @@ router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
     if (catIds.length > 0) {
       const placeholders = catIds.map(() => '?').join(',');
       const objResults = await db.query(
-        `SELECT category_id, COUNT(*) as count FROM objects WHERE category_id IN (${placeholders}) GROUP BY category_id`,
+        `SELECT category_id, COUNT(*) as count FROM objects WHERE category_id IN (${placeholders}) AND (status IS NULL OR status <> 'sorti') GROUP BY category_id`,
         catIds
       );
       objResults.forEach((r: any) => objectCounts.set(r.category_id, r.count));
@@ -486,7 +486,7 @@ router.get('/:categoryId/subcategories', authenticateToken, async (req: AuthRequ
     if (subIds.length > 0) {
       const placeholders = subIds.map(() => '?').join(',');
       const countResults = await db.query(
-        `SELECT subcategory_id, COUNT(*) as count FROM objects WHERE subcategory_id IN (${placeholders}) GROUP BY subcategory_id`,
+        `SELECT subcategory_id, COUNT(*) as count FROM objects WHERE subcategory_id IN (${placeholders}) AND (status IS NULL OR status <> 'sorti') GROUP BY subcategory_id`,
         subIds
       );
       countResults.forEach((r: any) => objectCounts.set(r.subcategory_id, r.count));

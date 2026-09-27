@@ -24,6 +24,9 @@ export default function SubcategoryDetailPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [search, setSearch] = useState('')
+  // Les matériels sortis de l'inventaire restent en base pour la compta, mais
+  // ne s'affichent qu'à la demande.
+  const [voirSortis, setVoirSortis] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingObject, setEditingObject] = useState<EquipmentObject | null>(null)
   const [formData, setFormData] = useState({
@@ -77,6 +80,7 @@ export default function SubcategoryDetailPage() {
   } = usePaginatedObjects({
     subcategoryId: subcategory?.id,
     search,
+    inclureSortis: voirSortis,
     enabled: !!subcategory?.id,
   })
 
@@ -252,6 +256,10 @@ export default function SubcategoryDetailPage() {
             icon={<Search className="w-5 h-5" />}
           />
         </div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input type="checkbox" checked={voirSortis} onChange={(e) => setVoirSortis(e.target.checked)} />
+          Afficher les sortis
+        </label>
         {/* Étiquetage d'un lot de matériels : la génération existait côté
             serveur sans aucun écran pour l'appeler. */}
         {/* Une étiquette QR se colle sur un objet. Un raccordement électrique

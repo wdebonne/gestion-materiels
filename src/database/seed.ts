@@ -901,6 +901,55 @@ const DEFAULT_EMAIL_TEMPLATES = [
     variables: JSON.stringify(['entreprise', 'lien', 'code', 'avec_code', 'fin']),
     description: "Envoyé à une entreprise extérieure et à ses contacts quand un gestionnaire lui ouvre (ou renouvelle) l'accès au portail des documents"
   },
+  {
+    name: 'compta_sorties',
+    subject: '{{nombre}} sortie{{pluriel}} d’inventaire à intégrer dans la comptabilité',
+    body: `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+  <div style="max-width: 640px; margin: 0 auto; padding: 20px;">
+    <div style="background: #0f766e; color: white; padding: 16px 20px;">
+      <h2 style="margin: 0;">Sorties d’inventaire à intégrer</h2>
+    </div>
+    <div style="padding: 20px; background: #f9fafb;">
+      <p>Bonjour,</p>
+      <p>{{nombre}} bien{{pluriel}} immobilisé{{pluriel}} {{#if pluriel}}sont sortis{{else}}est sorti{{/if}} de l’inventaire. Le fichier <strong>{{fichier}}</strong>, joint à ce message, est prêt à être importé dans Ciril Finance.</p>
+      {{#if dossier_nextcloud}}<p>Il a aussi été déposé sur Nextcloud, dans le dossier <strong>{{dossier_nextcloud}}</strong>.</p>{{/if}}
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 16px 0;">
+        <thead>
+          <tr style="background: #e5e7eb; text-align: left;">
+            <th style="padding: 6px 8px;">N° comptable</th>
+            <th style="padding: 6px 8px;">Désignation</th>
+            <th style="padding: 6px 8px;">Motif</th>
+            <th style="padding: 6px 8px;">Sortie le</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{#each sorties}}
+          <tr style="border-bottom: 1px solid #e5e7eb;">
+            <td style="padding: 6px 8px; font-family: 'Courier New', monospace;">{{numero}}</td>
+            <td style="padding: 6px 8px;">{{libelle}}</td>
+            <td style="padding: 6px 8px;">{{motif}}</td>
+            <td style="padding: 6px 8px;">{{date}}</td>
+          </tr>
+          {{/each}}
+        </tbody>
+      </table>
+      <p>Une fois le fichier intégré, confirmez-le dans l’application : chacun saura ainsi que la comptabilité est à jour.</p>
+      <p style="text-align: center; margin: 25px 0;">
+        <a href="{{site_url}}/comptabilite?onglet=sorties" style="display: inline-block; padding: 12px 24px; background: #0f766e; color: white; text-decoration: none; border-radius: 4px;">Confirmer l’intégration</a>
+      </p>
+    </div>
+    <div style="padding: 12px; text-align: center; color: #9ca3af; font-size: 12px;">
+      {{site_name}} — {{year}}
+    </div>
+  </div>
+</body>
+</html>`,
+    variables: JSON.stringify(['nombre', 'pluriel', 'fichier', 'dossier_nextcloud', 'sorties']),
+    description: "Envoyé au service comptable avec le fichier des sorties d'inventaire du jour — un seul message par lot, quel que soit le nombre de sorties"
+  },
 ];
 
 const DEFAULT_PLUGINS = [
@@ -1030,6 +1079,22 @@ const DEFAULT_PLUGINS = [
       default_zoom: 13,
       tile_provider: 'openstreetmap'
     })
+  },
+  {
+    name: 'Comptabilité',
+    slug: 'comptabilite',
+    version: '1.0.0',
+    description: 'Passerelle avec Ciril Finance : immobilisations à ranger, sorties d’inventaire envoyées à la compta, suivi',
+    author: 'Système',
+    icon: 'Landmark',
+    plugin_type: 'menu',
+    route: 'comptabilite',
+    is_system: 1,
+    is_active: 1,
+    // Fermé aux rôles non administrateurs à sa création : on l'ouvre personne
+    // par personne, avec les gestes de chacun.
+    ferme_par_defaut: true,
+    config: JSON.stringify({})
   },
   {
     name: 'Import / Export',
@@ -1238,6 +1303,17 @@ export async function seedDatabase(): Promise<void> {
         `INSERT INTO plugins (name, slug, version, description, author, icon, plugin_type, route, is_system, is_active, config) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [plugin.name, plugin.slug, plugin.version, plugin.description, plugin.author, plugin.icon, (plugin as any).plugin_type || 'object', (plugin as any).route || plugin.slug, plugin.is_system, plugin.is_active || 0, plugin.config]
       );
+      // Seulement à la création : un réglage fait ensuite par un
+      // administrateur n'est jamais écrasé au redémarrage.
+      if ((plugin as any).ferme_par_defaut) {
+        const cree = await db.queryOne('SELECT id FROM plugins WHERE slug = ?', [plugin.slug]);
+        for (const role of ['supervisor', 'agent', 'user', 'service']) {
+          const deja = await db.queryOne('SELECT id FROM plugin_permissions WHERE plugin_id = ? AND role = ?', [cree.id, role]);
+          if (!deja) {
+            await db.execute('INSERT INTO plugin_permissions (plugin_id, role, can_access) VALUES (?, ?, 0)', [cree.id, role]);
+          }
+        }
+      }
     }
   }
   console.log('✅ Plugins par défaut insérés');

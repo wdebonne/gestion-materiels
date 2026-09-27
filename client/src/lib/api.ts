@@ -2656,6 +2656,8 @@ export interface DroitsPersonne {
     materiels: { objectId: number; nom: string; reference: string | null }[]
     formulaire: { siteMode: string | null; materielMode: string | null }
   }
+  /** Les gestes permis dans le module Comptabilité (voir `lib/comptabilite`). */
+  comptabilite?: import('./comptabilite').DroitsCompta
   avertissements: string[]
 }
 
@@ -2668,6 +2670,7 @@ export const droitsApi = {
       categories?: { categorieId: number; niveau: NiveauTicket; peutCloturer: boolean; materielAutorise: boolean | null }[]
       sites?: RattachementSite[]
       formulaire?: { siteMode: string | null; materielMode: string | null }
+      comptabilite?: import('./comptabilite').DroitsCompta
     }
   ) => api.put<{ success: boolean; message: string } & DroitsPersonne>(`/users/${userId}/droits`, data),
 }

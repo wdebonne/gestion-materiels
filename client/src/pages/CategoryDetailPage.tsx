@@ -27,6 +27,9 @@ export default function CategoryDetailPage() {
   const isSupervisor = user?.role === 'admin' || user?.role === 'supervisor'
   const isAdmin = user?.role === 'admin'
   const [search, setSearch] = useState('')
+  // Les matériels sortis de l'inventaire restent en base pour la compta, mais
+  // ne s'affichent qu'à la demande.
+  const [voirSortis, setVoirSortis] = useState(false)
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingSubcategory, setEditingSubcategory] = useState<Subcategory | null>(null)
   const [editingObject, setEditingObject] = useState<ObjectType | null>(null)
@@ -96,6 +99,7 @@ export default function CategoryDetailPage() {
   } = usePaginatedObjects({
     categoryId: category?.id,
     search,
+    inclureSortis: voirSortis,
     enabled: !!category?.id && !category?.hasSubcategories,
   })
 
@@ -397,6 +401,12 @@ export default function CategoryDetailPage() {
             icon={<Search className="w-5 h-5" />}
           />
         </div>
+        {!category.hasSubcategories && (
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+            <input type="checkbox" checked={voirSortis} onChange={(e) => setVoirSortis(e.target.checked)} />
+            Afficher les sortis
+          </label>
+        )}
         {/* Étiquetage d'un lot de matériels : la génération existait côté
             serveur sans aucun écran pour l'appeler. */}
         {!category.hasSubcategories && (

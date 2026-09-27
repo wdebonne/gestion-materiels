@@ -28,6 +28,7 @@ export type IdBloc =
   | 'evenements'
   | 'activite'
   | 'vehicules'
+  | 'comptabilite'
 
 export interface DefinitionBloc {
   id: IdBloc
@@ -52,6 +53,7 @@ export const BLOCS: DefinitionBloc[] = [
   { id: 'evenements', libelle: 'Événements à venir', description: 'Le calendrier des sept prochains jours', largeur: 'moitie' },
   { id: 'activite', libelle: 'Activité récente', description: 'Les matériels modifiés dernièrement', largeur: 'moitie' },
   { id: 'vehicules', libelle: 'Véhicules et entretiens', description: 'Carburant, contrôles et entretiens à prévoir', largeur: 'plein' },
+  { id: 'comptabilite', libelle: 'Comptabilité', description: 'À ranger, sorties à envoyer, à intégrer dans Ciril', largeur: 'moitie', module: 'comptabilite' },
 ]
 
 export type IdAction =

@@ -132,16 +132,32 @@ export const normaliserEntete = normaliserLibelle;
  * proches n'écrase pas la bonne.
  */
 export function detecterColonnes(entetes: unknown[]): Correspondance {
-  const correspondance: Correspondance = {};
+  // ExcelJS numérote les colonnes à partir de 1.
+  return detecterSelon(CHAMPS_IMPORT, entetes, 1);
+}
+
+/**
+ * La même reconnaissance, pour un autre jeu de champs.
+ *
+ * L'import des immobilisations comptables lit un autre fichier, avec d'autres
+ * colonnes, mais selon exactement la même règle : l'intitulé normalisé, le
+ * premier qui correspond gagne. `base` est le numéro de la première colonne —
+ * 1 pour ExcelJS, 0 pour un tableau ordinaire.
+ */
+export function detecterSelon<C extends string>(
+  definitions: Array<{ champ: C; alias: string[] }>,
+  entetes: unknown[],
+  base: number
+): Partial<Record<C, number>> {
+  const correspondance: Partial<Record<C, number>> = {};
 
   entetes.forEach((entete, position) => {
     const normalise = normaliserEntete(entete);
     if (!normalise) return;
 
-    const definition = CHAMPS_IMPORT.find((d) => d.alias.includes(normalise));
+    const definition = definitions.find((d) => d.alias.includes(normalise));
     if (definition && correspondance[definition.champ] === undefined) {
-      // ExcelJS numérote les colonnes à partir de 1.
-      correspondance[definition.champ] = position + 1;
+      correspondance[definition.champ] = position + base;
     }
   });
 

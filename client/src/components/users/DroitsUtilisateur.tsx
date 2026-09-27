@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { AlertTriangle, Building2, LayoutGrid, LifeBuoy, ListChecks, X } from 'lucide-react'
+import { AlertTriangle, Building2, Landmark, LayoutGrid, LifeBuoy, ListChecks, X } from 'lucide-react'
 import { Button, LoadingInline, ModalBody, ModalFooter, Select } from '@/components/ui'
 import {
   droitsApi,
@@ -12,6 +12,7 @@ import {
   type NiveauTicket,
   type RattachementSite,
 } from '@/lib/api'
+import { AIDE_GESTES, LIBELLES_GESTES, type DroitsCompta } from '@/lib/comptabilite'
 import { cn } from '@/lib/utils'
 
 /**
@@ -36,7 +37,32 @@ import { cn } from '@/lib/utils'
 
 type Acces = boolean | null
 
-const PROFILS: { cle: string; libelle: string; aide: string; modules: (slug: string) => Acces }[] = [
+const SANS_GESTE: DroitsCompta = {
+  importer: false,
+  ranger: false,
+  sortir: false,
+  envoyer: false,
+  integrer: false,
+  regler: false,
+  recoitMail: false,
+}
+
+/**
+ * Un profil règle les modules d'un clic — `actuel` est le réglage en place,
+ * qu'un profil peut garder — et, pour la comptabilité, les gestes permis.
+ *
+ * « Comptable » réduit l'application au module, sans le rangement : ranger
+ * dans les catégories revient à l'inventaire. « Inventaire » et « Comptable et
+ * inventaire » ajoutent le module sans rien retirer : la personne aux deux
+ * casquettes garde sa vue d'ensemble.
+ */
+const PROFILS: {
+  cle: string
+  libelle: string
+  aide: string
+  modules: (slug: string, actuel: Acces) => Acces
+  compta?: DroitsCompta
+}[] = [
   {
     cle: 'demandeur',
     libelle: 'Demandeur',
@@ -48,6 +74,27 @@ const PROFILS: { cle: string; libelle: string; aide: string; modules: (slug: str
     libelle: 'Technicien',
     aide: 'Les demandes et le planning',
     modules: (slug) => slug === 'tickets' || slug === 'plannings',
+  },
+  {
+    cle: 'comptable',
+    libelle: 'Comptable',
+    aide: 'La comptabilité, rien d’autre : importer, envoyer, confirmer l’intégration — sans ranger',
+    modules: (slug) => slug === 'comptabilite',
+    compta: { ...SANS_GESTE, importer: true, envoyer: true, integrer: true, recoitMail: true },
+  },
+  {
+    cle: 'inventaire',
+    libelle: 'Inventaire',
+    aide: 'Ajoute la comptabilité pour ranger et sortir, sans rien retirer',
+    modules: (slug, actuel) => (slug === 'comptabilite' ? true : actuel),
+    compta: { ...SANS_GESTE, ranger: true, sortir: true, envoyer: true },
+  },
+  {
+    cle: 'comptable-inventaire',
+    libelle: 'Comptable et inventaire',
+    aide: 'Les deux casquettes : tous les gestes de la comptabilité, et tous ses autres modules',
+    modules: (slug, actuel) => (slug === 'comptabilite' ? true : actuel),
+    compta: { importer: true, ranger: true, sortir: true, envoyer: true, integrer: true, regler: true, recoitMail: true },
   },
   {
     cle: 'role',
@@ -94,6 +141,7 @@ export default function DroitsUtilisateur({
   const [sites, setSites] = useState<RattachementSite[]>([])
   const [siteMode, setSiteMode] = useState('')
   const [materielMode, setMaterielMode] = useState('')
+  const [compta, setCompta] = useState<DroitsCompta>(SANS_GESTE)
 
   // L'état vient du serveur, puis vit localement le temps de l'onglet.
   useEffect(() => {
@@ -103,17 +151,20 @@ export default function DroitsUtilisateur({
     setSites(data.tickets.sites)
     setSiteMode(data.tickets.formulaire.siteMode ?? '')
     setMaterielMode(data.tickets.formulaire.materielMode ?? '')
+    setCompta(data.comptabilite ?? SANS_GESTE)
   }, [data])
 
   const effectif = (m: ModuleVisible) =>
     data?.personne.role === 'admin' ? true : m.individuel ?? m.parRole
   const ticketsVisibles = modules.some((m) => m.slug === 'tickets' && effectif(m))
-  // Le même calcul que le menu (`Layout`) : seuls les tickets, et l'application
-  // se réduit à ses demandes.
-  const demandeurSeul =
-    data?.personne.role !== 'admin' &&
-    data?.personne.role !== 'service' &&
-    modules.filter(effectif).map((m) => m.slug).join() === 'tickets'
+  const comptaVisible = modules.some((m) => m.slug === 'comptabilite' && effectif(m))
+  // Le même calcul que le menu (`Layout`) : un seul module, les tickets ou la
+  // comptabilité, et l'application se réduit à lui.
+  const visibles = modules.filter(effectif).map((m) => m.slug).join()
+  const moduleSeul =
+    data?.personne.role !== 'admin' && data?.personne.role !== 'service' && (visibles === 'tickets' || visibles === 'comptabilite')
+      ? visibles
+      : null
   const attribuees = categories.filter((c) => c.niveau)
   const peutDemander = attribuees.length > 0
   const intervientQuelquePart = attribuees.some((c) => c.niveau !== 'demandeur')
@@ -132,6 +183,7 @@ export default function DroitsUtilisateur({
         // règle le drapeau, et ne garde pas l'ancien.
         sites: sites.map((s) => ({ ...s, parDefaut: Boolean(s.parDefaut) })),
         formulaire: { siteMode: siteMode || null, materielMode: materielMode || null },
+        comptabilite: compta,
       }),
     onSuccess: ({ data: retour }) => {
       toast.success('Droits enregistrés')
@@ -188,16 +240,25 @@ export default function DroitsUtilisateur({
                     size="sm"
                     variant="outline"
                     title={p.aide}
-                    onClick={() => setModules((liste) => liste.map((m) => ({ ...m, individuel: p.modules(m.slug) })))}
+                    onClick={() => {
+                      setModules((liste) => liste.map((m) => ({ ...m, individuel: p.modules(m.slug, m.individuel) })))
+                      if (p.compta) setCompta(p.compta)
+                    }}
                   >
                     {p.libelle}
                   </Button>
                 ))}
               </div>
-              {demandeurSeul && (
+              {moduleSeul === 'tickets' && (
                 <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-800 dark:bg-primary-900/30 dark:text-primary-200">
                   Seuls les tickets lui restent : l’application se réduit à « Mes demandes » et à sa fiche — ni
                   tableau de bord, ni catégories, ni alertes, ni scanner.
+                </p>
+              )}
+              {moduleSeul === 'comptabilite' && (
+                <p className="mt-2 rounded-lg bg-primary-50 px-3 py-2 text-sm text-primary-800 dark:bg-primary-900/30 dark:text-primary-200">
+                  Seule la comptabilité lui reste : l’application se réduit au suivi, aux immobilisations et aux
+                  sorties — ni tableau de bord, ni catégories, ni alertes, ni scanner.
                 </p>
               )}
               <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -232,6 +293,52 @@ export default function DroitsUtilisateur({
             </>
           )}
         </section>
+
+        {/* ------------------------------------------------- la comptabilité */}
+        {comptaVisible && (
+          <section>
+            <Titre icone={<Landmark className="h-4 w-4" />}>Ce qu’il fait dans la Comptabilité</Titre>
+            <p className="mt-1 text-xs text-gray-500">
+              Voir le module permet de tout consulter : le suivi, ce qui attend d’être rangé, les sorties et les envois.
+              Chaque geste s’ajoute ici.
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {(Object.keys(LIBELLES_GESTES) as Array<keyof typeof LIBELLES_GESTES>).map((g) => (
+                <label
+                  key={g}
+                  className="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700"
+                >
+                  <input
+                    type="checkbox"
+                    className="mt-0.5"
+                    checked={data.personne.role === 'admin' || compta[g]}
+                    disabled={data.personne.role === 'admin'}
+                    onChange={(e) => setCompta((c) => ({ ...c, [g]: e.target.checked }))}
+                  />
+                  <span>
+                    <span className="block text-gray-800 dark:text-gray-200">{LIBELLES_GESTES[g]}</span>
+                    <span className="block text-xs text-gray-500">{AIDE_GESTES[g]}</span>
+                  </span>
+                </label>
+              ))}
+              <label className="flex items-start gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm dark:border-gray-700">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={compta.recoitMail}
+                  onChange={(e) => setCompta((c) => ({ ...c, recoitMail: e.target.checked }))}
+                />
+                <span>
+                  <span className="block text-gray-800 dark:text-gray-200">Reçoit le lot par mail</span>
+                  <span className="block text-xs text-gray-500">{AIDE_GESTES.recoitMail}</span>
+                </span>
+              </label>
+            </div>
+            {data.personne.role === 'admin' && (
+              <p className="mt-2 text-xs text-gray-500">Un administrateur a tous les gestes ; seul le mail reste à choisir.</p>
+            )}
+          </section>
+        )}
 
         {ticketsVisibles && (
           <>

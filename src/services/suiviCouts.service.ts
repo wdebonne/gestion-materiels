@@ -16,6 +16,7 @@ import {
 import { perimetreBatiments } from './batiments.service';
 import { coutDe } from './coutManifestation.service';
 import { mouvementsBatiments, type CategorieStat } from './statistiquesBatiments.service';
+import { moduleOuvert } from './modules.service';
 
 /**
  * Le Suivi des coûts : tout ce que la collectivité dépense, au même endroit.
@@ -128,26 +129,9 @@ const marques = (n: number) => Array.from({ length: n }, () => '?').join(', ');
 
 // ================================================================ les droits
 
-/**
- * Le module est-il actif, et ouvert à ce compte ? Même règle que le menu :
- * droit individuel, sinon droit du rôle, sinon ouvert.
- */
-export async function moduleOuvert(appelant: { userId: number; role: string }, slug: string): Promise<boolean> {
-  const plugin = await db.queryOne('SELECT id, is_active FROM plugins WHERE slug = ?', [slug]).catch(() => null);
-  if (!plugin || !Number(plugin.is_active)) return false;
-  if (appelant.role === 'admin') return true;
-  const individuel = await db.queryOne(
-    'SELECT can_access FROM user_plugin_permissions WHERE user_id = ? AND plugin_id = ?',
-    [appelant.userId, plugin.id]
-  );
-  if (individuel) return Boolean(Number(individuel.can_access));
-  const duRole = await db.queryOne('SELECT can_access FROM plugin_permissions WHERE role = ? AND plugin_id = ?', [
-    appelant.role,
-    plugin.id,
-  ]);
-  if (duRole) return Boolean(Number(duRole.can_access));
-  return true;
-}
+// La règle vit désormais dans `modules.service`, que la passerelle comptable
+// partage ; le nom reste exporté ici, c'est celui que connaissent les appelants.
+export { moduleOuvert };
 
 export async function lirePerimetre(req: AuthRequest): Promise<Perimetre> {
   const appelant = req.user!;

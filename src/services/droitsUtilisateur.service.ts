@@ -1,5 +1,6 @@
 import { db } from '../database';
 import { estNiveauTicket, NIVEAUX_TICKET, type NiveauTicket } from '../middleware/ticketScope';
+import { definirDroitsCompta, droitsComptaDe, type DroitsCompta } from './comptabilite.service';
 import { definirSitesDe, sitesDe } from './sites.service';
 import { SaisieInvalide, versDateTime } from './tickets.service';
 import {
@@ -31,7 +32,9 @@ import {
  *     (`user_ticket_categories`, migrations 045 et 046) ;
  *   - les **bâtiments** et leurs quatre drapeaux (`user_sites`) ;
  *   - le **matériel attribué** (`user_materiels`) ;
- *   - les **champs du formulaire** de demande (`user_ticket_reglages`, 047).
+ *   - les **champs du formulaire** de demande (`user_ticket_reglages`, 047) ;
+ *   - les **gestes de la comptabilité** — importer, ranger, sortir, envoyer,
+ *     intégrer, régler, recevoir le mail (`comptabilite_droits`, 050).
  *
  * Le rôle et l'identité restent au formulaire des informations, qui porte déjà
  * leurs gardes — le dernier administrateur, son propre rôle.
@@ -215,7 +218,7 @@ export async function lireDroits(userId: number) {
   );
   if (!personne) return null;
 
-  const [modules, racines, lignes, superviseurs, sites, materiels, formulaire] = await Promise.all([
+  const [modules, racines, lignes, superviseurs, sites, materiels, formulaire, comptabilite] = await Promise.all([
     modulesDe(userId, personne.role),
     db.query(
       `SELECT id, nom, couleur, materiel_mode FROM ticket_categories
@@ -234,6 +237,7 @@ export async function lireDroits(userId: number) {
       [userId]
     ),
     reglagesFormulaireDe(userId),
+    droitsComptaDe(userId, personne.role),
   ]);
 
   const parCategorie = new Map<number, any>(lignes.map((l: any) => [Number(l.ticket_categorie_id), l]));
@@ -298,6 +302,7 @@ export async function lireDroits(userId: number) {
       materiels: materiels.map((m: any) => ({ objectId: Number(m.object_id), nom: m.name, reference: m.reference ?? null })),
       formulaire,
     },
+    comptabilite,
     avertissements,
   };
 }
@@ -318,6 +323,8 @@ export interface DroitsSaisis {
   }>;
   materiels?: number[];
   formulaire?: { siteMode?: string | null; materielMode?: string | null };
+  /** Les cases du module Comptabilité ; `null` les retire toutes. */
+  comptabilite?: Partial<DroitsCompta> | null;
 }
 
 /** Écrit ce qui est transmis, et seulement cela, dans une seule transaction. */
@@ -344,5 +351,6 @@ export async function definirDroits(userId: number, saisie: DroitsSaisis, auteur
     }
     if (Array.isArray(saisie.materiels)) await definirMaterielsDe(userId, saisie.materiels.map(Number), auteurId);
     if (saisie.formulaire) await definirReglagesFormulaire(userId, saisie.formulaire, auteurId);
+    if (saisie.comptabilite !== undefined) await definirDroitsCompta(userId, saisie.comptabilite);
   });
 }

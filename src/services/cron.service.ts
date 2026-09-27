@@ -685,6 +685,19 @@ export function initCronJobs(): void {
   // une échéance se compte en jours, l'heure suffit largement.
   cron.schedule('5 * * * *', verifierEcheancesBatiments);
 
+  // Sorties d'inventaire envoyées à la compta, en un seul lot par jour. Le
+  // passage est horaire, mais l'envoi n'a lieu qu'une fois l'heure réglée
+  // atteinte : l'heure se change sans redémarrer, et un serveur arrêté à
+  // l'heure dite rattrape l'envoi au passage suivant.
+  cron.schedule('10 * * * *', async () => {
+    try {
+      const { envoyerLotSiEcheance } = await import('./comptabilite.service');
+      await envoyerLotSiEcheance();
+    } catch (erreur) {
+      console.error('Envoi des sorties à la compta interrompu :', (erreur as Error).message);
+    }
+  });
+
   // Exécuter une première vérification au démarrage
   setTimeout(checkAlerts, 10000);
   setTimeout(verifierEcheancesBatiments, 15000);

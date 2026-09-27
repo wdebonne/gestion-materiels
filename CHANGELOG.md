@@ -7,6 +7,57 @@ et ce projet adhère au [Semantic Versioning](https://semver.org/lang/fr/).
 
 ## [Non publié]
 
+### Comptabilité : les immobilisations de Ciril rangées dans le parc, les sorties renvoyées à la compta
+
+> Une facture saisie dans **Ciril Finance** crée une immobilisation ; le même
+> matériel se ressaisissait ensuite dans l'inventaire, et sa sortie — perdu,
+> cassé, vendu — se ressaisissait dans Ciril. Le nouveau module
+> **Comptabilité** relie les deux sens.
+>
+> **L'export des immobilisations s'importe** (CSV `;` ou `,`, UTF-8 ou
+> Windows, XLSX ; montants et dates au format français), colonnes reconnues
+> par leur intitulé et retenues pour la fois suivante. L'import est
+> **rejouable** : rapproché par numéro, il met à jour sans doublon et ne touche
+> jamais au rangement. Chaque immobilisation se **range** dans une catégorie
+> ou une sous-catégorie — un numéro par objet, ou plusieurs objets pour un
+> numéro —, se **rattache** à un objet déjà saisi, ou s'**ignore**.
+>
+> **Un objet ne se supprime plus : il sort de l'inventaire**, avec une date,
+> un motif et un commentaire, depuis sa fiche. Il quitte les listes, les
+> compteurs et la valeur du parc, reste consultable (« Afficher les
+> sortis »), et un objet immobilisé ne peut plus être supprimé.
+>
+> **Les sorties partent groupées, une fois par jour** (18 h par défaut) :
+> un seul fichier, déposé dans un dossier Nextcloud et/ou envoyé par mail en
+> pièce jointe — dix objets retirés font un seul mail. Rien ne part quand la
+> file est vide ; un envoi qui échoue partout garde les sorties pour le lot
+> suivant. Le fichier se règle (colonnes, séparateur, encodage, codes motif)
+> et peut aussi se télécharger. La compta **confirme l'intégration** d'un
+> clic : chaque sortie a trois étapes datées — déclarée, envoyée, intégrée.
+>
+> **Un tableau de suivi dit qui attend qui** : ce qui reste à ranger
+> (l'inventaire), les sorties à envoyer, ce que la compta n'a pas intégré, la
+> date du dernier import — en vert, orange ou rouge. Le même tableau existe
+> en bloc de l'accueil.
+>
+> **Chaque geste est une case**, personne par personne : importer, ranger,
+> sortir, envoyer, confirmer l'intégration, régler, recevoir le mail. Trois
+> profils d'un clic : **Comptable** (l'application se réduit au module, sans
+> le rangement, qui revient à l'inventaire), **Inventaire**, **Comptable et
+> inventaire**. Le module est fermé par défaut aux rôles non administrateurs.
+>
+> Technique : migration `050_comptabilite` (`immobilisations`,
+> `imports_comptables`, `sorties_inventaire`, `exports_comptables`,
+> `comptabilite_droits`, `objects.immobilisation_id`) ; routes
+> `/api/comptabilite` et `/api/objects/:id/sortie` ; tâche horaire qui envoie
+> le lot à l'heure réglée ; gabarit de courriel `compta_sorties` ;
+> `moduleOuvert` déplacé dans `modules.service.ts` ; la détection des colonnes
+> de l'import devient générique (`detecterSelon`).
+>
+> Réserve : le format exact des fichiers de Ciril n'a pas encore été vérifié
+> sur un vrai export ; les valeurs par défaut sont probables et se règlent à
+> l'écran.
+
 ### Suivi des coûts : les bâtiments, les manifestations, et les espaces verts partout
 
 > La page **Suivi** ne connaissait que le parc. Elle additionne maintenant
