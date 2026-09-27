@@ -487,6 +487,20 @@ describe('La file', () => {
     expect(trouves.map((t: any) => t.id)).toContain(id);
   });
 
+  it('cherche aussi sur le demandeur, prénom et nom dans n’importe quel ordre', async () => {
+    const id = await creerTicket({ titre: 'Fuite au local' }, SECRETAIRE);
+
+    for (const recherche of ['Secret', 'sam secret', 'Secret Sam', 'secr@ville']) {
+      const trouves = await listerTickets(sansPortee, { recherche, limite: 500 });
+      expect(trouves.map((t: any) => t.id)).toContain(id);
+    }
+
+    // Chaque mot doit se retrouver chez le demandeur : « Sam Admin » ne
+    // désigne personne, et ne doit pas ramener les demandes de Sam.
+    const aucun = await listerTickets(sansPortee, { recherche: 'Sam Admin', limite: 500 });
+    expect(aucun.map((t: any) => t.id)).not.toContain(id);
+  });
+
   it('sépare les demandes ouvertes des demandes closes', async () => {
     const id = await creerTicket({ titre: 'À clore' }, SECRETAIRE);
     await changerStatut(id, RESOLU, CHEF_INFO);

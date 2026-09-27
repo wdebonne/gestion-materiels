@@ -302,7 +302,7 @@ export default function TicketsPage() {
               <input
                 value={recherche}
                 onChange={(e) => setRecherche(e.target.value)}
-                placeholder="Rechercher un titre, une description ou un numéro..."
+                placeholder="Rechercher un titre, une description, un numéro ou un demandeur..."
                 className="w-full pl-10 pr-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               />
             </div>
