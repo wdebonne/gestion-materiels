@@ -75,7 +75,12 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "${MYSQL_APP_PORT:-3002}:3001"
+      # Port publié sur l'hôte : MYSQL_APP_PORT, sinon PORT (le nom qu'on donne
+      # d'instinct dans l'environnement de la pile Portainer), sinon 3002.
+      # Sans ce repli, un PORT renseigné dans Portainer était ignoré et chaque
+      # redéploiement republiait l'application sur 3002. Le port interne, lui,
+      # reste 3001 quoi qu'il arrive : PORT est fixé plus bas pour le conteneur.
+      - "${MYSQL_APP_PORT:-${PORT:-3002}}:3001"
     environment:
       - NODE_ENV=production
       - PORT=3001

@@ -544,7 +544,7 @@ Derrière un autre reverse proxy que le nginx fourni, relevez la taille des envo
 | `MYSQL_ROOT_PASSWORD` | Mot de passe root du conteneur MySQL (**obligatoire** pour `docker-compose.mysql.yml`) | - |
 | `MYSQL_APP_USER` | Compte applicatif créé dans le conteneur MySQL (l'image refuse `root`) | gestion |
 | `MYSQL_APP_PASSWORD` | Mot de passe de ce compte (**obligatoire** pour `docker-compose.mysql.yml`) | - |
-| `MYSQL_APP_PORT` | Port publié sur l'hôte par la pile MySQL | 3002 |
+| `MYSQL_APP_PORT` | Port publié sur l'hôte par la pile MySQL (à défaut, `PORT` est repris) | 3002 |
 | `SMTP_HOST` | Serveur SMTP | - |
 | `SMTP_PORT` | Port SMTP | 587 |
 | `SMTP_USER` | Utilisateur SMTP | - |
