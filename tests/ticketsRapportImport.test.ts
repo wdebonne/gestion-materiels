@@ -243,6 +243,15 @@ describe('Le rapport', () => {
     expect(r.parTechnicien.find((t) => t.libelle === 'Non affectée')?.total).toBe(2);
   });
 
+  it('répartit aussi par demandeur et par service', async () => {
+    const r = await construireRapport(SANS_PORTEE, { debut: '2026-09-01', fin: '2026-09-30' });
+    expect(r.parDemandeur).toEqual([
+      { cle: '3', libelle: 'Gil Gardien', total: 4, part: 100 },
+    ]);
+    // Aucune demande de la période n'est routée vers un service.
+    expect(r.parService.find((s) => s.libelle === 'Sans service')?.total).toBe(4);
+  });
+
   it('somme le temps mobilisé, renforts compris', async () => {
     const r = await construireRapport(SANS_PORTEE, { debut: '2026-09-01', fin: '2026-09-30' });
     // 120 min de titulaire + 30 min de renfort : c'est ce que la demande a

@@ -622,9 +622,22 @@ export function construireFiltres(filtres: FiltresTickets): { sql: string; param
   if (recherche.length > 0) {
     // Le numéro affiché est aussi une entrée de recherche : c'est ce qu'on lit
     // sur un courriel de notification, et donc ce qu'on recopie.
-    conditions.push('(t.titre LIKE ? OR t.description LIKE ? OR t.reference LIKE ?)');
+    //
+    // Le demandeur aussi : « les demandes de Mme Martin » est la question
+    // qu'on pose au téléphone. Chaque mot doit se retrouver dans son prénom,
+    // son nom ou son courriel — « jean dupont » comme « dupont jean » — sans
+    // concaténation SQL, qui s'écrit `||` sous SQLite et `CONCAT` sous MySQL.
     const motif = `%${recherche}%`;
+    const mots = recherche.split(/\s+/).filter(Boolean).slice(0, 5);
+    const parMot = mots
+      .map(() => '(du.first_name LIKE ? OR du.last_name LIKE ? OR du.email LIKE ?)')
+      .join(' AND ');
+    conditions.push(
+      `(t.titre LIKE ? OR t.description LIKE ? OR t.reference LIKE ?
+        OR EXISTS (SELECT 1 FROM users du WHERE du.id = t.demandeur_id AND ${parMot}))`
+    );
     params.push(motif, motif, motif);
+    for (const mot of mots) params.push(`%${mot}%`, `%${mot}%`, `%${mot}%`);
   }
 
   return { sql: conditions.length > 0 ? ` AND ${conditions.join(' AND ')}` : '', params };

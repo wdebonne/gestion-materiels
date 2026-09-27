@@ -170,8 +170,8 @@ export async function checkAlerts(): Promise<void> {
       const isExpired = daysUntilExpiry < 0;
       const severity = isExpired ? 'critical' : priorityToSeverity(alertSettings.technical_control.priority, daysUntilExpiry);
       const message = isExpired
-        ? `Le contrôle technique a expiré le ${tc.expiry_date}`
-        : `Le contrôle technique expire le ${tc.expiry_date}`;
+        ? `Le contrôle technique a expiré le ${jourFrancais(tc.expiry_date)}`
+        : `Le contrôle technique expire le ${jourFrancais(tc.expiry_date)}`;
 
       if (rejetToujoursValable(existingAlert, tc.expiry_date)) {
         // L'utilisateur a écarté cette échéance : on n'en repose pas une.
@@ -238,8 +238,8 @@ export async function checkAlerts(): Promise<void> {
       const isOverdue = daysUntilDue < 0;
       const severity = isOverdue ? 'critical' : priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
       const message = isOverdue 
-        ? `${m.maintenance_type} en retard depuis le ${m.next_date}` 
-        : `${m.maintenance_type} prévue le ${m.next_date}`;
+        ? `${m.maintenance_type} en retard depuis le ${jourFrancais(m.next_date)}` 
+        : `${m.maintenance_type} prévue le ${jourFrancais(m.next_date)}`;
 
       if (rejetToujoursValable(existingAlert, m.next_date)) {
         // Rejet respecté tant que l'échéance n'a pas bougé.
@@ -307,8 +307,8 @@ export async function checkAlerts(): Promise<void> {
       const isOverdue = daysUntilDue < 0;
       const severity = isOverdue ? 'critical' : priorityToSeverity(alertSettings.maintenance.priority, daysUntilDue);
       const message = isOverdue
-        ? `Entretien "${gsm.maintenance_type}" en retard depuis le ${gsm.next_maintenance_date}`
-        : `Entretien "${gsm.maintenance_type}" prévu le ${gsm.next_maintenance_date}`;
+        ? `Entretien "${gsm.maintenance_type}" en retard depuis le ${jourFrancais(gsm.next_maintenance_date)}`
+        : `Entretien "${gsm.maintenance_type}" prévu le ${jourFrancais(gsm.next_maintenance_date)}`;
 
       if (rejetToujoursValable(existingAlert, gsm.next_maintenance_date)) {
         // Rejet respecté tant que l'échéance n'a pas bougé.

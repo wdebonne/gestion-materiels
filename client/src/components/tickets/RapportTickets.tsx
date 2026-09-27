@@ -1,12 +1,26 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
-import { AlertTriangle, CheckCircle2, Clock, Inbox, Info } from 'lucide-react'
+import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
+import { AlertTriangle, BarChart3, CheckCircle2, Clock, FileDown, Inbox, Info, PieChart as IconeCamembert } from 'lucide-react'
 import api from '@/lib/api'
-import { couleurDe, EMPLACEMENTS_COULEUR, PALETTE } from '@/lib/paletteCategories'
-import { Card, CardBody, Input, LoadingInline } from '@/components/ui'
+import { couleurDe } from '@/lib/paletteCategories'
+import { Button, Card, CardBody, Input, LoadingInline } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { useThemeSombre } from '@/lib/useThemeSombre'
+import { jourCourant } from '@/lib/duree'
+import {
+  REPARTITIONS,
+  formaterDuree,
+  regrouper,
+  teinteDuRang,
+  teintePour,
+  type FormeGraphique,
+  type LigneRepartition,
+  type RapportDemandes,
+} from './rapport/commun'
+import ExportRapportModal from './rapport/ExportRapportModal'
+
+export { formaterDuree }
 
 /**
  * Ce que les demandes coûtent, et ce qu'on tient comme délais.
@@ -41,30 +55,50 @@ import { useThemeSombre } from '@/lib/useThemeSombre'
  * graphique porte **ses libellés en clair et son tableau à côté** : l'identité
  * d'une barre ne repose jamais sur sa couleur seule.
  *
- * Les répartitions par bâtiment et par technicien n'emploient **qu'une seule
- * teinte** : elles comparent une grandeur, elles ne distinguent pas des
- * identités. Huit couleurs y laisseraient croire à un sens qui n'existe pas.
+ * Les répartitions par bâtiment, service, demandeur et technicien n'emploient
+ * **qu'une seule teinte** en barres : elles comparent une grandeur, elles ne
+ * distinguent pas des identités. Huit couleurs y laisseraient croire à un sens
+ * qui n'existe pas. En camembert, en revanche, des parts de même couleur se
+ * confondraient : chacune prend alors la teinte de son rang.
+ *
+ * ## Le choix de la forme se retient
+ *
+ * Barres ou camembert, c'est une préférence de lecteur, pas un réglage de
+ * période : elle survit au rechargement, dans ce navigateur seulement. Elle sert
+ * aussi de valeur par défaut à l'export PDF.
  */
 
-/** Des minutes en durée lisible. « 2 h 30 », jamais « 150 ». */
-export function formaterDuree(minutes: number | null): string {
-  if (minutes === null) return '—'
-  if (minutes < 60) return `${minutes} min`
-  const heures = Math.floor(minutes / 60)
-  const reste = minutes % 60
-  if (heures < 24) return reste === 0 ? `${heures} h` : `${heures} h ${String(reste).padStart(2, '0')}`
-  const jours = Math.floor(heures / 24)
-  return `${jours} j ${heures % 24} h`
+const CLE_FORME = 'tickets.rapport.forme'
+
+function formeRetenue(): FormeGraphique {
+  try {
+    return localStorage.getItem(CLE_FORME) === 'camembert' ? 'camembert' : 'barres'
+  } catch {
+    return 'barres'
+  }
 }
 
 function premierDuMois(): string {
   const d = new Date()
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10)
+  // En date locale : `toISOString()` passait en UTC, et le minuit du 1er
+  // devenait la veille à 22 h — la période s’ouvrait sur le mois précédent.
+  return jourCourant(new Date(d.getFullYear(), d.getMonth(), 1))
 }
 
 export default function RapportTickets() {
   const [debut, setDebut] = useState(premierDuMois())
-  const [fin, setFin] = useState(new Date().toISOString().slice(0, 10))
+  const [fin, setFin] = useState(jourCourant())
+  const [forme, setFormeEtat] = useState<FormeGraphique>(formeRetenue)
+  const [exportOuvert, setExportOuvert] = useState(false)
+
+  const setForme = (valeur: FormeGraphique) => {
+    setFormeEtat(valeur)
+    try {
+      localStorage.setItem(CLE_FORME, valeur)
+    } catch {
+      // Navigation privée : la préférence vaut pour la session, c'est tout.
+    }
+  }
 
   // Le hook du dépôt, et non une lecture ponctuelle de la classe : basculer le
   // thème doit repeindre les graphiques, pas attendre un rechargement.
@@ -75,7 +109,7 @@ export default function RapportTickets() {
     queryFn: async () => (await api.get(`/tickets/rapport?debut=${debut}&fin=${fin}`)).data,
   })
 
-  const r = data?.rapport
+  const r: RapportDemandes | undefined = data?.rapport
 
   return (
     <div className="space-y-6">
@@ -84,11 +118,57 @@ export default function RapportTickets() {
         <CardBody className="flex flex-col sm:flex-row gap-3 sm:items-end">
           <Input label="Du" type="date" value={debut} onChange={(e: any) => setDebut(e.target.value)} />
           <Input label="Au" type="date" value={fin} onChange={(e: any) => setFin(e.target.value)} />
-          <p className="text-xs text-gray-500 sm:ml-auto sm:pb-2">
-            Ne compte que les demandes que vous avez le droit de voir.
-          </p>
+          <div className="flex flex-col gap-2 sm:ml-auto sm:items-end">
+            <div className="flex gap-2">
+              <div
+                role="radiogroup"
+                aria-label="Forme des graphiques"
+                className="inline-flex rounded-lg border border-gray-200 p-0.5 dark:border-gray-700"
+              >
+                {(
+                  [
+                    { value: 'barres', libelle: 'Barres', icone: <BarChart3 className="h-4 w-4" /> },
+                    { value: 'camembert', libelle: 'Camembert', icone: <IconeCamembert className="h-4 w-4" /> },
+                  ] as const
+                ).map((f) => (
+                  <button
+                    key={f.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={forme === f.value}
+                    onClick={() => setForme(f.value)}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                      forme === f.value
+                        ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                    )}
+                  >
+                    {f.icone}
+                    {f.libelle}
+                  </button>
+                ))}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={<FileDown className="h-4 w-4" />}
+                disabled={!r}
+                onClick={() => setExportOuvert(true)}
+              >
+                PDF
+              </Button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Ne compte que les demandes que vous avez le droit de voir.
+            </p>
+          </div>
         </CardBody>
       </Card>
+
+      {exportOuvert && r && (
+        <ExportRapportModal rapport={r} formeEcran={forme} onFerme={() => setExportOuvert(false)} />
+      )}
 
       {isLoading || !r ? (
         <LoadingInline />
@@ -130,16 +210,18 @@ export default function RapportTickets() {
           </div>
 
           {/* ------------------------------------------------- les répartitions */}
-          <Repartition
-            titre="Par catégorie"
-            lignes={r.parCategorie}
-            sombre={sombre}
-            /* Seule répartition où la couleur porte une identité : une catégorie
-               garde la sienne d'un écran à l'autre. */
-            parIdentite
-          />
-          <Repartition titre="Par bâtiment" lignes={r.parBatiment} sombre={sombre} />
-          <Repartition titre="Par technicien" lignes={r.parTechnicien} sombre={sombre} />
+          {REPARTITIONS.map((repartition) => (
+            <Repartition
+              key={repartition.id}
+              titre={repartition.titre}
+              lignes={r[repartition.champ] ?? []}
+              sombre={sombre}
+              forme={forme}
+              /* Seule la catégorie porte une identité par sa couleur : elle
+                 garde la sienne d'un écran à l'autre. */
+              parIdentite={repartition.parIdentite}
+            />
+          ))}
 
           {/* -------------------------------------------------- le temps passé */}
           <Card>
@@ -155,7 +237,7 @@ export default function RapportTickets() {
 
               {r.tempsParCategorie.length > 0 ? (
                 <ul className="mt-4 space-y-1.5">
-                  {r.tempsParCategorie.map((c: any, rang: number) => (
+                  {r.tempsParCategorie.map((c, rang) => (
                     <li key={c.cle} className="flex items-center gap-2 text-sm">
                       <span
                         className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
@@ -291,33 +373,7 @@ function Delais({ titre, delais }: { titre: string; delais: any }) {
 }
 
 /**
- * La teinte d'une barre, décidée au même endroit pour le graphique et pour le
- * tableau.
- *
- * Les deux doivent s'accorder exactement : c'est la pastille du tableau qui
- * rattache un libellé à sa barre, et deux calculs séparés finiraient par
- * diverger. Le regroupement « autres » est neutre — il ne désigne pas une
- * entité, il en cache plusieurs.
- */
-function teintePour(
-  ligne: { cle: string },
-  rang: number,
-  sombre: boolean,
-  parIdentite: boolean | undefined,
-  teinteUnique: string
-): string {
-  if (ligne.cle === '__autres__') return sombre ? '#64748b' : '#94a3b8'
-  return parIdentite ? teinteDuRang(rang, sombre) : teinteUnique
-}
-
-/** La teinte d'un rang, dans l'ordre fixe de la palette. */
-function teinteDuRang(rang: number, sombre: boolean): string {
-  const emplacement = EMPLACEMENTS_COULEUR[rang % EMPLACEMENTS_COULEUR.length]
-  return sombre ? PALETTE[emplacement].sombre : PALETTE[emplacement].clair
-}
-
-/**
- * Une répartition : des barres **et** son tableau.
+ * Une répartition : des barres ou un camembert, **et** son tableau.
  *
  * Le tableau n'est pas une redite. Trois teintes de la palette passent sous 3:1
  * de contraste sur fond clair, et l'identité d'une barre ne doit jamais reposer
@@ -328,34 +384,22 @@ function Repartition({
   titre,
   lignes,
   sombre,
+  forme,
   parIdentite,
 }: {
   titre: string
-  lignes: any[]
+  lignes: LigneRepartition[]
   sombre: boolean
+  forme: FormeGraphique
   parIdentite?: boolean
 }) {
   if (!lignes || lignes.length === 0) return null
 
   // Au-delà de huit, deux barres partageraient une teinte : le reste est
   // regroupé plutôt que recolorié au hasard. Les libellés restent exacts.
-  const affichees = lignes.slice(0, 8)
-  const reste = lignes.slice(8)
-  const donnees = [
-    ...affichees,
-    ...(reste.length > 0
-      ? [
-          {
-            cle: '__autres__',
-            libelle: `${reste.length} autre(s)`,
-            total: reste.reduce((t, l) => t + l.total, 0),
-            part: reste.reduce((t, l) => t + l.part, 0),
-          },
-        ]
-      : []),
-  ]
-
-  const teinteUnique = sombre ? PALETTE.bleu.sombre : PALETTE.bleu.clair
+  const donnees = regrouper(lignes)
+  const multicolore = forme === 'camembert' || Boolean(parIdentite)
+  const teinte = (ligne: LigneRepartition, rang: number) => teintePour(ligne, rang, sombre, multicolore)
 
   return (
     <Card>
@@ -368,6 +412,30 @@ function Repartition({
             faisait flotter une barre unique au milieu d'un grand vide, et
             laissait croire qu'il manquait des lignes.
           */}
+          {forme === 'camembert' ? (
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={donnees}
+                    dataKey="total"
+                    nameKey="libelle"
+                    outerRadius="90%"
+                    /* Le liseré sépare les parts ; seule, une part n'a rien à
+                       séparer, et il dessinait un rayon parasite. */
+                    stroke={sombre ? '#1f2937' : '#ffffff'}
+                    strokeWidth={donnees.length > 1 ? 2 : 0}
+                    isAnimationActive={false}
+                  >
+                    {donnees.map((ligne, rang) => (
+                      <Cell key={ligne.cle} fill={teinte(ligne, rang)} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<Infobulle sombre={sombre} />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
           <div style={{ height: donnees.length * 34 + 48 }}>
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={donnees} layout="vertical" margin={{ left: 8, right: 24 }}>
@@ -392,12 +460,13 @@ function Repartition({
                 />
                 <Bar dataKey="total" radius={[0, 4, 4, 0]} barSize={12} isAnimationActive={false}>
                   {donnees.map((ligne, rang) => (
-                    <Cell key={ligne.cle} fill={teintePour(ligne, rang, sombre, parIdentite, teinteUnique)} />
+                    <Cell key={ligne.cle} fill={teinte(ligne, rang)} />
                   ))}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
+          )}
 
           {/* Le tableau, à côté du graphique et non à sa place. */}
           <table className="w-full text-sm self-start">
@@ -415,7 +484,7 @@ function Repartition({
                     <span className="inline-flex items-center gap-2">
                       <span
                         className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
-                        style={{ background: teintePour(ligne, rang, sombre, parIdentite, teinteUnique) }}
+                        style={{ background: teinte(ligne, rang) }}
                       />
                       {ligne.libelle}
                     </span>

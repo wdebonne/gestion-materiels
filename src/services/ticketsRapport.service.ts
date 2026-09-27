@@ -65,6 +65,8 @@ export interface RapportTickets {
   parCategorie: Repartition[];
   parBatiment: Repartition[];
   parTechnicien: Repartition[];
+  parService: Repartition[];
+  parDemandeur: Repartition[];
   tempsPasseMinutes: number;
   tempsParCategorie: Repartition[];
 }
@@ -140,16 +142,21 @@ export async function construireRapport(
 ): Promise<RapportTickets> {
   const lignes = await db.query(
     `SELECT t.id, t.statut_id, t.categorie_id, t.site_id, t.technicien_id,
+            t.service_id, t.demandeur_id,
             t.created_at, t.pris_en_charge_at, t.resolu_at, t.ferme_at,
             t.echeance_prise_en_charge, t.echeance_resolution,
             st.nom AS statut_nom, st.is_ouvert AS statut_ouvert,
             c.nom AS categorie_nom, s.name AS site_nom,
-            tech.first_name AS tech_prenom, tech.last_name AS tech_nom
+            tech.first_name AS tech_prenom, tech.last_name AS tech_nom,
+            srv.name AS service_nom,
+            dem.first_name AS dem_prenom, dem.last_name AS dem_nom
        FROM tickets t
        LEFT JOIN ticket_statuts st ON st.id = t.statut_id
        LEFT JOIN ticket_categories c ON c.id = t.categorie_id
        LEFT JOIN cle_sites s ON s.id = t.site_id
        LEFT JOIN users tech ON tech.id = t.technicien_id
+       LEFT JOIN services srv ON srv.id = t.service_id
+       LEFT JOIN users dem ON dem.id = t.demandeur_id
       WHERE t.created_at >= ? AND t.created_at <= ?${portee.sql}`,
     [bornes.debut, `${bornes.fin} 23:59:59`, ...portee.params]
   );
@@ -264,6 +271,17 @@ export async function construireRapport(
         libelle: [l.tech_prenom, l.tech_nom].filter(Boolean).join(' ').trim() || null,
       })),
       'Non affectée'
+    ),
+    parService: repartir(
+      lignes.map((l: any) => ({ cle: l.service_id, libelle: l.service_nom })),
+      'Sans service'
+    ),
+    parDemandeur: repartir(
+      lignes.map((l: any) => ({
+        cle: l.demandeur_id,
+        libelle: [l.dem_prenom, l.dem_nom].filter(Boolean).join(' ').trim() || null,
+      })),
+      'Demandeur inconnu'
     ),
     tempsPasseMinutes,
     tempsParCategorie: [...tempsParCategorie.values()]
