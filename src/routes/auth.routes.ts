@@ -431,6 +431,16 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res: Response) => 
       return res.status(404).json({ success: false, message: 'Utilisateur non trouvé' });
     }
 
+    // Le cookie qui ouvre `/uploads` peut manquer alors que la session vaut
+    // encore : expiré avant le jeton, effacé par le navigateur, jamais reposé
+    // après un changement de mot de passe. Les images tombaient alors en 401
+    // sans que rien ne le répare. Chaque chargement de page passe par ici :
+    // on le repose avec le jeton que le client vient de présenter.
+    const jetonPresente = req.headers['authorization']?.split(' ')[1];
+    if (jetonPresente && req.cookies?.auth_token !== jetonPresente) {
+      poserCookieSession(res, jetonPresente);
+    }
+
     res.json({
       success: true,
       user: {
@@ -524,6 +534,7 @@ router.put('/change-password', authenticateToken, [
       [req.user?.userId]
     );
     const jetons = genererJetons(compte);
+    poserCookieSession(res, jetons.accessToken);
 
     // Log du changement de mot de passe
     await logService.success('auth', 'Mot de passe changé', {}, {
@@ -574,10 +585,13 @@ router.post('/revoke-sessions', authenticateToken, async (req: AuthRequest, res:
       userAgent: req.headers['user-agent'],
     });
 
+    const jetons = genererJetons(compte);
+    poserCookieSession(res, jetons.accessToken);
+
     res.json({
       success: true,
       message: 'Vos autres sessions ont été fermées.',
-      ...genererJetons(compte),
+      ...jetons,
     });
   } catch (error: any) {
     console.error('Erreur revoke-sessions:', error);
@@ -624,12 +638,7 @@ router.post('/refresh', async (req: AuthRequest, res: Response) => {
     });
 
     // Mettre à jour le cookie d'authentification
-    res.cookie('auth_token', tokens.accessToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 jours
-    });
+    poserCookieSession(res, tokens.accessToken);
 
     res.json({ success: true, ...tokens });
   } catch (error) {
