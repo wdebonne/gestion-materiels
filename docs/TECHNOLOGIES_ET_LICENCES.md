@@ -1,6 +1,6 @@
 # Technologies et licences
 
-Inventaire des technologies, bibliothèques et services utilisés par **Gestion Matériels** (v1.3.1), avec leur licence d'utilisation.
+Inventaire des technologies, bibliothèques et services utilisés par **Gestion Matériels** (v1.4.0), avec leur licence d'utilisation.
 
 - Versions : celles **réellement installées** (`node_modules`), relevées le 27/09/2026 — pas seulement les plages de `package.json`.
 - Licences : champ `license` de chaque paquet, vérifié dans le fichier `LICENSE` quand ce champ manque.
